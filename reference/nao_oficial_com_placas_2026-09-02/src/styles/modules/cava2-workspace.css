@@ -1,0 +1,74 @@
+/* Área 2D — motor v0.9 encapsulado e conectado ao projeto CCMGIS. */
+#cava2Workspace{
+  position:absolute;inset:31px 0 0;z-index:620;display:none;
+  min-width:0;min-height:0;background:#fff;flex-direction:column;
+}
+#cava2Workspace.on{display:flex}
+.cava2-bridgebar{
+  min-height:42px;display:flex;align-items:center;gap:7px;padding:5px 8px;
+  flex:0 0 auto;overflow-x:auto;overflow-y:hidden;white-space:nowrap;
+  color:var(--ink);background:var(--panel);border-bottom:1px solid var(--line);
+  box-shadow:0 2px 7px #0012;position:relative;z-index:2;
+}
+.cava2-bridge-title{
+  display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;
+  color:var(--ink-bright);padding-right:8px;border-right:1px solid var(--line);
+}
+.cava2-bridge-title::before{
+  content:'2D';display:inline-grid;place-items:center;width:27px;height:27px;
+  border-radius:7px;background:var(--amber);color:#1d2831;font:900 11px var(--font);
+}
+.cava2-bridgebar label{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink-dim)}
+.cava2-bridgebar select,.cava2-bridgebar input{
+  width:auto;min-width:92px;height:29px;padding:4px 7px;background:var(--bg);
+  color:var(--ink);border:1px solid var(--line);border-radius:6px;font:11px var(--font);
+}
+.cava2-bridgebar input{width:88px;min-width:88px;text-align:right}
+.cava2-bridgebar input[type="text"]{width:132px;min-width:110px;text-align:left}
+#cava2Mdt{min-width:155px;max-width:230px}
+#cava2CutMdt{border-color:var(--amber)}
+.cava2-bridgebar button{
+  height:29px;padding:4px 10px;border:1px solid var(--line);border-radius:7px;
+  background:var(--panel2);color:var(--ink);font:700 11px inherit;cursor:pointer;
+}
+.cava2-bridgebar button:hover{border-color:var(--amber);color:var(--ink-bright)}
+.cava2-bridgebar button.primary{background:var(--amber);border-color:var(--amber);color:#1b2832}
+.cava2-bridge-status{
+  margin-left:auto;max-width:360px;overflow:hidden;text-overflow:ellipsis;
+  font:11px var(--font);color:var(--ink-dim);
+}
+.cava2-design-tabs{
+  min-height:34px;display:flex;align-items:end;gap:3px;padding:4px 8px 0;
+  flex:0 0 auto;overflow-x:auto;overflow-y:hidden;background:var(--bg);
+  border-bottom:1px solid var(--line);white-space:nowrap;
+}
+.cava2-design-tab{
+  height:29px;display:inline-flex;align-items:center;gap:7px;padding:4px 11px;
+  border:1px solid var(--line);border-bottom:0;border-radius:7px 7px 0 0;
+  background:var(--panel2);color:var(--ink-dim);font:700 11px var(--font);cursor:pointer;
+}
+.cava2-design-tab:hover{color:var(--ink-bright);border-color:var(--blue)}
+.cava2-design-tab.on{height:31px;background:#fff;color:#172a3a;border-color:var(--blue)}
+.cava2-tab-kind{
+  display:inline-grid;place-items:center;min-width:28px;height:18px;padding:0 5px;
+  border-radius:5px;background:var(--amber);color:#1d2831;font:800 9px var(--font);
+}
+#cava2Frame{display:block;width:100%;height:100%;min-height:0;flex:1 1 auto;border:0;background:#fff;color-scheme:light}
+body.cava2-view #a3Compass,
+body.cava2-view #a3MapNav,
+body.cava2-view #viewSwitch{display:none!important}
+
+/* No fundo claro a área Cava inteira acompanha o branco do projeto; somente
+   bordas, textos e desenhos mantêm cor para não perder leitura técnica. */
+body.light #cava2Workspace,
+body.light .cava2-bridgebar,
+body.light .cava2-design-tabs,
+body.light .cava2-design-tab,
+body.light .cava2-bridgebar select,
+body.light .cava2-bridgebar input,
+body.light .cava2-bridgebar button{background:#fff;color:#1d3343}
+
+@media(max-width:900px){
+  .cava2-bridge-status{display:none}
+  .cava2-bridge-title{position:sticky;left:0;background:var(--panel);z-index:2}
+}
