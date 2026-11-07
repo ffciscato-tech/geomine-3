@@ -1,0 +1,54 @@
+GEOMINE — CORREÇÃO DOS ORIGINAIS NO IPAD — 06/11/2026
+
+Publicada em https://geomine-3.web.app/ em 06/11/2026, 07:58:50 (Brasília).
+
+O QUE MUDOU
+1. Seleções de TIFF no iPad agora podem ser guardadas no armazenamento privado
+   do próprio site, por conta e projeto, em blocos de 1 MiB. A aplicação mostra
+   o progresso e reutiliza a cópia validada nas próximas aberturas.
+2. O carregamento do projeto tenta restaurar os originais automaticamente.
+   Se algum original estiver indisponível, mantém a prévia e mostra um aviso
+   discreto; não abre obrigatoriamente a janela do localizador.
+3. A reconexão preserva o overlay e a grade já carregados, evitando criar outra
+   imagem integral do mapa. As janelas do TIFF continuam lidas sob demanda.
+4. Leituras diretas de readRasters também respeitam a fila e o limite de
+   memória no modo móvel, antes de a biblioteca criar uma matriz excessiva.
+
+NO PRIMEIRO USO
+Salve o trabalho aberto e recarregue o site. Abra o projeto. Se a versão anterior
+nunca guardou o original neste aparelho, use Localizar originais uma vez e
+aguarde o progresso da cópia terminar. Depois disso, o mesmo projeto pode
+recuperá-lo automaticamente no mesmo navegador e conta. Se faltar espaço ou
+o navegador não permitir a cópia, a aplicação informa isso e preserva a sessão.
+O arquivo original selecionado não é alterado.
+
+VALIDAÇÃO
+74 testes focados passaram. Os 115 scripts do HTML offline e os 116 do HTML
+publicado foram analisados sem erro de sintaxe. A montagem completa reproduziu
+o baseline e coincidiu com as sete substituições de módulos previstas.
+
+Teste integrado com TIFF sintético de 1.802.430.636 bytes, dimensões nativas
+73.368 x 120.447: ligação com camada visível, cópia persistente, reload real,
+reabertura do projeto e consulta de um pixel nativo passaram. Não houve seletor
+nem modal na reabertura. A maior ImageData na reconexão foi 256 x 256; não houve
+novo canvas integral, erro de página ou crash. Também passaram gravações reais
+via createWritable e via worker com createSyncAccessHandle, quota insuficiente,
+troca de projeto/conta, reaproveitamento e cancelamento.
+
+Limite da validação: Chromium local com identificação/toque de iPad e TIFFs
+sintéticos. Não foi executado Safari/WebKit nem o iPad físico do usuário.
+O TIFF original do usuário permanece pendente de teste no aparelho.
+
+CONTEÚDO DO PACOTE
+Pacote incremental para a base development/Blasting: módulos alterados, testes,
+relatórios, HTML offline, HTML publicado e CURRENT_RELEASE.json. Os 119 arquivos
+complementares do site foram preservados na publicação. Não é um backup do
+projeto completo, dos dados do usuário nem dos arquivos TIFF.
+Os arquivos de teste de vários GB são gerados pelos scripts e não estão no ZIP.
+Alguns testes de navegador registram os caminhos do ambiente onde foram rodados;
+adapte a configuração Playwright para repetir os testes em outra máquina.
+
+SHA-256 do HTML publicado:
+4377fce69689e4e3a148b95a32cc656291ae6371d8518cc17de0a3a7f6167f04
+SHA-256 do HTML offline:
+c346c2d9cae38c58e60660cbeae6b3476685975a4f9dc0d6b394bab8d1390463

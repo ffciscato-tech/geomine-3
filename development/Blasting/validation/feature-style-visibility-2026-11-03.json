@@ -1,0 +1,33 @@
+{
+  "date": "2026-11-03",
+  "cause": "SVG path recreated on Leaflet add lost its DOM hatch; feature style data remained intact.",
+  "baselineFailureReproduced": true,
+  "visibility": {
+    "passed": true,
+    "patternedFeatures": 4,
+    "eyeCycles": 3,
+    "groupEyeCycle": true,
+    "directRemoveAdd": true,
+    "hiddenRedraw": true,
+    "solidAndNonePreserved": true,
+    "featureStylePersisted": true,
+    "geometryIdentityPreserved": true,
+    "errors": []
+  },
+  "brushRegression": {
+    "passed": 11,
+    "rest": {
+      "second": true,
+      "undo": true,
+      "locked": true,
+      "permission": true,
+      "geometryUnchanged": true,
+      "saved": true,
+      "selectionThrough": true,
+      "outline": true
+    },
+    "errors": []
+  },
+  "onlineShaMatchesPackage": true,
+  "publishedSha256": "094a40a0221c967660084324d6f118aa8480a1109a20bb6f0d53bad97b9b88f5"
+}

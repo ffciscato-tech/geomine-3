@@ -1,0 +1,23 @@
+PDF.js / pdfjs-dist 6.4.299
+Copyright Mozilla Foundation and contributors.
+License: Apache License, Version 2.0 (see LICENSE).
+
+Unmodified distribution files included:
+  package/build/pdf.min.mjs
+  package/build/pdf.worker.min.mjs
+  package/LICENSE
+  package/package.json
+
+Source: https://github.com/mozilla/pdf.js/releases/tag/v6.4.299
+Package: https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-6.4.299.tgz
+npm tarball integrity (SHA-512, verified before copying):
+sha512-AVl138zALtfaAPvADulE0PZThbYzCBS79nL4pOSL/6Sm/4AH5A21BD9VHt97OlCuzJuCpmeZtAtkinisF4Vb1g==
+
+GeoMine bundles these files inside its single-file HTML. The API module is
+imported lazily from a Blob URL only when a local PDF is selected. A dedicated
+worker performs parsing and is terminated at the end of each read. On file://
+origins, the runtime adapter removes the worker's single ESM export and replaces
+import.meta.url with self.location.href to use a classic Blob worker. This
+avoids Chromium's restriction on module workers from opaque local-file origins;
+the parsing code and the vendored distribution files remain unchanged.
+No CDN, document upload, viewer, external credential, or remote OCR is used.

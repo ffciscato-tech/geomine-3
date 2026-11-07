@@ -1,0 +1,180 @@
+{
+  "date": "2026-11-05",
+  "passed": true,
+  "unitChecksPassed": 55,
+  "browserCasesPassed": 12,
+  "browser": "Chromium 153; desktop iPad user agent and touch emulation, not physical Safari",
+  "environment": {
+    "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+    "touch": 5,
+    "pointerFine": true,
+    "EH_MOVEL": true,
+    "fsApiOK": false,
+    "directoryPicker": "undefined"
+  },
+  "sourceSha256": {
+    "src/core/parts/11-geotiff-project-workspace.js": "76e28248993afe4192b34b8047eccaf48270e9c7300181b42a6d4f48be35cf47",
+    "src/core/parts/19-hydrology-and-flooding.js": "3bc445e887edd332e5ac88264ff7bb3aff9c1c343e4c67cb32f10e51429998e8",
+    "src/core/parts/20-raster-dem.js": "698897184670aa41361acaa8f2bfcfa65de8adbab711f972e9b57fbd88dae40a",
+    "src/modules/raster/original-sources.js": "953eca3ede8fdfb598fcc164ed3186f7c0b37d027d2de8cd748ffa7bcd4adf0f",
+    "src/modules/raster/missing-originals.js": "18b7b023f7be1e80e01590bc1011950a1d6a2c29d0a413a21c3c8a621ad1d2ca"
+  },
+  "baselineCounts": {
+    "parse": 1,
+    "open": 1,
+    "reads": 1,
+    "render": 2,
+    "save": 2
+  },
+  "correctedCounts": {
+    "parse": 0,
+    "open": 1,
+    "reads": 0,
+    "render": 1,
+    "save": 2
+  },
+  "embeddedPreviewArrayPreserved": true,
+  "cases": [
+    {
+      "name": "success",
+      "counts": {
+        "parse": 0,
+        "open": 1,
+        "reads": 0,
+        "render": 1,
+        "save": 2
+      }
+    },
+    {
+      "name": "linked native pixels remain readable"
+    },
+    {
+      "name": "wrong TIFF same dimensions rejected without replacing project",
+      "counts": {
+        "parse": 0,
+        "open": 0,
+        "reads": 0,
+        "render": 0,
+        "save": 0
+      }
+    },
+    {
+      "name": "native file picker cancelled; project and preview retained",
+      "counts": {
+        "parse": 0,
+        "open": 0,
+        "reads": 0,
+        "render": 0,
+        "save": 0
+      }
+    },
+    {
+      "name": "retry after cancellation succeeds once",
+      "counts": {
+        "parse": 0,
+        "open": 1,
+        "reads": 0,
+        "render": 1,
+        "save": 2
+      }
+    },
+    {
+      "name": "verified project-native descriptor uses header-only File relink",
+      "counts": {
+        "parse": 0,
+        "open": 1,
+        "reads": 0,
+        "render": 1,
+        "save": 2
+      }
+    },
+    {
+      "name": "generation change discards in-flight TIFF selection",
+      "counts": {
+        "parse": 0,
+        "open": 0,
+        "reads": 0,
+        "render": 0,
+        "save": 0
+      }
+    },
+    {
+      "name": "app Cancel during TIFF checking preserves project",
+      "counts": {
+        "parse": 0,
+        "open": 0,
+        "reads": 0,
+        "render": 0,
+        "save": 0
+      }
+    },
+    {
+      "name": "closing missing-originals dialog invalidates pending selection",
+      "counts": {
+        "parse": 0,
+        "open": 0,
+        "reads": 0,
+        "render": 0,
+        "save": 0
+      }
+    },
+    {
+      "name": "in-place preview edit during verification is preserved",
+      "counts": {
+        "parse": 0,
+        "open": 0,
+        "reads": 0,
+        "render": 0,
+        "save": 0
+      }
+    },
+    {
+      "name": "opening another CCMGIS prevents late adoption into new project",
+      "counts": {
+        "parse": 0,
+        "open": 0,
+        "reads": 0,
+        "render": 0,
+        "save": 0
+      }
+    },
+    {
+      "name": "legacy file without fingerprint retains signature validation fallback",
+      "counts": {
+        "parse": 1,
+        "open": 2,
+        "reads": 1,
+        "render": 1,
+        "save": 2
+      }
+    }
+  ],
+  "pageErrors": [],
+  "consoleErrors": [],
+  "syntax": [
+    {
+      "file": "updated/dist/GeoMine.html",
+      "parsed": 115,
+      "skipped": 0,
+      "errors": []
+    },
+    {
+      "file": "updated/public/index.html",
+      "parsed": 116,
+      "skipped": 0,
+      "errors": []
+    }
+  ],
+  "authenticationBlockPreserved": true,
+  "priorResizablePanelsIncluded": true,
+  "userProjectFilesModified": false,
+  "physicalIPadTested": false,
+  "browserProcessTerminationReproduced": false,
+  "deployment": "Prepared, not deployed; publication remains for the notebook",
+  "limits": [
+    "Browser integration uses Chromium with iPad desktop user-agent, multitouch and fine-pointer emulation; this is not a physical Safari test.",
+    "Synthetic CCMGIS and TIFF fixtures. The user MDT was not available.",
+    "The original file remains native resolution. Large TIFF strips may still demand substantial decoding memory.",
+    "No automatic project saving or session restoration was enabled."
+  ]
+}

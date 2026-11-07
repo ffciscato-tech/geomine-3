@@ -1,0 +1,68 @@
+{
+  "unitTestsPassed": 17,
+  "browser": {
+    "alpha": 0.5986313601412001,
+    "quartiles": {
+      "count": 455,
+      "q1": 0.5144981458855117,
+      "median": 0.5986313601412001,
+      "q3": 0.5986313601412002
+    },
+    "records": 1,
+    "features": 2,
+    "heartbeat": 194,
+    "outsideIdentity": true,
+    "calibrationPersisted": true,
+    "workerRelief": true,
+    "review": true,
+    "cancel": true,
+    "evidenceSaved": true,
+    "backupVerified": true,
+    "nativeOrtho": true
+  },
+  "nativeCadRegression": {
+    "passed": 20,
+    "cad": {
+      "guideOn": true,
+      "guideCount": 2,
+      "reused": true,
+      "preview": true,
+      "line": "ponto médio",
+      "polygon": "ponto médio",
+      "midLine": [
+        500099.9999999997,
+        6900200
+      ],
+      "midPoly": [
+        500249.99999999924,
+        6900100
+      ],
+      "guidesCleared": true
+    },
+    "raster": {
+      "folderRestored": true,
+      "lookups": 1,
+      "importNative": true,
+      "tabs": [
+        "Estilo",
+        "Dados"
+      ],
+      "restored": true,
+      "reads": 0,
+      "samePreview": true,
+      "nativeWidth": 2048,
+      "restoreFlags": true,
+      "source": true
+    },
+    "ortho": {
+      "ok": true,
+      "reads": 0,
+      "samePreview": true,
+      "full": true,
+      "width": 4096
+    },
+    "errors": []
+  },
+  "realReferenceAcceptance": "Pendente do projeto completo Revisao C e TIFFs originais. Casos Q0516 Q0254 Q0618 Q0450 Q0612 Q0455 Q0587 e desempenho em 150 quadrantes nao certificados.",
+  "onlineShaMatchesPackage": true
+}

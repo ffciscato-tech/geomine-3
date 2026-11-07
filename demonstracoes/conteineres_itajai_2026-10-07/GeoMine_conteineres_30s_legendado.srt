@@ -1,0 +1,39 @@
+﻿1
+00:00:00,000 --> 00:00:02,500
+Reconhecimento de contêineres em Itajaí.
+
+2
+00:00:02,500 --> 00:00:06,000
+Topografia → Extração de Sólidos.
+
+3
+00:00:06,000 --> 00:00:09,000
+Escolha o MDS, o MDT e o modo Contêineres.
+
+4
+00:00:09,000 --> 00:00:11,500
+Dimensões de 20 e 40 pés; altura padrão ou High Cube.
+
+5
+00:00:11,500 --> 00:00:13,000
+Execute o reconhecimento.
+
+6
+00:00:13,000 --> 00:00:16,000
+O programa cria as camadas de pontos e pegadas.
+
+7
+00:00:16,000 --> 00:00:21,000
+Veja os contêineres reconhecidos sobre a ortofoto.
+
+8
+00:00:21,000 --> 00:00:25,000
+Os números indicam a estimativa de empilhamento.
+
+9
+00:00:25,000 --> 00:00:28,000
+Consulte dimensões, altura e empilhamento na tabela.
+
+10
+00:00:28,000 --> 00:00:30,000
+Resultado pronto para conferência no mapa.

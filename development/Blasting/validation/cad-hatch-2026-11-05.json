@@ -1,0 +1,331 @@
+{
+  "date": "2026-11-05",
+  "unitTestsPassed": 17,
+  "browser": {
+    "ribbon": {
+      "lastDrawing": "Hachura",
+      "buttons": 1
+    },
+    "polygonNew": {
+      "count": 20,
+      "angles": [
+        0
+      ],
+      "clipped": true,
+      "holeEmpty": true,
+      "unchanged": true,
+      "color": "#c2185b",
+      "weight": 1.75
+    },
+    "newUndo": true,
+    "linked": {
+      "count": 66,
+      "angles": [
+        30,
+        120
+      ],
+      "holeEmpty": true,
+      "clipped": true,
+      "unchanged": true
+    },
+    "linkedUndo": true,
+    "polygonRender": {
+      "mapPaths": 1,
+      "layoutPaths": 1,
+      "layoutVector": true,
+      "segments": 66,
+      "pattern": "cross"
+    },
+    "savedPolygon": {
+      "geometry": true,
+      "hatches": true
+    },
+    "polygonReloadRender": {
+      "mapPaths": 1,
+      "layoutPaths": 1,
+      "layoutVector": true,
+      "segments": 66,
+      "pattern": "cross"
+    },
+    "holePick": {
+      "count": 5,
+      "clipped": true,
+      "sourceUnchanged": true
+    },
+    "filledHit": {
+      "x": 704,
+      "y": 618,
+      "tag": "path",
+      "fill": "#314151"
+    },
+    "filledPointer": {
+      "count": 20,
+      "clipped": true,
+      "holeEmpty": true,
+      "unchanged": true,
+      "layerCount": 2
+    },
+    "lineHit": {
+      "x": 795,
+      "y": 566,
+      "tag": "path",
+      "fill": "none"
+    },
+    "network": {
+      "count": 19,
+      "angles": [
+        0,
+        90
+      ],
+      "clipped": true,
+      "unchanged": true,
+      "layerCount": 6
+    },
+    "repeatHit": {
+      "x": 795,
+      "y": 566,
+      "tag": "path",
+      "fill": "none"
+    },
+    "repeatedNetwork": {
+      "count": 19,
+      "angles": [
+        0,
+        90
+      ],
+      "clipped": true,
+      "unchanged": true,
+      "layerCount": 7
+    },
+    "parallelCount": 5,
+    "double": {
+      "count": 10,
+      "angles": [
+        0
+      ],
+      "clipped": true,
+      "unchanged": true,
+      "z": [
+        123,
+        123,
+        123,
+        123,
+        123
+      ]
+    },
+    "closedRender": {
+      "mapPaths": 1,
+      "layoutPaths": 1,
+      "layoutVector": true,
+      "segments": 10,
+      "pattern": "double"
+    },
+    "closedSaved": {
+      "geometry": true,
+      "hatches": true
+    },
+    "closedReloadRender": {
+      "mapPaths": 1,
+      "layoutPaths": 1,
+      "layoutVector": true,
+      "segments": 10,
+      "pattern": "double"
+    },
+    "leftFace": {
+      "count": 13,
+      "clipped": true
+    },
+    "rightFace": {
+      "count": 13,
+      "clipped": true,
+      "unchanged": true
+    },
+    "openArea": {
+      "created": false,
+      "armed": true,
+      "unchanged": true
+    },
+    "reopenCancel": {
+      "tool": "select",
+      "armed": false,
+      "modal": false
+    },
+    "modalCancel": true,
+    "selectedFailure": {
+      "tool": "select",
+      "created": false,
+      "layers": 1,
+      "unchanged": true
+    },
+    "asyncGuards": [
+      {
+        "mode": "escape",
+        "created": false,
+        "layers": 1,
+        "unchanged": true
+      },
+      {
+        "mode": "project",
+        "created": false,
+        "layers": 0,
+        "unchanged": true
+      }
+    ],
+    "errors": []
+  },
+  "drawingRegression": {
+    "checks": [
+      {
+        "tool": "line",
+        "snap": false,
+        "ortho": false,
+        "guides": false,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": false,
+        "ortho": false,
+        "guides": true,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": false,
+        "ortho": true,
+        "guides": false,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": false,
+        "ortho": true,
+        "guides": true,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": true,
+        "ortho": false,
+        "guides": false,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": true,
+        "ortho": false,
+        "guides": true,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": true,
+        "ortho": true,
+        "guides": false,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": true,
+        "ortho": true,
+        "guides": true,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": false,
+        "ortho": false,
+        "guides": false,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": false,
+        "ortho": false,
+        "guides": true,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": false,
+        "ortho": true,
+        "guides": false,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": false,
+        "ortho": true,
+        "guides": true,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": true,
+        "ortho": false,
+        "guides": false,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": true,
+        "ortho": false,
+        "guides": true,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": true,
+        "ortho": true,
+        "guides": false,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": true,
+        "ortho": true,
+        "guides": true,
+        "vertices": 3,
+        "finished": true
+      }
+    ],
+    "failures": [],
+    "targetChecks": {
+      "snapVtxOn": "vértice",
+      "snapMidOn": "ponto médio",
+      "snapEndOn": "extremidade",
+      "snapNearOn": "linha",
+      "snapCenterOn": "centro"
+    },
+    "noSegmentsAcrossInvalidPoints": true,
+    "staleInvalidCacheRejected": true,
+    "source3DPreserved": true,
+    "rulerSourcePartAndZ": true,
+    "errors": []
+  },
+  "visualReview": "Panel and clipped cross hatch with hole reviewed in Chrome screenshots",
+  "userFilesModified": false,
+  "geometryLimits": {
+    "inputBoundarySegments": 50000,
+    "hatchSegments": 100000,
+    "scanLinesPerDirection": 20000
+  },
+  "boundaryProcessing": "Worker; explicit tolerance; no closure of open exterior regions beyond tolerance",
+  "onlineShaMatchesPackage": true,
+  "publishedSha256": "5bc0f26cfc7a7df7472a0eadf30dabfbae2133d3f90b78153f51981887db9d56"
+}

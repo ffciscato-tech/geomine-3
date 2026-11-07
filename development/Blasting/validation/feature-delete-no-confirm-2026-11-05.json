@@ -1,0 +1,20 @@
+{
+  "date": "2026-11-05",
+  "validation": "Source audit and successful build; undo operations unchanged",
+  "featureConfirmationGatesRemoved": 3,
+  "paths": [
+    "Delete/Backspace",
+    "feature context menu",
+    "delete tool",
+    "CAD/editor delete",
+    "multiple selected features/parts"
+  ],
+  "undoOperationsRetained": [
+    "featdel",
+    "featpart",
+    "mselmixdel"
+  ],
+  "layerAndRasterDeletionDialogsChanged": false,
+  "onlineShaMatchesPackage": true,
+  "publishedSha256": "ebb9de6e3a275e590721b147e2acf215a5e03e8834edd453261b4284fb9068d5"
+}

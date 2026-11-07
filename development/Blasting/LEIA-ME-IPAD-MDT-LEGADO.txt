@@ -1,0 +1,57 @@
+GEOMINE — RECONEXÃO DOS ORIGINAIS EM PROJETOS ANTIGOS NO IPAD
+
+Estado da atualização
+Correção preparada para desenvolvimento. Publicação no site pendente.
+Este pacote reúne também as correções anteriores: painéis Camadas e Propriedades
+com largura ajustável e reconexão de originais que já possuem identidade registrada.
+O registro CURRENT_RELEASE.json mantém a identificação da versão publicada anterior.
+
+Problema tratado
+No projeto BN_GEOMINE_Revisao_C_William_2026-10-16.ccmgis, os dois rasters não têm
+identidade persistida do original. A rota anterior voltava a parseTIFF ao localizar
+o arquivo e reconstruía uma grade de prévia, embora o projeto já tivesse essa grade.
+O usuário relatou que o navegador recarrega depois de selecionar o MDT. A causa do
+encerramento/recarregamento no iPad físico não foi confirmada por logs do aparelho.
+
+Comportamento preparado
+A reconexão de projetos com prévia histórica por média e overview identificada
+passa a conferir o cabeçalho e amostras limitadas da mesma overview salva. Confere
+geometria, dimensões, CRS, tamanho quando disponível, valores Float32 e NoData.
+A comparação evita a tolerância antiga que podia confundir valores pequenos de TPI.
+
+O índice do original só é anexado depois da validação. A matriz de prévia existente
+continua em memória, e os pixels do TIFF permanecem disponíveis na resolução nativa
+por janelas. Isso não cria um TIFF reduzido nem regrava o arquivo do usuário.
+Arquivo incompatível, cancelamento, troca de projeto ou edição durante a operação
+não substituem os dados atuais. O vínculo persistido é criado após o commit válido.
+
+As leituras móveis passam por limites antes da alocação de janelas e decodificação
+de blocos. Um TIFF com bloco físico excessivo pode ser recusado de forma controlada.
+Esses limites não são uma garantia de consumo total do navegador: mapa, vetores,
+canvases, caches do navegador e sistema operacional também usam memória.
+
+Aplicação
+Sobreponha os caminhos deste pacote na pasta de desenvolvimento existente
+GeoMine/development/Blasting e publique pelo procedimento habitual já adotado.
+O pacote não é um repositório completo. Preserve os outros arquivos da distribuição.
+A atualização não entra na aba do iPad antes de a versão Web ser publicada.
+
+dist/GeoMine.html — aplicativo offline em um HTML.
+public/index.html — aplicativo Web preparado, com a autenticação preservada.
+CURRENT_RELEASE.json — alterações pendentes, hashes e registro de validação.
+validation/ — testes, relatórios e comparação das fontes.
+
+Validação e limites
+Consulte validation/ipad-mdt-legacy-validation.json para os resultados finais.
+A integração usa o aplicativo completo e TIFFs sintéticos reais com overviews,
+NoData e pixels não quadrados. Um teste separado abre o .ccmgis BN real e verifica
+que a rejeição de um TIFF incompatível mantém suas camadas e dados.
+
+O navegador de teste é Chromium com identificação e toque de iPad; não é um teste
+em iPad físico ou Safari. O TIFF original de 1,80 GB não foi baixado nem validado
+pelo conteúdo: o conector impôs limite de 256 MiB por arquivo. O projeto real foi
+apenas lido, sem alterar seu arquivo. Não foi simulada exclusão do projeto no disco,
+nem reproduzido o encerramento da página pelo sistema operacional.
+
+Nenhuma publicação foi feita por este pacote. Nenhuma configuração de autenticação,
+salvamento automático ou recuperação de sessão foi alterada nesta correção.

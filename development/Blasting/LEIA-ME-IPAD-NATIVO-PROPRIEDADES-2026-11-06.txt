@@ -1,0 +1,31 @@
+GeoMine — correção iPad: resolução nativa e botão direito
+Data: 06/11/2026
+
+Escopo desta revisão
+
+1. GeoTIFF original no Google Chrome do iPad
+- O arquivo escolhido pelo seletor do iPad pode ser apenas uma referência do Google Drive/iCloud.
+- Enquanto a cópia local verificada é preparada, o GeoMine mantém a prévia visível e não inicia leituras aleatórias concorrentes no provedor.
+- Ao concluir a cópia em blocos para o armazenamento local do navegador, o GeoMine reabre essa cópia estável, vincula a fonte nativa e ativa automaticamente os tiles na resolução original.
+- O overlay, a grade, as coordenadas, o estilo e a posição da camada são preservados.
+- A fonte temporária anterior é encerrada para impedir que tiles antigos continuem usando a prévia.
+- O painel informa o progresso e distingue claramente prévia temporária de resolução nativa ativa.
+
+2. Botão direito em feição no iPad
+- O clique secundário de mouse/trackpad no mapa seleciona a feição sob o cursor e abre Propriedades.
+- Compatível com o evento contextmenu do WebKit/iPad, inclusive quando o navegador informa button=0.
+- Evita executar duas vezes quando o navegador envia pointerup e contextmenu para o mesmo clique.
+- Em telas de iPad nas quais o painel direito funciona como gaveta, o painel é revelado automaticamente.
+- A seção Propriedades — seleção é expandida e atualizada com geometria, medições e atributos da feição.
+- Ctrl+clique do Mac permanece reservado à seleção aditiva existente.
+
+Validação executada
+- 75 testes focados: aprovados, sem falhas.
+- Teste integrado de provedor do iPad para cópia local e ativação nativa: aprovado; 12 tiles nativos e 0 tiles de prévia.
+- Teste de botão direito em viewport de iPad: aprovado; uma única seleção, painel Propriedades visível e preenchido.
+- Sintaxe: 115 blocos do dist e 116 blocos do public analisados sem erro.
+
+Limites da validação
+- A leitura foi validada com GeoTIFFs reais sintéticos, inclusive arquivo esparso de 1.802.430.636 bytes e dimensões nativas equivalentes ao MDT do projeto.
+- O arquivo original do usuário não foi baixado pelo conector por exceder o limite de 256 MiB.
+- O resultado final precisa ser confirmado no iPad físico com o MDT_BracoDoNorte_mosaico_15cm.tif.

@@ -1,0 +1,185 @@
+{
+  "date": "2026-11-03",
+  "baselineExactErrorReproduced": "Cannot read properties of null (reading 'lat')",
+  "cause": "Nested geometry without multi flag entered the snap cache as arrays instead of scalar latitude/longitude.",
+  "synthetic": {
+    "checks": [
+      {
+        "tool": "line",
+        "snap": false,
+        "ortho": false,
+        "guides": false,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": false,
+        "ortho": false,
+        "guides": true,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": false,
+        "ortho": true,
+        "guides": false,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": false,
+        "ortho": true,
+        "guides": true,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": true,
+        "ortho": false,
+        "guides": false,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": true,
+        "ortho": false,
+        "guides": true,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": true,
+        "ortho": true,
+        "guides": false,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "snap": true,
+        "ortho": true,
+        "guides": true,
+        "vertices": 2,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": false,
+        "ortho": false,
+        "guides": false,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": false,
+        "ortho": false,
+        "guides": true,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": false,
+        "ortho": true,
+        "guides": false,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": false,
+        "ortho": true,
+        "guides": true,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": true,
+        "ortho": false,
+        "guides": false,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": true,
+        "ortho": false,
+        "guides": true,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": true,
+        "ortho": true,
+        "guides": false,
+        "vertices": 3,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "snap": true,
+        "ortho": true,
+        "guides": true,
+        "vertices": 3,
+        "finished": true
+      }
+    ],
+    "failures": [],
+    "targetChecks": {
+      "snapVtxOn": "vértice",
+      "snapMidOn": "ponto médio",
+      "snapEndOn": "extremidade",
+      "snapNearOn": "linha",
+      "snapCenterOn": "centro"
+    },
+    "noSegmentsAcrossInvalidPoints": true,
+    "staleInvalidCacheRejected": true,
+    "source3DPreserved": true,
+    "rulerSourcePartAndZ": true,
+    "errors": []
+  },
+  "userProject": {
+    "sourceLayers": 27,
+    "sourceLineFeatures": 88,
+    "sourcePolygonFeatures": 337,
+    "legacyFeature": 181,
+    "checks": [
+      {
+        "tool": "line",
+        "ortho": false,
+        "finished": true
+      },
+      {
+        "tool": "line",
+        "ortho": true,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "ortho": false,
+        "finished": true
+      },
+      {
+        "tool": "poly",
+        "ortho": true,
+        "finished": true
+      }
+    ],
+    "elapsedMs": 2959,
+    "originalGeometryReferencesPreserved": true,
+    "errors": []
+  },
+  "sourceProjectFile": "BN_GEOMINE_Revisao_C_William_2026-10-16.ccmgis",
+  "sourceProjectReadOnly": true,
+  "onlineShaMatchesPackage": true,
+  "publishedSha256": "1515370ee75d4fa2a7d0e8df441c81bca788f5aedf422009b1b4c49305f796d2"
+}
