@@ -1,0 +1,47 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isCcmUser() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email is string
+        && request.auth.token.email.lower().matches('.*@ccmeng[.]net$');
+    }
+
+    function member(roomId) {
+      return firestore.get(/databases/(default)/documents/rooms/$(roomId)/members/$(request.auth.uid));
+    }
+
+    function isMember(roomId) {
+      return isCcmUser()
+        && firestore.exists(/databases/(default)/documents/rooms/$(roomId))
+        && firestore.exists(/databases/(default)/documents/rooms/$(roomId)/members/$(request.auth.uid));
+    }
+
+    function isWriter(roomId) {
+      return isMember(roomId) && member(roomId).data.role in ['owner', 'editor'];
+    }
+
+    function isOwner(roomId) {
+      return isMember(roomId) && member(roomId).data.role == 'owner';
+    }
+
+    match /rooms/{roomId}/snapshots/{fileName} {
+      allow read: if isMember(roomId);
+      allow create: if isWriter(roomId)
+        && request.resource.size <= 500 * 1024 * 1024;
+      // Snapshots e payloads publicados são revisões imutáveis.
+      allow update: if false;
+      allow delete: if isOwner(roomId);
+    }
+
+    match /rooms/{roomId}/payloads/{resourceKey}/{fileName} {
+      allow read: if isMember(roomId);
+      allow create: if isWriter(roomId)
+        && request.resource.size <= 500 * 1024 * 1024;
+      allow update: if false;
+      allow delete: if isOwner(roomId);
+    }
+  }
+}

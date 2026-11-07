@@ -1,0 +1,257 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isCcmUser() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email is string
+        && request.auth.token.email.lower().matches('.*@ccmeng[.]net$');
+    }
+
+    function roomPath(roomId) {
+      return /databases/$(database)/documents/rooms/$(roomId);
+    }
+
+    function memberPath(roomId, uid) {
+      return /databases/$(database)/documents/rooms/$(roomId)/members/$(uid);
+    }
+
+    function invitePath(roomId, inviteId) {
+      return /databases/$(database)/documents/rooms/$(roomId)/invites/$(inviteId);
+    }
+
+    function resourcePath(roomId, resourceKey) {
+      return /databases/$(database)/documents/rooms/$(roomId)/resources/$(resourceKey);
+    }
+
+    function isMember(roomId) {
+      return isCcmUser()
+        && exists(roomPath(roomId))
+        && exists(memberPath(roomId, request.auth.uid));
+    }
+
+    function memberRole(roomId) {
+      return get(memberPath(roomId, request.auth.uid)).data.role;
+    }
+
+    function isWriter(roomId) {
+      return isMember(roomId) && memberRole(roomId) in ['owner', 'editor'];
+    }
+
+    function isOwner(roomId) {
+      return isMember(roomId) && memberRole(roomId) == 'owner';
+    }
+
+    function ownsActiveLock(roomId, resourceKey, deviceId) {
+      return get(/databases/$(database)/documents/rooms/$(roomId)/locks/$(resourceKey)).data.holderUid
+          == request.auth.uid
+        && get(/databases/$(database)/documents/rooms/$(roomId)/locks/$(resourceKey)).data.holderDeviceId
+          == deviceId
+        && get(/databases/$(database)/documents/rooms/$(roomId)/locks/$(resourceKey)).data.expiresAt
+          > request.time;
+    }
+
+    function advancesSequence(roomId) {
+      return getAfter(roomPath(roomId)).data.nextSeq
+        == get(roomPath(roomId)).data.nextSeq + 1;
+    }
+
+    // Essas regras recursivas são a fronteira específica das consultas
+    // collectionGroup usadas para descobrir as salas/convites do próprio
+    // usuário. Elas não concedem leitura de registros de terceiros.
+    match /{path=**}/members/{memberId} {
+      allow list: if isCcmUser()
+        && resource.data.uid == request.auth.uid;
+    }
+
+    match /{path=**}/invites/{inviteId} {
+      allow list: if isCcmUser()
+        && resource.data.emailLower == request.auth.token.email.lower();
+    }
+
+    match /rooms/{roomId} {
+      allow create: if isCcmUser()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.nextSeq == 0
+        && existsAfter(memberPath(roomId, request.auth.uid))
+        && getAfter(memberPath(roomId, request.auth.uid)).data.role == 'owner';
+
+      // Consultas precisam ser feitas pelas associações do usuário. A ponte
+      // usa collectionGroup('members') e só então lê cada sala encontrada.
+      allow read: if isMember(roomId);
+
+      allow update: if isWriter(roomId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['name', 'description', 'baseSnapshot', 'updatedAt', 'nextSeq'])
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.nextSeq >= resource.data.nextSeq
+        && request.resource.data.nextSeq <= resource.data.nextSeq + 1;
+
+      allow delete: if isOwner(roomId);
+
+      match /members/{memberId} {
+        // O primeiro ramo permite a consulta collection-group limitada a
+        // where('uid','==', request.auth.uid), usada para listar minhas salas.
+        allow get: if isCcmUser()
+          && (memberId == request.auth.uid || isMember(roomId));
+        allow list: if isCcmUser()
+          && (resource.data.uid == request.auth.uid || isMember(roomId));
+
+        allow create: if isCcmUser()
+          && request.resource.data.uid == memberId
+          && request.resource.data.role in ['owner', 'editor', 'viewer']
+          && (
+            // Associação do proprietário, criada no mesmo batch da sala.
+            (memberId == request.auth.uid
+              && getAfter(roomPath(roomId)).data.ownerUid == request.auth.uid
+              && request.resource.data.role == 'owner')
+            // Entrada por convite nominal. O convite é lido no estado anterior
+            // da transação e removido no mesmo commit que cria o membro.
+            || (memberId == request.auth.uid
+              && request.resource.data.email == request.auth.token.email.lower()
+              && request.resource.data.inviteId is string
+              && get(invitePath(roomId, request.resource.data.inviteId)).data.emailLower == request.auth.token.email.lower()
+              && get(invitePath(roomId, request.resource.data.inviteId)).data.expiresAt > request.time
+              && request.resource.data.role == get(invitePath(roomId, request.resource.data.inviteId)).data.role)
+            // Inclusão explícita por proprietário/editor quando o UID já é
+            // conhecido (a mudança posterior de papel continua só do owner).
+            || (isWriter(roomId) && request.resource.data.role in ['editor', 'viewer'])
+          );
+
+        allow update: if isCcmUser()
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.uid == memberId
+          && (
+            // O proprietário original é imutável. Não existe promoção de
+            // outro membro a owner neste contrato; transferência de
+            // propriedade exigirá um fluxo dedicado e auditável.
+            (memberId == get(roomPath(roomId)).data.ownerUid
+              && isOwner(roomId)
+              && resource.data.role == 'owner'
+              && request.resource.data.role == 'owner')
+            || (memberId != get(roomPath(roomId)).data.ownerUid
+              && request.resource.data.role in ['editor', 'viewer']
+              && (isOwner(roomId)
+                || (isWriter(roomId)
+                  && request.resource.data.role == resource.data.role)))
+          );
+
+        allow delete: if isCcmUser()
+          && ((isOwner(roomId) && memberId != get(roomPath(roomId)).data.ownerUid)
+              || (memberId == request.auth.uid && resource.data.role != 'owner'));
+      }
+
+      match /invites/{inviteId} {
+        // A pessoa convidada enxerga somente o próprio convite. Isso permite
+        // listInvitations() por collection-group sem revelar outras salas.
+        allow get: if isCcmUser()
+          && (isMember(roomId)
+            || inviteId == 'r_' + hashing.sha256('invite:' + request.auth.token.email.lower()).toHexString().lower());
+        allow list: if isCcmUser()
+          && (isMember(roomId) || resource.data.emailLower == request.auth.token.email.lower());
+        allow create, update: if isWriter(roomId)
+          && request.resource.data.inviteId == inviteId
+          && request.resource.data.emailLower is string
+          && request.resource.data.emailLower == request.resource.data.emailLower.lower()
+          && inviteId == 'r_' + hashing.sha256('invite:' + request.resource.data.emailLower).toHexString().lower()
+          && request.resource.data.emailLower.matches('.*@ccmeng[.]net$')
+          && request.resource.data.role in ['editor', 'viewer']
+          && request.resource.data.invitedBy == request.auth.uid
+          && request.resource.data.expiresAt > request.time
+          && request.resource.data.expiresAt <= request.time + duration.value(8, 'd');
+        allow delete: if isCcmUser()
+          && (isWriter(roomId) || resource.data.emailLower == request.auth.token.email.lower());
+      }
+
+      match /presence/{uid} {
+        allow read: if isMember(roomId);
+        allow create, update: if isMember(roomId)
+          && uid == request.auth.uid
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.expiresAt <= request.time + duration.value(3, 'm');
+        allow delete: if isMember(roomId) && (uid == request.auth.uid || isOwner(roomId));
+      }
+
+      match /locks/{lockId} {
+        allow read: if isMember(roomId);
+        allow create: if isWriter(roomId)
+          && request.resource.data.holderUid == request.auth.uid
+          && request.resource.data.holderDeviceId is string
+          && request.resource.data.holderDeviceId.size() > 0
+          && request.resource.data.expiresAt > request.time
+          && request.resource.data.expiresAt <= request.time + duration.value(10, 'm');
+        allow update: if isWriter(roomId)
+          && request.resource.data.holderUid == request.auth.uid
+          && request.resource.data.holderDeviceId is string
+          && request.resource.data.holderDeviceId.size() > 0
+          && request.resource.data.expiresAt > request.time
+          && request.resource.data.expiresAt <= request.time + duration.value(10, 'm')
+          && ((resource.data.holderUid == request.auth.uid
+                && resource.data.holderDeviceId == request.resource.data.holderDeviceId)
+              || resource.data.expiresAt <= request.time);
+        allow delete: if isWriter(roomId)
+          && (resource.data.holderUid == request.auth.uid || resource.data.expiresAt <= request.time);
+      }
+
+      match /resources/{resourceKey} {
+        allow read: if isMember(roomId);
+        allow create: if isWriter(roomId)
+          && advancesSequence(roomId)
+          && request.resource.data.resourceKey == resourceKey
+          && request.resource.data.updatedByDevice is string
+          && request.resource.data.metadata.clientId
+             == request.resource.data.updatedByDevice
+          && ownsActiveLock(roomId, resourceKey, request.resource.data.updatedByDevice)
+          && request.resource.data.revision == 1
+          && request.resource.data.lastSeq == getAfter(roomPath(roomId)).data.nextSeq
+          && request.resource.data.updatedBy == request.auth.uid;
+        allow update: if isWriter(roomId)
+          && advancesSequence(roomId)
+          && request.resource.data.resourceKey == resourceKey
+          && request.resource.data.updatedByDevice is string
+          && request.resource.data.metadata.clientId
+             == request.resource.data.updatedByDevice
+          && ownsActiveLock(roomId, resourceKey, request.resource.data.updatedByDevice)
+          && request.resource.data.revision == resource.data.revision + 1
+          && request.resource.data.lastSeq == getAfter(roomPath(roomId)).data.nextSeq
+          && request.resource.data.updatedBy == request.auth.uid;
+        allow delete: if isOwner(roomId);
+      }
+
+      match /operations/{operationId} {
+        allow read: if isMember(roomId);
+        allow create: if isWriter(roomId)
+          && advancesSequence(roomId)
+          && request.resource.data.type == 'layer.replace'
+          && request.resource.data.clientId is string
+          && ownsActiveLock(roomId, request.resource.data.resourceKey, request.resource.data.clientId)
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.baseRevision + 1 == request.resource.data.revision
+          && request.resource.data.seq == getAfter(roomPath(roomId)).data.nextSeq
+          && request.resource.data.revision
+             == getAfter(resourcePath(roomId, request.resource.data.resourceKey)).data.revision
+          && request.resource.data.seq
+             == getAfter(resourcePath(roomId, request.resource.data.resourceKey)).data.lastSeq
+          && request.resource.data.resourceId
+             == getAfter(resourcePath(roomId, request.resource.data.resourceKey)).data.resourceId
+          && request.resource.data.resourceKey
+             == getAfter(resourcePath(roomId, request.resource.data.resourceKey)).data.resourceKey
+          && request.resource.data.layerId
+             == getAfter(resourcePath(roomId, request.resource.data.resourceKey)).data.layerId
+          && request.resource.data.payloadRef
+             == getAfter(resourcePath(roomId, request.resource.data.resourceKey)).data.payloadRef
+          && request.resource.data.clientId
+             == getAfter(resourcePath(roomId, request.resource.data.resourceKey)).data.updatedByDevice
+          && request.resource.data.metadata.clientId == request.resource.data.clientId
+          && request.resource.data.metadata.clientId
+             == getAfter(resourcePath(roomId, request.resource.data.resourceKey)).data.metadata.clientId
+          && getAfter(resourcePath(roomId, request.resource.data.resourceKey)).data.updatedBy
+             == request.auth.uid;
+        // Histórico é append-only: nem o autor reescreve uma operação antiga.
+        allow update, delete: if false;
+      }
+    }
+  }
+}
