@@ -1,0 +1,30 @@
+const fs=require('node:fs'),assert=require('node:assert/strict'),path=require('node:path'),crypto=require('node:crypto');
+const {chromium}=require('/Users/filipeciscato/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const root=path.resolve(__dirname,'..'),fixture=path.resolve(process.argv[2]),hash=()=>crypto.createHash('sha256').update(fs.readFileSync(fixture)).digest('hex'),before=hash();
+const project=JSON.parse(fs.readFileSync(fixture)),layers=project.layers.filter(l=>/^curvas_(mestras|secundarias)/.test(l.name));
+(async()=>{const browser=await chromium.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',args:['--js-flags=--max-old-space-size=6144']}),errors=[];
+try{
+ const page=await browser.newPage({viewport:{width:1440,height:1000}});page.setDefaultTimeout(30000);page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());await page.route(/^https?:/,r=>r.abort());
+ await page.goto('file://'+path.join(root,'dist/GeoMine.html'));await page.waitForFunction(()=>typeof runTIN==='function');
+ await page.evaluate(({layers,workCRS})=>{loadProject({app:'CCMGIS',v:3,workCRS,projectId:'isolated-merge-qa',layers,rasters:[],groups:[],stack:layers.map(l=>'L:'+l.id)});S.setBase('Sem fundo');}, {layers,workCRS:project.workCRS});
+ console.log('Real contour layers loaded');
+ await page.evaluate(()=>{refreshMergePanel();document.querySelectorAll('.mg-ck').forEach(c=>c.checked=true);runMerge();});
+ await page.waitForFunction(()=>S.layers.some(l=>l.name==='Mescla (2 camadas)'),null,{timeout:90000});
+ const id=await page.evaluate(()=>S.layers.find(l=>l.name==='Mescla (2 camadas)').id);
+ const merged=await page.evaluate(id=>{const l=S.layers.find(l=>l.id===id);return {features:l.features.length,invalid:l.features.filter(f=>!gtZg(f)).length,firstZ:l.features[0].zg.slice(0,3)};},id);
+ assert.equal(merged.features,5471);assert.equal(merged.invalid,0);console.log('Merge preserved all 5471 coted features');
+ // Round-trip the merged vector through the real project serializer/loader.
+ await page.evaluate(()=>{const data=projectData();loadProject(JSON.parse(JSON.stringify(data)));S.setBase('Sem fundo');});
+ await page.evaluate(id=>{S.activeId=id;refreshUI();},id);
+ await page.locator('.ribcat[data-cat-id="topografia"]').click();await page.locator('.rbtn').filter({hasText:'Superfície Raster'}).click();
+ await page.locator('#tinLayer').selectOption(String(id));assert.equal(await page.locator('#tinZSrc').inputValue(),'geom');
+ await page.locator('#tinCS').fill('5');await page.locator('#tinMaxEdge').fill('0');await page.locator('#tinFormato').selectOption('raster');
+ await page.locator('#tinLimitMode').selectOption('open');await page.locator('#tinContour').uncheck();await page.locator('#tinCutMdt').uncheck();
+ const start=Date.now();await page.locator('#btnTIN').click();console.log('Generating raster from full merged source…');
+ await page.waitForFunction(id=>S.rasters.some(r=>r._tinSourceId===id),id,{timeout:240000});
+ await page.waitForFunction(()=>document.getElementById('tinOut').textContent.includes('Cotas:'),null,{timeout:120000});
+ const result=await page.evaluate(id=>{const r=S.rasters.find(r=>r._tinSourceId===id);let finite=0,min=Infinity,max=-Infinity;for(const z of r.d.z)if(Number.isFinite(z)){finite++;min=Math.min(min,z);max=Math.max(max,z);}const cv=rasterCanvas(r),px=cv.getContext('2d').getImageData(0,0,cv.width,cv.height).data;let painted=0;for(let i=3;i<px.length;i+=4)if(px[i])painted++;return {nc:r.d.nc,nr:r.d.nr,finite,min,max,painted,overlay:!!r.overlay,report:document.getElementById('tinOut').textContent};},id);
+ assert.ok(result.finite>10000);assert.ok(result.min>=6-1e-4&&result.max<=94+1e-4);assert.equal(result.painted,result.finite);assert.equal(result.overlay,true);
+ await page.screenshot({path:path.join(root,'merge-raster-tested.png')});
+ assert.deepEqual(errors,[]);assert.equal(hash(),before);console.log(JSON.stringify({pass:true,elapsedMs:Date.now()-start,merged,result,fixtureUnchanged:true,errors},null,2));
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
