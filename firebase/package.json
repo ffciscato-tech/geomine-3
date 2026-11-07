@@ -1,0 +1,13 @@
+{
+  "name": "geomine-firebase",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "sync:geomine": "node scripts/sync-geomine.mjs",
+    "test": "node --test functions/test/*.test.js",
+    "deploy": "npm run sync:geomine && firebase deploy --only hosting,functions"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

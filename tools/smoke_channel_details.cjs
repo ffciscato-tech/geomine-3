@@ -1,0 +1,112 @@
+/* End-to-end image details in an isolated offline app. Uses only synthetic MDT.
+   Captures downloads into memory: never saves to a user-selected destination. */
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {chromium}=require('/Users/filipeciscato/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const stage=path.resolve(__dirname,'..'),output=path.resolve(process.env.QA_CAPTURE_DIR||path.join(stage,'resultados'));
+const app=path.resolve(process.env.APP_PATH||path.join(stage,'dist/GeoMine.html'));
+let passed=0;
+function pass(name){passed++;console.log('PASS '+name);}
+(async()=>{
+ const browser=await chromium.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
+ try{
+  const context=await browser.newContext({viewport:{width:1280,height:800},hasTouch:true});
+  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.route(/^https?:/,r=>r.abort());await page.goto('file://'+app);
+  await page.waitForFunction(()=>window.GeoMineSessionAutosave?.state.booted&&window.GeoMineChannelExtraction&&window.GeoMineChannelDetails&&window.JSZip);
+  await page.evaluate(()=>{
+   GeoMineChannelLive?.stop();S.setBase('Sem fundo');S.workCRS='EPSG:31982';S.projectId='channel-details-smoke';
+   const nc=281,nr=81,cs=.5,xll=499989.75,yll=7399979.75,z=new Float32Array(nc*nr);
+   for(let r=0;r<nr;r++)for(let c=0;c<nc;c++){const x=xll+(c+.5)*cs,y=yll+(nr-r-.5)*cs;z[r*nc+c]=100+.1*(x-500000)+Math.abs(y-7400000);}
+   window.__detailsGrid={nc,nr,cs,csy:cs,xll,yll,z,zmin:99,zmax:134,native:true,resampled:1,srcCRS:S.workCRS};
+   window.__detailsRaster={id:9947,name:'MDT sintético — teste controlado',crs:S.workCRS,visible:false,style:{mode:'hipso'},d:__detailsGrid};S.rasters.push(__detailsRaster);
+   window.__detailsAxis=addLayer({name:'Teste controlado — guia de 120 m',gtype:'line',crs:S.workCRS,fields:[],features:[{geom:[[500000,7400000],[500120,7400000]],props:{}}]});
+   window.__beforeDetails={layers:S.layers.length,geom:JSON.stringify(__detailsAxis.features),z:Array.from(z),undo:S.undo.length};
+   window.__downloads=[];window.__downloadStatus='download-requested';
+   window.download=async(blob,name,options)=>{__downloads.push({blob,name,options});return {status:__downloadStatus};};
+   S.activeId=__detailsAxis.id;ED.on=false;ED.sel=null;S.selFeat=null;GeoMineChannelExtraction.open();
+   const api=GeoMineChannelEngine.engine(),plan=api.plan([[500000,7400000],[500120,7400000]],{interval:10,lateralStep:.25,reach:10});
+   const z2=plan.sections.map(s=>s.points.map(([x,y])=>100+.1*(x-500000)+Math.abs(y-7400000)));
+   window.__detailsSnapshot={layerName:'Teste controlado — guia de 120 m',rasterName:'MDT sintético — não representa projeto do usuário',crs:'EPSG:31982',mode:'depth',height:2.5,resolution:.5,createdAt:'2026-09-29T12:00:00.000Z',outputs:[{...api.analyze(plan,z2,{mode:'depth',height:2.5,resolution:.5}),index:1,searchReach:10}]};
+   window.__openDetailsTest=(snapshot=__detailsSnapshot)=>{window.__detailsValid=true;const project=S.projectId;GeoMineChannelDetails.open({snapshot,isCurrent:()=>__detailsValid&&S.projectId===project});};
+   window.__toBlobOriginal=HTMLCanvasElement.prototype.toBlob;
+   window.__restoreToBlob=()=>{HTMLCanvasElement.prototype.toBlob=__toBlobOriginal;};
+  });
+  const analyze=async()=>{await page.locator('#chanAnalyze').click();await page.waitForFunction(()=>!document.getElementById('chanAnalyze').disabled);};
+  const idle=async()=>{await page.waitForFunction(()=>!document.getElementById('cdSelected').disabled);};
+  const openTest=async()=>{await page.evaluate(()=>__openDetailsTest());assert.equal(await page.locator('#cdModal').isVisible(),true);};
+  const ready=async()=>{await idle();assert.equal(await page.locator('#cdDownload').isEnabled(),true,await page.locator('#cdStatus').textContent());};
+  const noDownload=async(expected)=>assert.equal(await page.evaluate(()=>__downloads.length),expected);
+  await page.locator('#chanRaster').selectOption('9947');await page.locator('#chanInterval').fill('10');await page.locator('#chanLimit').check();await page.locator('#chanReach').fill('20');
+  await analyze();
+  const blocked=await page.locator('#chanDetails').evaluate(e=>e.hidden||e.disabled||e.closest('[hidden]')!==null);
+  assert.equal(blocked,true,'failed analysis must not permit detail export');
+  assert.equal(await page.evaluate(()=>S.layers.length),1);pass('integrated button refuses the blocked automatic V profile');
+  await page.locator('#chanKindAgua').check();await page.locator('#chanMode').selectOption('depth');await page.locator('#chanHeight').fill('2.5');await analyze();
+  assert.match(await page.locator('#chanStatus').textContent(),/Prévia pronta/);
+  assert.equal(await page.locator('#chanDetails').isEnabled(),true);await page.locator('#chanDetails').click();
+  assert.equal(await page.locator('#cdPage option').count(),3);assert.equal(await page.locator('#cdPreview svg').count(),1);
+  assert.match(await page.locator('#cdPreview').textContent(),/Profundidade informada: 2,50 m/);
+  assert.equal(await page.locator('#cdDownload').isEnabled(),false);await noDownload(0);
+  for(const id of ['cdSelected','cdAll','cdDownload','cdClose']){const b=await page.locator('#'+id).boundingBox();assert.ok(b&&b.y>=0&&b.y+b.height<=800&&b.x>=0&&b.x+b.width<=1280,id+' accessible at 1280×800');}
+  assert.equal(await page.locator('#cdModal .modal-b').evaluate(e=>e.scrollHeight>e.clientHeight),true);
+  const escaped=await page.locator('#cdPreview svg').evaluate(svg=>[...svg.querySelectorAll('text')].map(t=>{const b=t.getBBox();return {text:t.textContent,x:b.x,y:b.y,right:b.x+b.width,bottom:b.y+b.height};}).filter(b=>b.x<0||b.y<0||b.right>1600.5||b.bottom>1140.5));
+  assert.deepEqual(escaped,[],'export text outside SVG bounds');
+  fs.mkdirSync(output,{recursive:true});await page.waitForFunction(()=>getComputedStyle(document.getElementById('toast')).opacity==='0');await page.screenshot({path:path.join(output,'detalhes-calha-app-1280x800.png')});
+  pass('real app button opens three ordered detail sheets and tablet footer stays usable');
+  await page.locator('#cdSelected').click();await ready();await noDownload(0);await page.locator('#cdDownload').click();await noDownload(1);
+  const first=await page.evaluate(async()=>{const d=__downloads[0];return {name:d.name,type:d.blob.type,size:d.blob.size,options:d.options,bytes:Array.from(new Uint8Array(await d.blob.arrayBuffer()))};});
+  assert.match(first.name,/_eixo_1_trecho_001\.png$/);assert.equal(first.type,'image/png');assert.ok(first.size>1000);assert.equal(first.options.reportResult,true);
+  const bytes=Buffer.from(first.bytes);assert.equal(bytes.subarray(1,4).toString(),'PNG');assert.equal(bytes.readUInt32BE(16),1600);assert.equal(bytes.readUInt32BE(20),1140);
+  fs.writeFileSync(path.join(output,'detalhes-calha-exportado-1600x1140.png'),bytes);
+  pass('PNG is generated without download; a second user click delivers a 1600×1140 image');
+  await page.locator('#cdAll').click();await ready();await noDownload(1);await page.locator('#cdDownload').click();await noDownload(2);
+  const zip=await page.evaluate(async()=>{const d=__downloads[1],z=await JSZip.loadAsync(await d.blob.arrayBuffer()),names=Object.keys(z.files);return {name:d.name,names,index:JSON.parse(await z.file('indice.json').async('string')),pngs:await Promise.all(names.filter(n=>/\.png$/.test(n)).map(async n=>{const b=await z.file(n).async('uint8array');const v=new DataView(b.buffer,b.byteOffset,b.byteLength);return {name:n,width:v.getUint32(16),height:v.getUint32(20)};}))};});
+  assert.match(zip.name,/_detalhes\.zip$/);assert.equal(zip.pngs.length,3);assert.equal(zip.names.length,4);assert.equal(zip.index.items.length,3);
+  assert.deepEqual(zip.index.items.map(i=>[i.start,i.end]),[[0,50],[50,100],[100,120]]);assert.ok(zip.index.items.every(i=>i.mode==='depth'&&i.depth===2.5&&i.searchTotal===20&&i.crs==='EPSG:31982'));
+  assert.ok(zip.pngs.every(p=>p.width===1600&&p.height===1140));pass('ZIP contains three complete PNGs plus auditable station/mode/depth/source index');
+  await page.evaluate(()=>{window.__downloadStatus='canceled';});await page.locator('#cdDownload').click();await noDownload(3);
+  assert.match(await page.locator('#cdStatus').textContent(),/cancelado/i);assert.doesNotMatch(await page.locator('#cdStatus').textContent(),/salvo|entregue/i);assert.equal(await page.locator('#cdDownload').isEnabled(),true);
+  await page.evaluate(()=>{__downloadStatus='download-requested';document.getElementById('chanHeight').value='3';document.getElementById('chanHeight').dispatchEvent(new Event('input',{bubbles:true}));});
+  await page.locator('#cdDownload').click();await noDownload(3);assert.match(await page.locator('#cdStatus').textContent(),/mudaram|novamente/i);
+  assert.equal(await page.locator('#cdDownload').isEnabled(),false);pass('canceled destination is not called saved; parameter changes prevent a previously prepared download');
+  await page.locator('#cdClose').click();assert.equal(await page.locator('#cdPreview svg').count(),0);
+  await page.locator('#chanClose').click();
+  // Delay completion at a real asynchronous canvas boundary, then mutate the project.
+  await openTest();await page.evaluate(()=>{HTMLCanvasElement.prototype.toBlob=function(callback,type){__toBlobOriginal.call(this,b=>{window.__pendingDetailsBlob={callback,blob:b};},type);};});
+  await page.locator('#cdSelected').click();await page.waitForFunction(()=>window.__pendingDetailsBlob);
+  await page.evaluate(()=>{S.projectId+='-changed';const p=__pendingDetailsBlob;delete window.__pendingDetailsBlob;p.callback(p.blob);__restoreToBlob();});
+  await idle();assert.equal(await page.locator('#cdDownload').isEnabled(),false);await noDownload(3);assert.match(await page.locator('#cdStatus').textContent(),/mudaram|novamente/i);
+  pass('project change while rasterizing discards the old artifact before it becomes downloadable');
+  await openTest();await page.evaluate(()=>{HTMLCanvasElement.prototype.toBlob=function(callback,type){__toBlobOriginal.call(this,b=>{window.__pendingDetailsBlob={callback,blob:b};},type);};});
+  await page.locator('#cdAll').click();await page.waitForFunction(()=>window.__pendingDetailsBlob);await page.locator('#cdCancel').click();
+  await page.evaluate(()=>{const p=__pendingDetailsBlob;delete window.__pendingDetailsBlob;p.callback(p.blob);__restoreToBlob();});await idle();
+  assert.equal(await page.locator('#cdDownload').isEnabled(),false);await noDownload(3);assert.match(await page.locator('#cdStatus').textContent(),/cancelad/i);
+  pass('cancel during PNG generation prevents a partially prepared ZIP from being offered');
+  await openTest();await page.evaluate(()=>{HTMLCanvasElement.prototype.toBlob=function(callback,type){__toBlobOriginal.call(this,b=>{window.__pendingDetailsBlob={callback,blob:b};},type);};});
+  await page.locator('#cdSelected').click();await page.waitForFunction(()=>window.__pendingDetailsBlob);await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#cdModal').isVisible(),false);assert.equal(await page.locator('#cdPreview svg').count(),0);
+  await page.evaluate(()=>{const p=__pendingDetailsBlob;delete window.__pendingDetailsBlob;p.callback(p.blob);__restoreToBlob();});await idle();
+  assert.equal(await page.locator('#cdDownload').isEnabled(),false);await noDownload(3);
+  pass('Escape aborts generation, closes details and leaves no old downloadable artifact');
+  await openTest();await page.evaluate(()=>{HTMLCanvasElement.prototype.toBlob=function(callback,type){__toBlobOriginal.call(this,b=>{Object.defineProperty(b,'size',{value:GeoMineChannelDetails.limits.maxBytes+1});callback(b);},type);};});
+  await page.locator('#cdAll').click();await idle();await page.evaluate(()=>__restoreToBlob());
+  assert.equal(await page.locator('#cdDownload').isEnabled(),false);assert.match(await page.locator('#cdStatus').textContent(),/64 MB/);await noDownload(3);
+  pass('64 MB image budget refuses before packaging/downloading (reported size stub, no large allocation)');
+  await page.evaluate(()=>{const snapshot=JSON.parse(JSON.stringify(__detailsSnapshot));snapshot.outputs=Array.from({length:81},(_,i)=>({...snapshot.outputs[0],index:i+1,sections:snapshot.outputs[0].sections.slice(0,2)}));__openDetailsTest(snapshot);});
+  assert.match(await page.locator('#cdStatus').textContent(),/80 imagens/);assert.equal(await page.locator('#cdPreview svg').count(),0);
+  await page.locator('#cdSelected').click();await idle();assert.equal(await page.locator('#cdDownload').isEnabled(),false);await noDownload(3);
+  pass('more than 80 detail pages is refused before image generation');
+  await page.evaluate(()=>{const snapshot=JSON.parse(JSON.stringify(__detailsSnapshot));delete snapshot.outputs[0].ring;__openDetailsTest(snapshot);});
+  assert.match(await page.locator('#cdStatus').textContent(),/incompleto|análise/i);assert.equal(await page.locator('#cdPreview svg').count(),0);
+  await page.locator('#cdSelected').click();await idle();assert.equal(await page.locator('#cdDownload').isEnabled(),false);await noDownload(3);
+  pass('incomplete/blocked result never produces a downloadable image');
+  await openTest();await page.locator('#cdSelected').click();await ready();await page.locator('#cdSegment').fill('40');
+  assert.equal(await page.locator('#cdPreview svg').count(),0);assert.equal(await page.locator('#cdDownload').isEnabled(),false);
+  await page.locator('#cdRebuild').click();assert.equal(await page.locator('#cdPage option').count(),3);
+  await page.locator('#cdSelected').click();await ready();await page.locator('#cdPage').selectOption('1');assert.equal(await page.locator('#cdDownload').isEnabled(),false);
+  await page.locator('#cdClose').click();assert.equal(await page.locator('#cdPreview svg').count(),0);await noDownload(3);
+  const untouched=await page.evaluate(()=>S.layers.length===__beforeDetails.layers&&JSON.stringify(__detailsAxis.features)===__beforeDetails.geom&&__detailsGrid.z.every((v,i)=>v===__beforeDetails.z[i])&&S.undo.length===__beforeDetails.undo);
+  assert.equal(untouched,true);pass('changing segments/pages clears generated files; close releases preview; source layers/MDT/undo are untouched');
+  assert.deepEqual(errors,[]);console.log(`channel details browser: ${passed}/${passed} PASS`);
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

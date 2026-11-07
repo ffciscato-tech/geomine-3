@@ -1,0 +1,674 @@
+<style>
+  /* Tema claro: a tela de login é a primeira impressão e imprime melhor em
+     branco; o aplicativo atrás continua no tema dele. */
+  #gmPortao{position:fixed;inset:0;z-index:99000;display:grid;place-items:center;padding:24px;
+    background:linear-gradient(180deg,#fbfcfd 0%,#eef3f8 100%);
+    font:15px/1.5 Signika,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    color:#16222e;overflow:auto}
+  #gmPortao .cx{width:min(420px,100%);background:#fff;border:1px solid #e2e8f0;border-radius:14px;
+    box-shadow:0 18px 50px rgba(15,32,50,.12);padding:28px 26px 20px;text-align:center}
+  #gmPortao .marca{display:flex;align-items:center;justify-content:center;gap:10px;color:#1f3242}
+  #gmPortao .marca svg{width:36px;height:36px}
+  #gmPortao h1{margin:0;font-size:23px;letter-spacing:.4px;font-weight:600;color:#16222e}
+  #gmPortao .sub{margin:6px 0 22px;color:#64778a;font-size:12.5px}
+  #gmPortao label{display:block;text-align:left;font-size:11.5px;color:#64778a;margin:0 0 4px}
+  #gmPortao input{width:100%;background:#fff;color:#16222e;border:1px solid #d6dfe8;
+    border-radius:8px;padding:10px 12px;font:14px/1.2 inherit;margin-bottom:12px}
+  #gmPortao input::placeholder{color:#9fb0c0}
+  #gmPortao input:focus{outline:0;border-color:#e09a23;box-shadow:0 0 0 3px #e09a2322}
+  #gmPortao .bt{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;
+    padding:11px 14px;border-radius:8px;border:1px solid #d6dfe8;background:#fff;color:#16222e;
+    font:600 14px/1 inherit;cursor:pointer;margin-bottom:10px}
+  #gmPortao .bt:hover{border-color:#b9c6d3;background:#f7fafc}
+  #gmPortao .bt.primaria{background:#e09a23;border-color:#e09a23;color:#1b1408}
+  #gmPortao .bt.primaria:hover{background:#d38f1c;border-color:#d38f1c}
+  #gmPortao .bt svg{width:18px;height:18px}
+  #gmPortao .bt[disabled]{opacity:.55;cursor:default}
+  #gmPortao .ou{display:flex;align-items:center;gap:10px;color:#9fb0c0;font-size:11px;margin:4px 0 12px}
+  #gmPortao .ou::before,#gmPortao .ou::after{content:"";flex:1;height:1px;background:#e2e8f0}
+  #gmPortao .links{display:flex;justify-content:space-between;gap:10px;margin-top:2px}
+  #gmPortao .links button{background:none;border:0;color:#64778a;font:12px/1 inherit;cursor:pointer;
+    text-decoration:underline;padding:2px}
+  #gmPortao .links button:hover{color:#b8791a}
+  #gmPortao .msg{margin-top:12px;font-size:12.5px;min-height:18px;color:#64778a}
+  #gmPortao .msg.erro{color:#c0392b}
+  #gmPortao .msg.ok{color:#1e7a4a}
+  #gmPortao .conta{margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;
+    color:#64778a;font-size:11.5px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  #gmPortao .conta b{color:#16222e}
+  #gmPortao .rodape{margin-top:12px;color:#8496a6;font-size:10.5px;line-height:1.6;margin-bottom:0}
+  #gmSessao{position:fixed;right:8px;top:6px;z-index:13500;display:none;align-items:center;gap:7px;
+    font:11px/1 system-ui,sans-serif;color:#8fa3b3;background:#0d1620cc;border:1px solid #2c4050;
+    border-radius:5px;padding:4px 8px;cursor:pointer}
+  #gmSessao img{width:16px;height:16px;border-radius:50%}
+</style>
+
+<div id="gmPortao" role="dialog" aria-label="Entrar no GeoMine">
+  <div class="cx">
+    <div class="marca">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><!-- Cava em planta: curvas de nível abertas pela rampa, girando a cada nível. -->
+  <path d="M39.17 14.87 Q40.09 16.07 40.53 16.70 Q40.96 17.32 41.35 17.97 Q41.75 18.63 42.10 19.31 Q42.46 20.00 42.76 20.71 Q43.06 21.43 43.30 22.18 Q43.54 22.92 43.69 23.70 Q43.85 24.47 43.92 25.27 Q43.99 26.06 43.95 26.86 Q43.91 27.67 43.76 28.46 Q43.61 29.26 43.34 30.03 Q43.07 30.81 42.69 31.55 Q42.30 32.28 41.81 32.97 Q41.31 33.65 40.72 34.27 Q40.13 34.88 39.45 35.42 Q38.78 35.96 38.04 36.42 Q37.30 36.88 36.51 37.26 Q35.73 37.63 34.91 37.93 Q34.10 38.22 33.27 38.45 Q32.44 38.67 31.62 38.83 Q30.79 38.99 29.97 39.10 Q29.15 39.21 28.34 39.28 Q27.54 39.35 26.74 39.39 Q25.94 39.43 25.16 39.44 Q24.37 39.46 23.58 39.45 Q22.79 39.45 22.00 39.42 Q21.21 39.39 20.41 39.34 Q19.60 39.28 18.79 39.19 Q17.98 39.10 17.15 38.97 Q16.33 38.83 15.50 38.64 Q14.67 38.45 13.85 38.19 Q13.03 37.93 12.23 37.59 Q11.42 37.25 10.66 36.83 Q9.90 36.41 9.19 35.91 Q8.48 35.41 7.85 34.82 Q7.21 34.24 6.67 33.59 Q6.13 32.93 5.70 32.22 Q5.26 31.51 4.94 30.75 Q4.61 29.99 4.41 29.20 Q4.20 28.41 4.11 27.61 Q4.02 26.81 4.04 26.01 Q4.06 25.21 4.18 24.42 Q4.29 23.64 4.50 22.88 Q4.70 22.12 4.97 21.39 Q5.25 20.66 5.58 19.96 Q5.91 19.26 6.29 18.59 Q6.67 17.92 7.08 17.28 Q7.50 16.65 7.94 16.03 Q8.39 15.42 8.87 14.83 Q9.35 14.24 9.86 13.67 Q10.37 13.11 10.92 12.56 Q11.47 12.02 12.06 11.50 Q12.65 10.98 13.29 10.49 Q13.93 10.01 14.61 9.56 Q15.30 9.12 16.04 8.73 Q16.78 8.33 17.56 8.01 Q18.35 7.68 19.17 7.43 Q20.00 7.18 20.86 7.01 Q21.71 6.84 22.59 6.77 Q23.47 6.69 24.35 6.71 Q25.23 6.73 26.10 6.84 Q26.97 6.95 27.82 7.15 Q28.66 7.36 29.47 7.64 Q30.28 7.92 31.05 8.27 L31.82 8.63" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/>
+  <path d="M38.90 22.02 Q39.24 23.19 39.34 23.79 Q39.43 24.40 39.44 25.01 Q39.45 25.62 39.37 26.23 Q39.29 26.84 39.12 27.44 Q38.95 28.04 38.69 28.61 Q38.42 29.18 38.08 29.71 Q37.73 30.25 37.31 30.73 Q36.89 31.22 36.41 31.65 Q35.93 32.08 35.39 32.46 Q34.86 32.83 34.30 33.15 Q33.73 33.47 33.15 33.73 Q32.56 34.00 31.97 34.22 Q31.37 34.43 30.77 34.61 Q30.18 34.79 29.58 34.93 Q28.99 35.08 28.39 35.20 Q27.80 35.32 27.21 35.42 Q26.63 35.52 26.04 35.61 Q25.45 35.69 24.85 35.76 Q24.25 35.83 23.64 35.89 Q23.04 35.94 22.42 35.96 Q21.80 35.99 21.16 35.99 Q20.52 35.98 19.88 35.93 Q19.23 35.89 18.57 35.79 Q17.92 35.69 17.27 35.53 Q16.62 35.38 15.98 35.15 Q15.35 34.93 14.74 34.64 Q14.13 34.35 13.57 33.99 Q13.01 33.63 12.50 33.21 Q11.99 32.79 11.55 32.31 Q11.12 31.83 10.76 31.30 Q10.40 30.77 10.12 30.20 Q9.84 29.64 9.65 29.05 Q9.46 28.46 9.35 27.86 Q9.24 27.26 9.21 26.66 Q9.18 26.05 9.21 25.46 Q9.25 24.87 9.35 24.29 Q9.44 23.71 9.58 23.14 Q9.73 22.58 9.91 22.04 Q10.10 21.49 10.31 20.97 Q10.53 20.44 10.77 19.93 Q11.02 19.42 11.29 18.92 Q11.56 18.43 11.86 17.95 Q12.16 17.46 12.49 16.99 Q12.82 16.52 13.18 16.06 Q13.55 15.61 13.95 15.17 Q14.35 14.73 14.80 14.32 Q15.24 13.91 15.73 13.53 Q16.22 13.15 16.76 12.81 Q17.30 12.47 17.87 12.18 Q18.45 11.90 19.07 11.67 Q19.68 11.44 20.33 11.28 Q20.97 11.12 21.63 11.02 Q22.29 10.93 22.96 10.91 Q23.63 10.89 24.29 10.94 Q24.96 10.99 25.61 11.10 Q26.26 11.21 26.89 11.39 Q27.52 11.56 28.12 11.79 Q28.72 12.01 29.29 12.28 Q29.86 12.55 30.40 12.85 Q30.94 13.15 31.45 13.48 Q31.95 13.81 32.44 14.17 Q32.92 14.52 33.38 14.90 Q33.84 15.27 34.28 15.66 L34.71 16.06" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/>
+  <path d="M35.09 24.00 Q35.09 24.00 34.99 24.63 Q34.89 25.26 34.66 25.86 Q34.43 26.46 34.08 27.00 Q33.74 27.55 33.31 28.03 Q32.88 28.51 32.39 28.93 Q31.91 29.34 31.39 29.70 Q30.88 30.05 30.35 30.36 Q29.82 30.67 29.28 30.95 Q28.74 31.23 28.19 31.49 Q27.65 31.75 27.07 31.98 Q26.50 32.22 25.90 32.43 Q25.29 32.63 24.65 32.79 Q24.00 32.95 23.32 33.04 Q22.63 33.13 21.93 33.13 Q21.22 33.13 20.51 33.02 Q19.81 32.91 19.13 32.68 Q18.45 32.45 17.84 32.11 Q17.22 31.77 16.70 31.33 Q16.17 30.89 15.75 30.37 Q15.33 29.85 15.03 29.28 Q14.72 28.72 14.51 28.12 Q14.31 27.53 14.20 26.93 Q14.09 26.34 14.05 25.75 Q14.01 25.16 14.03 24.58 Q14.05 24.00 14.11 23.43 Q14.18 22.86 14.29 22.30 Q14.40 21.74 14.57 21.18 Q14.73 20.62 14.96 20.07 Q15.19 19.52 15.50 19.00 Q15.81 18.47 16.20 17.98 Q16.60 17.48 17.08 17.05 Q17.56 16.62 18.12 16.26 Q18.69 15.90 19.31 15.64 Q19.94 15.37 20.61 15.21 Q21.27 15.05 21.96 14.99 Q22.64 14.92 23.32 14.95 Q24.00 14.98 24.66 15.08 Q25.32 15.18 25.95 15.34 Q26.59 15.50 27.20 15.71 Q27.80 15.92 28.39 16.17 Q28.98 16.41 29.55 16.70 Q30.12 16.99 30.67 17.32 Q31.22 17.65 31.74 18.03 Q32.26 18.42 32.74 18.87 Q33.21 19.32 33.62 19.83 Q34.02 20.35 34.33 20.92 Q34.64 21.49 34.82 22.11 Q35.00 22.73 35.05 23.36 Z" fill="#e09a23"/></svg>
+      <h1>GeoMine</h1>
+    </div>
+    <p class="sub">CCM Engenharia · contas @ccmeng.net</p>
+
+    <div id="gmCarregando" class="msg">Carregando…</div>
+
+    <div id="gmEntrada" style="display:none">
+      <label for="gmEmail">E-mail</label>
+      <input id="gmEmail" type="email" autocomplete="username" inputmode="email" placeholder="voce@empresa.com">
+      <label for="gmSenha">Senha</label>
+      <input id="gmSenha" type="password" autocomplete="current-password" placeholder="••••••••">
+
+      <button class="bt primaria" id="gmBtEntrar">Entrar</button>
+
+      <div class="ou">ou</div>
+
+      <button class="bt google" id="gmBtGoogle">
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+          <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.5 2.6 30.1 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.7 9.5 24 9.5z"/>
+          <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-3.1-.4-4.6H24v9h12.4c-.5 2.9-2.1 5.3-4.6 6.9l7.2 5.6c4.2-3.9 6.6-9.6 6.6-16.4z"/>
+          <path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.4s.3-3 .8-4.4l-7.8-6.1C.9 17 0 20.4 0 24s.9 7 2.6 10.2l7.8-6.1z"/>
+          <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.2-5.6c-2 1.4-4.6 2.2-8.7 2.2-6.3 0-11.7-3.7-13.6-9.2l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/>
+        </svg>
+        Entrar com Google
+      </button>
+
+      <div class="links">
+        <button id="gmBtCriar">Criar conta</button>
+        <button id="gmBtEsqueci">Esqueci a senha</button>
+      </div>
+
+      <div class="msg" id="gmAviso"></div>
+      <div class="conta"><span>Conta: <b id="gmConta">—</b></span></div>
+    </div>
+
+    <p class="rodape">
+      O processamento continua no seu navegador. Dados só são enviados ao Firebase
+      quando você entra ou cria uma sala de colaboração; fora dela, o projeto permanece local.
+    </p>
+  </div>
+</div>
+
+<div id="gmSessao" title="Sair da conta"><img id="gmFoto" alt=""><span id="gmNome"></span></div>
+
+<script type="module">
+/* Portão de sessão da versão publicada — mesmo endereço do aplicativo.
+
+   Os controles reproduzem os do BlastPal: e-mail e senha, Entrar, Criar
+   conta, Entrar com Google e Esqueci a senha, com o estado da conta e a
+   saída. O GeoMine já está montado atrás desta camada; o portão apenas a
+   cobre até a autenticação. É acrescentado por tools/publicar_web.py, então
+   o dist/GeoMine.html continua sendo o aplicativo offline, sem Firebase.
+
+   Alcance, dito com todas as letras: isto conduz o acesso, não impede cópia.
+   O arquivo é estático no Hosting e quem souber o endereço direto baixa sem
+   passar por aqui. Para impedir de fato seria preciso servir o conteúdo por
+   uma função que verifique o token a cada requisição. */
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
+         signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail,
+         onAuthStateChanged, signOut }
+  from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js';
+import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, setDoc,
+         updateDoc, deleteDoc, query, where, orderBy, limit, onSnapshot,
+         runTransaction, writeBatch, serverTimestamp, Timestamp }
+  from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js';
+import { getStorage, ref as storageRef, uploadBytes, getBytes, deleteObject }
+  from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-storage.js';
+
+const firebaseConfig = __FIREBASE_CONFIG__;
+
+/* Domínios liberados. Qualquer e-mail terminado num deles entra direto —
+   não há fila de aprovação. Quem estiver fora é desconectado assim que a
+   autenticação volta, antes de o portão sair da frente.
+
+   Isto vale no navegador, no mesmo nível do resto do portão: barra o uso,
+   não a cópia do arquivo. Trancar de verdade exigiria uma função de bloqueio
+   do Firebase Auth (beforeSignIn), que depende do plano Blaze. */
+const DOMINIOS = ['ccmeng.net'];
+const dominioOk = e => !!e && DOMINIOS.some(d => e.toLowerCase().endsWith('@' + d));
+const recusa = 'Acesso restrito a contas @' + DOMINIOS.join(' ou @') + '.';
+
+/* Ponte entre o aplicativo offline e os serviços da versão publicada.
+
+   O núcleo do GeoMine não importa Firebase e, por isso, continua abrindo como
+   arquivo local. Na publicação, esta ponte aparece em
+   window.GeoMineCloudProvider depois do login e emite `geomine:cloud-ready`.
+
+   Modelo de colaboração:
+   - salas e metadados: Cloud Firestore;
+   - snapshots e payloads grandes: Cloud Storage;
+   - presença: batimento renovável;
+   - uma trava (lease) por recurso evita duas pessoas editarem a mesma camada;
+   - operações layer.replace recebem sequência global da sala e revisão própria
+     do recurso dentro de uma única transação.
+
+   A trava é uma proteção cooperativa, não um substituto para o histórico: uma
+   conexão que cai deixa a lease expirar, e toda publicação continua registrada. */
+window.GeoMineCloudProvider = null;
+
+function criaErro(codigo, mensagem, detalhes){
+  const erro = new Error(mensagem);
+  erro.name = 'GeoMineCloudError';
+  erro.code = codigo;
+  if(detalhes !== undefined) erro.details = detalhes;
+  return erro;
+}
+
+function criaGeoMineCloudProvider(firebaseApp, auth){
+  const db = getFirestore(firebaseApp);
+  const storage = getStorage(firebaseApp);
+  const cancelamentos = new Set();
+  const batimentos = new Map();
+  const minhasLeases = new Map();
+  const MAX_ARQUIVO = 500 * 1024 * 1024;
+  const dispositivoDaPonte = (() => {
+    const chave='geomine.cloud.device.v1';
+    try{
+      let valor=sessionStorage.getItem(chave);
+      if(!valor){ valor='web-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)); sessionStorage.setItem(chave,valor); }
+      return valor;
+    }catch(_){ return 'web-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2); }
+  })();
+
+  const usuario = () => {
+    const u = auth.currentUser;
+    if(!u || !dominioOk(u.email) || !u.emailVerified)
+      throw criaErro('auth-required', 'Entre com uma conta CCM com o e-mail verificado para colaborar.');
+    return u;
+  };
+  const perfil = () => {
+    const u = usuario();
+    return { uid:u.uid, email:(u.email || '').toLowerCase(), displayName:u.displayName || u.email || '', photoURL:u.photoURL || '' };
+  };
+  const validaSala = id => {
+    id = String(id || '').trim();
+    if(!/^[A-Za-z0-9_-]{8,128}$/.test(id)) throw criaErro('invalid-room', 'Identificador de sala inválido.');
+    return id;
+  };
+  const limpaNome = (v, padrao='arquivo') => String(v || padrao).normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9._-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,120) || padrao;
+  const limitaLease = ms => Math.max(30000, Math.min(10 * 60 * 1000, Number(ms) || 120000));
+  const idDispositivo = opcoes => String(opcoes && (opcoes.clientId || opcoes.deviceId) || dispositivoDaPonte).slice(0,160);
+  const millis = t => t && typeof t.toMillis === 'function' ? t.toMillis() : Number(t || 0);
+  const materializa = s => s && s.exists() ? ({ id:s.id, ...s.data() }) : null;
+  const salaPublica = (s, papel) => {
+    const dados=materializa(s); if(!dados) return null;
+    /* baseSnapshot no Firestore é um descritor do Storage, não o projeto.
+       Evita que o consumidor tente carregá-lo como se fosse um .ccmgis. */
+    if(dados.baseSnapshot){ dados.snapshotRef=dados.baseSnapshot; delete dados.baseSnapshot; }
+    if(papel !== undefined) dados.myRole=papel;
+    return dados;
+  };
+  const semIndefinidos = valor => {
+    if(valor === undefined) return null;
+    if(valor === null || typeof valor !== 'object') return valor;
+    if(valor instanceof Date || valor instanceof Blob || valor instanceof ArrayBuffer || ArrayBuffer.isView(valor)) return valor;
+    if(Array.isArray(valor)) return valor.map(semIndefinidos);
+    const saida = {};
+    Object.keys(valor).forEach(k => { if(valor[k] !== undefined) saida[k] = semIndefinidos(valor[k]); });
+    return saida;
+  };
+  async function chaveRecurso(valor){
+    const bytes = new TextEncoder().encode(String(valor || ''));
+    const hash = await crypto.subtle.digest('SHA-256', bytes);
+    return 'r_' + Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2,'0')).join('');
+  }
+  const chaveConvite = email => chaveRecurso('invite:' + String(email || '').trim().toLowerCase());
+  function acompanha(cancelar){
+    cancelamentos.add(cancelar);
+    return () => { if(cancelamentos.delete(cancelar)) cancelar(); };
+  }
+  function observa(q, retorno, erro){
+    const cancelar = onSnapshot(q, snap => {
+      if(typeof snap.exists === 'function') retorno(materializa(snap));
+      else retorno(snap.docs.map(materializa), snap.docChanges().map(c => ({ type:c.type, data:materializa(c.doc) })));
+    }, e => { if(erro) erro(e); else console.error('GeoMine colaboração:', e); });
+    return acompanha(cancelar);
+  }
+  const salaRef = id => doc(db, 'rooms', validaSala(id));
+  const membroRef = (id, uid=usuario().uid) => doc(db, 'rooms', validaSala(id), 'members', uid);
+  const recursoRef = async (id, recurso) => doc(db, 'rooms', validaSala(id), 'resources', await chaveRecurso(recurso));
+
+  function dadosArquivo(dados, tipo){
+    if(dados instanceof Blob) return dados;
+    if(dados instanceof ArrayBuffer || ArrayBuffer.isView(dados)) return new Blob([dados], {type:tipo || 'application/octet-stream'});
+    if(typeof dados === 'string') return new Blob([dados], {type:tipo || 'text/plain;charset=utf-8'});
+    return new Blob([JSON.stringify(semIndefinidos(dados))], {type:tipo || 'application/json'});
+  }
+  async function envia(caminho, dados, opcoes={}){
+    const blob = dadosArquivo(dados, opcoes.contentType);
+    if(blob.size > MAX_ARQUIVO) throw criaErro('file-too-large', 'O arquivo excede o limite de 500 MB desta colaboração.');
+    const resultado = await uploadBytes(storageRef(storage, caminho), blob, {
+      contentType: blob.type || opcoes.contentType || 'application/octet-stream',
+      customMetadata: semIndefinidos(opcoes.customMetadata || {})
+    });
+    return { path:caminho, name:resultado.metadata.name, size:resultado.metadata.size,
+      contentType:resultado.metadata.contentType || blob.type || 'application/octet-stream',
+      generation:resultado.metadata.generation || null };
+  }
+  async function baixa(descritor, formato='json'){
+    const caminho = typeof descritor === 'string' ? descritor : descritor && descritor.path;
+    if(!caminho) throw criaErro('missing-path', 'O arquivo remoto não tem caminho.');
+    const bytes = await getBytes(storageRef(storage, caminho));
+    if(formato === 'arrayBuffer') return bytes;
+    const blob = new Blob([bytes], {type:(descritor && descritor.contentType) || 'application/octet-stream'});
+    if(formato === 'blob') return blob;
+    const texto = await blob.text();
+    return formato === 'text' ? texto : JSON.parse(texto);
+  }
+
+  const api = {
+    kind:'firebase', version:1, ready:true,
+    capabilities:{ rooms:true, invitations:true, roles:['owner','editor','viewer'], presence:true, leases:true,
+      snapshots:true, operations:['layer.replace'], maxUploadBytes:MAX_ARQUIVO },
+    get user(){ return perfil(); },
+
+    async createRoom(opcoes={}){
+      const u = perfil();
+      const refSala = doc(collection(db, 'rooms'));
+      const lote = writeBatch(db);
+      lote.set(refSala, { name:String(opcoes.name || 'Projeto colaborativo').trim().slice(0,120),
+        description:String(opcoes.description || '').trim().slice(0,500), ownerUid:u.uid,
+        nextSeq:0,
+        createdAt:serverTimestamp(), updatedAt:serverTimestamp() });
+      lote.set(doc(refSala, 'members', u.uid), { ...u, role:'owner', joinedAt:serverTimestamp() });
+      await lote.commit();
+      if(opcoes.baseSnapshot !== undefined && opcoes.baseSnapshot !== null){
+        const b = opcoes.baseSnapshot;
+        await api.uploadSnapshot(refSala.id, b && Object.prototype.hasOwnProperty.call(b,'data') ? b.data : b,
+          b && Object.prototype.hasOwnProperty.call(b,'data') ? b : {});
+      }
+      return api.getRoom(refSala.id);
+    },
+    async listRooms(){
+      const u = perfil();
+      const membros = await getDocs(query(collectionGroup(db,'members'), where('uid','==',u.uid)));
+      const salas = await Promise.all(membros.docs.map(async m => {
+        const r = await getDoc(m.ref.parent.parent);
+        return r.exists() ? salaPublica(r,m.data().role) : null;
+      }));
+      return salas.filter(Boolean).sort((a,b) => millis(b.updatedAt) - millis(a.updatedAt));
+    },
+    async getRoom(id){
+      const sala = await getDoc(salaRef(id));
+      if(!sala.exists()) throw criaErro('room-not-found', 'Sala não encontrada ou sem acesso.');
+      const membro = await getDoc(membroRef(id));
+      return salaPublica(sala,membro.exists() ? membro.data().role : null);
+    },
+    async joinRoom(id, opcoes={}){
+      id = validaSala(id); const u = perfil();
+      const inviteId=String(opcoes.inviteId || await chaveConvite(u.email));
+      const refMembro=membroRef(id,u.uid), refConvite=doc(db,'rooms',id,'invites',inviteId);
+      await runTransaction(db,async tx=>{
+        const [existente,convite]=await Promise.all([tx.get(refMembro),tx.get(refConvite)]);
+        if(existente.exists()) return;
+        if(!convite.exists() || String(convite.data().emailLower||'').toLowerCase()!==u.email)
+          throw criaErro('invite-required','Não há convite ativo para esta conta nesta sala.');
+        if(millis(convite.data().expiresAt)<=Date.now()) throw criaErro('invite-expired','Este convite expirou. Peça um novo ao responsável.');
+        const role=convite.data().role==='viewer'?'viewer':'editor';
+        tx.set(refMembro,{...u,role,inviteId,joinedAt:serverTimestamp()});
+        tx.delete(refConvite);
+      });
+      return api.getRoom(id);
+    },
+    async leaveRoom(id){
+      const u = perfil();
+      api.stopHeartbeat(id);
+      /* "Sair" encerra apenas a presença desta sessão. A associação à sala
+         permanece, permitindo retomar o projeto sem consumir outro convite. */
+      await deleteDoc(doc(db,'rooms',validaSala(id),'presence',u.uid)).catch(()=>{});
+    },
+    async removeSelfFromRoom(id){
+      const u=perfil();
+      api.stopHeartbeat(id);
+      await deleteDoc(doc(db,'rooms',validaSala(id),'presence',u.uid)).catch(()=>{});
+      await deleteDoc(membroRef(id,u.uid));
+    },
+    async listMembers(id){
+      const s = await getDocs(collection(db,'rooms',validaSala(id),'members'));
+      return s.docs.map(materializa);
+    },
+    watchMembers(id, retorno, erro){ return observa(collection(db,'rooms',validaSala(id),'members'), retorno, erro); },
+    async addMember(id, membro){
+      if(!membro || !membro.uid) throw criaErro('member-uid-required','Informe o UID do colaborador.');
+      const role = ['owner','editor','viewer'].includes(membro.role) ? membro.role : 'viewer';
+      await setDoc(membroRef(id,String(membro.uid)), { uid:String(membro.uid),
+        email:String(membro.email || '').toLowerCase(), displayName:String(membro.displayName || membro.email || ''),
+        photoURL:String(membro.photoURL || ''), role, joinedAt:serverTimestamp() });
+    },
+    async inviteMember(id, email, role='editor'){
+      id=validaSala(id); email=String(email||'').trim().toLowerCase();
+      if(!dominioOk(email)) throw criaErro('invalid-member-email','O convite deve usar uma conta @ccmeng.net.');
+      role=role==='viewer'?'viewer':'editor';
+      const inviteId=await chaveConvite(email), u=perfil();
+      const convite={inviteId,emailLower:email,role,invitedBy:u.uid,invitedByEmail:u.email,
+        createdAt:serverTimestamp(),expiresAt:Timestamp.fromMillis(Date.now()+7*24*60*60*1000)};
+      await setDoc(doc(db,'rooms',id,'invites',inviteId),convite);
+      return {...convite,roomId:id};
+    },
+    async listInvitations(){
+      const u=perfil();
+      const s=await getDocs(query(collectionGroup(db,'invites'),where('emailLower','==',u.email)));
+      return s.docs.map(d=>({...materializa(d),roomId:d.ref.parent.parent.id}));
+    },
+    watchInvites(id, retorno, erro){ return observa(collection(db,'rooms',validaSala(id),'invites'),retorno,erro); },
+    async setMemberRole(id, uid, role){
+      /* Transferência de propriedade exige um fluxo administrativo próprio.
+         Aqui o proprietário só alterna colaboradores entre editor/viewer. */
+      if(!['editor','viewer'].includes(role)) throw criaErro('invalid-role','Papel inválido.');
+      await updateDoc(membroRef(id,String(uid)), { role, updatedAt:serverTimestamp() });
+    },
+    async updateMemberRole(id, uid, role){ return api.setMemberRole(id,uid,role); },
+    async removeMember(id, uid){ await deleteDoc(membroRef(id,String(uid))); },
+    watchRoom(id, retorno, erro){ return observa(salaRef(id), retorno, erro); },
+
+    async heartbeat(id, opcoes={}){
+      const u = perfil(); const ttl = Math.max(30000, Math.min(180000, Number(opcoes.ttlMs) || 70000));
+      await setDoc(doc(db,'rooms',validaSala(id),'presence',u.uid), { ...u,
+        state:String(opcoes.state || 'online').slice(0,40), lastSeen:serverTimestamp(),
+        expiresAt:Timestamp.fromMillis(Date.now()+ttl) }, {merge:true});
+      /* O módulo de domínio chama heartbeat uma vez ao entrar. A ponte assume
+         a renovação enquanto a sala estiver ligada e stopHeartbeat a encerra. */
+      if(!batimentos.has(id)){
+        const intervalo=Math.max(10000,Math.min(60000,Number(opcoes.intervalMs)||25000));
+        const bate=()=>api.heartbeat(id,{...opcoes,_renewing:true}).catch(e=>console.warn('Presença GeoMine:',e));
+        batimentos.set(id,setInterval(bate,intervalo));
+      }
+    },
+    startHeartbeat(id, opcoes={}){
+      id = validaSala(id); api.stopHeartbeat(id);
+      api.heartbeat(id,opcoes).catch(e => console.warn('Presença GeoMine:',e));
+      return () => api.stopHeartbeat(id);
+    },
+    stopHeartbeat(id){
+      if(id===undefined || id===null || id===''){
+        batimentos.forEach(clearInterval); batimentos.clear(); return;
+      }
+      id = String(id); const timer = batimentos.get(id);
+      if(timer) clearInterval(timer); batimentos.delete(id);
+    },
+    watchPresence(id, retorno, erro){
+      return observa(collection(db,'rooms',validaSala(id),'presence'), (lista,mudancas) => {
+        const agora=Date.now(); retorno(lista.map(p => ({...p,online:millis(p.expiresAt)>agora})),mudancas);
+      }, erro);
+    },
+
+    async acquireLock(id, resourceId, opcoes={}){
+      const u=perfil(), key=await chaveRecurso(resourceId), refLock=doc(db,'rooms',validaSala(id),'locks',key);
+      const ttl=limitaLease(opcoes.ttlMs), agora=Date.now(), deviceId=idDispositivo(opcoes,u);
+      const resultado=await runTransaction(db, async tx => {
+        const atual=await tx.get(refLock), dados=atual.exists()?atual.data():null;
+        const mesmaAba=dados&&dados.holderUid===u.uid&&String(dados.holderDeviceId||dados.deviceId||'')===deviceId;
+        if(dados && !mesmaAba && millis(dados.expiresAt)>agora)
+          throw criaErro('resource-locked','Este recurso está sendo editado por '+(dados.holderName||dados.holderEmail||'outro usuário')+'.',dados);
+        const novo={ resourceId:String(resourceId), resourceKey:key, label:String(opcoes.label||resourceId).slice(0,160),
+          holderUid:u.uid, holderEmail:u.email, holderName:u.displayName, holderDeviceId:deviceId, deviceId,
+          acquiredAt:serverTimestamp(), updatedAt:serverTimestamp(), expiresAt:Timestamp.fromMillis(agora+ttl) };
+        tx.set(refLock,novo); return {...novo,expiresAtMs:agora+ttl};
+      });
+      minhasLeases.set(validaSala(id)+'/'+key,deviceId);
+      return resultado;
+    },
+    async renewLock(id, resourceId, opcoes={}){
+      const u=perfil(), key=await chaveRecurso(resourceId), refLock=doc(db,'rooms',validaSala(id),'locks',key);
+      const ttl=limitaLease(opcoes.ttlMs), expira=Date.now()+ttl,
+        deviceId=opcoes.clientId||opcoes.deviceId?idDispositivo(opcoes,u):(minhasLeases.get(validaSala(id)+'/'+key)||idDispositivo(opcoes,u));
+      await runTransaction(db, async tx => {
+        const s=await tx.get(refLock);
+        if(!s.exists() || s.data().holderUid!==u.uid || String(s.data().holderDeviceId||s.data().deviceId||'')!==deviceId)
+          throw criaErro('lock-lost','A trava deste recurso pertence a outra aba ou não está mais ativa.');
+        tx.update(refLock,{updatedAt:serverTimestamp(),expiresAt:Timestamp.fromMillis(expira)});
+      });
+      return {resourceId:String(resourceId),resourceKey:key,holderUid:u.uid,holderDeviceId:deviceId,deviceId,expiresAtMs:expira};
+    },
+    async releaseLock(id, resourceId, opcoes={}){
+      const u=perfil(), key=await chaveRecurso(resourceId), refLock=doc(db,'rooms',validaSala(id),'locks',key),
+        deviceId=opcoes.clientId||opcoes.deviceId?idDispositivo(opcoes,u):(minhasLeases.get(validaSala(id)+'/'+key)||idDispositivo(opcoes,u));
+      await runTransaction(db, async tx => {
+        const s=await tx.get(refLock);
+        if(s.exists() && s.data().holderUid===u.uid && String(s.data().holderDeviceId||s.data().deviceId||'')===deviceId) tx.delete(refLock);
+      });
+      minhasLeases.delete(validaSala(id)+'/'+key);
+    },
+    watchLocks(id, retorno, erro){
+      return observa(collection(db,'rooms',validaSala(id),'locks'), (lista,mudancas) => {
+        const agora=Date.now(); retorno(lista.filter(l=>millis(l.expiresAt)>agora).map(l => ({...l,active:true})),mudancas);
+      }, erro);
+    },
+
+    async uploadSnapshot(id, dados, opcoes={}){
+      id=validaSala(id); const nome=limpaNome(opcoes.name || ('projeto-'+Date.now()+'.ccmgis'));
+      const descriptor=await envia(`rooms/${id}/snapshots/${Date.now()}-${nome}`,dados,opcoes);
+      if(opcoes.setAsCurrent !== false)
+        await updateDoc(salaRef(id),{baseSnapshot:descriptor,updatedAt:serverTimestamp()});
+      return descriptor;
+    },
+    async downloadSnapshot(id, descriptor, opcoes={}){
+      id=validaSala(id);
+      if(!descriptor){ const s=await getDoc(salaRef(id)); descriptor=s.exists()?s.data().baseSnapshot:null; }
+      const path=typeof descriptor==='string'?descriptor:descriptor&&descriptor.path;
+      if(!path || !path.startsWith(`rooms/${id}/snapshots/`)) throw criaErro('invalid-path','Snapshot fora desta sala.');
+      return baixa(descriptor,opcoes.as || 'json');
+    },
+    async uploadPayload(id, resourceId, dados, opcoes={}){
+      id=validaSala(id); const key=await chaveRecurso(resourceId);
+      const nome=limpaNome(opcoes.name || ((opcoes.operationId || Date.now())+'.json'));
+      return envia(`rooms/${id}/payloads/${key}/${nome}`,dados,opcoes);
+    },
+    async downloadPayload(id, descriptor, opcoes={}){
+      id=validaSala(id); const path=typeof descriptor==='string'?descriptor:descriptor&&descriptor.path;
+      if(!path || !path.startsWith(`rooms/${id}/payloads/`)) throw criaErro('invalid-path','Payload fora desta sala.');
+      return baixa(descriptor,opcoes.as || 'json');
+    },
+    async publishLayerReplace(id, entrada={}){
+      id=validaSala(id); const u=perfil();
+      const resourceId=String(entrada.resourceId || entrada.layerId || '').trim();
+      if(!resourceId) throw criaErro('resource-required','Informe a camada/recurso a publicar.');
+      const key=await chaveRecurso(resourceId);
+      const refOperacao=doc(collection(db,'rooms',id,'operations'));
+      const descriptor=entrada.payloadRef || await api.uploadPayload(id,resourceId,entrada.payload,{
+        operationId:refOperacao.id,name:refOperacao.id+'.json',contentType:'application/json',
+        customMetadata:{operationId:refOperacao.id,resourceId}
+      });
+      const deviceId=minhasLeases.get(id+'/'+key)
+        || idDispositivo({clientId:entrada.clientId || entrada.metadata&&entrada.metadata.clientId},u);
+      const refSala=salaRef(id), refRecurso=doc(db,'rooms',id,'resources',key), refLock=doc(db,'rooms',id,'locks',key);
+      try{
+        return await runTransaction(db,async tx=>{
+          const [sala,recurso,lock]=await Promise.all([tx.get(refSala),tx.get(refRecurso),tx.get(refLock)]);
+          if(!sala.exists()) throw criaErro('room-not-found','Sala não encontrada.');
+          if(!lock.exists() || lock.data().holderUid!==u.uid
+            || String(lock.data().holderDeviceId||lock.data().deviceId||'')!==deviceId
+            || millis(lock.data().expiresAt)<=Date.now())
+            throw criaErro('lock-required','Reserve a camada antes de publicar esta revisão.');
+          const atual=recurso.exists()?Number(recurso.data().revision||0):0;
+          if(entrada.baseRevision===undefined || entrada.baseRevision===null || Number(entrada.baseRevision)!==atual)
+            throw criaErro('revision-conflict','A camada mudou no servidor. Atualize antes de publicar.',{expected:Number(entrada.baseRevision),actual:atual});
+          const seq=Number(sala.data().nextSeq||0)+1, revision=atual+1;
+          const metadados=semIndefinidos({...entrada.metadata,clientId:deviceId,
+            authorId:entrada.metadata&&entrada.metadata.authorId||u.uid,
+            authorName:entrada.metadata&&entrada.metadata.authorName||u.displayName});
+          tx.update(refSala,{nextSeq:seq,updatedAt:serverTimestamp()});
+          tx.set(refRecurso,{resourceId,resourceKey:key,layerId:String(entrada.layerId||resourceId),revision,lastSeq:seq,
+            payloadRef:descriptor,metadata:metadados,updatedAt:serverTimestamp(),updatedBy:u.uid,updatedByDevice:deviceId});
+          tx.set(refOperacao,{type:'layer.replace',seq,revision,resourceId,resourceKey:key,
+            layerId:String(entrada.layerId||resourceId),payloadRef:descriptor,baseRevision:atual,metadata:metadados,
+            authorUid:u.uid,authorEmail:u.email,authorName:u.displayName,clientId:deviceId,createdAt:serverTimestamp()});
+          return {id:refOperacao.id,type:'layer.replace',seq,revision,baseRevision:atual,
+            resourceId,resourceKey:key,payloadRef:descriptor,metadata:metadados};
+        });
+      }catch(e){
+        if(!entrada.payloadRef) deleteObject(storageRef(storage,descriptor.path)).catch(()=>{});
+        throw e;
+      }
+    },
+    watchOperations(id, retorno, opcoes={}){
+      id=validaSala(id); const base=collection(db,'rooms',id,'operations');
+      const depois=Number(opcoes.afterSeq||0);
+      /* Um limite ascendente prenderia o listener às primeiras operações e
+         faria a 501ª desaparecer. O histórico visual continua limitado. */
+      const q=depois>0 ? query(base,where('seq','>',depois),orderBy('seq','asc'))
+        : query(base,orderBy('seq','asc'));
+      return observa(q,retorno,opcoes.onError);
+    },
+    watchHistory(id, retorno, opcoes={}){
+      const q=query(collection(db,'rooms',validaSala(id),'operations'),orderBy('seq','desc'),limit(Number(opcoes.limit)||100));
+      return observa(q,retorno,opcoes.onError);
+    },
+    async getResource(id, resourceId){ return materializa(await getDoc(await recursoRef(id,resourceId))); },
+    dispose(){
+      batimentos.forEach(clearInterval); batimentos.clear();
+      minhasLeases.clear();
+      Array.from(cancelamentos).forEach(c=>{try{c();}catch(_){}}); cancelamentos.clear();
+    }
+  };
+  return Object.freeze(api);
+}
+
+const el = id => document.getElementById(id);
+const aviso = (t, tipo) => {
+  const a = el('gmAviso'); if(!a) return;
+  a.textContent = t || '';
+  a.classList.toggle('erro', tipo === 'erro');
+  a.classList.toggle('ok', tipo === 'ok');
+};
+
+function mensagem(e){
+  const c = (e && e.code) || '';
+  if(c.includes('email-not-verified'))       return (e && e.message) || 'Confirme seu e-mail antes de entrar.';
+  if(c.includes('invalid-email'))            return 'E-mail inválido.';
+  if(c.includes('missing-password'))         return 'Digite a senha.';
+  if(c.includes('weak-password'))            return 'A senha precisa de pelo menos 6 caracteres.';
+  if(c.includes('email-already-in-use'))     return 'Já existe conta com esse e-mail — use Entrar.';
+  if(c.includes('invalid-credential') ||
+     c.includes('wrong-password') ||
+     c.includes('user-not-found'))           return 'E-mail ou senha não conferem.';
+  if(c.includes('too-many-requests'))        return 'Muitas tentativas. Espere um pouco e tente de novo.';
+  if(c.includes('network'))                  return 'Sem conexão com o servidor de autenticação.';
+  if(c.includes('unauthorized-domain'))      return 'Este endereço não está autorizado no Firebase Auth.';
+  if(c.includes('operation-not-allowed'))    return 'Esse modo de login não está habilitado no projeto.';
+  return 'Não foi possível concluir' + (c ? ' (' + c + ')' : '') + '.';
+}
+
+const trava = sim => ['gmBtEntrar','gmBtGoogle','gmBtCriar','gmBtEsqueci']
+  .forEach(id => { const b = el(id); if(b) b.disabled = sim; });
+
+try{
+  const firebaseApp = initializeApp(firebaseConfig);
+  const auth = getAuth(firebaseApp);
+  auth.languageCode = 'pt-BR';
+  const provider = new GoogleAuthProvider();
+  /* Sugere a conta do domínio na tela do Google. É só uma dica de escolha —
+     a recusa de verdade é a conferência abaixo. */
+  provider.setCustomParameters({ hd: DOMINIOS[0] });
+  const email = () => el('gmEmail').value.trim();
+  const senha = () => el('gmSenha').value;
+
+  /* Barra o e-mail fora do domínio antes de gastar uma chamada de rede. */
+  const exigeDominio = () => {
+    if(dominioOk(email())) return true;
+    aviso(recusa, 'erro');
+    return false;
+  };
+
+  async function tenta(fn, msgOk){
+    aviso(''); trava(true);
+    try{ await fn(); if(msgOk) aviso(msgOk, 'ok'); }
+    catch(e){ aviso(mensagem(e), 'erro'); }
+    finally{ trava(false); }
+  }
+
+  let criandoConta = false;
+  el('gmBtEntrar').onclick = () => { if(exigeDominio()) tenta(async () => {
+    const cred=await signInWithEmailAndPassword(auth, email(), senha());
+    if(!cred.user.emailVerified){
+      await sendEmailVerification(cred.user).catch(()=>{});
+      await signOut(auth);
+      throw criaErro('email-not-verified','Confirme seu e-mail antes de entrar. Um novo link de verificação foi enviado.');
+    }
+  }); };
+  el('gmBtCriar').onclick  = () => { if(exigeDominio()) tenta(async () => {
+    criandoConta=true;
+    try{
+      const cred=await createUserWithEmailAndPassword(auth, email(), senha());
+      await sendEmailVerification(cred.user);
+      await signOut(auth);
+    }finally{ criandoConta=false; }
+  }, 'Conta criada. Abra o link enviado por e-mail e depois entre.'); };
+  el('gmBtEsqueci').onclick = () => {
+    if(!email()){ aviso('Escreva o e-mail acima para receber o link.', 'erro'); return; }
+    if(!exigeDominio()) return;
+    tenta(() => sendPasswordResetEmail(auth, email()), 'Link de redefinição enviado para ' + email() + '.');
+  };
+  /* Enter no campo de senha entra, como em qualquer formulário. */
+  el('gmSenha').onkeydown = e => { if(e.key === 'Enter') el('gmBtEntrar').click(); };
+
+  el('gmBtGoogle').onclick = () => tenta(async () => {
+    try{ await signInWithPopup(auth, provider); }
+    catch(e){
+      /* Em boa parte dos navegadores de tablet o popup é bloqueado; nesses
+         casos a autenticação segue por redirecionamento. */
+      if(e && /popup/i.test(e.code || '')){ await signInWithRedirect(auth, provider); return; }
+      throw e;
+    }
+  });
+
+  getRedirectResult(auth).catch(e => aviso(mensagem(e), 'erro'));
+
+  let saindo = false;
+  let provedorNuvem = null;
+  onAuthStateChanged(auth, u => {
+    /* Domínio e posse do endereço são obrigatórios. Durante a criação a UI
+       permanece fechada enquanto o próprio fluxo envia o link e desconecta. */
+    if(u && (!dominioOk(u.email) || !u.emailVerified)){
+      const motivo=!dominioOk(u.email)?recusa:'Confirme seu e-mail antes de entrar. Enviamos um link de verificação.';
+      if(!saindo&&!criandoConta){
+        saindo = true;
+        if(u.email&&!u.emailVerified)sendEmailVerification(u).catch(()=>{});
+        signOut(auth).finally(() => { saindo = false; aviso(motivo, 'erro'); });
+      }
+      u = null;
+    }
+    el('gmCarregando').style.display = 'none';
+    el('gmEntrada').style.display = u ? 'none' : '';
+    el('gmPortao').style.display  = u ? 'none' : 'grid';
+    el('gmSessao').style.display  = u ? 'flex' : 'none';
+    el('gmConta').textContent = u ? (u.email || u.displayName || '—') : '—';
+    if(u){
+      if(!provedorNuvem || !provedorNuvem.user || provedorNuvem.user.uid !== u.uid){
+        if(provedorNuvem) provedorNuvem.dispose();
+        provedorNuvem = criaGeoMineCloudProvider(firebaseApp, auth);
+        window.GeoMineCloudProvider = provedorNuvem;
+        window.dispatchEvent(new CustomEvent('geomine:cloud-ready',{detail:provedorNuvem}));
+        window.dispatchEvent(new CustomEvent('geomine-cloud-ready',{detail:provedorNuvem}));
+        window.dispatchEvent(new CustomEvent('geomine:cloud-provider-ready',{detail:provedorNuvem}));
+      }
+      el('gmSenha').value = '';
+      el('gmNome').textContent = u.displayName || u.email || '';
+      if(u.photoURL) el('gmFoto').src = u.photoURL; else el('gmFoto').style.display = 'none';
+      /* O aplicativo mede a área do mapa na carga; com o portão fora do
+         caminho o Leaflet precisa reconferir o tamanho. */
+      setTimeout(() => { try{ if(window.map && map.invalidateSize) map.invalidateSize(); }catch(e){} }, 60);
+    }else if(provedorNuvem){
+      provedorNuvem.dispose();
+      provedorNuvem = null;
+      window.GeoMineCloudProvider = null;
+      window.dispatchEvent(new CustomEvent('geomine:cloud-disconnected'));
+    }
+  });
+
+  el('gmSessao').onclick = () => signOut(auth);
+}catch(e){
+  /* Falha fechada: sem confirmação do Firebase, o aplicativo permanece
+     coberto. Antes o tratamento de erro retirava o portão e liberava o uso
+     justamente quando não era possível validar a identidade. */
+  console.error('Não foi possível validar a sessão Firebase:', e);
+  el('gmCarregando').style.display = 'none';
+  el('gmEntrada').style.display = '';
+  aviso('O serviço de autenticação não respondeu. Atualize a página e tente novamente.', 'erro');
+}
+</script>

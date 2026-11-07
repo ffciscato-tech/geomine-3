@@ -1,0 +1,9 @@
+# Régua 3D e correções da Civil — 25/09/2026
+
+Régua modular em `modules/cad/ruler-elevation.js`: o checkbox próprio captura vértices e segmentos independentemente do ímã global. O Z válido do vetor tem prioridade sobre MDT/LiDAR. O encaixe em segmento interpola no CRS de origem. Zero é cota válida; nulo/vazio não vira zero. Cada trecho informa Z inicial, Z final, ΔZ, declividade em porcentagem e graus. Pontos livres mantêm fonte alternativa quando selecionada. Distâncias por pontos são segmentos entre cliques, não o percurso completo de uma curva.
+
+Civil extraída da parte 22 para `modules/civil/roads.js`. Corrigidos berma zero, lados dos taludes, pontos A/B coincidentes, extremidades exatamente nos pontos escolhidos (com recusa se a conexão viola rampa/raio aproximado), amostragem de pixel retangular e separação dos volumes quando o trecho muda de corte para aterro. Estradas independentes têm seletor, nome, estado, parâmetros e vínculos próprios salvos no projeto. Taludes anteriores ficam ocultos ao recalcular o eixo; gerar taludes os atualiza e torna visíveis. Projetos antigos sem receita Civil preservam as geometrias, sem herdar receita de outro projeto.
+
+Limites preservados e explícitos: traçado preliminar em malha; raio ainda aproximado, não curvas circulares/clotoides. Volumes pelo eixo × largura, sem taludes, não cubagem executiva. Greide/perfil continua usando Topografia. A revisão adicional dos raios e o arquivo Drive informado em seguida não fazem parte desta entrega.
+
+Validação com aplicativo completo em Chrome isolado: `smoke_ruler_civil.cjs` (cliques reais no handler do mapa, zero, interpolação, subida/descida, multipartes, falta de Z, vertical, desfazer; Civil, duas estradas, persistência e troca para projeto antigo), `smoke_project_file_identity.cjs` e cinco cenários de `validate_project_snapshot_isolation.mjs`. Interface da régua inspecionada visualmente. Sem alteração nas regras Firebase, login ou modo de gravação manual.

@@ -1,0 +1,4 @@
+
+      /* o .mini global tem width:100% e estica; dentro da barra os botões são compactos */
+      #cmdBar .mini{width:auto;margin-top:0;padding:3px 8px;white-space:nowrap;flex:0 0 auto}
+    
