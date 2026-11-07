@@ -1,0 +1,1860 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cava &amp; Pilha por Strings — v0.9</title>
+<link href="https://fonts.googleapis.com/css2?family=Signika:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#1e222a; --painel:#262b35; --borda:#3a4150; --texto:#e8eaf0;
+    --texto2:#9aa3b5; --acento:#e8a33d; --canvas-bg:#ffffff;
+  }
+  body.ccmgis-claro{
+    --bg:#ffffff;--painel:#ffffff;--borda:#c7d1da;--texto:#1b2c3a;
+    --texto2:#607383;--acento:#b36d00;--canvas-bg:#ffffff;color-scheme:light;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    display:flex; font-family:"Signika",system-ui,sans-serif;
+    background:var(--bg); color:var(--texto); overflow:hidden;
+  }
+  aside{
+    width:302px; min-width:302px; height:100%; overflow-y:auto;
+    background:var(--painel); border-right:1px solid var(--borda); padding:12px;
+    transition:width .18s ease,min-width .18s ease,padding .18s ease;
+  }
+  body.ccmgis-painel-fechado aside{
+    width:0;min-width:0;padding:0;border:0;overflow:hidden;visibility:hidden;
+  }
+  body.ccmgis-painel-fechado main header{padding-left:40px;}
+  #ccmgisPainelCorner{
+    position:fixed;left:272px;top:6px;z-index:20;width:24px;height:24px;padding:0;
+    display:grid;place-items:center;border:1px solid var(--borda);border-radius:5px;
+    background:#171a20;color:var(--texto);font:700 17px "Signika",sans-serif;
+    box-shadow:0 2px 7px #0005;cursor:pointer;transition:left .18s ease;
+  }
+  #ccmgisPainelCorner:hover{border-color:var(--acento);color:var(--acento);}
+  body.ccmgis-painel-fechado #ccmgisPainelCorner{left:6px;}
+  body.ccmgis-claro #ccmgisPainelCorner,
+  body.ccmgis-claro header button,
+  body.ccmgis-claro .campo input[type=number],
+  body.ccmgis-claro .campo select{background:#ffffff;color:var(--texto);}
+  body.ccmgis-claro #resultados .lin span:last-child{color:var(--texto);}
+  body[data-ccmgis-target="cava"] aside fieldset:nth-of-type(3),
+  body[data-ccmgis-target="cava"] aside fieldset:nth-of-type(4),
+  body[data-ccmgis-target="pilha"] aside fieldset:nth-of-type(1),
+  body[data-ccmgis-target="pilha"] aside fieldset:nth-of-type(2){display:none;}
+  aside h1{font-size:15px; color:var(--acento); margin-bottom:2px;}
+  aside .sub{font-size:11px; color:var(--texto2); margin-bottom:10px;}
+  fieldset{border:1px solid var(--borda); border-radius:8px; padding:8px 10px 4px; margin-bottom:10px;}
+  legend{font-size:12px; font-weight:600; color:var(--acento); padding:0 6px;}
+  .campo{display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;}
+  .campo label{font-size:12px; flex:1;}
+  .campo input[type=number], .campo select{
+    width:72px; padding:3px 6px; border:1px solid var(--borda); border-radius:5px;
+    background:#171a20; color:var(--texto); font-size:12px; text-align:right;
+  }
+  .campo select{text-align:left; width:104px;}
+  .campo .un{font-size:11px; color:var(--texto2); width:24px; margin-left:5px;}
+  .campo input[type=checkbox]{accent-color:var(--acento);}
+  #resultados{font-size:12px; line-height:1.5;}
+  #resultados b{color:var(--acento);}
+  #resultados .grp{margin-bottom:8px;}
+  #resultados .lin{display:flex; justify-content:space-between; gap:8px;}
+  #resultados .lin span:last-child{color:#cfd6e4; white-space:nowrap;}
+  #resultados .aviso{color:#e8875d; font-size:11px; margin-top:3px;}
+  .nota{font-size:10.5px; color:var(--texto2); margin-top:8px; line-height:1.4;}
+  main{flex:1; display:flex; flex-direction:column; height:100%; min-width:0;}
+  header{
+    display:flex; align-items:center; gap:6px; padding:6px 10px; flex-wrap:wrap;
+    background:var(--painel); border-bottom:1px solid var(--borda);
+  }
+  header button{
+    padding:5px 11px; border:1px solid var(--borda); border-radius:6px;
+    background:#171a20; color:var(--texto); font-size:12px; cursor:pointer; white-space:nowrap;
+  }
+  header button:hover{border-color:var(--acento);}
+  header button.ativa{background:var(--acento); border-color:var(--acento); color:#1c1c1c; font-weight:600;}
+  header .sep{flex:1;}
+  #wrap{flex:1 1 auto; position:relative; min-height:0; overflow:hidden;}
+  canvas{display:block;}
+  #cv{position:absolute; inset:0; width:100%; height:100%; cursor:crosshair;
+    touch-action:none;user-select:none;-webkit-user-select:none;}
+  #cv.pan{cursor:grab;} #cv.arrastando{cursor:grabbing;}
+  #painelSec{
+    height:190px; border-top:1px solid var(--borda); background:var(--painel);
+    position:relative; display:none;
+  }
+  #painelSec.aberto{display:block;}
+  #cvSec{position:absolute; inset:0; width:100%; height:100%;}
+  #status{
+    display:flex; gap:18px; padding:4px 12px; font-size:11.5px; color:var(--texto2);
+    background:var(--painel); border-top:1px solid var(--borda);
+  }
+  #status b{color:var(--texto); font-weight:600;}
+</style>
+</head>
+<body>
+
+<button id="ccmgisPainelCorner" type="button" title="Recolher parâmetros" aria-label="Recolher parâmetros">‹</button>
+
+<aside>
+  <h1>Cava &amp; Pilha por Strings</h1>
+  <div class="sub">v0.9 — desenhe a linha fechada; bancadas e rampa são projetadas; qualquer crista/pé pode ser editada (estilo Datamine/Micromine/Deswik)</div>
+
+  <fieldset>
+    <legend>Cava — linha desenhada = crista EXTERIOR</legend>
+    <div class="campo"><label>Profundidade total</label><input id="cava_H" type="number" value="120" min="5" max="600" step="5"><span class="un">m</span></div>
+    <div class="campo"><label>Altura da bancada</label><input id="cava_banco" type="number" value="10" min="2" max="30" step="1"><span class="un">m</span></div>
+    <div class="campo"><label>Ângulo de face</label><input id="cava_face" type="number" value="75" min="25" max="89" step="1"><span class="un">°</span></div>
+    <div class="campo"><label>Largura da berma</label><input id="cava_berma" type="number" value="8" min="0" max="40" step="0.5"><span class="un">m</span></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Rampa da cava</legend>
+    <div class="campo"><label>Rampa ativa</label><input id="cava_rampa_on" type="checkbox" checked=""></div>
+    <div class="campo"><label>Largura</label><input id="cava_rampa_larg" type="number" value="20" min="5" max="60" step="1"><span class="un">m</span></div>
+    <div class="campo"><label>Gradiente</label><input id="cava_rampa_grad" type="number" value="10" min="3" max="15" step="0.5"><span class="un">%</span></div>
+    <div class="campo"><label>Sentido</label><select id="cava_rampa_dir"><option value="ah">anti-horário</option><option value="h">horário</option></select></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Pilha — linha desenhada = pé EXTERIOR</legend>
+    <div class="campo"><label>Altura total</label><input id="pilha_H" type="number" value="60" min="5" max="300" step="5"><span class="un">m</span></div>
+    <div class="campo"><label>Altura do banco</label><input id="pilha_banco" type="number" value="10" min="2" max="30" step="1"><span class="un">m</span></div>
+    <div class="campo"><label>Ângulo de face</label><input id="pilha_face" type="number" value="37" min="15" max="45" step="1"><span class="un">°</span></div>
+    <div class="campo"><label>Largura da berma</label><input id="pilha_berma" type="number" value="6" min="0" max="40" step="0.5"><span class="un">m</span></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Rampa da pilha</legend>
+    <div class="campo"><label>Rampa ativa</label><input id="pilha_rampa_on" type="checkbox" checked=""></div>
+    <div class="campo"><label>Largura</label><input id="pilha_rampa_larg" type="number" value="15" min="5" max="60" step="1"><span class="un">m</span></div>
+    <div class="campo"><label>Gradiente</label><input id="pilha_rampa_grad" type="number" value="10" min="3" max="15" step="0.5"><span class="un">%</span></div>
+    <div class="campo"><label>Sentido</label><select id="pilha_rampa_dir"><option value="ah">anti-horário</option><option value="h">horário</option></select></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Resultados</legend>
+    <div id="resultados"><div class="grp"><b>Cava</b>
+      <div class="lin"><span>Bancos</span><span>12</span></div>
+      <div class="lin"><span>Strings geradas</span><span>24</span></div>
+      <div class="lin"><span>Área da linha-base</span><span>2,34 ha</span></div>
+      <div class="lin"><span>Área final (superfície)</span><span>16,29 ha</span></div>
+      <div class="lin"><span>Volume</span><span>10,351 Mm³</span></div>
+      <div class="lin"><span>Rampa (desenv. real)</span><span>1.208 m</span></div>
+      <div class="lin"><span>Gradiente efetivo</span><span>10%</span></div>
+
+    </div><div class="grp"><b>Pilha</b>
+      <div class="lin"><span>Bancos</span><span>6</span></div>
+      <div class="lin"><span>Strings geradas</span><span>12</span></div>
+      <div class="lin"><span>Área da linha-base</span><span>3,32 ha</span></div>
+      <div class="lin"><span>Área final (superfície)</span><span>15,29 ha</span></div>
+      <div class="lin"><span>Volume</span><span>5,23 Mm³</span></div>
+      <div class="lin"><span>Rampa (desenv. real)</span><span>605 m</span></div>
+      <div class="lin"><span>Gradiente efetivo</span><span>10%</span></div>
+
+    </div><div class="lin"><span><b>Saldo pilha − cava</b></span><span>-5,122 Mm³</span></div></div>
+  </fieldset>
+
+  <div class="nota">
+    Método: a linha desenhada é o LIMITE EXTERIOR (crista da cava na superfície;
+    pé externo da pilha) e as bancadas são projetadas para DENTRO. A rampa é por
+    trechos retos na face, com largura e gradiente constantes (medidos no eixo);
+    as strings aparecem contínuas na tela (os cortes da rampa existem na
+    geometria e no DXF, mas não são pintados). Berma contínua por trás.
+    Editar uma string (◇) regenera as seguintes a
+    partir dela — mudar nº de bancos, a linha-base ou a rampa descarta as edições.
+    Terreno na cota 0.
+    Volumes por prismóide entre strings. Sem switchback nesta versão.
+  </div>
+</aside>
+
+<main>
+  <header>
+    <button id="t_mover" class="ativa">✋ Mover</button>
+    <button id="t_cava">✏️ Desenhar cava</button>
+    <button id="t_pilha">✏️ Desenhar pilha</button>
+    <button id="t_editar">◇ Editar vértices</button>
+    <button id="t_rampa">⤴ Início da rampa</button>
+    <button id="t_secao">📐 Seção</button>
+    <button id="b_reverter" hidden disabled>↺ Reverter string</button>
+    <div class="sep"></div>
+    <button id="b_exemplo">Exemplo</button>
+    <button id="b_limpar">Limpar tudo</button>
+    <button id="b_ajustar">Ajustar vista</button>
+    <button id="b_dxf">DXF</button>
+    <button id="b_png">PNG</button>
+  </header>
+  <div id="wrap"><canvas id="cv" class="pan" width="548" height="1104"></canvas></div>
+  <div id="painelSec"><canvas id="cvSec" width="548" height="378"></canvas></div>
+  <div id="status"><span id="st_coord">E: — &nbsp; N: —</span><span id="st_dica"><b>MOVER</b> — arraste para mover · roda do mouse = zoom · duplo clique = enquadrar</span></div>
+</main>
+
+<script>
+"use strict";
+/* ================= base ================= */
+const $ = id => document.getElementById(id);
+const cv = $("cv"), ctx = cv.getContext("2d");
+const cvSec = $("cvSec"), ctxSec = cvSec.getContext("2d");
+$("ccmgisPainelCorner").addEventListener("click",()=>window.dispatchEvent(new CustomEvent("cava2:panel-toggle")));
+const rad = g => g*Math.PI/180;
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const fmt = (n,c=1) => (isFinite(n)?n:0).toLocaleString("pt-BR",{maximumFractionDigits:c});
+
+let escala = 1, ox = 0, oy = 0, vistaManual = false;
+let ferramenta = "mover";
+let desenho = null;              // {alvo:'cava'|'pilha', pts:[]}
+let hover = null;                // posição do mouse em mundo
+let secA = null, secB = null, secTemp = null;
+let arrasto = null;              // pan
+let editando = null;             // {tipo:'base', alvo, idx, ...}
+let sel = null;                  // compatibilidade com projetos anteriores; não é editável
+let contexto = [];               // camadas visíveis da planta 2D do CCMGIS
+const contextoImgCache = new Map();
+const visibilidade = {
+  cava:{on:true,crista:true,pe:true,rampa:true},
+  pilha:{on:true,crista:true,pe:true,rampa:true},
+};
+
+const objs = {
+  cava:  {base:null, anc:null, design:null, erro:null, overrides:{}, ovMeta:null},
+  pilha: {base:null, anc:null, design:null, erro:null, overrides:{}, ovMeta:null},
+};
+
+/* ================= geometria de polígonos ================= */
+function dedup(P){
+  const out=[];
+  for(const p of P){
+    const q=out[out.length-1];
+    if(!q || Math.hypot(p.x-q.x,p.y-q.y)>0.05) out.push({x:p.x,y:p.y});
+  }
+  if(out.length>2){
+    const a=out[0], b=out[out.length-1];
+    if(Math.hypot(a.x-b.x,a.y-b.y)<=0.05) out.pop();
+  }
+  return out;
+}
+function areaAssinada(P){
+  let s=0;
+  for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length]; s+=a.x*b.y-b.x*a.y;}
+  return s/2;
+}
+function garanteCCW(P){ return areaAssinada(P)>=0 ? P.slice() : P.slice().reverse(); }
+function perimetro(P){
+  let s=0;
+  for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length]; s+=Math.hypot(b.x-a.x,b.y-a.y);}
+  return s;
+}
+function cumulativo(P){
+  const c=[0];
+  for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length]; c.push(c[i]+Math.hypot(b.x-a.x,b.y-a.y));}
+  return c;
+}
+function pontoNoArco(P, cum, s){
+  const per=cum[cum.length-1];
+  s=((s%per)+per)%per;
+  let lo=0, hi=P.length;
+  while(lo<hi-1){const m=(lo+hi)>>1; (cum[m]<=s)?lo=m:hi=m;}
+  const a=P[lo], b=P[(lo+1)%P.length];
+  const t=(s-cum[lo])/Math.max(1e-9,cum[lo+1]-cum[lo]);
+  return {x:a.x+(b.x-a.x)*t, y:a.y+(b.y-a.y)*t, i:lo};
+}
+function arcoMaisProximo(P, cum, q){
+  let melhor=1e30, sM=0;
+  for(let i=0;i<P.length;i++){
+    const a=P[i], b=P[(i+1)%P.length];
+    const dx=b.x-a.x, dy=b.y-a.y, L2=dx*dx+dy*dy;
+    const t=L2<1e-12?0:clamp(((q.x-a.x)*dx+(q.y-a.y)*dy)/L2,0,1);
+    const px=a.x+t*dx, py=a.y+t*dy;
+    const d=Math.hypot(q.x-px,q.y-py);
+    if(d<melhor){melhor=d; sM=cum[i]+t*Math.sqrt(L2);}
+  }
+  return {s:sM, d:melhor};
+}
+function resample(P, passo){
+  const cum=cumulativo(P), per=cum[cum.length-1];
+  const n=Math.max(24, Math.round(per/passo));
+  const out=[];
+  for(let k=0;k<n;k++) out.push(pontoNoArco(P,cum,k*per/n));
+  return out.map(p=>({x:p.x,y:p.y}));
+}
+function suaviza(P, l, it){
+  let Q=P;
+  for(let k=0;k<it;k++){
+    const n=Q.length;
+    Q=Q.map((p,i)=>{
+      const a=Q[(i-1+n)%n], b=Q[(i+1)%n];
+      return {x:p.x+l*((a.x+b.x)/2-p.x), y:p.y+l*((a.y+b.y)/2-p.y)};
+    });
+  }
+  return Q;
+}
+function normais(P){ // P em CCW → normal externa unitária por vértice
+  const n=P.length, N=[];
+  for(let i=0;i<n;i++){
+    const a=P[(i-1+n)%n], b=P[i], c=P[(i+1)%n];
+    const l1=Math.hypot(b.x-a.x,b.y-a.y)||1, l2=Math.hypot(c.x-b.x,c.y-b.y)||1;
+    let nx=(b.y-a.y)/l1+(c.y-b.y)/l2, ny=-((b.x-a.x)/l1+(c.x-b.x)/l2);
+    const l=Math.hypot(nx,ny);
+    if(l<1e-9){N.push({x:0,y:0}); continue;}
+    N.push({x:nx/l, y:ny/l});
+  }
+  return N;
+}
+function segInt(a,b,c,d){
+  const rx=b.x-a.x, ry=b.y-a.y, sx=d.x-c.x, sy=d.y-c.y;
+  const den=rx*sy-ry*sx;
+  if(Math.abs(den)<1e-12) return null;
+  const t=((c.x-a.x)*sy-(c.y-a.y)*sx)/den;
+  const u=((c.x-a.x)*ry-(c.y-a.y)*rx)/den;
+  if(t<=1e-9||t>=1-1e-9||u<=1e-9||u>=1-1e-9) return null;
+  return {x:a.x+t*rx, y:a.y+t*ry};
+}
+function removeLacos(P){
+  let Q=P, passes=0, mudou=true;
+  while(mudou && passes++<10){
+    mudou=false;
+    const n=Q.length;
+    if(n<8) break;
+    busca:
+    for(let i=0;i<n;i++){
+      for(let j=i+2;j<n;j++){
+        if(i===0 && j===n-1) continue;
+        const X=segInt(Q[i],Q[(i+1)%n],Q[j],Q[(j+1)%n]);
+        if(X){
+          const dentro=Q.slice(i+1,j+1); dentro.push(X);
+          const fora=Q.slice(0,i+1); fora.push(X); fora.push(...Q.slice(j+1));
+          Q=Math.abs(areaAssinada(fora))>=Math.abs(areaAssinada(dentro))?fora:dentro;
+          mudou=true; break busca;
+        }
+      }
+    }
+  }
+  return Q;
+}
+function dentroDe(P, q){
+  let dentro=false;
+  for(let i=0,j=P.length-1;i<P.length;j=i++){
+    const a=P[i], b=P[j];
+    if((a.y>q.y)!==(b.y>q.y) && q.x < (b.x-a.x)*(q.y-a.y)/(b.y-a.y)+a.x) dentro=!dentro;
+  }
+  return dentro;
+}
+/* Mantém os anéis fechados no modelo analítico (área/volume), mas divide a
+   sua representação onde eles atravessam a pista. Assim cada crista/pé chega
+   até uma borda da rampa e continua somente depois da borda oposta. */
+function recortaLinhaForaRampas(P,poligonos,cortes){
+  const Q=(P||[]).filter(p=>Number.isFinite(+p.x)&&Number.isFinite(+p.y)),
+    rampas=(poligonos||[]).filter(poly=>Array.isArray(poly)&&poly.length>=3),eps=1e-9;
+  if(Q.length<2)return {partes:Q.length?[Q]:[],cortado:false,fechamentosRemovidos:0};
+  const interpola=(a,b,t)=>{
+    const q={x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t};
+    if(Number.isFinite(+a.z)&&Number.isFinite(+b.z))q.z=+a.z+(+b.z-+a.z)*t;
+    return q;
+  };
+  const tIntersecao=(a,b,c,d)=>{
+    const rx=b.x-a.x,ry=b.y-a.y,sx=d.x-c.x,sy=d.y-c.y,den=rx*sy-ry*sx;
+    if(Math.abs(den)<1e-12)return null;
+    const t=((c.x-a.x)*sy-(c.y-a.y)*sx)/den,
+      u=((c.x-a.x)*ry-(c.y-a.y)*rx)/den;
+    return t>eps&&t<1-eps&&u>-eps&&u<1+eps?t:null;
+  };
+  const igual=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y)<1e-7;
+  /* anelComRampa precisa fechar o polígono para o cálculo. Seus dois trechos
+     de fechamento são marcados explicitamente e nunca pertencem ao desenho:
+     removê-los evita os “degraus” que acompanhavam a borda da estrada. */
+  const arestasFechamento=new Set(),maisPerto=q=>{
+    let melhor=0,d=Infinity;
+    for(let i=0;i<Q.length;i++){
+      const di=Math.hypot(Q[i].x-q.x,Q[i].y-q.y);
+      if(di<d){d=di;melhor=i;}
+    }
+    return melhor;
+  };
+  const caminho=(ini,fim)=>{
+    const arestas=[];let L=0,i=ini,guard=0;
+    while(i!==fim&&guard++<=Q.length){
+      const j=(i+1)%Q.length;arestas.push(i);L+=Math.hypot(Q[j].x-Q[i].x,Q[j].y-Q[i].y);i=j;
+    }
+    return {arestas,L};
+  };
+  for(const corte of (cortes||[])){
+    if(!corte?.a||!corte?.b)continue;
+    const ia=maisPerto(corte.a),ib=maisPerto(corte.b);
+    if(ia===ib)continue;
+    const ida=caminho(ia,ib),volta=caminho(ib,ia),menor=ida.L<=volta.L?ida:volta;
+    for(const i of menor.arestas)arestasFechamento.add(i);
+  }
+  if(!rampas.length&&!arestasFechamento.size)return {partes:[Q],cortado:false,fechamentosRemovidos:0};
+  const partes=[];let atual=[],cortado=false;
+  const encerra=()=>{if(atual.length>1)partes.push(atual);atual=[];};
+  for(let i=0;i<Q.length;i++){
+    const a=Q[i],b=Q[(i+1)%Q.length],ts=[0,1];
+    if(arestasFechamento.has(i)){cortado=true;encerra();continue;}
+    for(const poly of rampas)for(let j=0;j<poly.length;j++){
+      const t=tIntersecao(a,b,poly[j],poly[(j+1)%poly.length]);
+      if(t!=null)ts.push(t);
+    }
+    ts.sort((x,y)=>x-y);
+    const unicos=ts.filter((t,j)=>!j||Math.abs(t-ts[j-1])>eps);
+    for(let j=0;j<unicos.length-1;j++){
+      const t0=unicos[j],t1=unicos[j+1];
+      if(t1-t0<eps)continue;
+      const p0=interpola(a,b,t0),p1=interpola(a,b,t1),pm=interpola(a,b,(t0+t1)/2),
+        dentro=rampas.some(poly=>dentroDe(poly,pm));
+      if(dentro){cortado=true;encerra();continue;}
+      if(!atual.length)atual=[p0,p1];
+      else if(igual(atual.at(-1),p0))atual.push(p1);
+      else{encerra();atual=[p0,p1];}
+    }
+  }
+  encerra();
+  /* A varredura começa num ponto arbitrário do anel. Se a parte visível
+     atravessa essa emenda, recompõe as duas pontas como uma única polilinha. */
+  if(partes.length>1&&igual(partes.at(-1).at(-1),partes[0][0])){
+    const ultima=partes.pop(),primeira=partes.shift();
+    partes.unshift([...ultima,...primeira.slice(1)]);
+  }
+  return {partes,cortado,fechamentosRemovidos:arestasFechamento.size};
+}
+function distAoAnel(P, q){
+  let m=1e30;
+  for(let i=0;i<P.length;i++){
+    const a=P[i], b=P[(i+1)%P.length];
+    const dx=b.x-a.x, dy=b.y-a.y, L2=dx*dx+dy*dy;
+    const t=L2<1e-12?0:clamp(((q.x-a.x)*dx+(q.y-a.y)*dy)/L2,0,1);
+    m=Math.min(m, Math.hypot(q.x-(a.x+t*dx), q.y-(a.y+t*dy)));
+  }
+  return m;
+}
+function passoDe(P){ return clamp(perimetro(P)/300, 2, 8); }
+function limpa(P){ return resample(removeLacos(suaviza(P,0.25,1)), passoDe(P)); }
+
+function offsetU(P, dist){ // offset externo uniforme, em passos
+  let Q=P, rest=dist;
+  while(rest>1e-9){
+    const d=Math.min(2.5, rest); rest-=d;
+    const N=normais(Q);
+    Q=Q.map((p,i)=>({x:p.x+N[i].x*d, y:p.y+N[i].y*d}));
+    Q=suaviza(Q, Math.min(0.3, d/2.5*0.3), 1); // suavização nunca maior que o passo
+    Q=resample(Q, passoDe(Q));
+  }
+  return resample(removeLacos(Q), passoDe(Q));
+}
+function despika(P){ // remove vértices que saem e voltam (espículas), preservando degraus reais
+  let Q=P, mudou=true, passes=0;
+  while(mudou && passes++<4 && Q.length>8){
+    mudou=false;
+    const n=Q.length, out=[];
+    for(let i=0;i<n;i++){
+      const a=Q[(i-1+n)%n], v=Q[i], b=Q[(i+1)%n];
+      const d1=Math.hypot(v.x-a.x,v.y-a.y), d2=Math.hypot(b.x-v.x,b.y-v.y);
+      const dd=Math.hypot(b.x-a.x,b.y-a.y);
+      if(d1+d2>0.3 && dd<0.5*(d1+d2)){ mudou=true; continue; }
+      out.push(v);
+    }
+    Q=out;
+  }
+  return Q;
+}
+function garanteFora(S, Q, dMin){ // força Q a ficar >= dMin fora de S (nunca puxa para dentro)
+  const cum=cumulativo(S), m=S.length;
+  const dSeg=Math.max(dMin, 0.05);
+  const empurra=q=>{ // projeta no segmento mais próximo e empurra pela normal DO SEGMENTO
+    const a=arcoMaisProximo(S,cum,q);
+    if(!dentroDe(S,q) && a.d>=dMin-1e-9) return q;
+    const p=pontoNoArco(S,cum,a.s);
+    const s1=S[p.i], s2=S[(p.i+1)%m];
+    let nx=s2.y-s1.y, ny=-(s2.x-s1.x);
+    const l=Math.hypot(nx,ny)||1;
+    return {x:p.x+nx/l*dSeg, y:p.y+ny/l*dSeg};
+  };
+  let out=Q.map(empurra);
+  // subdivisão: corda que cruza S — ou passa mais perto que dMin (corte de canto) —
+  // é dividida com o ponto médio projetado para fora
+  for(let pass=0; pass<6; pass++){
+    const n=out.length, novo=[];
+    let houve=false;
+    for(let i=0;i<n;i++){
+      const a=out[i], b=out[(i+1)%n];
+      novo.push(a);
+      if(Math.hypot(b.x-a.x, b.y-a.y)<0.2) continue;
+      let viola=false;
+      for(let j=0;j<m;j++){
+        if(segInt(a,b,S[j],S[(j+1)%m])){viola=true; break;}
+      }
+      if(!viola && dMin>0.02){
+        const mp={x:(a.x+b.x)/2, y:(a.y+b.y)/2};
+        const am=arcoMaisProximo(S,cum,mp);
+        if(am.d<dMin-0.02 || dentroDe(S,mp)) viola=true;
+      }
+      if(viola){
+        novo.push(empurra({x:(a.x+b.x)/2, y:(a.y+b.y)/2}));
+        houve=true;
+      }
+    }
+    out=novo;
+    if(!houve) break;
+  }
+  return despika(out);
+}
+function compHoriz(am){
+  let s=0;
+  for(let i=1;i<am.length;i++) s+=Math.hypot(am[i].x-am[i-1].x, am[i].y-am[i-1].y);
+  return s;
+}
+/* Entrada da primeira rampa: corrige EXCLUSIVAMENTE a primeira seção. A boca
+   é colocada para FORA: o antigo ponto da borda 1 torna-se o ponto interno da
+   boca e o outro extremo avança W pela normal externa. A crista de entrada é
+   o próprio segmento entre esses dois pontos. Nenhum ponto posterior muda. */
+function entradaOrtogonal(c, W){
+  if(!c)return;
+  const B1=c.borda1,B2=c.borda2,C=c.centro;
+  if(![B1,B2,C].every(P=>Array.isArray(P)&&P.length>=2))return;
+  const originais={borda1:B1.slice(),borda2:B2.slice(),centro:C.slice()};
+  const original={borda1:B1[0],borda2:B2[0],centro:C[0]};
+  const dx=B1[1].x-B1[0].x,dy=B1[1].y-B1[0].y,dl=Math.hypot(dx,dy)||1;
+  const tx=dx/dl,ty=dy/dl;
+  let nx=-ty,ny=tx;
+  /* B2 original está para dentro; a normal externa é obrigatoriamente o lado
+     oposto. Isso independe do sentido horário/anti-horário da rampa. */
+  const ladoInterno=(B2[0].x-B1[0].x)*nx+(B2[0].y-B1[0].y)*ny;
+  if(ladoInterno>0){nx=-nx;ny=-ny;}
+  const largura=Math.max(0,+W||0);
+  c._entradaOriginal=original;
+  c._entradaResto=originais;
+  const interno=B1[0];
+  B1[0]={x:interno.x+nx*largura,y:interno.y+ny*largura,z:interno.z};
+  B2[0]=interno;
+  C[0]={x:(B1[0].x+B2[0].x)/2,y:(B1[0].y+B2[0].y)/2,z:C[0].z};
+  /* REGRA PRINCIPAL: somente o índice zero muda. Todos os pontos [1..fim]
+     continuam sendo exatamente os mesmos objetos do traçado calculado. */
+  c.poly=B1.concat(B2.slice().reverse());
+  c.entradaExterna=B1[0];
+  c.entradaInterna=B2[0];
+  /* O caminho é orientado para terminar no MESMO objeto da ponta R. */
+  c.entradaLimite=[B2[0],B1[0]];
+  c._entradaDirecao={x:tx,y:ty};
+  c._entradaNormal={x:nx,y:ny};
+}
+
+/* ================= projeto (expansão de strings) ================= */
+// v0.9 — construção sobre ESQUELETO LISO: mantém-se uma família de anéis lisos
+// (offsets encadeados da linha-base, sem degrau nenhum); cada string FINAL é a
+// emenda exata de dois offsets do esqueleto — nominal fora da janela da rampa,
+// +W dentro — com degraus retos e ortogonais nas bordas. Nenhuma string deriva
+// de outra com degrau: as linhas ficam limpas (sem deformação acumulada) e os
+// cortes de crista e pé do mesmo banco saem alinhados, convergindo no ponto de
+// chegada/saída de cada trecho, como no Datamine.
+function offsetI(P, dist){ // offset INTERNO uniforme, em passos; null se a geometria colapsar
+  let Q=P, rest=dist;
+  while(rest>1e-9){
+    const d=Math.min(2.5, rest); rest-=d;
+    const N=normais(Q);
+    Q=Q.map((p,i)=>({x:p.x-N[i].x*d, y:p.y-N[i].y*d}));
+    Q=suaviza(Q, Math.min(0.3, d/2.5*0.3), 1);
+    Q=removeLacos(Q);
+    if(Q.length<8 || Math.abs(areaAssinada(Q))<200) return null;
+    Q=resample(Q, passoDe(Q));
+  }
+  const fin=resample(removeLacos(Q), passoDe(Q));
+  return Math.abs(areaAssinada(fin))<200 ? null : fin;
+}
+function garanteDentro(S, Q, dMin){ // força Q a ficar >= dMin DENTRO de S
+  const cum=cumulativo(S), m=S.length;
+  const dSeg=Math.max(dMin, 0.05);
+  const empurra=q=>{
+    const a=arcoMaisProximo(S,cum,q);
+    if(dentroDe(S,q) && a.d>=dMin-1e-9) return q;
+    const p=pontoNoArco(S,cum,a.s);
+    const s1=S[p.i], s2=S[(p.i+1)%m];
+    let nx=s2.y-s1.y, ny=-(s2.x-s1.x);
+    const l=Math.hypot(nx,ny)||1;
+    return {x:p.x-nx/l*dSeg, y:p.y-ny/l*dSeg};
+  };
+  let out=Q.map(empurra);
+  for(let pass=0; pass<6; pass++){
+    const n=out.length, novo=[];
+    let houve=false;
+    for(let i=0;i<n;i++){
+      const a=out[i], b=out[(i+1)%n];
+      novo.push(a);
+      if(Math.hypot(b.x-a.x, b.y-a.y)<0.2) continue;
+      let viola=false;
+      for(let j=0;j<m;j++){
+        if(segInt(a,b,S[j],S[(j+1)%m])){viola=true; break;}
+      }
+      if(!viola && dMin>0.02){
+        const mp={x:(a.x+b.x)/2, y:(a.y+b.y)/2};
+        const am=arcoMaisProximo(S,cum,mp);
+        if(am.d<dMin-0.02 || !dentroDe(S,mp)) viola=true;
+      }
+      if(viola){
+        novo.push(empurra({x:(a.x+b.x)/2, y:(a.y+b.y)/2}));
+        houve=true;
+      }
+    }
+    out=novo;
+    if(!houve) break;
+  }
+  return despika(out);
+}
+// faixa (banda) do trecho de rampa sobre o esqueleto liso S: borda interna
+// desliza do pé (t=0) à crista−W (t=L); terminações retas e ortogonais
+function faixaCorredor(S, Cwide, dh, W, s0, L, dir, zIni, zFim){
+  const cum=cumulativo(S), per=cum[cum.length-1];
+  const N=normais(S);
+  const wrap=s=>((s%per)+per)%per;
+  const nS=clamp(Math.round(L/3),24,140);
+  const pas=[], nk=[];
+  for(let k=0;k<=nS;k++){
+    const s=s0+dir*(k*L/nS);
+    const pa=pontoNoArco(S,cum,s);
+    pas.push(pa);
+    const i1=pa.i, i2=(pa.i+1)%S.length;
+    const sMod=wrap(s);
+    const t=clamp((sMod-cum[i1])/Math.max(1e-9,cum[i1+1]-cum[i1]),0,1);
+    let nx=N[i1].x*(1-t)+N[i2].x*t, ny=N[i1].y*(1-t)+N[i2].y*t;
+    const l=Math.hypot(nx,ny)||1e-9;
+    nk.push({x:nx/l, y:ny/l});
+  }
+  const angMax=Math.max(0.05, 0.8*(L/nS)/W);
+  for(let pass=0; pass<60; pass++){
+    let pior=0;
+    for(let k=1;k<nk.length;k++){
+      const dot=clamp(nk[k-1].x*nk[k].x+nk[k-1].y*nk[k].y,-1,1);
+      pior=Math.max(pior, Math.acos(dot));
+    }
+    if(pior<=angMax) break;
+    const novo=nk.map((n,k)=>{
+      if(k===0||k===nk.length-1) return n;
+ let nx=nk[k-1].x+2*n.x+nk[k+1].x, ny=nk[k-1].y+2*n.y+nk[k+1].y;
+      const l=Math.hypot(nx,ny)||1e-9;
+      return {x:nx/l, y:ny/l};
+    });
+    for(let k=0;k<nk.length;k++) nk[k]=novo[k];
+  }
+  const borda1=[], borda2=[], centro=[];
+  for(let k=0;k<=nS;k++){
+    const pa=pas[k], ni=nk[k];
+    const prog=k/nS;               // a estrada sobe a face: desloca-se dh·prog
+    const off=dh*prog;
+    const z=zIni+(zFim-zIni)*prog;
+    borda1.push({x:pa.x-ni.x*off, y:pa.y-ni.y*off, z});
+    borda2.push({x:pa.x-ni.x*(off+W), y:pa.y-ni.y*(off+W), z});
+    centro.push({x:pa.x-ni.x*(off+W/2), y:pa.y-ni.y*(off+W/2), z});
+  }
+  { // colunas nunca entram no anel interno (a string do nível de chegada contém a faixa)
+    const cumA=cumulativo(Cwide);
+    for(let k=0;k<borda2.length;k++){
+      const q=borda2[k];
+      if(dentroDe(Cwide, q)){
+        const pr=arcoMaisProximo(Cwide,cumA,q);
+        if(pr.d>0.03){
+          const pp=pontoNoArco(Cwide,cumA,pr.s);
+          borda2[k]={x:pp.x, y:pp.y, z:q.z};
+          centro[k]={x:(borda1[k].x+pp.x)/2, y:(borda1[k].y+pp.y)/2, z:q.z};
+        }
+      }
+    }
+  }
+  // colunas convergem para dentro: desfaz pinças entre colunas vizinhas
+  for(let pass=0; pass<10; pass++){
+    let houve=false;
+    for(let k=0;k<borda2.length-1;k++){
+      if(segInt(borda1[k],borda2[k],borda1[k+1],borda2[k+1])){
+        const mx=(borda2[k].x+borda2[k+1].x)/2, my=(borda2[k].y+borda2[k+1].y)/2;
+        borda2[k]={x:mx,y:my,z:borda2[k].z};
+        borda2[k+1]={x:mx,y:my,z:borda2[k+1].z};
+        centro[k]={x:(borda1[k].x+mx)/2, y:(borda1[k].y+my)/2, z:centro[k].z};
+        centro[k+1]={x:(borda1[k+1].x+mx)/2, y:(borda1[k+1].y+my)/2, z:centro[k+1].z};
+        houve=true;
+      }
+    }
+    if(!houve) break;
+  }
+  const poly=borda1.concat(borda2.slice().reverse());
+  const fimP=pontoNoArco(S,cum,s0+dir*L);
+  return {corr:{poly, centro, borda1, borda2, zIni, zFim, s0, L, Lt:0, dir},
+          ancNova:{x:fimP.x,y:fimP.y}};
+}
+// sub-arco CCW de P entre as posições de arco s1→s2 (com extremos projetados)
+function subArco(P, cumP, s1, s2){
+  const per=cumP[cumP.length-1];
+  const wrap=s=>((s%per)+per)%per;
+  const ini=pontoNoArco(P,cumP,s1), fim=pontoNoArco(P,cumP,s2);
+  const out=[{x:ini.x, y:ini.y}];
+  const D=wrap(s2-s1);
+  let i=(ini.i+1)%P.length, guard=0;
+  while(guard++<=P.length){
+    if(wrap(cumP[i]-s1)>=D-1e-6) break;
+    out.push({x:P[i].x, y:P[i].y});
+    i=(i+1)%P.length;
+  }
+  out.push({x:fim.x, y:fim.y});
+  return out;
+}
+// anel final = EMENDA DURA sobre o esqueleto liso: anel nominal fora da janela
+// da rampa, anel deslocado W para dentro na janela, com cortes retos nas bordas.
+// A geometria dos anéis e o restante da rampa não recebem correção distribuída:
+// somente a primeira seção do primeiro corredor é ortogonalizada depois.
+function anelComRampa(Sk, W, ancIni, anc, cCum, dir){
+  const per0=perimetro(Sk);
+  const cum0=cumulativo(Sk);
+  const sA0=arcoMaisProximo(Sk,cum0,ancIni).s;
+  const sB0=arcoMaisProximo(Sk,cum0,anc).s;
+  let Rp = dir===1 ? sB0-sA0 : sA0-sB0;
+  Rp=((Rp%per0)+per0)%per0;
+  const wraps=Math.max(0, Math.round((cCum-Rp)/per0));
+  const baseA = wraps>0 ? offsetI(Sk, wraps*W) : Sk;
+  if(!baseA) return null;
+  const wideA = offsetI(baseA, W);
+  if(!wideA) return null;
+  const cumB=cumulativo(baseA), perB=cumB[cumB.length-1];
+  const cumW=cumulativo(wideA);
+  const sIniB=arcoMaisProximo(baseA,cumB,ancIni).s, sFimB=arcoMaisProximo(baseA,cumB,anc).s;
+  const sIniW=arcoMaisProximo(wideA,cumW,ancIni).s, sFimW=arcoMaisProximo(wideA,cumW,anc).s;
+  let R = dir===1 ? sFimB-sIniB : sIniB-sFimB;
+  R=((R%perB)+perB)%perB;
+  if(cCum>per0*0.5 && R<2) R=perB*0.999;   // volta completa exata
+  if(R<3) return resample(baseA, passoDe(baseA));
+  if(perB-R<3) return resample(wideA, passoDe(wideA));
+  const w1B = dir===1 ? sIniB : sFimB, w2B = dir===1 ? sFimB : sIniB;
+  const w1W = dir===1 ? sIniW : sFimW, w2W = dir===1 ? sFimW : sIniW;
+  // dentro da janela: anel deslocado de w1→w2 (CCW); fora: anel nominal w2→w1
+  const dentro=subArco(wideA, cumW, w1W, w2W);
+  const fora=subArco(baseA, cumB, w2B, w1B);
+  const P=removeLacos(dentro.concat(fora));
+  /* Estes segmentos fecham somente a área analítica. A representação aberta
+     usa os dois arcos acima e omite ambas as ligações transversais. */
+  P._cortesRampa=[
+    {a:dentro.at(-1),b:fora[0]},
+    {a:fora.at(-1),b:dentro[0]}
+  ];
+  return P;
+}
+
+function geraDesign(base0, p, tipo, anc0, overrides){
+  overrides = overrides || {};
+  const sinal = tipo==="cava" ? -1 : 1;  // do limite EXTERIOR: cava desce, pilha sobe
+  const z0 = 0;                           // a linha desenhada fica na superfície/terreno
+  const tp0 = tipo==="cava" ? "crista" : "pe";  // tipo da linha desenhada e das bermas
+  const tp1 = tipo==="cava" ? "pe" : "crista";  // tipo dos anéis de face (para dentro)
+  const avisos=[];
+  let base=garanteCCW(dedup(base0));
+  if(base.length<3) throw new Error("linha-base inválida");
+  base=resample(removeLacos(base), passoDe(base));
+
+  const aneis=[{P:base, z:z0, tp:tp0}];
+  // edição manual: a string que ocupará o índice aneis.length é substituída pela editada
+  const comOverride=(P, prev, dMin)=>{
+    const o=overrides[aneis.length];
+    if(o && o.length>=3){
+      let Q=resample(removeLacos(garanteCCW(dedup(o))), passoDe(o));
+      if(prev) Q=garanteDentro(prev, Q, dMin||0); // edição nunca cruza a string anterior
+      return {P:Q, ov:true};
+    }
+    return {P, ov:false};
+  };
+  const corredores=[];
+  const rampaOn = p.rampaOn && p.rampaG>0;
+  let anc = anc0 ? {x:anc0.x,y:anc0.y} : {x:base[0].x, y:base[0].y};
+  {// projeta âncora sobre a linha-base
+    const cum=cumulativo(base);
+    const a=arcoMaisProximo(base,cum,anc);
+    const pp=pontoNoArco(base,cum,a.s);
+    anc={x:pp.x,y:pp.y};
+  }
+  const ancInicial={x:anc.x,y:anc.y};
+
+  let Sk=base, z=z0, rest=p.H;
+  let cCum=0;                       // arco acumulado percorrido pela estrada
+  const tanF=Math.tan(rad(p.face));
+  while(rest>1e-6){
+    const h=Math.min(p.banco, rest); rest-=h;
+    const zPrev=z; z+=sinal*h;
+    const dh=h/tanF;
+    const SkC=offsetI(Sk, dh);      // esqueleto liso do próximo nível (para dentro)
+    if(!SkC){ avisos.push("a geometria fecha antes de completar — parado na cota "+fmt(zPrev,0)+" m"); break; }
+    let corr=null;
+    if(rampaOn){
+      // trecho DESTA face, medido no esqueleto do nível de partida (Sk)
+      const cum=cumulativo(Sk), per=cum[cum.length-1];
+      const Lalvo=h/(p.rampaG/100);
+      let L=Math.min(Lalvo, 0.9*per);
+      const s0=arcoMaisProximo(Sk,cum,anc).s;
+      const wide=offsetI(SkC, p.rampaL);
+      if(wide){
+        let f=faixaCorredor(Sk, wide, dh, p.rampaL, s0, L, p.dir, zPrev, z);
+        for(let it=0; it<3; it++){ // corretivo iterativo: o gradiente vale no EIXO da rampa
+          const Lc=compHoriz(f.corr.centro);
+          if(!(Lc>1) || Math.abs(Lc-Lalvo)/Lalvo<=0.02) break;
+          const L2=Math.min(L*Lalvo/Lc, 0.9*per);
+          if(Math.abs(L2-L)<=0.5) break;
+          L=L2;
+          f=faixaCorredor(Sk, wide, dh, p.rampaL, s0, L, p.dir, zPrev, z);
+        }
+        if(compHoriz(f.corr.centro) < 0.98*Lalvo)
+          avisos.push("rampa não cabe no perímetro — trecho encurtado, mais íngreme que o nominal");
+        corr=f.corr;
+        corr.Lt=Math.min(Math.max(2.5*passoDe(Sk), 1.2*p.rampaL), L*0.45);
+        cCum+=L;
+        anc=f.ancNova;
+      }else avisos.push("rampa não cabe — o anel interno colapsaria");
+    }
+    // anel final do nível: janela SUAVE da rampa sobre o esqueleto liso
+    const prevAnel=aneis[aneis.length-1].P;
+    let C = corr ? anelComRampa(SkC, p.rampaL, ancInicial, anc, cCum, p.dir) : SkC;
+    if(!C){ avisos.push("a geometria fecha antes de completar — parado na cota "+fmt(zPrev,0)+" m"); break; }
+    const cortesC=C._cortesRampa||[];
+    C=garanteDentro(prevAnel, C, Math.min(0.3, 0.5*dh));
+    const oc=comOverride(C, prevAnel, Math.min(0.3, 0.5*dh)); C=oc.P;
+    aneis.push({P:C,z,tp:tp1,ov:oc.ov,cortesRampa:oc.ov?[]:cortesC});
+    if(corr){
+      corr.anelIdx=aneis.length-1;corredores.push(corr);
+    }
+    if(rest>1e-6){
+      // berma UNIFORME e contínua — a rampa corre na face, não sobre a berma
+      // (se a string foi editada, a cadeia regenera a partir dela)
+      const SkT=offsetI(oc.ov ? C : SkC, p.berma);
+      if(!SkT){ avisos.push("a geometria fecha antes de completar — parado na cota "+fmt(z,0)+" m"); break; }
+      let T = corr && !oc.ov ? anelComRampa(SkT, p.rampaL, ancInicial, anc, cCum, p.dir) : SkT;
+      if(!T){ avisos.push("a geometria fecha antes de completar — parado na cota "+fmt(z,0)+" m"); break; }
+      const cortesT=T._cortesRampa||[];
+      T=garanteDentro(C, T, Math.min(0.3, p.berma*0.5));
+      const ot=comOverride(T, C, Math.min(0.3, p.berma*0.5)); T=ot.P;
+      aneis.push({P:T,z,tp:tp0,ov:ot.ov,cortesRampa:ot.ov?[]:cortesT});
+      Sk = ot.ov ? T : SkT;
+    }
+  }
+
+  // volumes: prismóide entre strings consecutivas com dz≠0
+  let vol=0;
+  for(let i=0;i<aneis.length-1;i++){
+    const dz=Math.abs(aneis[i+1].z-aneis[i].z);
+    if(dz>1e-9){
+      const A1=Math.abs(areaAssinada(aneis[i].P)), A2=Math.abs(areaAssinada(aneis[i+1].P));
+      vol+=dz/3*(A1+A2+Math.sqrt(A1*A2));
+    }
+  }
+  /* A entrada externa substitui o traçado real do PRIMEIRO corredor antes de
+     medir a estrada. Corredores seguintes permanecem idênticos. */
+  if(corredores.length)entradaOrtogonal(corredores[0],p.rampaL);
+  let encontroEntrada=null;
+  if(corredores.length&&aneis.length>1){
+    const c=corredores[0],q=c.entradaExterna,
+      rampPolys=corredores.map(r=>r.poly).filter(P=>Array.isArray(P)&&P.length>=3),
+      vFim={x:q.x-c.entradaInterna.x,y:q.y-c.entradaInterna.y};
+    encontroEntrada={ponto:q,anelIndices:{}};
+    const incorporaNoTracado=(a,tp)=>{
+      const rec=recortaLinhaForaRampas(a.P,rampPolys,a.cortesRampa);let ext=null;
+      for(let pi=0;pi<(rec.partes||[]).length;pi++){
+        const P=rec.partes[pi];if(P.length<2)continue;
+        for(const cand of [
+          {p:P[0],v:{x:P[0].x-P[1].x,y:P[0].y-P[1].y},lado:"inicio"},
+          {p:P.at(-1),v:{x:P.at(-1).x-P.at(-2).x,y:P.at(-1).y-P.at(-2).y},lado:"fim"}
+        ]){
+          const d=Math.hypot(q.x-cand.p.x,q.y-cand.p.y);
+          if(!ext||d<ext.d)ext={...cand,d,pi};
+        }
+      }
+      if(!ext)return false;
+      const dx=q.x-ext.p.x,dy=q.y-ext.p.y,D=Math.hypot(dx,dy),
+        norm=v=>{const l=Math.hypot(v.x,v.y)||1;return {x:v.x/l,y:v.y/l};};
+      let u0=norm(ext.v),u1=norm(vFim);
+      if(u0.x*dx+u0.y*dy<0)u0={x:-u0.x,y:-u0.y};
+      if(u1.x*dx+u1.y*dy<0)u1={x:-u1.x,y:-u1.y};
+      const h=Math.min(D*.38,Math.max(1,D/3)),
+        c1={x:ext.p.x+u0.x*h,y:ext.p.y+u0.y*h},
+        c2={x:q.x-u1.x*h,y:q.y-u1.y*h},curva=[ext.p];
+      for(let i=1;i<12;i++){
+        const t=i/12,u=1-t;
+        curva.push({x:u*u*u*ext.p.x+3*u*u*t*c1.x+3*u*t*t*c2.x+t*t*t*q.x,
+          y:u*u*u*ext.p.y+3*u*u*t*c1.y+3*u*t*t*c2.y+t*t*t*q.y});
+      }
+      curva.push(q);
+      const partes=rec.partes.map(P=>P.slice()),P=partes[ext.pi];
+      partes[ext.pi]=ext.lado==="fim"
+        ?P.concat(curva.slice(1))
+        :P.slice().reverse().concat(curva.slice(1));
+      a.partesEntrada=partes;
+      encontroEntrada.anelIndices[tp]=aneis.indexOf(a);
+      return true;
+    };
+    const ok0=incorporaNoTracado(aneis[0],tp0),ok1=incorporaNoTracado(aneis[1],tp1);
+    if(!ok0||!ok1){
+      delete aneis[0].partesEntrada;delete aneis[1].partesEntrada;encontroEntrada=null;
+    }
+  }
+  // rampa como construída: comprimento e gradiente medidos no eixo
+  let rampaDesenv=0, rampaHoriz=0, rampaQueda=0;
+  for(const c of corredores){
+    for(let i=1;i<c.centro.length;i++){
+      const a=c.centro[i-1], b=c.centro[i];
+      const dxy=Math.hypot(b.x-a.x, b.y-a.y);
+      rampaHoriz+=dxy;
+      rampaDesenv+=Math.hypot(dxy, b.z-a.z);
+    }
+    rampaQueda+=Math.abs(c.zFim-c.zIni);
+  }
+  const ultimo=aneis[aneis.length-1];
+  return {
+    aneis, corredores, encontroEntrada, avisos, tipo, ancInicial,
+    vol,
+    areaBase:Math.abs(areaAssinada(base)),
+    areaFinal:Math.abs(areaAssinada(ultimo.P)),
+    nBancos:Math.ceil(p.H/p.banco-1e-9),
+    rampaDesenv,
+    gradEfetivo: rampaHoriz>0 ? 100*rampaQueda/rampaHoriz : 0
+  };
+}
+
+/* ================= cota em um ponto (para a seção) ================= */
+function cotaEm(design, q){
+  if(!design) return null;
+  const an=design.aneis;
+  // rampa tem prioridade — inclusive fora do último anel (faixa de saída)
+  const cs=design.corredores;
+  for(const c of cs){
+    if(dentroDe(c.poly, q)){
+      let m=1e30, zc=c.zIni;
+      for(const s of c.centro){
+        const d=Math.hypot(q.x-s.x, q.y-s.y);
+        if(d<m){m=d; zc=s.z;}
+      }
+      return zc;
+    }
+    // pontos exatamente sobre a linha de entrada/saída do corredor (borda do polígono)
+    const caps=[[c.borda1[0], c.borda2[0], c.zIni],
+                [c.borda1[c.borda1.length-1],c.borda2[c.borda2.length-1],c.zFim]];
+    for(const cap of caps){
+      const a=cap[0], b2=cap[1];
+      if(!a||!b2)continue;
+      const dx=b2.x-a.x, dy=b2.y-a.y, L2=dx*dx+dy*dy;
+      const t=L2<1e-12?0:clamp(((q.x-a.x)*dx+(q.y-a.y)*dy)/L2,0,1);
+      if(Math.hypot(q.x-(a.x+t*dx), q.y-(a.y+t*dy))<0.3) return cap[2];
+    }
+  }
+  // "pontes" entre corredores consecutivos (travessia do banco, cota do patamar)
+  for(let k=0;k<cs.length-1;k++){
+    const a=cs[k], b=cs[k+1];
+    const quad=[a.borda1[a.borda1.length-1], a.borda2[a.borda2.length-1],
+                b.borda2[0], b.borda1[0]];
+    if(dentroDe(quad, q)) return a.zFim;
+  }
+  // anéis do EXTERIOR (linha desenhada, an[0]) para o interior (fundo/topo)
+  if(!dentroDe(an[0].P, q)) return null;
+  if(dentroDe(an[an.length-1].P, q)) return an[an.length-1].z;
+  for(let k=an.length-2;k>=0;k--){
+    if(dentroDe(an[k].P, q)){
+      const d1=distAoAnel(an[k].P,q), d2=distAoAnel(an[k+1].P,q);
+      if(Math.abs(an[k+1].z-an[k].z)<1e-9) return an[k].z;
+      return an[k].z+(an[k+1].z-an[k].z)*d1/Math.max(1e-9,d1+d2);
+    }
+  }
+  return 0;
+}
+function cotaTotal(q){
+  const zc=cotaEm(objs.cava.design, q);
+  if(zc!==null) return zc;
+  const zp=cotaEm(objs.pilha.design, q);
+  if(zp!==null) return zp;
+  return 0;
+}
+
+/* ================= parâmetros / estado ================= */
+function parametros(){
+  const v=id=>parseFloat($(id).value)||0;
+  return {
+    cava:{H:Math.max(2,v("cava_H")), banco:Math.max(1,v("cava_banco")),
+          face:clamp(v("cava_face"),15,89), berma:Math.max(0,v("cava_berma")),
+          rampaOn:$("cava_rampa_on").checked, rampaL:Math.max(2,v("cava_rampa_larg")),
+          rampaG:Math.max(0.5,v("cava_rampa_grad")), dir:$("cava_rampa_dir").value==="ah"?1:-1},
+    pilha:{H:Math.max(2,v("pilha_H")), banco:Math.max(1,v("pilha_banco")),
+          face:clamp(v("pilha_face"),10,60), berma:Math.max(0,v("pilha_berma")),
+          rampaOn:$("pilha_rampa_on").checked, rampaL:Math.max(2,v("pilha_rampa_larg")),
+          rampaG:Math.max(0.5,v("pilha_rampa_grad")), dir:$("pilha_rampa_dir").value==="ah"?1:-1},
+  };
+}
+
+function regen(){
+  const prm=parametros();
+  for(const k of ["cava","pilha"]){
+    const o=objs[k];
+    o.erro=null;
+    o.overrides = o.overrides || {};
+    // mudou a estrutura de bancos, a linha-base, a âncora ou o sentido da rampa?
+    // as edições manuais são polilinhas fixas no mundo — descartar para não congelar geometria antiga
+    const meta={H:prm[k].H, banco:prm[k].banco,
+                geo:JSON.stringify([o.base, o.anc, prm[k].dir])};
+    let avisoOv=null;
+    o._estruturaMudou=!!(o.ovMeta && (o.ovMeta.H!==meta.H || o.ovMeta.banco!==meta.banco));
+    if(o.ovMeta && (o.ovMeta.H!==meta.H || o.ovMeta.banco!==meta.banco || o.ovMeta.geo!==meta.geo)
+       && Object.keys(o.overrides).length){
+      o.overrides={};
+      avisoOv="edições manuais de strings descartadas (estrutura de bancos ou base/rampa mudou)";
+    }
+    o.ovMeta=meta;
+    if(o.base && o.base.length>=3){
+      try{
+        o.design=geraDesign(o.base, prm[k], k, o.anc, o.overrides);
+        if(avisoOv) o.design.avisos.push(avisoOv);
+      }
+      catch(e){ o.design=null; o.erro=String(e && e.message || e); }
+    }else o.design=null;
+  }
+  if(sel && (objs[sel.alvo]._estruturaMudou ||
+             !(objs[sel.alvo].design && objs[sel.alvo].design.aneis[sel.idx]))) sel=null;
+  atualizaDicaSel();
+  salvaEstado();
+  atualizaResultados();
+  desenhaSecPainel();
+  redesenha();
+  /* Contrato neutro de integração: no uso independente o evento não produz
+     efeito; dentro do CCMGIS ele avisa que as strings 3D precisam ser
+     atualizadas na árvore de camadas. */
+  window.dispatchEvent(new CustomEvent("cava2:changed",{detail:{at:Date.now()}}));
+}
+
+function salvaEstado(){
+  try{
+    const ids=["cava_H","cava_banco","cava_face","cava_berma","cava_rampa_larg","cava_rampa_grad",
+               "pilha_H","pilha_banco","pilha_face","pilha_berma","pilha_rampa_larg","pilha_rampa_grad"];
+    const st={bases:{cava:objs.cava.base, pilha:objs.pilha.base},
+              ancs:{cava:objs.cava.anc, pilha:objs.pilha.anc},
+              ovs:{cava:objs.cava.overrides||{}, pilha:objs.pilha.overrides||{}},
+              sec:{a:secA,b:secB},
+              vals:Object.fromEntries(ids.map(i=>[i,$(i).value])),
+              chks:{c:$("cava_rampa_on").checked, p:$("pilha_rampa_on").checked},
+              dirs:{c:$("cava_rampa_dir").value, p:$("pilha_rampa_dir").value}};
+    localStorage.setItem("cavaPilhaV02", JSON.stringify(st));
+  }catch(e){}
+}
+function carregaEstado(){
+  try{
+    const st=JSON.parse(localStorage.getItem("cavaPilhaV02"));
+    if(!st || !st.bases) return false;
+    objs.cava.base=st.bases.cava; objs.pilha.base=st.bases.pilha;
+    objs.cava.anc=st.ancs && st.ancs.cava; objs.pilha.anc=st.ancs && st.ancs.pilha;
+    objs.cava.overrides=(st.ovs && st.ovs.cava)||{};
+    objs.pilha.overrides=(st.ovs && st.ovs.pilha)||{};
+    if(st.sec){secA=st.sec.a; secB=st.sec.b;}
+    for(const [i,v] of Object.entries(st.vals||{})) if($(i)) $(i).value=v;
+    if(st.chks){$("cava_rampa_on").checked=!!st.chks.c; $("pilha_rampa_on").checked=!!st.chks.p;}
+    if(st.dirs){$("cava_rampa_dir").value=st.dirs.c||"ah"; $("pilha_rampa_dir").value=st.dirs.p||"ah";}
+    return !!(objs.cava.base||objs.pilha.base);
+  }catch(e){ return false; }
+}
+
+/* ================= resultados ================= */
+function atualizaResultados(){
+  const bloco=(nome,o)=>{
+    if(o.erro) return `<div class="grp"><b>${nome}</b><div class="aviso">erro: ${o.erro}</div></div>`;
+    if(!o.design) return `<div class="grp"><b>${nome}</b><div class="lin"><span>sem linha-base desenhada</span></div></div>`;
+    const d=o.design;
+    const lin=(a,b)=>`<div class="lin"><span>${a}</span><span>${b}</span></div>`;
+    return `<div class="grp"><b>${nome}</b>
+      ${lin("Bancos", d.nBancos)}
+      ${lin("Strings geradas", d.aneis.length)}
+      ${lin("Área da linha-base", fmt(d.areaBase/1e4,2)+" ha")}
+      ${lin("Área final (superfície)", fmt(d.areaFinal/1e4,2)+" ha")}
+      ${lin("Volume", fmt(d.vol/1e6,3)+" Mm³")}
+      ${d.rampaDesenv?lin("Rampa (desenv. real)", fmt(d.rampaDesenv,0)+" m"):""}
+      ${d.rampaDesenv?lin("Gradiente efetivo", fmt(d.gradEfetivo,1)+"%"):""}
+      ${d.avisos.map(a=>`<div class="aviso">⚠ ${a}</div>`).join("")}
+    </div>`;
+  };
+  let html=bloco("Cava", objs.cava)+bloco("Pilha", objs.pilha);
+  if(objs.cava.design && objs.pilha.design){
+    html+=`<div class="lin"><span><b>Saldo pilha − cava</b></span><span>${fmt((objs.pilha.design.vol-objs.cava.design.vol)/1e6,3)} Mm³</span></div>`;
+  }
+  $("resultados").innerHTML=html;
+}
+
+/* ================= vista / desenho ================= */
+const W2S=(x,y)=>[ox+x*escala, oy-y*escala];
+const S2W=(sx,sy)=>({x:(sx-ox)/escala, y:(oy-sy)/escala});
+
+function bboxTudo(){
+  let x0=1e30,x1=-1e30,y0=1e30,y1=-1e30, tem=false;
+  const inclui=P=>{for(const p of P){x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y);tem=true;}};
+  for(const k of ["cava","pilha"]){
+    const o=objs[k];
+    if(!visibilidade[k].on) continue;
+    if(o.design) inclui(o.design.aneis[0].P);
+    else if(o.base) inclui(o.base);
+  }
+  for(const item of contexto) for(const P of (item.paths||[])) inclui(P);
+  for(const item of contexto){
+    const b=item.bounds;
+    if(Array.isArray(b)&&b.length===4)inclui([{x:b[0],y:b[1]},{x:b[2],y:b[3]}]);
+  }
+  if(desenho && desenho.pts.length) inclui(desenho.pts);
+  if(!tem){x0=-200;x1=600;y0=-250;y1=250;}
+  const mx=(x1-x0)*0.06+20, my=(y1-y0)*0.06+20;
+  return {x0:x0-mx,x1:x1+mx,y0:y0-my,y1:y1+my};
+}
+function ajustarVista(){
+  const b=bboxTudo(), W=cv.clientWidth, H=cv.clientHeight;
+  escala=Math.min(W/(b.x1-b.x0), H/(b.y1-b.y0));
+  ox=W/2-(b.x0+b.x1)/2*escala;
+  oy=H/2+(b.y0+b.y1)/2*escala;
+  vistaManual=false;
+}
+
+function grade(){
+  const W=cv.clientWidth, H=cv.clientHeight;
+  const passos=[1,2,5,10,20,25,50,100,200,500,1000,2000];
+  const passo=passos.find(p=>p*escala>=55)||Math.pow(10, Math.ceil(Math.log10(55/escala)));
+  const xa=(0-ox)/escala, xb=(W-ox)/escala, ya=(oy-H)/escala, yb=(oy-0)/escala;
+  ctx.strokeStyle="#e3ded2"; ctx.lineWidth=1;
+  ctx.fillStyle="#a89f8c"; ctx.font="10px Signika, sans-serif";
+  ctx.textAlign="left"; ctx.textBaseline="top";
+  for(let x=Math.floor(xa/passo)*passo;x<=xb;x+=passo){
+    const [sx]=W2S(x,0);
+    ctx.beginPath(); ctx.moveTo(sx,0); ctx.lineTo(sx,H); ctx.stroke();
+    ctx.fillText(fmt(x,0), sx+3, 3);
+  }
+  for(let y=Math.floor(ya/passo)*passo;y<=yb;y+=passo){
+    const sy=W2S(0,y)[1];
+    ctx.beginPath(); ctx.moveTo(0,sy); ctx.lineTo(W,sy); ctx.stroke();
+    ctx.fillText(fmt(y,0), 3, sy+2);
+  }
+  const bx=W-30, by=H-16, L=passo*escala;
+  ctx.strokeStyle="#444"; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(bx-L,by); ctx.lineTo(bx,by);
+  ctx.moveTo(bx-L,by-5); ctx.lineTo(bx-L,by+5);
+  ctx.moveTo(bx,by-5); ctx.lineTo(bx,by+5); ctx.stroke();
+  ctx.fillStyle="#444"; ctx.textAlign="center"; ctx.textBaseline="bottom";
+  ctx.font="11px Signika, sans-serif";
+  ctx.fillText(fmt(passo,0)+" m", bx-L/2, by-4);
+}
+
+function tracaAnel(P, cor, lw, tracejado, opacity=1){
+  const dash=v=>Array.isArray(v)?v:(typeof v==="string"?v.split(/[ ,]+/).map(Number).filter(Number.isFinite):(v?[6,4]:[]));
+  /* Exatamente como a publicação no Mapa 2D: ignora somente coordenadas
+     inválidas e liga todos os demais vértices numa única volta. O retorno ao
+     primeiro ponto é explícito para não depender de heurísticas do canvas. */
+  const Q=(P||[]).filter(p=>Number.isFinite(+p.x)&&Number.isFinite(+p.y));
+  if(Q.length<2)return;
+  ctx.save();ctx.globalAlpha=Math.max(0,Math.min(1,Number.isFinite(+opacity)?+opacity:1));
+  ctx.beginPath();
+  Q.forEach((p,i)=>{const [sx,sy]=W2S(+p.x,+p.y); i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy);});
+  {const [sx,sy]=W2S(+Q[0].x,+Q[0].y);ctx.lineTo(sx,sy);}
+  ctx.closePath();
+  ctx.setLineDash(dash(tracejado));
+  ctx.strokeStyle=cor; ctx.lineWidth=lw; ctx.stroke();
+  ctx.setLineDash([]);ctx.restore();
+}
+function tracaLinhaAberta(P,cor,lw,tracejado,opacity=1){
+  const dash=v=>Array.isArray(v)?v:(typeof v==="string"?v.split(/[ ,]+/).map(Number).filter(Number.isFinite):(v?[6,4]:[])),
+    Q=(P||[]).filter(p=>Number.isFinite(+p.x)&&Number.isFinite(+p.y));
+  if(Q.length<2)return;
+  ctx.save();ctx.globalAlpha=Math.max(0,Math.min(1,Number.isFinite(+opacity)?+opacity:1));
+  ctx.beginPath();Q.forEach((p,i)=>{const [sx,sy]=W2S(+p.x,+p.y);i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy);});
+  ctx.setLineDash(dash(tracejado));ctx.strokeStyle=cor;ctx.lineWidth=lw;ctx.stroke();
+  ctx.setLineDash([]);ctx.restore();
+}
+function hachuraContexto(P,item,cor){
+  const h=item.hatch||"solid",fill=Math.max(0,Math.min(1,+item.fill||0));
+  if(h==="none")return;
+  ctx.save();ctx.beginPath();
+  P.forEach((p,i)=>{const [x,y]=W2S(p.x,p.y);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.closePath();
+  if(h==="solid"){
+    if(fill>0){ctx.globalAlpha=fill;ctx.fillStyle=cor;ctx.fill();}
+    ctx.restore();return;
+  }
+  /* Hachuras do 2D continuam vazadas no editor. Os padrões básicos mantêm
+     sua orientação; os padrões geológicos usam a amostra diagonal adotada
+     pela própria miniatura da árvore, nunca um preenchimento cinza sólido. */
+  ctx.clip();const Q=P.map(p=>W2S(p.x,p.y)),xs=Q.map(q=>q[0]),ys=Q.map(q=>q[1]),
+    x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys),
+    passo=Math.max(3,Math.min(40,6*(+item.hatchScale||1)));
+  ctx.globalAlpha=Math.max(.15,Math.min(1,Number.isFinite(+item.opacity)?+item.opacity:1));
+  ctx.strokeStyle=cor;ctx.fillStyle=cor;ctx.lineWidth=.8;ctx.beginPath();
+  if(h==="dots"){
+    for(let y=y0;y<=y1;y+=passo)for(let x=x0;x<=x1;x+=passo){ctx.moveTo(x+1,y);ctx.arc(x,y,1,0,7);}
+    ctx.fill();ctx.restore();return;
+  }
+  const horizontal=h==="horizontal",vertical=h==="vertical",dupla=h==="cross";
+  if(horizontal||dupla)for(let y=y0;y<=y1;y+=passo){ctx.moveTo(x0,y);ctx.lineTo(x1,y);}
+  if(vertical||dupla)for(let x=x0;x<=x1;x+=passo){ctx.moveTo(x,y0);ctx.lineTo(x,y1);}
+  if(!horizontal&&!vertical&&!dupla){
+    const volta=h==="bdiagonal"?-1:1,altura=y1-y0;
+    for(let x=x0-altura;x<=x1+altura;x+=passo){ctx.moveTo(x,y1);ctx.lineTo(x+volta*altura,y0);}
+  }
+  ctx.stroke();ctx.restore();
+}
+function desenhaContexto(){
+  ctx.save();
+  /* Imagens primeiro; vetores e strings permanecem nítidos por cima. */
+  for(const item of contexto){
+    const b=item.bounds,im=item._img;
+    if(!im||!im.complete||!Array.isArray(b)||b.length!==4)continue;
+    const [sx,sy]=W2S(b[0],b[3]),[ex,ey]=W2S(b[2],b[1]);
+    ctx.globalAlpha=Math.max(0,Math.min(1,+item.opacity||.8));
+    try{ctx.drawImage(im,sx,sy,ex-sx,ey-sy);}catch(e){}
+  }
+  ctx.globalAlpha=1;
+  for(const item of contexto){
+    const cor=item.color||"#687786",lw=Math.max(.1,+item.weight||1),
+      op=Math.max(0,Math.min(1,Number.isFinite(+item.opacity)?+item.opacity:1));
+    for(const P of (item.paths||[])){
+      if(!P||!P.length)continue;
+      if(item.point){
+        ctx.fillStyle=cor;ctx.globalAlpha=.9;
+        for(const p of P){const [sx,sy]=W2S(p.x,p.y);ctx.beginPath();ctx.arc(sx,sy,Math.max(1.5,lw+1),0,7);ctx.fill();}
+        continue;
+      }
+      ctx.beginPath();P.forEach((p,i)=>{const [sx,sy]=W2S(p.x,p.y);i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy);});
+      if(item.closed)ctx.closePath();
+      if(item.closed)hachuraContexto(P,item,item.fillColor||cor);
+      ctx.globalAlpha=op;ctx.strokeStyle=cor;ctx.lineWidth=lw;
+      ctx.setLineDash(item.dash?String(item.dash).split(/[ ,]+/).map(Number).filter(Number.isFinite):[]);
+      ctx.stroke();ctx.setLineDash([]);
+    }
+  }
+  ctx.restore();
+}
+function preencheAnel(P, cor, opacity=1){
+  ctx.save();ctx.globalAlpha=Math.max(0,Math.min(1,Number.isFinite(+opacity)?+opacity:1));
+  ctx.beginPath();
+  P.forEach((p,i)=>{const [sx,sy]=W2S(p.x,p.y); i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy);});
+  ctx.closePath(); ctx.fillStyle=cor; ctx.fill();
+  ctx.restore();
+}
+function rotuloHalo(txt, sx, sy, cor, tam=10){
+  ctx.font=`600 ${tam}px Signika, sans-serif`;
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.strokeStyle="rgba(246,244,238,.85)"; ctx.lineWidth=3; ctx.strokeText(txt,sx,sy);
+  ctx.fillStyle=cor; ctx.fillText(txt,sx,sy);
+}
+function marcaVertice(sx,sy,cor,ativo=false){
+  /* O vértice conserva o quadrado original. */
+  const r=ativo?2.5:3;
+  ctx.fillStyle=cor;ctx.fillRect(sx-r,sy-r,2*r,2*r);
+}
+function pontoInsercao(P,i,minPx=20){
+  if(!P||P.length<2)return null;
+  const a=P[i],b=P[(i+1)%P.length],[ax,ay]=W2S(a.x,a.y),[bx,by]=W2S(b.x,b.y);
+  if(Math.hypot(bx-ax,by-ay)<minPx)return null;
+  return {sx:(ax+bx)/2,sy:(ay+by)/2,q:{x:(a.x+b.x)/2,y:(a.y+b.y)/2}};
+}
+function marcaInsercoes(P,cor){
+  /* Um único botão + no meio de cada trecho suficientemente visível. */
+  for(let i=0;i<P.length;i++){
+    const m=pontoInsercao(P,i);if(!m)continue;
+    ctx.save();ctx.fillStyle="#fff";ctx.strokeStyle=cor;ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.arc(m.sx,m.sy,5.5,0,7);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.moveTo(m.sx-2.5,m.sy);ctx.lineTo(m.sx+2.5,m.sy);
+    ctx.moveTo(m.sx,m.sy-2.5);ctx.lineTo(m.sx,m.sy+2.5);ctx.stroke();ctx.restore();
+  }
+}
+
+const CORES={
+  cava:{crista:"#8a4b1e", pe:"#c08a52", fill:"rgba(201,177,138,.35)",
+        rampaF:"rgba(179,84,30,.32)", rampaS:"#b3541e"},
+  pilha:{crista:"#333c48", pe:"#8a93a0", fill:"rgba(154,160,168,.35)",
+        rampaF:"rgba(44,62,112,.28)", rampaS:"#2c3e70"},
+};
+/* A camada categorizada da árvore 2D é a fonte única da simbologia. Estes
+   valores são apenas o estilo inicial de uma camada nova. */
+const estilos={
+  cava:{
+    crista:{color:"#8a4b1e",weight:1.8,dash:"",opacity:1,fill:.35},
+    pe:{color:"#c08a52",weight:1.1,dash:"6 4",opacity:1,fill:.18},
+    rampa:{color:"#b3541e",weight:1.2,dash:"",opacity:1,fill:.32},
+    intersecao:{color:"#0d9488",weight:1.8,dash:"10 4",opacity:1,fill:0},
+  },
+  pilha:{
+    crista:{color:"#333c48",weight:1.8,dash:"",opacity:1,fill:.35},
+    pe:{color:"#8a93a0",weight:1.1,dash:"6 4",opacity:1,fill:.18},
+    rampa:{color:"#2c3e70",weight:1.2,dash:"",opacity:1,fill:.28},
+    intersecao:{color:"#0d9488",weight:1.8,dash:"10 4",opacity:1,fill:0},
+  },
+};
+
+function desenhaObjeto(k){
+  const o=objs[k], cor=CORES[k],vis=visibilidade[k],sty=estilos[k];
+  if(!vis.on)return;
+  if(!o.design||!Array.isArray(o.base)||!o.base.length){
+    if(o.base){ tracaAnel(o.base, "#c2478f", 1.5, true); }
+    return;
+  }
+  const an=o.design.aneis;
+  const b0=o.base,cxm=b0.reduce((s,p)=>s+p.x,0)/b0.length,
+    cym=b0.reduce((s,p)=>s+p.y,0)/b0.length;
+  /* Cristas e pés continuam como linhas. A faixa da rampa usa separadamente
+     o preenchimento translúcido definido no mesmo estilo da camada 2D. */
+  const rampPolys=(o.design.corredores||[]).map(c=>c.poly).filter(P=>Array.isArray(P)&&P.length>=3);
+  if(vis.rampa){
+    const sr=sty.rampa,op=Math.max(0,Math.min(1,Number.isFinite(+sr.opacity)?+sr.opacity:1)),
+      fill=Math.max(0,Math.min(1,Number.isFinite(+sr.fill)?+sr.fill:0));
+    if(fill>0)for(const P of rampPolys){
+      ctx.save();ctx.globalAlpha=op*fill;ctx.fillStyle=sr.color;ctx.beginPath();
+      P.forEach((p,i)=>{const [sx,sy]=W2S(p.x,p.y);i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy);});
+      ctx.closePath();ctx.fill();ctx.restore();
+    }
+  }
+  for(let i=0;i<an.length;i++){
+    const a=an[i];
+    if(!vis[a.tp])continue;
+    const s=sty[a.tp],recorte=recortaLinhaForaRampas(a.P,rampPolys,a.cortesRampa);
+    if(!recorte.cortado)tracaAnel(a.P,s.color,s.weight,s.dash,s.opacity);
+    else for(const parte of (a.partesEntrada||recorte.partes))
+      tracaLinhaAberta(parte,s.color,s.weight,s.dash,s.opacity);
+  }
+  // rampa: um TRECHO por bancada, com terminações retas e ortogonais —
+  // o offset entre trechos consecutivos é o próprio degrau das strings
+  const corrs=o.design.corredores;
+  if(vis.rampa&&corrs.length){
+    const sr=sty.rampa;
+    for(const c of corrs){
+      ctx.save();ctx.globalAlpha=Math.max(0,Math.min(1,sr.opacity));
+      ctx.strokeStyle=sr.color;ctx.lineWidth=sr.weight;
+      ctx.setLineDash(String(sr.dash||'').split(/[ ,]+/).map(Number).filter(Number.isFinite));
+      /* Somente as bordas longitudinais: nenhuma tampa transversal bloqueia
+         visualmente a entrada ou a saída dos veículos. */
+      for(const P of [c.borda1,c.borda2]){
+        ctx.beginPath();
+        P.forEach((p,i)=>{const [sx,sy]=W2S(p.x,p.y);i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy);});
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      // setas de subida
+      const ce=c.centro, sobe=(c.zFim>c.zIni)?1:-1;
+      for(let i=6;i<ce.length-6;i+=10){
+        const p=ce[i], p2=ce[i+sobe*3]||p;
+        const [ax,ay]=W2S(p.x,p.y), [bx2,by2]=W2S(p2.x,p2.y);
+        const dx=bx2-ax, dy=by2-ay, l=Math.hypot(dx,dy)||1;
+        const ux=dx/l, uy=dy/l, s=6;
+        ctx.strokeStyle=sr.color;ctx.lineWidth=Math.max(1,sr.weight);
+        ctx.beginPath();
+        ctx.moveTo(ax-uy*s*0.6-ux*s, ay+ux*s*0.6-uy*s);
+        ctx.lineTo(ax+ux*s, ay+uy*s);
+        ctx.lineTo(ax+uy*s*0.6-ux*s, ay-ux*s*0.6-uy*s);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+  // rótulos de cota nas cristas (✎ = string editada manualmente)
+  for(let i=0;i<an.length;i++){
+    const a=an[i];
+    if(a.tp!=="crista"||!vis.crista) continue;
+    const cum=cumulativo(a.P);
+    const p=pontoNoArco(a.P,cum,cum[cum.length-1]*0.22);
+    const [sx,sy]=W2S(p.x,p.y);
+    rotuloHalo(fmt(a.z,0)+(a.ov?" ✎":""), sx, sy, sty.crista.color, 9.5);
+  }
+  // âncora da rampa
+  if(vis.rampa&&o.design.corredores.length){
+    const a=o.design.corredores[0].entradaExterna||o.design.ancInicial, [sx,sy]=W2S(a.x,a.y);
+    ctx.fillStyle=sty.rampa.color;
+    ctx.beginPath(); ctx.arc(sx,sy,4,0,7); ctx.fill();
+    rotuloHalo("R", sx, sy-11, sty.rampa.color, 11);
+    const c0=o.design.corredores[0];
+    const meio=c0.centro[Math.floor(c0.centro.length/2)];
+    const [mx2,my2]=W2S(meio.x,meio.y);
+    rotuloHalo(fmt(o.design.gradEfetivo,1)+"%", mx2, my2-12, sty.rampa.color, 10);
+  }
+  // nome no centro
+  const [nx,ny]=W2S(cxm,cym);
+  if(vis.crista||vis.pe||vis.rampa)
+    rotuloHalo(k==="cava"?"CAVA":"PILHA", nx, ny, sty.crista.color, 13);
+}
+
+function redesenha(){
+  const dpr=window.devicePixelRatio||1;
+  const W=cv.clientWidth, H=cv.clientHeight;
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);}
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  /* O autoenquadramento é consumido uma única vez. Regenerar o limite,
+     recalcular o MDT ou alterar a simbologia não desloca mais a vista. */
+  if(!vistaManual){ajustarVista();vistaManual=true;}
+  ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,W,H);
+  grade();
+  desenhaContexto();
+  desenhaObjeto("cava");
+  desenhaObjeto("pilha");
+
+  // linha-base em edição
+  if(ferramenta==="editar"){
+    for(const k of ["cava","pilha"]){
+      const o=objs[k];
+      if(!visibilidade[k].on)continue;
+      if(!o.base) continue;
+      tracaAnel(o.base, "#c2478f", 1.4, true);
+      for(const p of o.base){
+        const [sx,sy]=W2S(p.x,p.y);
+        marcaVertice(sx,sy,"#c2478f");
+      }
+      marcaInsercoes(o.base,"#c2478f");
+    }
+  }
+  // polilinha em digitalização
+  if(desenho && desenho.pts.length){
+    ctx.strokeStyle="#c2478f"; ctx.lineWidth=1.8; ctx.setLineDash([]);
+    ctx.beginPath();
+    desenho.pts.forEach((p,i)=>{const [sx,sy]=W2S(p.x,p.y); i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy);});
+    if(hover){const [hx,hy]=W2S(hover.x,hover.y); ctx.lineTo(hx,hy);}
+    ctx.stroke();
+    for(const p of desenho.pts){
+      const [sx,sy]=W2S(p.x,p.y);
+      ctx.fillStyle="#c2478f"; ctx.fillRect(sx-3,sy-3,6,6);
+    }
+    const [f0x,f0y]=W2S(desenho.pts[0].x,desenho.pts[0].y);
+    ctx.strokeStyle="#c2478f"; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.arc(f0x,f0y,9,0,7); ctx.stroke();
+  }
+  // linha de seção
+  const sa=secA, sb=(secB||secTemp);
+  if(sa&&sb){
+    const [ax,ay]=W2S(sa.x,sa.y), [bx2,by2]=W2S(sb.x,sb.y);
+    ctx.setLineDash([9,6]); ctx.strokeStyle="#2a7f52"; ctx.lineWidth=1.8;
+    ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx2,by2); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle="#2a7f52";
+    ctx.fillRect(ax-4,ay-4,8,8); ctx.fillRect(bx2-4,by2-4,8,8);
+    rotuloHalo("A",ax-12,ay-10,"#2a7f52",12);
+    rotuloHalo("A'",bx2+12,by2-10,"#2a7f52",12);
+  }
+  // dica quando vazio
+  if(!contexto.length&&!objs.cava.base && !objs.pilha.base && !(desenho&&desenho.pts.length)){
+    ctx.fillStyle="#8d8571"; ctx.font="14px Signika, sans-serif";
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("Use ✏️ Desenhar cava / pilha e clique para digitalizar a linha fechada — ou clique em Exemplo.", W/2, H/2);
+  }
+}
+
+/* ================= seção ================= */
+function desenhaSecPainel(){
+  const painel=$("painelSec");
+  const estava=painel.classList.contains("aberto");
+  const deve=!!(secA&&secB);
+  if(deve) painel.classList.add("aberto"); else painel.classList.remove("aberto");
+  if(estava!==deve) redesenha(); // a altura do canvas principal mudou
+  if(!deve) return;
+  const dpr=window.devicePixelRatio||1;
+  const W=painel.clientWidth, H=painel.clientHeight;
+  cvSec.width=Math.round(W*dpr); cvSec.height=Math.round(H*dpr);
+  ctxSec.setTransform(dpr,0,0,dpr,0,0);
+  ctxSec.fillStyle="#ffffff"; ctxSec.fillRect(0,0,W,H);
+
+  const L=Math.hypot(secB.x-secA.x, secB.y-secA.y);
+  if(L<1){return;}
+  const M=Math.min(500, Math.max(120, Math.round(L/2)));
+  const zs=[];
+  let zMin=0, zMax=0;
+  for(let i=0;i<=M;i++){
+    const t=i/M;
+    const z=cotaTotal({x:secA.x+(secB.x-secA.x)*t, y:secA.y+(secB.y-secA.y)*t});
+    zs.push(z); zMin=Math.min(zMin,z); zMax=Math.max(zMax,z);
+  }
+  const mrg=34, altura=Math.max(10, zMax-zMin);
+  let ev=1;
+  const escH=(W-2*mrg)/L;
+  let escV=escH;
+  if(altura*escV<(H-2*mrg)*0.35){ // exagero vertical automático
+    ev=Math.min(5, Math.max(1, Math.round(((H-2*mrg)*0.6/altura)/escH)));
+    escV=escH*ev;
+  }
+  if(altura*escV>H-2*mrg){ escV=(H-2*mrg)/altura; ev=escV/escH; }
+  const X=t=>mrg+t*escH, Y=z=>H-mrg-(z-zMin)*escV;
+
+  // perfil preenchido (maciço/aterro abaixo da superfície)
+  ctxSec.beginPath();
+  ctxSec.moveTo(X(0), H-6);
+  for(let i=0;i<=M;i++) ctxSec.lineTo(X(i/M*L), Y(zs[i]));
+  ctxSec.lineTo(X(L), H-6); ctxSec.closePath();
+  ctxSec.fillStyle="#d9c9a3"; ctxSec.fill();
+  // linha do terreno 0
+  ctxSec.setLineDash([5,5]); ctxSec.strokeStyle="#3f5a2a"; ctxSec.lineWidth=1.2;
+  ctxSec.beginPath(); ctxSec.moveTo(X(0),Y(0)); ctxSec.lineTo(X(L),Y(0)); ctxSec.stroke();
+  ctxSec.setLineDash([]);
+  // perfil
+  ctxSec.strokeStyle="#4a3823"; ctxSec.lineWidth=2;
+  ctxSec.beginPath();
+  for(let i=0;i<=M;i++){const px=X(i/M*L), py=Y(zs[i]); i?ctxSec.lineTo(px,py):ctxSec.moveTo(px,py);}
+  ctxSec.stroke();
+  // eixos/rotulagem
+  ctxSec.fillStyle="#555"; ctxSec.font="10.5px Signika, sans-serif";
+  ctxSec.textAlign="left"; ctxSec.textBaseline="top";
+  ctxSec.fillText("A", X(0), 6); ctxSec.textAlign="right"; ctxSec.fillText("A'", X(L), 6);
+  ctxSec.textAlign="left";
+  ctxSec.fillText(`Seção A–A'  ·  L = ${fmt(L,0)} m  ·  z: ${fmt(zMin,0)} a ${fmt(zMax,0)} m` + (Math.abs(ev-1)>0.05?`  ·  EV ${fmt(ev,2)}×`:""), X(0)+18, 6);
+  for(const z of [zMin,0,zMax]){
+    if(Math.abs(z)<1e-6 && zMin===0 && zMax===0) continue;
+    ctxSec.fillText(fmt(z,0)+" m", 4, Y(z)-5);
+  }
+}
+
+/* ================= exportação ================= */
+function exportaDXF(){
+  const L=[];
+  const push=(...a)=>L.push(...a);
+  push("0","SECTION","2","ENTITIES");
+  const anelDXF=(P,z,layer)=>{
+    push("0","POLYLINE","8",layer,"66","1","70","9");
+    for(const p of P) push("0","VERTEX","8",layer,"10",p.x.toFixed(3),"20",p.y.toFixed(3),"30",z.toFixed(3),"70","32");
+    push("0","SEQEND");
+  };
+  const linha3d=(pts,layer)=>{ // polilinha 3D aberta
+    push("0","POLYLINE","8",layer,"66","1","70","8");
+    for(const s of pts) push("0","VERTEX","8",layer,"10",s.x.toFixed(3),"20",s.y.toFixed(3),"30",(s.z||0).toFixed(3),"70","32");
+    push("0","SEQEND");
+  };
+  for(const k of ["cava","pilha"]){
+    const o=objs[k];
+    if(!o.design) continue;
+    const pref=k.toUpperCase();
+    // O anel continua fechado no cálculo, mas o DXF não desenha crista/pé
+    // atravessando a pista: exporta as partes abertas até cada borda.
+    const rampPolys=(o.design.corredores||[]).map(c=>c.poly).filter(P=>Array.isArray(P)&&P.length>=3);
+    for(const a of o.design.aneis){
+      const recorte=recortaLinhaForaRampas(a.P,rampPolys,a.cortesRampa),
+        layer=pref+"_"+a.tp.toUpperCase();
+      if(!recorte.cortado)anelDXF(a.P,a.z,layer);
+      else for(const parte of (a.partesEntrada||recorte.partes))
+        linha3d(parte.map(p=>({...p,z:a.z})),layer);
+    }
+    // rampa POR TRECHO: eixo 3D aberto + contorno 3D fechado de cada trecho
+    for(const c of o.design.corredores){
+      linha3d(c.centro, pref+"_RAMPA_EIXO");
+      push("0","POLYLINE","8",pref+"_RAMPA_CONTORNO","66","1","70","9");
+      for(const s of c.poly)
+        push("0","VERTEX","8",pref+"_RAMPA_CONTORNO","10",s.x.toFixed(3),"20",s.y.toFixed(3),"30",(s.z||0).toFixed(3),"70","32");
+      push("0","SEQEND");
+    }
+  }
+  push("0","ENDSEC","0","EOF");
+  const blob=new Blob([L.join("\r\n")],{type:"application/dxf"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="cava_pilha_v09.dxf"; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+}
+function exportaPNG(){
+  cv.toBlob(blob=>{
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob); a.download="cava_pilha_v09_planta.png"; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+  });
+}
+
+/* ================= exemplo ================= */
+function exemplo(){
+  desenho=null;
+  if(ferramenta==="cava"||ferramenta==="pilha") defineTool("mover");
+  const cavaB=[], pilhaB=[];
+  for(let i=0;i<48;i++){
+    const t=i/48*2*Math.PI;
+    cavaB.push({x:350*Math.cos(t), y:240*Math.sin(t)+50*Math.sin(2*t)});
+  }
+  for(let i=0;i<48;i++){
+    const t=i/48*2*Math.PI;
+    const c=Math.cos(t), s=Math.sin(t);
+    pilhaB.push({x:820+290*Math.sign(c)*Math.sqrt(Math.abs(c)),
+                 y:60+210*Math.sign(s)*Math.sqrt(Math.abs(s))});
+  }
+  objs.cava.base=cavaB; objs.cava.anc={x:cavaB[0].x,y:cavaB[0].y};
+  objs.pilha.base=pilhaB; objs.pilha.anc={x:pilhaB[12].x,y:pilhaB[12].y};
+  objs.cava.overrides={}; objs.pilha.overrides={}; sel=null;
+  secA={x:-430,y:0}; secB={x:1180,y:60};
+  vistaManual=false;
+  regen();
+}
+
+/* ================= interação ================= */
+const DICAS={
+  mover:"arraste para mover · roda do mouse = zoom · duplo clique = enquadrar",
+  cava:"clique para digitalizar a CRISTA EXTERIOR (limite) da cava · clique no 1º ponto ou Enter para fechar · Backspace desfaz · Esc cancela",
+  pilha:"clique para digitalizar o PÉ EXTERIOR (limite) da pilha · clique no 1º ponto ou Enter para fechar · Backspace desfaz · Esc cancela",
+  editar:"somente o limite externo é editável · arraste o quadrado · clique no + para acrescentar um ponto · duplo clique no quadrado apaga esse vértice",
+  rampa:"clique perto da linha-base da cava ou da pilha para reposicionar o início da rampa (R)",
+  secao:"clique no ponto A e depois no ponto A' para cortar a seção",
+};
+function defineTool(t){
+  ferramenta=t;
+  if(t!=="cava"&&t!=="pilha") desenho=null;
+  if(t!=="secao"){ secTemp=null; if(secA&&!secB) secA=null; }
+  if(t!=="editar") sel=null;
+  for(const id of ["t_mover","t_cava","t_pilha","t_editar","t_rampa","t_secao"])
+    $(id).classList.remove("ativa");
+  $({mover:"t_mover",cava:"t_cava",pilha:"t_pilha",editar:"t_editar",rampa:"t_rampa",secao:"t_secao"}[t]).classList.add("ativa");
+  cv.classList.toggle("pan", t==="mover");
+  $("st_dica").innerHTML="<b>"+t.toUpperCase()+"</b> — "+DICAS[t];
+  redesenha();
+}
+
+$("t_mover").onclick =()=>defineTool("mover");
+$("t_cava").onclick  =()=>{desenho={alvo:"cava", pts:[]}; defineTool("cava");};
+$("t_pilha").onclick =()=>{desenho={alvo:"pilha",pts:[]}; defineTool("pilha");};
+$("t_editar").onclick=()=>defineTool("editar");
+$("t_rampa").onclick =()=>defineTool("rampa");
+$("t_secao").onclick =()=>{secA=null;secB=null;secTemp=null; desenhaSecPainel(); salvaEstado(); defineTool("secao");};
+
+$("b_exemplo").onclick=exemplo;
+$("b_limpar").onclick=()=>{
+  objs.cava.base=null; objs.cava.design=null; objs.cava.anc=null;
+  objs.pilha.base=null; objs.pilha.design=null; objs.pilha.anc=null;
+  objs.cava.overrides={}; objs.pilha.overrides={};
+  objs.cava.ovMeta=null; objs.pilha.ovMeta=null; sel=null;
+  secA=secB=secTemp=null; desenho=null;
+  try{localStorage.removeItem("cavaPilhaV02");}catch(e){}
+  vistaManual=false; regen();
+  window.dispatchEvent(new CustomEvent("cava2:cleared",{detail:{at:Date.now()}}));
+};
+$("b_ajustar").onclick=()=>{vistaManual=false; redesenha();};
+$("b_dxf").onclick=exportaDXF;
+$("b_png").onclick=exportaPNG;
+
+document.querySelectorAll("aside input, aside select").forEach(el=>
+  el.addEventListener("input", ()=>regen()));
+
+function fechaDesenho(){
+  if(!desenho || desenho.pts.length<3){desenho=null; defineTool("mover"); return;}
+  const alvo=desenho.alvo;
+  objs[alvo].base=dedup(desenho.pts);
+  objs[alvo].anc={x:desenho.pts[0].x, y:desenho.pts[0].y};
+  desenho=null;
+  defineTool("mover");
+  regen();
+}
+
+/* offsetX/offsetY deixam de ser confiáveis depois que o canvas captura o
+   ponteiro (principalmente dentro do iframe). Todas as ferramentas usam a
+   mesma coordenada local calculada pelo retângulo real do canvas. */
+function pontoCanvas(e){
+  const r=cv.getBoundingClientRect();
+  const sx=(Number.isFinite(e.clientX)?e.clientX-r.left:e.offsetX)||0,
+    sy=(Number.isFinite(e.clientY)?e.clientY-r.top:e.offsetY)||0;
+  return {sx,sy,q:S2W(sx,sy)};
+}
+function capturaPonteiro(e){try{cv.setPointerCapture(e.pointerId);}catch(err){}}
+function verticeEditavelEm(sx,sy,raio=6){
+  let melhor=null;
+  const considera=(v,d)=>{if(d<=raio&&(!melhor||d<melhor.d))melhor={...v,d};};
+  /* A linha-base sempre exibe seus quadrados originais. */
+  for(const k of ["cava","pilha"]){
+    const o=objs[k];if(!visibilidade[k].on||!o.base)continue;
+    o.base.forEach((p,vi)=>{const [x,y]=W2S(p.x,p.y);
+      considera({tipo:"base",alvo:k,vi},Math.hypot(sx-x,sy-y));});
+  }
+  return melhor;
+}
+function insercaoEditavelEm(sx,sy,raio=7){
+  let melhor=null;
+  const considera=(v,m)=>{if(!m)return;const d=Math.hypot(sx-m.sx,sy-m.sy);
+    if(d<=raio&&(!melhor||d<melhor.d))melhor={...v,...m,d};};
+  for(const k of ["cava","pilha"]){
+    const o=objs[k];if(!visibilidade[k].on||!o.base)continue;
+    for(let i=0;i<o.base.length;i++)considera({tipo:"base",alvo:k,i},pontoInsercao(o.base,i));
+  }
+  return melhor;
+}
+function acrescentaVertice(v){
+  const o=objs[v.alvo];
+  o.base.splice(v.i+1,0,{x:v.q.x,y:v.q.y});o.overrides={};sel=null;
+  regen();atualizaDicaSel();
+}
+
+cv.addEventListener("pointerdown", e=>{
+  if(e.button===1 || (e.button===0&&ferramenta==="mover")){
+    const {sx,sy}=pontoCanvas(e);
+    arrasto={sx,sy,pointerId:e.pointerId};
+    cv.classList.add("arrastando"); capturaPonteiro(e);e.preventDefault();
+    return;
+  }
+  if(e.button!==0) return;
+  const {sx,sy,q}=pontoCanvas(e);
+  if(ferramenta==="cava"||ferramenta==="pilha"){
+    if(!desenho) desenho={alvo:ferramenta, pts:[]};
+    if(desenho.pts.length>=3){
+      const [f0x,f0y]=W2S(desenho.pts[0].x,desenho.pts[0].y);
+      if(Math.hypot(sx-f0x, sy-f0y)<11){ fechaDesenho(); return; }
+    }
+    desenho.pts.push(q); redesenha();
+  }else if(ferramenta==="rampa"){
+    let melhor=null;
+    for(const k of ["cava","pilha"]){
+      const o=objs[k];
+      if(!visibilidade[k].on)continue;
+      if(!o.base) continue;
+      const cum=cumulativo(o.base);
+      const r=arcoMaisProximo(o.base,cum,q);
+      if(!melhor || r.d<melhor.d) melhor={k, d:r.d, s:r.s, cum, base:o.base};
+    }
+    if(melhor && melhor.d*escala<60){
+      const p=pontoNoArco(melhor.base, melhor.cum, melhor.s);
+      objs[melhor.k].anc={x:p.x,y:p.y};
+      regen();
+    }
+  }else if(ferramenta==="secao"){
+    if(!secA || secB){secA=q; secB=null; secTemp=null;}
+    else {secB=q; desenhaSecPainel();}
+    salvaEstado();
+    redesenha();
+  }else if(ferramenta==="editar"){
+    /* O + pertence ao trecho, não ao vértice: um clique acrescenta o novo
+       ponto entre os dois quadrados sem iniciar um arraste. */
+    const insercao=insercaoEditavelEm(sx,sy);
+    if(insercao){acrescentaVertice(insercao);e.preventDefault();return;}
+    // Somente um vértice da linha-base externa (quadrados magenta)
+    let melhor=null;
+    for(const k of ["cava","pilha"]){
+      const o=objs[k];
+      if(!visibilidade[k].on)continue;
+      if(!o.base) continue;
+      o.base.forEach((p,i)=>{
+        const [px,py]=W2S(p.x,p.y);
+        const d=Math.hypot(sx-px,sy-py);
+        if(d<10 && (!melhor||d<melhor.d)) melhor={tipo:"base", alvo:k, idx:i, d};
+      });
+    }
+    if(melhor){editando={...melhor,orig:{...objs[melhor.alvo].base[melhor.idx]}};
+      capturaPonteiro(e);e.preventDefault();return;}
+    sel=null;atualizaDicaSel();redesenha();e.preventDefault();
+  }
+});
+function atualizaDicaSel(){
+  if(ferramenta!=="editar") return;
+  $("st_dica").innerHTML="<b>EDITAR</b> — "+DICAS.editar;
+}
+cv.addEventListener("pointermove", e=>{
+  const {sx,sy,q}=pontoCanvas(e);
+  hover=q;
+  $("st_coord").innerHTML=`E: <b>${fmt(q.x,1)}</b> &nbsp; N: <b>${fmt(q.y,1)}</b>`;
+  window.dispatchEvent(new CustomEvent("cava2:cursor",{detail:{x:q.x,y:q.y,z:cotaTotal(q)}}));
+  if(arrasto){
+    ox+=sx-arrasto.sx; oy+=sy-arrasto.sy;
+    arrasto={sx,sy,pointerId:arrasto.pointerId}; vistaManual=true;
+    redesenha();e.preventDefault();return;
+  }
+  if(editando){
+    objs[editando.alvo].base[editando.idx]={x:q.x,y:q.y};
+    redesenha();e.preventDefault();return;
+  }
+  if(ferramenta==="secao" && secA && !secB){secTemp=q; redesenha(); return;}
+  if(desenho && desenho.pts.length) redesenha();
+});
+cv.addEventListener("pointerup", e=>{
+  if(arrasto){arrasto=null;cv.classList.remove("arrastando");e.preventDefault();}
+  if(editando){
+    editando=null; regen(); atualizaDicaSel();
+  }
+});
+cv.addEventListener("pointercancel", ()=>{
+  if(arrasto){arrasto=null; cv.classList.remove("arrastando");}
+  if(editando){
+    if(editando.tipo==="base"&&editando.orig)objs[editando.alvo].base[editando.idx]=editando.orig;
+    editando=null;regen();atualizaDicaSel();
+  }
+});
+cv.addEventListener("dblclick", e=>{
+  if(ferramenta==="editar"){
+    const {sx,sy}=pontoCanvas(e),v=verticeEditavelEm(sx,sy);
+    if(v){
+      const o=objs[v.alvo];
+      if(o.base.length<=3){
+        $("st_dica").innerHTML="<b>EDITAR</b> — o limite precisa manter no mínimo três vértices";
+      }else{
+        o.base.splice(v.vi,1);o.overrides={};sel=null;regen();
+      }
+      e.preventDefault();e.stopPropagation();return;
+    }
+  }
+  if(desenho && desenho.pts.length>=3){fechaDesenho(); return;}
+  vistaManual=false; redesenha();
+});
+cv.addEventListener("wheel", e=>{
+  e.preventDefault();
+  let f=e.deltaY<0?1.15:1/1.15;
+  const novo=clamp(escala*f, 1e-3, 1e4);
+  if(novo===escala) return;
+  f=novo/escala;
+  ox=e.offsetX-(e.offsetX-ox)*f;
+  oy=e.offsetY-(e.offsetY-oy)*f;
+  escala=novo; vistaManual=true;
+  redesenha();
+},{passive:false});
+document.addEventListener("keydown", e=>{
+  const alvoEl=e.target;
+  if(alvoEl && alvoEl.tagName && /^(INPUT|SELECT|TEXTAREA)$/.test(alvoEl.tagName)) return;
+  if(e.key==="Escape"){
+    if(editando){ // cancela o arrasto em curso sem gravar a edição
+      if(editando.tipo==="base"&&editando.orig)
+        objs[editando.alvo].base[editando.idx]={...editando.orig};
+      editando=null; regen(); atualizaDicaSel();
+      e.preventDefault(); return;
+    }
+    desenho=null; if(!secB){secA=null; secTemp=null;} defineTool("mover");
+  }
+  else if(e.key==="Backspace" && desenho && desenho.pts.length){
+    desenho.pts.pop(); redesenha(); e.preventDefault();
+  }
+  else if(e.key==="Enter" && desenho && desenho.pts.length>=3) fechaDesenho();
+  else if((e.key==="r"||e.key==="R"||e.key==="Delete") && sel && !editando){
+    const o=objs[sel.alvo];
+    if(o.overrides && o.overrides[sel.idx]){ delete o.overrides[sel.idx]; regen(); atualizaDicaSel(); }
+  }
+});
+$("b_reverter").onclick=()=>{
+  if(!sel) return;
+  const o=objs[sel.alvo];
+  if(o.overrides && o.overrides[sel.idx]){ delete o.overrides[sel.idx]; regen(); atualizaDicaSel(); }
+};
+window.addEventListener("resize", ()=>{redesenha(); desenhaSecPainel();});
+/* O iframe pode ganhar/perder altura quando as abas, a barra de comandos ou
+   os painéis do CCMGIS mudam sem disparar resize na janela interna. Observa
+   diretamente a área útil para a quadrícula ocupar sempre todo o espaço. */
+if(typeof ResizeObserver!=="undefined"){
+  const ro=new ResizeObserver(()=>requestAnimationFrame(()=>{redesenha();desenhaSecPainel();}));
+  ro.observe($("wrap"));
+}
+
+/* ================= boot ================= */
+window.__api={objs, geraDesign, offsetU, cotaEm, cotaTotal, parametros, exemplo,
+              regen, removeLacos, resample, offsetI, garanteDentro, faixaCorredor,
+              anelComRampa, areaAssinada, tracaAnel, tracaLinhaAberta, recortaLinhaForaRampas,
+              dentroDe, cumulativo, arcoMaisProximo, pontoNoArco,
+              garanteFora, compHoriz, segInt,
+              setContextLayers(v){
+                contexto=Array.isArray(v)?v:[];
+                for(const item of contexto){
+                  const src=item&&item.imageUrl;if(!src)continue;
+                  let im=contextoImgCache.get(src);
+                  if(!im){im=new Image();im.onload=()=>redesenha();im.src=src;contextoImgCache.set(src,im);}
+                  item._img=im;
+                }
+                redesenha();
+              },
+              setObjectVisibility(k,v){
+                if(!visibilidade[k])return false;
+                visibilidade[k]={...visibilidade[k],...(v||{})};
+                if(!visibilidade[k].on&&sel?.alvo===k)sel=null;
+                redesenha();return true;
+              },
+              setObjectStyle(k,v){
+                if(!estilos[k]||!v)return false;
+                for(const chave of ["crista","pe","rampa","intersecao"])
+                  if(v[chave])estilos[k][chave]={...estilos[k][chave],...v[chave]};
+                redesenha();return true;
+              },
+              get contextLayers(){return contexto;},
+              get view(){return {escala,ox,oy,ferramenta};},
+              setTool:defineTool,worldToScreen:(x,y)=>W2S(x,y),
+              get secAB(){return {secA,secB};}, set secAB(v){
+                secA=v?.a||null;secB=v?.b||null;secTemp=null;desenhaSecPainel();
+              }};
+defineTool("mover");
+/* No CCMGIS a área 2D começa vazia para nunca publicar o exemplo como se
+   fosse parte do projeto. O HTML aberto sozinho conserva o exemplo original. */
+if(!carregaEstado()){
+  if(window.frameElement && window.frameElement.id==="cava2Frame") regen();
+  else exemplo();
+}else regen();
+</script>
+
+
+</body></html>

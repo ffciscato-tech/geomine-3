@@ -1,0 +1,201 @@
+  #ccmgisV74Toolbar{
+    position:relative;min-height:39px;gap:3px;padding:4px 8px;overflow:visible;
+    background:#111c26;border-bottom:1px solid #2c4050;
+  }
+  #ccmgisV74Toolbar .ccmgis-tool,
+  #ccmgisV74Toolbar .ccmgis-toggle,
+  #ccmgisV74Toolbar .ccmgis-mdt-command{
+    position:relative;display:flex;align-items:center;justify-content:center;
+    width:29px;height:29px;min-width:29px;padding:0;border:1px solid #2c4050;
+    border-radius:5px;background:#111c26;color:#dfe9f0;cursor:pointer;overflow:visible;
+  }
+  #ccmgisV74Toolbar .ccmgis-tool:hover,
+  #ccmgisV74Toolbar .ccmgis-tool:focus-visible,
+  #ccmgisV74Toolbar .ccmgis-toggle:hover,
+  #ccmgisV74Toolbar .ccmgis-toggle:focus-within,
+  #ccmgisV74Toolbar .ccmgis-mdt-command:hover,
+  #ccmgisV74Toolbar .ccmgis-mdt-command:focus-within{
+    background:#192d3d;border-color:#5b7c94;color:#fff;outline:none;
+  }
+  #ccmgisV74Toolbar .ccmgis-tool.ativa{
+    background:#d99218;border-color:#f0ab33;color:#101316;
+  }
+  #ccmgisV74Toolbar .ccmgis-tool:disabled{opacity:.38;cursor:default;}
+  #ccmgisV74Toolbar svg{
+    width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.65;
+    stroke-linecap:round;stroke-linejoin:round;pointer-events:none;
+  }
+  #ccmgisV74Toolbar svg .soft{fill:currentColor;stroke:none;opacity:.18;}
+  #ccmgisV74Toolbar svg .solid{fill:currentColor;stroke:none;}
+  #ccmgisV74Toolbar svg .icon-text{
+    fill:currentColor;stroke:none;font:700 5px "Signika",sans-serif;letter-spacing:-.2px;
+  }
+  #ccmgisV74Toolbar .ccmgis-tool-sep{
+    align-self:center;width:1px;height:21px;margin:0 2px;background:#2c4050;
+  }
+  #ccmgisV74Toolbar .ccmgis-toggle input{
+    position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;
+  }
+  #ccmgisV74Toolbar .ccmgis-mdt-command select{
+    position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;
+  }
+  #ccmgisV74Toolbar .ccmgis-mdt-command{
+    border-color:#d99218;color:#f0ab33;
+  }
+  #ccmgisV74Toolbar .ccmgis-mdt-command.tem-mdt{
+    background:#0f766e;border-color:#2dd4bf;color:#fff;
+  }
+  #ccmgisV74Toolbar .ccmgis-cota-command{
+    position:relative;display:grid;grid-template-columns:auto auto minmax(82px,1fr) auto auto;
+    align-items:center;gap:5px;width:245px;height:29px;min-width:205px;padding:0 7px;
+    border:1px solid #2c4050;border-radius:5px;background:#111c26;color:#dfe9f0;
+    font:600 10px/1 "Signika",sans-serif;white-space:nowrap;
+  }
+  #ccmgisV74Toolbar .ccmgis-cota-command[hidden]{display:none!important;}
+  #ccmgisV74Toolbar .ccmgis-cota-caption{color:#4fd2e8;text-transform:uppercase;letter-spacing:.35px;}
+  #ccmgisV74Toolbar .ccmgis-cota-bound{min-width:25px;color:#8fa7b8;text-align:center;font-variant-numeric:tabular-nums;}
+  #ccmgisV74Toolbar #ccmgis_cota_valor{
+    min-width:43px;padding:3px 4px;border-radius:4px;background:#0f766e;color:#fff;
+    text-align:center;font:700 10px/1 "Signika",sans-serif;font-variant-numeric:tabular-nums;
+  }
+  #ccmgisV74Toolbar #ccmgis_cota_trabalho{
+    width:100%;min-width:82px;height:16px;margin:0;accent-color:#14b8a6;cursor:ew-resize;
+  }
+  #ccmgisV74Toolbar #ccmgis_cota_trabalho:disabled{cursor:default;opacity:.45;}
+  #ccmgisV74Toolbar .ccmgis-cut-tool{margin-left:2px;}
+  #ccmgisV74Toolbar .ccmgis-toggle:has(input:checked){
+    background:#d99218;border-color:#f0ab33;color:#101316;
+  }
+  #ccmgisV74Toolbar .ccmgis-retired-controls{display:none!important;}
+  #ccmgisV74Toolbar [data-tooltip]::after{
+    content:attr(data-tooltip);position:absolute;left:50%;top:calc(100% + 7px);
+    transform:translateX(-50%) translateY(-2px);z-index:500;display:block;
+    padding:5px 8px;border:1px solid #466175;border-radius:5px;
+    background:#10263a;color:#f5f9fc;box-shadow:0 5px 16px #0005;
+    font:600 11px/1.15 "Signika",sans-serif;white-space:nowrap;
+    opacity:0;visibility:hidden;pointer-events:none;transition:opacity .1s,transform .1s;
+  }
+  #ccmgisV74Toolbar [data-tooltip]:hover::after,
+  #ccmgisV74Toolbar [data-tooltip]:focus-visible::after,
+  #ccmgisV74Toolbar [data-tooltip]:focus-within::after{
+    opacity:1;visibility:visible;transform:translateX(-50%) translateY(0);
+  }
+  body.ccmgis-claro #ccmgisV74Toolbar{
+    background:#edf3f7;border-bottom-color:#a8bac8;
+  }
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-tool,
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-toggle,
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-mdt-command{
+    background:#f8fbfd;border-color:#a8bac8;color:#28475d;
+  }
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-tool:hover,
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-tool:focus-visible,
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-toggle:hover,
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-toggle:focus-within,
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-mdt-command:hover,
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-mdt-command:focus-within{
+    background:#dce9f2;border-color:#6f91a8;color:#102f46;
+  }
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-tool.ativa,
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-toggle:has(input:checked){
+    background:#1687d4;border-color:#1687d4;color:#fff;
+  }
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-mdt-command{
+    border-color:#d97706;color:#b45309;background:#fffaf0;
+  }
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-mdt-command.tem-mdt{
+    background:#0f766e;border-color:#0f766e;color:#fff;
+  }
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-cota-command{
+    background:#f8fbfd;border-color:#a8bac8;color:#28475d;
+  }
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-cota-caption{color:#00798c;}
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-cota-bound{color:#607b8e;}
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-tool-sep{background:#a8bac8;}
+
+  /* Paleta funcional dos ícones. O fundo, o hover e o estado ativo continuam
+     definidos pelas regras estruturais acima; aqui muda somente a cor visual
+     de cada comando para facilitar o reconhecimento imediato. */
+  #ccmgisV74Toolbar #t_mover{--ccmgis-icon:#55c7ff;--ccmgis-icon-hover:#9ee3ff;}
+  #ccmgisV74Toolbar #t_cava{--ccmgis-icon:#ff5aa9;--ccmgis-icon-hover:#ff9dcc;}
+  #ccmgisV74Toolbar #t_pilha{--ccmgis-icon:#ff9f43;--ccmgis-icon-hover:#ffc47f;}
+  #ccmgisV74Toolbar #t_editar{--ccmgis-icon:#b991ff;--ccmgis-icon-hover:#d5c0ff;}
+  #ccmgisV74Toolbar #b_escolher{--ccmgis-icon:#39d6d0;--ccmgis-icon-hover:#8cece8;}
+  #ccmgisV74Toolbar #t_rampa{--ccmgis-icon:#ffd34e;--ccmgis-icon-hover:#ffe58f;}
+  #ccmgisV74Toolbar #t_retorno{--ccmgis-icon:#ff8a3d;--ccmgis-icon-hover:#ffc08f;}
+  #ccmgisV74Toolbar #t_secao{--ccmgis-icon:#45d69a;--ccmgis-icon-hover:#91edc7;}
+  #ccmgisV74Toolbar #b_parar{--ccmgis-icon:#65dd72;--ccmgis-icon-hover:#a5efa9;}
+  #ccmgisV74Toolbar #b_reverter{--ccmgis-icon:#f08cff;--ccmgis-icon-hover:#f7bfff;}
+  #ccmgisV74Toolbar #b_desfazer{--ccmgis-icon:#7fa8ff;--ccmgis-icon-hover:#b5cbff;}
+  #ccmgisV74Toolbar #b_refazer{--ccmgis-icon:#63c3ff;--ccmgis-icon-hover:#a7ddff;}
+  #ccmgisV74Toolbar .ccmgis-toggle{--ccmgis-icon:#f0bd55;--ccmgis-icon-hover:#ffe09a;}
+  #ccmgisV74Toolbar #b_limpar{--ccmgis-icon:#ff6b6b;--ccmgis-icon-hover:#ffaaaa;}
+  #ccmgisV74Toolbar #b_ajustar{--ccmgis-icon:#4fd2e8;--ccmgis-icon-hover:#9ceaf5;}
+  #ccmgisV74Toolbar #b_dxf{--ccmgis-icon:#42d392;--ccmgis-icon-hover:#95ebc3;}
+  #ccmgisV74Toolbar #b_png{--ccmgis-icon:#c58aff;--ccmgis-icon-hover:#dfb9ff;}
+  #ccmgisV74Toolbar #ccmgis_cortar_cava{--ccmgis-icon:#ff765e;--ccmgis-icon-hover:#ffb09f;}
+
+  #ccmgisV74Toolbar .ccmgis-tool:not(.ativa),
+  #ccmgisV74Toolbar .ccmgis-toggle:not(:has(input:checked)){
+    color:var(--ccmgis-icon,#dfe9f0);
+  }
+  #ccmgisV74Toolbar .ccmgis-tool:not(.ativa):hover,
+  #ccmgisV74Toolbar .ccmgis-tool:not(.ativa):focus-visible,
+  #ccmgisV74Toolbar .ccmgis-toggle:not(:has(input:checked)):hover,
+  #ccmgisV74Toolbar .ccmgis-toggle:not(:has(input:checked)):focus-within{
+    color:var(--ccmgis-icon-hover,#fff);
+  }
+
+  /* No tema claro, os mesmos grupos funcionais usam tons mais escuros para
+     preservar contraste sobre os botões brancos. */
+  body.ccmgis-claro #ccmgisV74Toolbar #t_mover{--ccmgis-icon:#087bb5;--ccmgis-icon-hover:#005f91;}
+  body.ccmgis-claro #ccmgisV74Toolbar #t_cava{--ccmgis-icon:#c61f70;--ccmgis-icon-hover:#9c1455;}
+  body.ccmgis-claro #ccmgisV74Toolbar #t_pilha{--ccmgis-icon:#bd5c00;--ccmgis-icon-hover:#934700;}
+  body.ccmgis-claro #ccmgisV74Toolbar #t_editar{--ccmgis-icon:#7447c6;--ccmgis-icon-hover:#58339c;}
+  body.ccmgis-claro #ccmgisV74Toolbar #b_escolher{--ccmgis-icon:#007f7b;--ccmgis-icon-hover:#006460;}
+  body.ccmgis-claro #ccmgisV74Toolbar #t_rampa{--ccmgis-icon:#9a6a00;--ccmgis-icon-hover:#765100;}
+  body.ccmgis-claro #ccmgisV74Toolbar #t_retorno{--ccmgis-icon:#a94700;--ccmgis-icon-hover:#7d3400;}
+  body.ccmgis-claro #ccmgisV74Toolbar #t_secao{--ccmgis-icon:#087c51;--ccmgis-icon-hover:#075f40;}
+  body.ccmgis-claro #ccmgisV74Toolbar #b_parar{--ccmgis-icon:#247c2e;--ccmgis-icon-hover:#185f20;}
+  body.ccmgis-claro #ccmgisV74Toolbar #b_reverter{--ccmgis-icon:#9d3eaa;--ccmgis-icon-hover:#772d82;}
+  body.ccmgis-claro #ccmgisV74Toolbar #b_desfazer{--ccmgis-icon:#3b61b5;--ccmgis-icon-hover:#29498d;}
+  body.ccmgis-claro #ccmgisV74Toolbar #b_refazer{--ccmgis-icon:#087eae;--ccmgis-icon-hover:#006189;}
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-toggle{--ccmgis-icon:#9c6500;--ccmgis-icon-hover:#764c00;}
+  body.ccmgis-claro #ccmgisV74Toolbar #b_limpar{--ccmgis-icon:#c92d35;--ccmgis-icon-hover:#9f1e25;}
+  body.ccmgis-claro #ccmgisV74Toolbar #b_ajustar{--ccmgis-icon:#00798c;--ccmgis-icon-hover:#005d6c;}
+  body.ccmgis-claro #ccmgisV74Toolbar #b_dxf{--ccmgis-icon:#087947;--ccmgis-icon-hover:#075d38;}
+  body.ccmgis-claro #ccmgisV74Toolbar #b_png{--ccmgis-icon:#7b42b6;--ccmgis-icon-hover:#5e308e;}
+  body.ccmgis-claro #ccmgisV74Toolbar #ccmgis_cortar_cava{--ccmgis-icon:#c23c27;--ccmgis-icon-hover:#982b1b;}
+
+  /* O MDT e o corte permanecem destacados como começo e encerramento do fluxo. */
+  #ccmgisV74Toolbar .ccmgis-mdt-command:not(.tem-mdt){
+    color:#f6b93b;border-color:#d99218;
+  }
+  #ccmgisV74Toolbar .ccmgis-cut-tool:not(.ativa){
+    border-color:#b94a3a;background:#241b1d;
+  }
+  #ccmgisV74Toolbar .ccmgis-cut-tool:not(.ativa):hover,
+  #ccmgisV74Toolbar .ccmgis-cut-tool:not(.ativa):focus-visible{
+    border-color:#ff765e;background:#3a2222;
+  }
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-cut-tool:not(.ativa){
+    border-color:#d98b7e;background:#fff5f2;
+  }
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-cut-tool:not(.ativa):hover,
+  body.ccmgis-claro #ccmgisV74Toolbar .ccmgis-cut-tool:not(.ativa):focus-visible{
+    border-color:#c23c27;background:#ffe4de;
+  }
+
+  @keyframes ccmgisMdtAlerta{
+    0%,100%{transform:scale(1);box-shadow:0 0 0 0 #f0ab3300;}
+    38%{transform:scale(1.12);box-shadow:0 0 0 5px #f0ab334d;}
+    68%{transform:scale(1.04);box-shadow:0 0 0 2px #f0ab332e;}
+  }
+  #ccmgisV74Toolbar .ccmgis-mdt-command.mdt-alerta{
+    animation:ccmgisMdtAlerta .5s ease-out 2;
+  }
+  @media (prefers-reduced-motion:reduce){
+    #ccmgisV74Toolbar .ccmgis-mdt-command.mdt-alerta{
+      animation:none;outline:2px solid #f0ab33;outline-offset:2px;
+    }
+  }
