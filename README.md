@@ -10,8 +10,8 @@ ortofoto, da camada vetorial e do MDT (veja "Janelas de propriedades" abaixo).
 
 | Arquivo gerado | No site (15h12) | Este repositório |
 |---|---|---|
-| `dist/GeoMine.html` | `1ed165eaf310aea13787fa5595d1c4bafe70a727fb63d1af8e3e84042ee1898f` | `1eb9a28f0f4967a37e99d78087f211fe1114bd1193f6d5086a11519aa934e4f0` |
-| `public/index.html` | `24f494ea94ffeca131949c378639ec43f321d34e368cbac83b1ffd7c7cc8a21c` | `b8c88706a1fd961037cf91868e2416d52c312f0bb4c785e44b44ae43aefa2bc3` |
+| `dist/GeoMine.html` | `1ed165eaf310aea13787fa5595d1c4bafe70a727fb63d1af8e3e84042ee1898f` | `abd89de437d5e9ca8645d75afc3eef13c7d1e09df3124436c3b2927ea91988fb` |
+| `public/index.html` | `24f494ea94ffeca131949c378639ec43f321d34e368cbac83b1ffd7c7cc8a21c` | `aec4f0f6b8122f360635967c6deefa1f30dff9f0114d71b7d373dc4cb93b6969` |
 
 `CURRENT_RELEASE.json` descreve a versão que está no site (`distSha256` e
 `publishedSha256`), com o histórico de publicações e validações. O commit
@@ -62,8 +62,9 @@ publicou de outro lugar e este repositório está desatualizado.
   (`S.orthoHD` e `S.orthoDispFull` na ortofoto; `demHD` e `dispFull` no MDT).
 - **Janelas de propriedades só com controles.** Nas janelas de propriedades da
   ortofoto (`#imgModal`), da camada vetorial (`#lpModal`) e do MDT
-  (`#rasModal`), o nome, o botão Renomear e os dados de leitura (arquivo, CRS,
-  tamanho, datas) ficam no painel aberto pelo botão **i** do cabeçalho. Os
+  (`#rasModal`), o nome e o botão Renomear ficam no painel aberto pelo botão
+  **i** do cabeçalho. Os dados de leitura (arquivo, CRS, tamanho, datas) ficam
+  recolhidos dentro desse painel e só aparecem no **i** ao lado do nome. Os
   textos de cada seção ficam no **i** ao lado do título. Na janela ficam só os
   controles, com botões do tamanho do texto (nada de largura total) e as seções
   pouco usadas recolhidas. Layout aprovado em 12/11/2026.
@@ -93,7 +94,8 @@ As três janelas usam o mesmo conjunto de classes, definido no fim de
 | Classe | Papel |
 |---|---|
 | `.gmp` | marca a janela (`<div class="modal gmp">`) |
-| `.gmp-i` + `.gmp-info` | botão **i** do cabeçalho e o painel que ele abre (nome, Renomear, dados de leitura) |
+| `.gmp-i` + `.gmp-info` | botão **i** do cabeçalho e o painel que ele abre (nome e Renomear) |
+| `.gmp-leitura` | dados de leitura, recolhidos; abrem pelo **i** ao lado do nome (`data-gmp-info`) |
 | `details.gmp-sec` | seção recolhível; `data-gmp-sec` é a chave com que o navegador lembra se ficou aberta |
 | `.gmp-st` | resumo ao lado do título da seção (preenchido por `gmpStatus(id, texto, tipo)`) |
 | `.gmp-row`, `.gmp-g2` | linha com rótulo e campo lado a lado; grade de dois campos |

@@ -1802,6 +1802,9 @@ button.gm-prop-info>span[hidden]{display:none!important}
 .gmp-info{flex:0 1 auto;min-height:0;max-height:46vh;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel2)}
 .gmp-info[hidden]{display:none}
 .gmp-info .lp-info{margin:0;padding:0;border:0;background:transparent;font-family:inherit;font-size:12.5px;line-height:1.65;overflow-wrap:anywhere}
+.gmp-leitura{display:flex;flex-direction:column;gap:6px}
+.gmp-leitura[hidden]{display:none}
+.gmp button.gm-prop-info[data-gmp-info][aria-expanded=true]>span{background:var(--amber);border-color:var(--amber);color:#1a1206}
 .gmp-info .tag{align-self:flex-start}
 .gmp-info .tag:empty{display:none}
 .gmp>.modal-b{flex:1 1 auto;min-height:0;overflow-y:auto;padding:0 14px 4px;overscroll-behavior:contain}

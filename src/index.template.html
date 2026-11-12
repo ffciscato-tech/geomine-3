@@ -3192,9 +3192,12 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
         <label for="imModName2" title="Usado na legenda da plotagem">Nome</label>
         <input type="text" id="imModName2" maxlength="60" placeholder="ex.: Ortofoto 2026">
         <button class="tbtn" id="imModRen">Renomear</button>
+        <button type="button" class="gm-prop-info" data-gmp-info="imModLeitura" aria-controls="imModLeitura" aria-expanded="false" aria-label="Dados do arquivo da ortofoto" title="Dados do arquivo da ortofoto"><span aria-hidden="true">i</span></button>
       </div>
-      <span class="tag" id="imModMeta"></span>
-      <div class="lp-info" id="imModInfo"></div>
+      <div class="gmp-leitura" id="imModLeitura" hidden>
+        <span class="tag" id="imModMeta"></span>
+        <div class="lp-info" id="imModInfo"></div>
+      </div>
     </div>
     <div class="modal-b">
       <details class="gmp-sec" open data-gmp-sec="im-estilo">
@@ -3362,9 +3365,12 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
         <label for="rasRename" title="Usado na legenda da plotagem">Nome</label>
         <input type="text" id="rasRename" maxlength="60">
         <button class="tbtn" id="rasRenameBtn">Renomear</button>
+        <button type="button" class="gm-prop-info" data-gmp-info="rasLeitura" aria-controls="rasLeitura" aria-expanded="false" aria-label="Dados do arquivo do raster" title="Dados do arquivo do raster"><span aria-hidden="true">i</span></button>
       </div>
-      <span class="tag" id="rasMeta"></span>
-      <div class="lp-info" id="rasInfo"></div>
+      <div class="gmp-leitura" id="rasLeitura" hidden>
+        <span class="tag" id="rasMeta"></span>
+        <div class="lp-info" id="rasInfo"></div>
+      </div>
     </div>
     <div class="modal-b">
       <!-- Só aparece quando o arquivo original não está acessível (raster-panel-tabs.js). -->
@@ -3740,9 +3746,12 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
         <label for="lpRename" title="Usado na legenda da plotagem. Nomes longos de shapefile poluem a legenda — encurte aqui.">Nome</label>
         <input type="text" id="lpRename" maxlength="60" placeholder="nome curto p/ a legenda">
         <button class="tbtn" id="lpRenameBtn">Renomear</button>
+        <button type="button" class="gm-prop-info" data-gmp-info="lpLeitura" aria-controls="lpLeitura" aria-expanded="false" aria-label="Dados do arquivo da camada" title="Dados do arquivo da camada"><span aria-hidden="true">i</span></button>
       </div>
-      <span class="tag" id="lpMeta"></span>
-      <div class="lp-info" id="lpInfo"></div>
+      <div class="gmp-leitura" id="lpLeitura" hidden>
+        <span class="tag" id="lpMeta"></span>
+        <div class="lp-info" id="lpInfo"></div>
+      </div>
     </div>
     <div class="modal-b">
       <!-- Ações que dependem da seleção ou do tipo da camada (continuar desenho,
