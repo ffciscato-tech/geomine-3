@@ -3178,87 +3178,116 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
   <button id="loadCancel" title="Cancelar (Esc)" style="margin-left:14px;background:none;border:1px solid #ffffff44;color:#fff;border-radius:8px;padding:4px 12px;cursor:pointer;font-size:13px">✕ Cancelar</button></div>
 
 <!-- Modal: raster -->
-<!-- Modal: propriedades da ortofoto / imagem RGB — mesma organização da caixa do MDT (rasModal):
-     informação · nome · estilo · Resolução · Arquivo na pasta de trabalho · Exportar · CRS de origem · ações -->
+<!-- Modal: propriedades da ortofoto / imagem RGB. Na janela ficam só os controles, em seções
+     recolhíveis (Estilo · Resolução · Arquivo na pasta de trabalho · Exportar · CRS de origem · Cantos).
+     O nome e os dados de leitura ficam no painel aberto pelo botão i do cabeçalho. -->
 <div id="imgModal" class="modal-bg">
-  <div class="modal">
-    <div class="modal-h"><b id="imModName">Ortofoto</b><span class="tag" id="imModMeta"></span>
-      <div style="flex:1"></div><button class="tbtn" id="imModClose">Fechar</button></div>
-    <div class="modal-b">
-      <div class="lp-info" id="imModInfo"></div>
-      <label class="field">Nome da ortofoto (legenda da plotagem)</label>
-      <div class="row2">
+  <div class="modal gmp">
+    <div class="modal-h"><b id="imModName">Ortofoto</b>
+      <div style="flex:1"></div>
+      <button type="button" class="gmp-i" data-gmp-info="imModDados" aria-controls="imModDados" aria-expanded="false" aria-label="Nome e informações da ortofoto" title="Nome e informações da ortofoto">i</button>
+      <button class="tbtn gmp-x" id="imModClose" aria-label="Fechar" title="Fechar">×</button></div>
+    <div class="gmp-info" id="imModDados" hidden>
+      <div class="gmp-row">
+        <label for="imModName2" title="Usado na legenda da plotagem">Nome</label>
         <input type="text" id="imModName2" maxlength="60" placeholder="ex.: Ortofoto 2026">
-        <button class="tbtn" id="imModRen" style="justify-content:center">Renomear</button>
+        <button class="tbtn" id="imModRen">Renomear</button>
       </div>
-      <label class="field">Estilo</label>
-      <label class="field" style="margin-top:4px">Opacidade <span id="imModOpv" class="tag">100%</span></label>
-      <input type="range" id="imModOp" min="0" max="1" step="0.01" value="1" style="width:100%;accent-color:var(--amber)">
-      <label class="field" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px">
-        <input type="checkbox" id="imModND" checked style="width:auto;accent-color:var(--amber)"> Descartar células sem dado (transparente)</label>
-      <div class="row2">
-        <div><label class="field">Branco ≥</label><input type="number" id="imModW" value="250" min="200" max="255" step="1"></div>
-        <div><label class="field">Preto ≤</label><input type="number" id="imModB" value="4" min="0" max="60" step="1"></div>
-      </div>
-      <button class="tbtn" id="imModApply" style="width:100%;justify-content:center;margin-top:8px;background:var(--amber);color:#1a1206;font-weight:600">Aplicar</button>
-      <div class="hint" style="margin-top:6px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Transparência" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A transparência pode ser ajustada na prévia salva e no TIFF original.</span></button></div>
-
-      <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
-        <label class="field">Resolução</label>
-        <div class="lp-info" id="imModRes" style="margin-bottom:6px"></div>
-        <button class="tbtn" id="btnOrtoReligar" style="width:100%;justify-content:center">⤓ Selecionar o GeoTIFF original e mostrar</button>
-        <input type="file" id="ortoReligarFile" accept=".tif,.tiff,application/octet-stream" style="display:none">
-        <label style="display:flex;align-items:center;gap:7px;font-size:12px;margin:8px 0 0;cursor:pointer">
-          <input type="checkbox" id="imModHD" style="accent-color:var(--amber)">
-          <span>Usar <b>tiles do arquivo original</b> (a densidade acompanha o zoom)</span>
-        </label>
-        <div class="hint" id="imModHDInfo" style="margin-top:3px"></div>
-        <div class="hint" id="imModHDEstado" style="margin-top:3px"></div>
-        <label style="display:flex;align-items:center;gap:7px;font-size:12px;margin:8px 0 0;cursor:pointer">
-          <input type="checkbox" id="imModDispFull" style="accent-color:var(--amber)">
-          <span>Mostrar o <b>mapa em resolução original</b> (sem suavização)</span>
-        </label>
-        <button type="button" class="gm-prop-info" data-help-from="imModTeto" aria-label="Ajuda: Resolução no mapa" aria-expanded="false"><span aria-hidden="true">i</span></button><div class="hint gm-prop-note" id="imModTeto" style="margin-top:4px"></div>
-      </div>
-
-      <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
-        <label class="field">Arquivo na pasta de trabalho</label>
-        <div class="lp-info" id="imModProjectStore" style="margin-bottom:6px">Verificando…</div>
-        <button class="tbtn" id="imModSaveProject" style="width:100%;justify-content:center">💾 Salvar GeoTIFF da ortofoto na pasta de trabalho</button>
-        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Arquivo na pasta" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Com a cópia em <b>ALAGIS/rasters</b>, o projeto reabre já com a resolução plena e os tiles — sem buscar o .tif de novo.</span></button></div>
-      </div>
-
-      <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
-        <label class="field">Exportar a ortofoto</label>
-        <div class="row2">
-          <select id="imModExpFmt">
-            <option value="png">PNG georreferenciado (prévia + PGW + PRJ)</option>
-            <option value="tifsrc">GeoTIFF original (.tif)</option>
-          </select>
-          <button class="tbtn" id="btnImModExp" style="justify-content:center">⤓ Exportar</button>
+      <span class="tag" id="imModMeta"></span>
+      <div class="lp-info" id="imModInfo"></div>
+    </div>
+    <div class="modal-b">
+      <details class="gmp-sec" open data-gmp-sec="im-estilo">
+        <summary><span class="gmp-t">Estilo</span><span class="gmp-st"></span>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Transparência" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A transparência pode ser ajustada na prévia salva e no TIFF original.</span></button></summary>
+        <div class="gmp-c">
+          <div class="gmp-row">
+            <label for="imModOp">Opacidade</label>
+            <input type="range" id="imModOp" min="0" max="1" step="0.01" value="1">
+            <span id="imModOpv" class="gmp-val">100%</span>
+          </div>
+          <label class="gmp-sw"><span>Descartar células sem dado (transparente)</span>
+            <input type="checkbox" id="imModND" checked></label>
+          <div class="gmp-row wrap">
+            <label for="imModW">Branco ≥</label><input type="number" id="imModW" value="250" min="200" max="255" step="1">
+            <label for="imModB">Preto ≤</label><input type="number" id="imModB" value="4" min="0" max="60" step="1">
+            <span class="gmp-sp"></span>
+            <button class="tbtn gmp-p" id="imModApply">Aplicar</button>
+          </div>
         </div>
-        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Exportar" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O PNG sai com o arquivo de georreferência ao lado, pronto para o QGIS. O GeoTIFF original exige o .tif ligado nesta sessão.</span></button></div>
-      </div>
+      </details>
 
-      <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
-        <label class="field">Esta ortofoto está em outro fuso/datum? (CRS de origem)</label>
-        <select id="imModCRS"></select>
-        <button class="tbtn" id="imModWarp" style="width:100%;justify-content:center;margin-top:6px">⇄ Interpretar os cantos neste CRS</button>
-        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: CRS de origem" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Use quando a ortofoto caiu no lugar errado por ter sido lida com o fuso/datum incorreto. A prévia e os tiles passam a ser reprojetados a partir do CRS escolhido.</span></button></div>
-      </div>
+      <details class="gmp-sec" open data-gmp-sec="im-res">
+        <summary><span class="gmp-t">Resolução</span><span class="gmp-st" id="imSecResSt"></span>
+          <button type="button" class="gm-prop-info" data-help-from="imModRes imModHDInfo imModHDEstado imModTeto" aria-label="Detalhes da resolução" aria-expanded="false"><span aria-hidden="true">i</span></button></summary>
+        <div class="gmp-c">
+          <div class="gmp-src"><div id="imModRes"></div><div id="imModHDInfo"></div><div id="imModHDEstado"></div><div id="imModTeto"></div></div>
+          <div class="gmp-row">
+            <button class="tbtn" id="btnOrtoReligar">⤓ Selecionar o GeoTIFF original e mostrar</button>
+          </div>
+          <input type="file" id="ortoReligarFile" accept=".tif,.tiff,application/octet-stream" style="display:none">
+          <label class="gmp-sw"><span>Usar <b>tiles do arquivo original</b> (a densidade acompanha o zoom)</span>
+            <input type="checkbox" id="imModHD"></label>
+          <label class="gmp-sw"><span>Mostrar o <b>mapa em resolução original</b> (sem suavização)</span>
+            <input type="checkbox" id="imModDispFull"></label>
+        </div>
+      </details>
 
-      <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
-        <label class="field" id="imModCantosLbl">Cantos (reposicionar)</label>
-        <div class="row2"><div><label class="field">X mín (E)</label><input type="number" id="imModX0" step="0.01"></div>
-          <div><label class="field">Y mín (N)</label><input type="number" id="imModY0" step="0.01"></div></div>
-        <div class="row2"><div><label class="field">X máx (E)</label><input type="number" id="imModX1" step="0.01"></div>
-          <div><label class="field">Y máx (N)</label><input type="number" id="imModY1" step="0.01"></div></div>
-        <button class="tbtn" id="imModMove" style="width:100%;justify-content:center;margin-top:8px">Reposicionar</button>
-      </div>
-      <div class="row2" style="margin-top:6px">
-        <button class="tbtn" id="imModZoom" style="justify-content:center">Zoom</button>
-        <button class="tbtn" id="imModDel" style="justify-content:center;color:#ffb4b4">Remover</button>
-      </div>
+      <details class="gmp-sec" data-gmp-sec="im-pasta">
+        <summary><span class="gmp-t">Arquivo na pasta de trabalho</span><span class="gmp-st" id="imSecPastaSt"></span>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Arquivo na pasta" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Com a cópia em ALAGIS/rasters, o projeto reabre já com a resolução plena e os tiles — sem buscar o .tif de novo.</span></button></summary>
+        <div class="gmp-c">
+          <div class="gmp-txt" id="imModProjectStore">Verificando…</div>
+          <div class="gmp-row end">
+            <button class="tbtn" id="imModSaveProject">💾 Salvar GeoTIFF da ortofoto na pasta de trabalho</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="gmp-sec" data-gmp-sec="im-exportar">
+        <summary><span class="gmp-t">Exportar a ortofoto</span><span class="gmp-st">PNG ou GeoTIFF</span>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Exportar" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O PNG sai com o arquivo de georreferência ao lado, pronto para o QGIS. O GeoTIFF original exige o .tif ligado nesta sessão.</span></button></summary>
+        <div class="gmp-c">
+          <div class="gmp-row">
+            <select id="imModExpFmt" aria-label="Formato de exportação">
+              <option value="png">PNG georreferenciado (prévia + PGW + PRJ)</option>
+              <option value="tifsrc">GeoTIFF original (.tif)</option>
+            </select>
+            <button class="tbtn" id="btnImModExp">⤓ Exportar</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="gmp-sec" data-gmp-sec="im-crs">
+        <summary><span class="gmp-t">CRS de origem</span><span class="gmp-st">outro fuso ou datum?</span>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: CRS de origem" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Use quando a ortofoto caiu no lugar errado por ter sido lida com o fuso/datum incorreto. A prévia e os tiles passam a ser reprojetados a partir do CRS escolhido.</span></button></summary>
+        <div class="gmp-c">
+          <select id="imModCRS" aria-label="CRS de origem da ortofoto"></select>
+          <div class="gmp-row end">
+            <button class="tbtn" id="imModWarp">⇄ Interpretar os cantos neste CRS</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="gmp-sec" data-gmp-sec="im-cantos">
+        <summary><span class="gmp-t" id="imModCantosLbl">Cantos (reposicionar)</span><span class="gmp-st" id="imSecCantosSt"></span></summary>
+        <div class="gmp-c">
+          <div class="gmp-g2">
+            <label>X mín (E)<input type="number" id="imModX0" step="0.01"></label>
+            <label>Y mín (N)<input type="number" id="imModY0" step="0.01"></label>
+            <label>X máx (E)<input type="number" id="imModX1" step="0.01"></label>
+            <label>Y máx (N)<input type="number" id="imModY1" step="0.01"></label>
+          </div>
+          <div class="gmp-row end">
+            <button class="tbtn" id="imModMove">Reposicionar</button>
+          </div>
+        </div>
+      </details>
+    </div>
+    <div class="gmp-f">
+      <button class="tbtn" id="imModZoom">Zoom</button>
+      <span class="gmp-sp"></span>
+      <button class="tbtn gmp-d" id="imModDel" aria-label="Remover ortofoto" title="Remover ortofoto">🗑</button>
     </div>
   </div>
 </div>
@@ -3323,177 +3352,212 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
   </div>
 </div>
 <div id="rasModal" class="modal-bg">
-  <div class="modal">
-    <div class="modal-h"><b id="rasName">Raster</b><span class="tag" id="rasMeta"></span>
-      <div style="flex:1"></div><button class="tbtn" id="rasClose">Fechar</button></div>
-    <div class="modal-b">
-      <div class="lp-info" id="rasInfo"></div>
-      <label class="field">Nome do raster (legenda da plotagem)</label>
-      <div class="row2">
+  <div class="modal gmp">
+    <div class="modal-h"><b id="rasName">Raster</b>
+      <div style="flex:1"></div>
+      <button type="button" class="gmp-i" data-gmp-info="rasDados" aria-controls="rasDados" aria-expanded="false" aria-label="Nome e informações do raster" title="Nome e informações do raster">i</button>
+      <button class="tbtn gmp-x" id="rasClose" aria-label="Fechar" title="Fechar">×</button></div>
+    <div class="gmp-info" id="rasDados" hidden>
+      <div class="gmp-row">
+        <label for="rasRename" title="Usado na legenda da plotagem">Nome</label>
         <input type="text" id="rasRename" maxlength="60">
-        <button class="tbtn" id="rasRenameBtn" style="justify-content:center">Renomear</button>
+        <button class="tbtn" id="rasRenameBtn">Renomear</button>
       </div>
-      <label class="field">Estilo</label>
-      <select id="rasMode">
-        <option value="cn">CN por cobertura (temático)</option>
-        <option value="classes">Classificado por faixas</option>
-        <option value="hipso_hs">Hipsométrico + sombreado</option>
-        <option value="relevo_local">TPI — Índice de Posição Topográfica</option>
-        <option value="hipso">Hipsométrico (sem sombra)</option>
-        <option value="hs">Relevo sombreado</option>
-        <option value="gray">Tons de cinza</option>
-        <option value="solida">Cor sólida (chapada)</option>
-      </select>
-      <div class="row2" id="rasSolidaBox" style="display:none;margin-top:6px;grid-template-columns:1fr 46px;align-items:end">
-        <div class="hint" style="margin:0"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Cor sólida" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A superfície inteira sai nesta cor, sem relevo nem faixas — serve para usá-la como máscara ou fundo chapado.</span></button></div>
-        <input type="color" id="rasSolidaCor" value="#8d5524" style="height:30px;padding:1px">
+      <span class="tag" id="rasMeta"></span>
+      <div class="lp-info" id="rasInfo"></div>
+    </div>
+    <div class="modal-b">
+      <!-- Só aparece quando o arquivo original não está acessível (raster-panel-tabs.js). -->
+      <div class="gmp-aviso" id="rasNativeAviso" hidden>
+        <span id="rasNativeStatus"></span>
+        <button class="tbtn" id="rasNativeReconnect">Localizar arquivo original</button>
       </div>
-      <div id="rasTinFerr" style="display:none">
-        <label class="field" style="margin-top:8px">Malha 3D — recortar pela camada limite</label>
-        <div class="row2" style="grid-template-columns:1fr 110px">
-          <select id="tinCorteLim"></select>
-          <select id="tinCorteLimModo">
-            <option value="dentro">manter dentro</option>
-            <option value="fora">manter fora</option>
-          </select>
-        </div>
-        <label class="field" style="margin-top:6px">Malha 3D — cortar pela interseção com outra superfície</label>
-        <div class="row2" style="grid-template-columns:1fr 110px">
-          <select id="tinCorteSup"></select>
-          <select id="tinCorteSupModo">
-            <option value="acima">manter acima</option>
-            <option value="abaixo">manter abaixo</option>
-          </select>
-        </div>
-        <div class="row2" style="margin-top:6px">
-          <button class="tbtn" id="btnTinCorta" style="justify-content:center;background:var(--amber);color:#1a1206;font-weight:600">✂ Aplicar corte</button>
-          <button class="tbtn" id="btnTinCorteDesfaz" style="justify-content:center">⟲ Desfazer corte</button>
-        </div>
-        <div class="hint" id="tinCorteInfo" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Corte da malha" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Escolha UM dos cortes (limite ou superfície) e aplique — a malha já sai cortada no 2D, no 3D e nos cálculos.</span></button></div>
-        <label class="field" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:10px">
-          <input type="checkbox" id="tinCaixaOn" style="width:auto;accent-color:var(--amber)">
-          Caixa do modelo (paredes e base sólida)
-        </label>
-        <div class="row2" style="grid-template-columns:1fr 46px;align-items:end">
-          <div><label class="field">Base do modelo z (m)</label>
-            <input type="number" id="tinCaixaZ" step="1"></div>
-          <input type="color" id="tinCaixaCor" value="#b9b2a4" style="height:30px;padding:1px">
-        </div>
+      <div class="gmp-tabs" id="rasAbas" role="group" aria-label="Seção">
+        <button type="button" class="tbtn on" data-aba="est" aria-pressed="true">Estilo</button>
+        <button type="button" class="tbtn" data-aba="dad" aria-pressed="false">Dados</button>
       </div>
-      <label class="field" style="margin-top:8px">Renderização em 3D</label>
-      <div id="rasV3MdtBox" style="margin:0 0 7px">
-        <label class="field" style="margin:0 0 3px">MDT/MDS já carregado para configurar</label>
-        <select id="rasV3Mdt"></select>
-        <div class="hint" style="margin-top:3px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Superfície 3D" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Escolha uma superfície que já está em <b>Camadas</b>. Nenhum MDT será carregado novamente.</span></button></div>
-      </div>
-        <div class="hout" id="rasTexImgInfo" style="display:none;margin:0 0 6px"></div>
-      <select id="rasTex3D">
-        <option value="orto">Ortofoto drapejada (quando houver imagem posicionada)</option>
-        <option value="hipso">Mesmo estilo da camada (hipsométrico, sombreado ou classes)</option>
-        <option value="solida">Cor sólida</option>
-      </select>
-      <div class="row2" style="margin-top:6px;grid-template-columns:1fr 46px;align-items:end">
-        <div class="hint" style="margin:0"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Iluminação 3D" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>No 3D a malha sempre recebe luz real, qualquer que seja a textura.</span></button></div>
-        <input type="color" id="rasTex3DCor" value="#8d5524" style="height:30px;padding:1px">
-      </div>
-      <div id="rasSlopeUnitBox" style="display:none;margin-top:6px">
-        <label class="field">Unidade da declividade</label>
-        <select id="rasSlopeUnit">
-          <option value="pct">Porcentagem (%)</option>
-          <option value="deg">Graus (°)</option>
-        </select>
-        <div class="hint" style="margin-top:3px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Unidade da declividade" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A troca converte os valores do raster e atualiza as classes e a legenda.</span></button></div>
-      </div>
-      <div class="row2" id="rasClassBox" style="margin-top:6px">
-        <div><label class="field">Número de classes</label><input type="number" id="rasClassN" value="7" min="2" max="15"></div>
-        <div style="display:flex;align-items:flex-end"><button class="mini" id="rasClassGen" style="width:100%">Gerar classes</button></div>
-      </div>
-      <div id="rasClassList" style="margin-top:5px"></div>
-      <div id="rasClassMsg" class="ras-class-msg" style="display:none"></div>
-      <label class="field">Opacidade</label>
-      <input type="number" id="rasOp" value="0.8" min="0" max="1" step="0.05">
-      <button class="tbtn" id="rasApply" style="width:100%;justify-content:center;margin-top:8px;background:var(--amber);color:#1a1206;font-weight:600">Aplicar estilo</button>
 
-      <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
-        <label class="field">Resolução</label>
-        <div class="lp-info" id="rasRes" style="margin-bottom:6px"></div>
-        <label style="display:flex;align-items:center;gap:7px;font-size:12px;margin-bottom:6px;cursor:pointer">
-          <input type="checkbox" id="rasFullRes" checked style="accent-color:var(--amber)">
-          Produtos analíticos na resolução plena (perfil, curvas, Z e plotagem)
-        </label>
-        <button class="tbtn" id="rasLoadFull" style="width:100%;justify-content:center">⤓ Selecionar o GeoTIFF original e mostrar</button>
-        <div style="border-top:1px dashed var(--line);margin:10px 0 8px;padding-top:8px">
-          <label class="field">Reamostrar a superfície para (m/célula)</label>
-          <div class="row2">
-            <input type="number" id="rasResampleM" step="0.5" min="0" placeholder="ex.: 2">
-            <button class="tbtn" id="rasResampleBtn" style="justify-content:center">↧ Reamostrar</button>
+      <div id="rasAba_est">
+      <details class="gmp-sec" open data-gmp-sec="ras-estilo">
+        <summary><span class="gmp-t">Estilo</span><span class="gmp-st"></span></summary>
+        <div class="gmp-c">
+          <select id="rasMode" aria-label="Estilo do raster">
+            <option value="cn">CN por cobertura (temático)</option>
+            <option value="classes">Classificado por faixas</option>
+            <option value="hipso_hs">Hipsométrico + sombreado</option>
+            <option value="relevo_local">TPI — Índice de Posição Topográfica</option>
+            <option value="hipso">Hipsométrico (sem sombra)</option>
+            <option value="hs">Relevo sombreado</option>
+            <option value="gray">Tons de cinza</option>
+            <option value="solida">Cor sólida (chapada)</option>
+          </select>
+          <div class="gmp-row" id="rasSolidaBox" style="display:none">
+            <label for="rasSolidaCor" class="grow">Cor da superfície</label>
+            <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Cor sólida" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A superfície inteira sai nesta cor, sem relevo nem faixas — serve para usá-la como máscara ou fundo chapado.</span></button>
+            <input type="color" id="rasSolidaCor" value="#8d5524">
           </div>
-          <div class="hint" id="rasResampleOut" style="margin-top:3px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Reamostragem" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Alivia mapa, 3D e Hidro. Perfil e curvas seguem lendo o nativo.</span></button></div>
+          <div class="gmp-c gmp-sub sep" id="rasTinFerr" style="display:none">
+            <div class="gmp-hd"><span class="gmp-t">Malha 3D — corte</span><span class="gmp-st"></span>
+              <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Corte da malha" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Escolha UM dos cortes (limite ou superfície) e aplique — a malha já sai cortada no 2D, no 3D e nos cálculos.</span></button></div>
+            <span class="gmp-lbl">Recortar pela camada limite</span>
+            <div class="gmp-row">
+              <select id="tinCorteLim" aria-label="Camada limite"></select>
+              <select id="tinCorteLimModo" class="gmp-curto" aria-label="Lado mantido">
+                <option value="dentro">manter dentro</option>
+                <option value="fora">manter fora</option>
+              </select>
+            </div>
+            <span class="gmp-lbl">Cortar pela interseção com outra superfície</span>
+            <div class="gmp-row">
+              <select id="tinCorteSup" aria-label="Superfície de corte"></select>
+              <select id="tinCorteSupModo" class="gmp-curto" aria-label="Lado mantido">
+                <option value="acima">manter acima</option>
+                <option value="abaixo">manter abaixo</option>
+              </select>
+            </div>
+            <div class="gmp-row end">
+              <button class="tbtn" id="btnTinCorteDesfaz">⟲ Desfazer corte</button>
+              <button class="tbtn gmp-p" id="btnTinCorta">✂ Aplicar corte</button>
+            </div>
+            <div class="gmp-txt" id="tinCorteInfo"></div>
+            <label class="gmp-sw"><span>Caixa do modelo (paredes e base sólida)</span>
+              <input type="checkbox" id="tinCaixaOn"></label>
+            <div class="gmp-row">
+              <label for="tinCaixaZ" class="grow">Base do modelo z (m)</label>
+              <input type="number" id="tinCaixaZ" step="1">
+              <input type="color" id="tinCaixaCor" value="#b9b2a4" aria-label="Cor da caixa do modelo">
+            </div>
+          </div>
         </div>
-        <label style="display:flex;align-items:center;gap:7px;font-size:12px;margin:8px 0 0;cursor:pointer">
-          <input type="checkbox" id="rasDemHD" style="accent-color:var(--amber)">
-          <span>Usar <b>tiles do arquivo original</b> (a densidade acompanha o zoom)</span>
-        </label>
-        <div class="hint" id="rasDemHDInfo" style="margin-top:3px">Relê o .tif por janela, na densidade do zoom. Exige o .tif desta sessão.</div>
-        <label style="display:flex;align-items:center;gap:7px;font-size:12px;margin:8px 0 0;cursor:pointer">
-          <input type="checkbox" id="rasDispFull" style="accent-color:var(--amber)">
-          Mostrar o <b>mapa em resolução original</b> (sem suavização)
-        </label>
-        <button type="button" class="gm-prop-info" data-help-from="rasTeto" aria-label="Ajuda: Resolução no mapa" aria-expanded="false"><span aria-hidden="true">i</span></button><div class="hint gm-prop-note" id="rasTeto" style="margin-top:4px"></div>
-        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Grade de exibição" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A média de bloco vale só para desenhar; todo produto relê o nativo.
-          Ela desloca o traço em terreno quase plano — é por isso que o sombreado às vezes
-          não casa com as curvas.</span></button></div>
-      </div>
+      </details>
 
-      <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
-        <label class="field">Arquivo na pasta de trabalho</label>
-        <div class="lp-info" id="rasProjectStore" style="margin-bottom:6px">Verificando…</div>
-        <button class="tbtn" id="rasSaveProject" style="width:100%;justify-content:center">
-          💾 Salvar GeoTIFF nativo na pasta de trabalho
-        </button>
-        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Arquivo na pasta" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Gravação é automática em <b>ALAGIS/rasters</b>; o botão só força.</span></button></div>
-      </div>
-
-      <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
-        <label class="field">Curvas de nível a partir deste raster</label>
-        <div class="row2">
-          <input type="number" id="rasCInt" value="5" min="0.1" step="1" title="Equidistância (m)">
-          <button class="tbtn" id="rasContour" style="justify-content:center">Gerar curvas</button>
+      <details class="gmp-sec" data-gmp-sec="ras-3d">
+        <summary><span class="gmp-t">Renderização em 3D</span><span class="gmp-st" id="rasSec3dSt"></span>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Iluminação 3D" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>No 3D a malha sempre recebe luz real, qualquer que seja a textura.</span></button></summary>
+        <div class="gmp-c">
+          <div class="gmp-c gmp-sub" id="rasV3MdtBox">
+            <div class="gmp-row">
+              <label for="rasV3Mdt" class="grow">MDT/MDS já carregado para configurar</label>
+              <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Superfície 3D" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Escolha uma superfície que já está em Camadas. Nenhum MDT será carregado novamente.</span></button>
+            </div>
+            <select id="rasV3Mdt"></select>
+          </div>
+          <div class="hout" id="rasTexImgInfo" style="display:none;margin:0"></div>
+          <div class="gmp-row">
+            <select id="rasTex3D" aria-label="Textura da superfície em 3D">
+              <option value="orto">Ortofoto drapejada (quando houver imagem posicionada)</option>
+              <option value="hipso">Mesmo estilo da camada (hipsométrico, sombreado ou classes)</option>
+              <option value="solida">Cor sólida</option>
+            </select>
+            <input type="color" id="rasTex3DCor" value="#8d5524" aria-label="Cor sólida da superfície em 3D">
+          </div>
         </div>
-        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Curvas de nível" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Traçadas sobre a grade <b>nativa</b>.</span></button></div>
-      </div>
+      </details>
 
-      <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
-        <label class="field">Exportar o MDT</label>
-        <div class="row2">
-          <select id="rasExpFmt">
-            <option value="tif">GeoTIFF float32 (.tif)</option>
-            <option value="asc">ASCII Grid (.asc)</option>
-            <option value="xyz">XYZ (.txt)</option>
-          </select>
-          <select id="rasExpRes">
-            <option value="nativa">Grade nativa</option>
-            <option value="tela">Grade de tela</option>
-          </select>
+      <details class="gmp-sec" open data-gmp-sec="ras-classes">
+        <summary><span class="gmp-t">Classes e opacidade</span><span class="gmp-st"></span></summary>
+        <div class="gmp-c">
+          <div class="gmp-row" id="rasSlopeUnitBox" style="display:none">
+            <label for="rasSlopeUnit">Unidade da declividade</label>
+            <select id="rasSlopeUnit">
+              <option value="pct">Porcentagem (%)</option>
+              <option value="deg">Graus (°)</option>
+            </select>
+            <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Unidade da declividade" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A troca converte os valores do raster e atualiza as classes e a legenda.</span></button>
+          </div>
+          <div class="gmp-row" id="rasClassBox">
+            <label for="rasClassN" class="grow">Número de classes</label>
+            <input type="number" id="rasClassN" value="7" min="2" max="15">
+            <button class="mini" id="rasClassGen">Gerar classes</button>
+          </div>
+          <div id="rasClassList"></div>
+          <div id="rasClassMsg" class="ras-class-msg" style="display:none"></div>
+          <div class="gmp-row">
+            <label for="rasOp" class="grow">Opacidade (0 a 1)</label>
+            <input type="number" id="rasOp" value="0.8" min="0" max="1" step="0.05">
+          </div>
         </div>
-        <button class="tbtn" id="btnRasExp" style="width:100%;justify-content:center;margin-top:6px">⤓ Exportar</button>
-        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Exportar" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O GeoTIFF sai com o CRS de trabalho gravado nas GeoKeys e nodata −9999,
-          pronto para o QGIS. O ASCII Grid exige célula quadrada. O XYZ escreve uma linha por
-          célula com dado — arquivo grande em grade nativa.</span></button></div>
-      </div>
+      </details>
+      </div><!-- /rasAba_est -->
 
-      <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
-        <label class="field">Este raster está em outro fuso/datum? (CRS de origem)</label>
-        <select id="rasCRS"></select>
-        <button class="tbtn" id="rasWarp" style="width:100%;justify-content:center;margin-top:6px">⇄ Reprojetar para o CRS de trabalho</button>
-        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: CRS de origem" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Reamostragem bilinear (warp). Use quando o raster caiu no lugar errado por
-          ter sido lido com o fuso/datum incorreto.</span></button></div>
+      <div id="rasAba_dad" style="display:none">
+      <details class="gmp-sec" data-gmp-sec="ras-pasta">
+        <summary><span class="gmp-t">Arquivo na pasta de trabalho</span><span class="gmp-st" id="rasSecPastaSt"></span>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Arquivo na pasta" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Gravação é automática em ALAGIS/rasters; o botão só força.</span></button></summary>
+        <div class="gmp-c">
+          <div class="gmp-txt" id="rasProjectStore">Verificando…</div>
+          <div class="gmp-row end">
+            <button class="tbtn" id="rasSaveProject">💾 Salvar GeoTIFF nativo na pasta de trabalho</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="gmp-sec" open data-gmp-sec="ras-curvas">
+        <summary><span class="gmp-t">Curvas de nível a partir deste raster</span><span class="gmp-st"></span>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Curvas de nível" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Traçadas sobre a grade nativa.</span></button></summary>
+        <div class="gmp-c">
+          <div class="gmp-row">
+            <label for="rasCInt" class="grow">Equidistância (m)</label>
+            <input type="number" id="rasCInt" value="5" min="0.1" step="1" title="Equidistância (m)">
+            <button class="tbtn" id="rasContour">Gerar curvas</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="gmp-sec" open data-gmp-sec="ras-exportar">
+        <summary><span class="gmp-t">Exportar o MDT</span><span class="gmp-st"></span>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Exportar" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O GeoTIFF sai com o CRS de trabalho gravado nas GeoKeys e nodata −9999, pronto para o QGIS. O ASCII Grid exige célula quadrada. O XYZ escreve uma linha por célula com dado — arquivo grande em grade nativa.</span></button></summary>
+        <div class="gmp-c">
+          <div class="gmp-row">
+            <select id="rasExpFmt" aria-label="Formato de exportação">
+              <option value="tif">GeoTIFF float32 (.tif)</option>
+              <option value="asc">ASCII Grid (.asc)</option>
+              <option value="xyz">XYZ (.txt)</option>
+            </select>
+            <select id="rasExpRes" aria-label="Grade exportada">
+              <option value="nativa">Grade nativa</option>
+              <option value="tela">Grade de tela</option>
+            </select>
+          </div>
+          <div class="gmp-row end">
+            <button class="tbtn" id="btnRasExp">⤓ Exportar</button>
+          </div>
+        </div>
+      </details>
+
+      <details class="gmp-sec" data-gmp-sec="ras-crs">
+        <summary><span class="gmp-t">CRS de origem</span><span class="gmp-st">outro fuso ou datum?</span>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: CRS de origem" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Reamostragem bilinear (warp). Use quando o raster caiu no lugar errado por ter sido lido com o fuso/datum incorreto.</span></button></summary>
+        <div class="gmp-c">
+          <select id="rasCRS" aria-label="CRS de origem do raster"></select>
+          <div class="gmp-row end">
+            <button class="tbtn" id="rasWarp">⇄ Reprojetar para o CRS de trabalho</button>
+          </div>
+        </div>
+      </details>
+      </div><!-- /rasAba_dad -->
+
+      <!-- Controles de resolução herdados: a exibição é sempre nativa e automática,
+           então ficam fora da tela. Os ids continuam aqui porque o código os lê. -->
+      <div id="rasResBloco" hidden>
+        <div id="rasRes"></div>
+        <input type="checkbox" id="rasFullRes" checked>
+        <button class="tbtn" id="rasLoadFull">⤓ Selecionar o GeoTIFF original e mostrar</button>
+        <input type="number" id="rasResampleM" step="0.5" min="0" placeholder="ex.: 2">
+        <button class="tbtn" id="rasResampleBtn">↧ Reamostrar</button>
+        <div id="rasResampleOut"></div>
+        <input type="checkbox" id="rasDemHD">
+        <div id="rasDemHDInfo">Relê o .tif por janela, na densidade do zoom. Exige o .tif desta sessão.</div>
+        <input type="checkbox" id="rasDispFull">
+        <div id="rasTeto"></div>
       </div>
-      <div class="row2" style="margin-top:6px">
-        <button class="tbtn" id="rasZoom" style="justify-content:center">Zoom</button>
-        <button class="tbtn" id="rasHidro" style="justify-content:center">→ Usar no Hidro</button>
-        <button class="tbtn" id="rasDel" style="justify-content:center;color:#ffb4b4">Remover</button>
-      </div>
+    </div>
+    <div class="gmp-f">
+      <button class="tbtn gmp-p" id="rasApply">Aplicar estilo</button>
+      <button class="tbtn" id="rasZoom">Zoom</button>
+      <button class="tbtn" id="rasHidro">→ Usar no Hidro</button>
+      <span class="gmp-sp"></span>
+      <button class="tbtn gmp-d" id="rasDel" aria-label="Remover raster" title="Remover raster">🗑</button>
     </div>
   </div>
 </div>
@@ -3664,58 +3728,63 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
   </div>
 </div>
 <div id="lpModal" class="modal-bg">
-  <div class="modal">
+  <div class="modal gmp">
     <div class="modal-h">
       <b id="lpName">Camada</b>
-      <span class="tag" id="lpMeta"></span>
       <div style="flex:1"></div>
-      <button class="tbtn" id="lpClose">Fechar</button>
+      <button type="button" class="gmp-i" data-gmp-info="lpDados" aria-controls="lpDados" aria-expanded="false" aria-label="Nome e informações da camada" title="Nome e informações da camada">i</button>
+      <button class="tbtn gmp-x" id="lpClose" aria-label="Fechar" title="Fechar">×</button>
+    </div>
+    <div class="gmp-info" id="lpDados" hidden>
+      <div class="gmp-row">
+        <label for="lpRename" title="Usado na legenda da plotagem. Nomes longos de shapefile poluem a legenda — encurte aqui.">Nome</label>
+        <input type="text" id="lpRename" maxlength="60" placeholder="nome curto p/ a legenda">
+        <button class="tbtn" id="lpRenameBtn">Renomear</button>
+      </div>
+      <span class="tag" id="lpMeta"></span>
+      <div class="lp-info" id="lpInfo"></div>
     </div>
     <div class="modal-b">
-      <div class="lp-info" id="lpInfo"></div>
-
-      <div class="lptabs">
+      <!-- Ações que dependem da seleção ou do tipo da camada (continuar desenho,
+           restaurar estilo, sondagens): ficam visíveis, fora do painel do i. -->
+      <div class="gmp-acoes" id="lpAcoes"></div>
+      <div class="lptabs" role="group" aria-label="Seção">
         <button class="tbtn on" data-lpt="sym">Simbologia</button>
         <button class="tbtn" data-lpt="lbl">Rótulos</button>
         <button class="tbtn" data-lpt="flt">Filtro</button>
       </div>
 
       <div class="lp-pane" id="lpPaneSym">
-      <div class="lp-cls-ctrl">
-        <label class="field">Nome da camada (usado na legenda da plotagem)</label>
-        <div class="row2">
-          <input type="text" id="lpRename" maxlength="60" placeholder="nome curto p/ a legenda">
-          <button class="tbtn" id="lpRenameBtn" style="justify-content:center">Renomear</button>
+      <div class="gmp-sec">
+        <div class="gmp-hd"><span class="gmp-t">Transferir estilo entre camadas</span><span class="gmp-st"></span>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Transferir estilo" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Copia simbologia e rótulos; não altera geometria, atributos, filtro ou visibilidade.</span></button></div>
+        <div class="gmp-c">
+          <div class="gmp-row">
+            <button class="tbtn gmp-grow" id="lpStyleCopy">⧉ Copiar estilo</button>
+            <button class="tbtn gmp-grow" id="lpStylePaste">▣ Colar estilo</button>
+          </div>
         </div>
-        <div class="hint" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Nome da camada" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Nomes longos de shapefile poluem a legenda — encurte aqui.</span></button></div>
       </div>
 
-      <div class="lp-cls-ctrl">
-        <label class="field">Transferir estilo entre camadas</label>
-        <div class="row2">
-          <button class="tbtn" id="lpStyleCopy" style="justify-content:center">⧉ Copiar estilo</button>
-          <button class="tbtn" id="lpStylePaste" style="justify-content:center">▣ Colar estilo</button>
+      <div class="gmp-sec">
+        <div class="gmp-hd">
+          <label for="lpVisReal" class="gmp-t" title="Compara a cota Z de cada trecho com o MDT visível: o que está abaixo do terreno some (raster opaco) ou fica esmaecido e tracejado (raster translúcido). Desligado, a camada desenha pela ordem normal.">Visibilidade real (por cota, contra o MDT)</label><span class="gmp-st"></span>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Visibilidade real" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Desligado = desenho pela ordem das camadas. Ligado = trecho enterrado some ou esmaece conforme a opacidade do terreno.</span></button>
+          <span class="gmp-sw"><input type="checkbox" id="lpVisReal"></span>
         </div>
-        <div class="hint" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Transferir estilo" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Copia simbologia e rótulos; não altera geometria, atributos, filtro ou visibilidade.</span></button></div>
-      </div>
-
-      <div class="lp-cls-ctrl">
-        <label class="field" style="display:flex;align-items:center;gap:8px;cursor:pointer"
-               title="Compara a cota Z de cada trecho com o MDT visível: o que está abaixo do terreno some (raster opaco) ou fica esmaecido e tracejado (raster translúcido). Desligado, a camada desenha pela ordem normal.">
-          <input type="checkbox" id="lpVisReal" style="width:auto;accent-color:var(--amber)">
-          Visibilidade real (por cota, contra o MDT)
-        </label>
-        <div class="hint" style="margin:2px 0 8px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Visibilidade real" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Desligado = desenho pela ordem das camadas. Ligado = trecho enterrado some ou esmaece conforme a opacidade do terreno.</span></button></div>
-        <div id="lpMdtBox" style="display:none;margin-top:6px">
-          <label class="field">MDT do terreno (interseção e visibilidade real)</label>
+        <div class="gmp-c" id="lpMdtBox" style="display:none">
+          <div class="gmp-row">
+            <label for="lpMdtSel" class="grow">MDT do terreno (interseção e visibilidade real)</label>
+            <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: MDT do terreno" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Trocar aqui recalcula a linha de interseção da cava/pilha na hora e grava a escolha no projeto.</span></button>
+          </div>
           <select id="lpMdtSel"></select>
-          <div class="hint" style="margin-top:2px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: MDT do terreno" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Trocar aqui recalcula a linha de interseção da cava/pilha na hora e grava a escolha no projeto.</span></button></div>
         </div>
       </div>
 
-      <div class="lp-cls-ctrl">
-        <label class="field">Classificação por atributo</label>
-        <select id="lpMode">
+      <div class="gmp-sec">
+        <div class="gmp-hd"><span class="gmp-t">Classificação por atributo</span></div>
+        <div class="gmp-c">
+        <select id="lpMode" aria-label="Classificação por atributo">
           <option value="single">Símbolo único</option>
           <option value="grad">Graduado (por valor numérico)</option>
           <option value="cat">Categorizado (por nome/valor)</option>
@@ -3725,7 +3794,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <label class="field" style="margin-top:0">⛰ Classificar curvas de nível</label>
           <label class="field">Cota de cada curva</label>
           <select id="cnField"></select>
-          <div class="row2">
+          <div class="row2 gmp-2">
             <div><label class="field">Intervalo das mestras (m)</label>
               <input type="number" id="cnIntM" value="5" step="1" min="0.5"></div>
             <div><label class="field">Espessura mestra / sec.</label>
@@ -3734,18 +3803,18 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
                 <input type="number" id="cnWS" value="1" step="0.2" min="0.2" style="width:50%">
               </div></div>
           </div>
-          <label class="field" style="display:flex;align-items:center;gap:8px;cursor:pointer">
-            <input type="checkbox" id="cnLbl" checked style="width:auto;accent-color:var(--amber)">
-            Cotar as mestras (rótulo com a cota)
-          </label>
-          <button class="mini" id="btnCnRun" style="margin-top:6px">Aplicar classificação</button>
-          <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Curvas mestras" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Mestra = cota múltipla do intervalo (ex.: 5 m ⇒ 450, 455…);
-            as demais viram secundárias, mais finas e claras. O rótulo usa só as mestras.</span></button></div>
+          <label class="gmp-sw" style="margin-top:6px"><span>Cotar as mestras (rótulo com a cota)</span>
+            <input type="checkbox" id="cnLbl" checked></label>
+          <div class="gmp-row end" style="margin-top:6px">
+            <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Curvas mestras" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Mestra = cota múltipla do intervalo (ex.: 5 m ⇒ 450, 455…);
+            as demais viram secundárias, mais finas e claras. O rótulo usa só as mestras.</span></button>
+            <button class="mini" id="btnCnRun">Aplicar classificação</button>
+          </div>
         </div>
         <div id="lpClsOpts" style="display:none">
           <label class="field">Campo</label>
           <select id="lpField"></select>
-          <div class="row2" id="lpGradOpts">
+          <div class="row2 gmp-2" id="lpGradOpts">
             <div><label class="field">Classes</label><input type="number" id="lpNCls" value="5" min="2" max="9"></div>
             <div><label class="field">Método</label>
               <select id="lpMethod"><option value="quantile">Quantil</option><option value="equal">Intervalo igual</option></select></div>
@@ -3759,39 +3828,50 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
             <option value="earth">Terra (mineração)</option>
             <option value="aleatorio">Aleatório (cores distintas)</option>
           </select>
-          <button class="mini" id="btnLpClassify">Gerar / regerar classes</button>
-          <div id="lpPointSymbolsBox" style="display:none">
-            <button class="mini" id="btnLpPointSymbols" style="margin-top:6px;border-color:#d88900;background:#fff4d8" title="Associa cada valor a um símbolo conhecido e reutiliza as escolhas guardadas neste navegador">🛑 Aplicar biblioteca de símbolos</button>
-            <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Biblioteca de símbolos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Cada valor recebe seu próprio símbolo. As associações aplicadas ficam memorizadas para outros projetos neste dispositivo.</span></button></div>
+          <div class="gmp-row end" style="margin-top:8px">
+            <button class="mini" id="btnLpClassify">Gerar / regerar classes</button>
           </div>
+          <div id="lpPointSymbolsBox" style="display:none">
+            <div class="gmp-row end" style="margin-top:8px">
+            <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Biblioteca de símbolos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Cada valor recebe seu próprio símbolo. As associações aplicadas ficam memorizadas para outros projetos neste dispositivo.</span></button>
+            <button class="mini" id="btnLpPointSymbols" style="border-color:#d88900;background:#fff4d8;color:#1a1206" title="Associa cada valor a um símbolo conhecido e reutiliza as escolhas guardadas neste navegador">🛑 Aplicar biblioteca de símbolos</button>
+            </div>
+          </div>
+        </div>
         </div>
       </div>
 
-      <div class="lp-cls-ctrl" id="lpPtOrient" style="display:none">
-        <label class="field">Orientação dos símbolos estruturais</label>
-        <div class="row2">
+      <div class="gmp-sec" id="lpPtOrient" style="display:none">
+        <div class="gmp-hd"><span class="gmp-t">Orientação dos símbolos estruturais</span><span class="gmp-st"></span>
+          <button type="button" class="gm-prop-info" data-help-from="lpOrientationHint" aria-label="Ajuda: Orientação dos símbolos" aria-expanded="false"><span aria-hidden="true">i</span></button></div>
+        <div class="gmp-c" style="gap:0">
+        <div class="row2 gmp-2">
           <div><label class="field" id="lpRotFieldLabel">Azimute — campo (°)</label><select id="lpRotField"></select></div>
           <div><label class="field">Fixo (°) se sem campo</label><input type="number" id="lpRotFix" value="0" min="0" max="360" step="1"></div>
         </div>
         <label class="field" id="lpDipFieldLabel">Mergulho/caimento — campo (rótulo)</label>
         <select id="lpDipField"></select>
-        <button type="button" class="gm-prop-info" data-help-from="lpOrientationHint" aria-label="Ajuda: Orientação dos símbolos" aria-expanded="false"><span aria-hidden="true">i</span></button><div class="hint gm-prop-note" id="lpOrientationHint">Planos usam direção e mergulho; lineações e eixos de dobra usam direção e caimento. Confira a convenção dos dados na ficha geológica.</div>
-      </div>
-      <div class="lp-cls-ctrl" id="lpPtSizeBox" style="display:none">
-        <label class="field">Tamanho geral dos ícones (px)</label>
-        <div class="row2">
-          <input type="number" id="lpPtSize" value="14" min="6" max="96" step="1" inputmode="numeric">
-          <button type="button" class="mini" id="lpPtSizeAll">Aplicar a todos</button>
+        <div class="hint gm-prop-note" id="lpOrientationHint">Planos usam direção e mergulho; lineações e eixos de dobra usam direção e caimento. Confira a convenção dos dados na ficha geológica.</div>
         </div>
-        <div class="hint" id="lpPtSizeInfo"></div>
-        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Tamanho dos ícones" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Ao aplicar, todas as categorias passam a usar este tamanho. Para alterar somente uma placa, abra a categoria e marque <b>Tamanho próprio</b>.</span></button></div>
+      </div>
+      <div class="gmp-sec" id="lpPtSizeBox" style="display:none">
+        <div class="gmp-hd"><span class="gmp-t">Tamanho geral dos ícones</span><span class="gmp-st"></span>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Tamanho dos ícones" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Ao aplicar, todas as categorias passam a usar este tamanho. Para alterar somente uma placa, abra a categoria e marque Tamanho próprio.</span></button></div>
+        <div class="gmp-c">
+          <div class="gmp-row">
+            <label for="lpPtSize" class="grow">Tamanho (px)</label>
+            <input type="number" id="lpPtSize" value="14" min="6" max="96" step="1" inputmode="numeric">
+            <button type="button" class="mini" id="lpPtSizeAll">Aplicar a todos</button>
+          </div>
+          <div class="gmp-txt" id="lpPtSizeInfo"></div>
+        </div>
       </div>
       <div id="lpClasses"></div>
       </div><!-- /lpPaneSym -->
 
       <div class="lp-pane" id="lpPaneLbl" style="display:none">
         <div class="lp-cls-ctrl">
-          <label class="field">Rotular pelo campo</label>
+          <div class="gmp-hd"><span class="gmp-t">Rotular pelo campo</span><span class="gmp-st"></span><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Rótulos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Escreve o valor do atributo em cada feição, no mapa e na plotagem. Segure <b>Ctrl</b> (ou arraste) para escolher <b>vários campos</b> — por exemplo nome e área, que saem em linhas separadas. A ordem é a da lista.</span></button></div>
           <select id="lbField" multiple size="6"><option value="">— sem rótulo —</option></select>
           <label class="field" style="margin-top:5px">Com dois ou mais campos, mostrar</label>
           <select id="lbSep">
@@ -3800,11 +3880,11 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
             <option value="traco">Na mesma linha, separados por —</option>
             <option value="espaco">Na mesma linha, separados por espaço</option>
           </select>
-          <div class="hint" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Rótulos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Escreve o valor do atributo em cada feição, no mapa e na plotagem. Segure <b>Ctrl</b> (ou arraste) para escolher <b>vários campos</b> — por exemplo nome e área, que saem em linhas separadas. A ordem é a da lista.</span></button></div>
+          
           <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line)">
-            <label class="field">Fórmula do rótulo <span style="font-weight:400;color:var(--ink-dim)">(opcional)</span></label>
+            <div class="gmp-row"><label class="field grow" for="lbFormula" style="margin:0">Fórmula do rótulo (opcional)</label><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Fórmula do rótulo" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Campo: <b>"NOME"</b> · texto: <b>'texto'</b> · juntar: <b>||</b> · geometria: <b>$AREA_HA</b>, <b>$COMPRIM</b>, <b>$X</b>, <b>$Y</b>. A fórmula preenchida tem prioridade; ao apagá-la, voltam os campos escolhidos.</span></button></div>
             <textarea id="lbFormula" rows="3" spellcheck="false" placeholder="ex.: 'Área: ' || formatar($AREA_HA, 2) || ' ha'" style="width:100%;resize:vertical;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px;font:12px/1.35 'Courier New',monospace"></textarea>
-            <div class="row2" style="margin-top:6px">
+            <div class="row2 gmp-2" style="margin-top:6px">
               <select id="lbFormulaCampo"><option value="">+ Inserir campo…</option></select>
               <select id="lbFormulaFuncao">
                 <option value="">+ Inserir função…</option>
@@ -3816,7 +3896,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
               </select>
             </div>
             <div id="lbFormulaStatus" class="hint" style="margin-top:5px"></div>
-            <div class="hint" style="margin-top:3px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Fórmula do rótulo" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Campo: <b>"NOME"</b> · texto: <b>'texto'</b> · juntar: <b>||</b> · geometria: <b>$AREA_HA</b>, <b>$COMPRIM</b>, <b>$X</b>, <b>$Y</b>. A fórmula preenchida tem prioridade; ao apagá-la, voltam os campos escolhidos.</span></button></div>
+            
           </div>
         </div>
 
@@ -3825,8 +3905,8 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
         </span></button></div>
         <div id="lbOpts" style="display:none">
           <div class="lp-cls-ctrl">
-            <label class="field">Fonte</label>
-            <div class="row2">
+            <div class="gmp-hd"><span class="gmp-t">Fonte</span><span class="gmp-st"></span><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Halo" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Halo 0 desliga o contorno. Ele é o que torna o rótulo legível sobre a ortofoto.</span></button></div>
+            <div class="row2 gmp-2">
               <select id="lbFont">
                 <option value="Signika, sans-serif">Signika (do relatório)</option>
                 <option value="Arial, Helvetica, sans-serif">Arial / Helvetica</option>
@@ -3842,24 +3922,24 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
                 <option value="bold italic">Negrito itálico</option>
               </select>
             </div>
-            <div class="row2" style="margin-top:6px">
+            <div class="row2 gmp-2" style="margin-top:6px">
               <div><label class="field">Tamanho (pt na plotagem)</label>
                 <input type="number" id="lbSize" value="8" min="3" max="40" step="0.5"></div>
               <div><label class="field">Cor do texto</label>
                 <input type="color" id="lbColor" value="#111111"></div>
             </div>
-            <div class="row2" style="margin-top:6px">
+            <div class="row2 gmp-2" style="margin-top:6px">
               <div><label class="field">Halo (contorno do texto)</label>
                 <input type="color" id="lbHalo" value="#ffffff"></div>
               <div><label class="field">Espessura do halo</label>
                 <input type="number" id="lbHaloW" value="1.2" min="0" max="6" step="0.2"></div>
             </div>
-            <div class="hint" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Halo" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Halo 0 desliga o contorno. Ele é o que torna o rótulo legível sobre a ortofoto.</span></button></div>
+            
           </div>
 
           <div class="lp-cls-ctrl">
-            <label class="field">Posição</label>
-            <div class="row2">
+            <div class="gmp-hd"><span class="gmp-t">Posição</span></div>
+            <div class="row2 gmp-2">
               <select id="lbPlace">
                 <option value="curva">Sobre a linha, acompanhando o traçado</option>
                 <option value="center">Centro da feição</option>
@@ -3873,37 +3953,37 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
                 <option value="end">À esquerda do ponto</option>
               </select>
             </div>
-            <div class="row2" style="margin-top:6px">
+            <div class="row2 gmp-2" style="margin-top:6px">
               <div><label class="field">Deslocamento X (mm)</label>
                 <input type="number" id="lbDx" value="0" step="0.5"></div>
               <div><label class="field">Deslocamento Y (mm)</label>
                 <input type="number" id="lbDy" value="0" step="0.5"></div>
             </div>
-            <label class="field" style="margin-top:8px">Rotular apenas onde</label>
-            <div class="row2">
+            <div class="gmp-row" style="margin-top:8px"><label class="field grow" style="margin:0">Rotular apenas onde</label><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Filtro de rótulos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Vazio rotula todas.
+              Aceita vários valores separados por vírgula. <b>%50</b> rotula só as cotas
+              múltiplas de 50 — útil para curvas mestras sem campo de classe.</span></button></div>
+            <div class="row2 gmp-2">
               <select id="lbFltF"></select>
               <input type="text" id="lbFltV" list="lbFltVals" placeholder="valor, ou %50 p/ múltiplos">
               <datalist id="lbFltVals"></datalist>
             </div>
-            <div class="row2" style="margin-top:6px">
+            <div class="row2 gmp-2" style="margin-top:6px">
               <div><label class="field">Não rotular abaixo de (m)</label>
                 <input type="number" id="lbFltLen" value="0" min="0" step="10"
                   onfocus="lbAfereFiltro()" oninput="lbAfereFiltro()"></div>
               <div><label class="field">&nbsp;</label>
                 <div id="lbFltInfo" class="hint" style="font-size:11px;padding-top:8px"></div></div>
             </div>
-            <div class="hint" style="font-size:11px;margin-top:2px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Filtro de rótulos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Vazio rotula todas.
-              Aceita vários valores separados por vírgula. <b>%50</b> rotula só as cotas
-              múltiplas de 50 — útil para curvas mestras sem campo de classe.</span></button></div>
+            
             <div id="lbCurvaBox" style="display:none">
-              <div class="row2" style="margin-top:6px">
+              <div class="row2 gmp-2" style="margin-top:6px">
                 <div><label class="field">Repetir o rótulo a cada (m)</label>
                   <input type="number" id="lbRep" value="0" min="0" step="50"
                     onfocus="lbRepDigitando()" oninput="lbRepDigitando()"></div>
                 <div><label class="field">Girar com a linha</label>
                   <select id="lbRot"><option value="1" selected>Sim</option><option value="0">Não</option></select></div>
               </div>
-              <div class="hint" style="font-size:11px;margin-top:2px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Repetição de rótulos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Zero mantém um único rótulo
+              <div class="gmp-row end"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Repetição de rótulos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Zero mantém um único rótulo
                 na posição escolhida. Um valor maior que zero distribui os rótulos ao longo da
                 linha; <b>Acima, Abaixo e Deslocado</b> continuam respeitados. A distância é medida
                 no terreno, em metros.
@@ -3914,8 +3994,8 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           </div>
 
           <div class="lp-cls-ctrl">
-            <label class="field">Formato do texto</label>
-            <div class="row2">
+            <div class="gmp-hd"><span class="gmp-t">Formato do texto</span><span class="gmp-st"></span><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Formato do texto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Casas decimais −1 = não formatar. Prefixo e sufixo entram junto ao valor do atributo.</span></button></div>
+            <div class="row2 gmp-2">
               <select id="lbCase">
                 <option value="">Como está</option>
                 <option value="upper">MAIÚSCULAS</option>
@@ -3925,35 +4005,34 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
               <div><label class="field">Casas decimais (números)</label>
                 <input type="number" id="lbDec" value="-1" min="-1" max="6" step="1"></div>
             </div>
-            <div class="row2" style="margin-top:6px">
+            <div class="row2 gmp-2" style="margin-top:6px">
               <div><label class="field">Prefixo</label><input type="text" id="lbPre" maxlength="12" placeholder="ex.: DCE-"></div>
               <div><label class="field">Sufixo</label><input type="text" id="lbSuf" maxlength="12" placeholder="ex.: ha"></div>
             </div>
-            <label class="field" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
-              <input type="checkbox" id="lbMap" checked style="width:auto;accent-color:var(--amber)"> Mostrar também no mapa</label>
-            <label class="field" id="lbUniqueRow" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
-              <input type="checkbox" id="lbUnique" checked style="width:auto;accent-color:var(--amber)"> Mostrar nomes iguais somente uma vez</label>
+            <label class="gmp-sw"><span>Mostrar também no mapa</span>
+              <input type="checkbox" id="lbMap" checked></label>
+            <label class="gmp-sw" id="lbUniqueRow"><span>Mostrar nomes iguais somente uma vez</span>
+              <input type="checkbox" id="lbUnique" checked></label>
             <div class="hint" id="lbUniqueHint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Nomes repetidos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A classificação e as cores das zonas não mudam. Somente o texto repetido é reunido, usando a maior feição como posição do nome.</span></button></div>
             <div class="hint" id="lbPointUniqueHint" style="display:none"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Rótulos de pontos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Em camadas de pontos, cada feição é uma observação e recebe seu próprio rótulo, inclusive quando o texto se repete.</span></button></div>
-            <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Formato do texto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Casas decimais −1 = não formatar. Prefixo e sufixo entram junto ao valor do atributo.</span></button></div>
+            
           </div>
 
           <div class="lp-cls-ctrl">
-            <label class="field">Prévia</label>
+            <div class="gmp-hd"><span class="gmp-t">Prévia</span></div>
             <div id="lbPrev" style="background:#fff;border-radius:6px;padding:14px;text-align:center;min-height:44px"></div>
           </div>
         </div>
 
-        <button class="tbtn" id="lbApply" style="width:100%;justify-content:center;margin-top:8px;background:var(--amber);color:#1a1206;font-weight:600">Aplicar rótulos</button>
+        <div class="gmp-row end" style="padding:10px 0 12px">
+          <button class="tbtn gmp-p" id="lbApply">Aplicar rótulos</button>
+        </div>
       </div><!-- /lpPaneLbl -->
 
       <div class="lp-pane" id="lpPaneFlt" style="display:none">
         <div class="lp-cls-ctrl">
-          <label class="field" style="display:flex;justify-content:space-between;gap:8px">
-            <span>Filtrar feições pelos atributos</span>
-            <span id="lpFltStatus" style="color:var(--ink-dim)"></span>
-          </label>
-          <div class="row2" style="margin-top:6px">
+          <div class="gmp-hd"><span class="gmp-t">Filtrar feições pelos atributos</span><span class="gmp-st" id="lpFltStatus"></span></div>
+          <div class="row2 gmp-2" style="margin-top:6px">
             <div><label class="field">Campo</label>
               <select id="lpFltField"><option value="">— escolha o campo —</option></select></div>
             <div><label class="field">Condição</label>
@@ -3967,31 +4046,31 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
                 <option value="empty">está vazio</option><option value="notempty">não está vazio</option>
               </select></div>
           </div>
-          <div class="row2" id="lpFltValues" style="margin-top:6px">
+          <div class="row2 gmp-2" id="lpFltValues" style="margin-top:6px">
             <div><label class="field">Valor</label>
-              <input id="lpFltValue" list="lpFltSuggestions" placeholder="valor ou lista: A, B, C"></div>
+              <input type="text" id="lpFltValue" list="lpFltSuggestions" placeholder="valor ou lista: A, B, C"></div>
             <div id="lpFltValue2Box"><label class="field">Valor final</label>
-              <input id="lpFltValue2" placeholder="usado na condição entre"></div>
+              <input type="text" id="lpFltValue2" placeholder="usado na condição entre"></div>
           </div>
           <datalist id="lpFltSuggestions"></datalist>
-          <label style="display:flex;align-items:center;gap:7px;margin-top:8px;cursor:pointer">
-            <input id="lpFltCase" type="checkbox" style="width:auto;accent-color:var(--amber)">
-            Diferenciar maiúsculas e minúsculas
-          </label>
-          <div class="row2" style="margin-top:10px">
-            <button class="tbtn" id="lpFltApply" style="justify-content:center;background:var(--amber);color:#1a1206;font-weight:700">✓ Aplicar filtro</button>
-            <button class="tbtn" id="lpFltClear" style="justify-content:center">× Limpar filtro</button>
+          <label class="gmp-sw"><span>Diferenciar maiúsculas e minúsculas</span>
+              <input type="checkbox" id="lpFltCase"></label>
+          <div class="gmp-row end" style="margin-top:10px">
+            <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Filtro de feições" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O filtro não apaga feições. Ele controla o que aparece no mapa 2D, no 3D, no Layout, nos rótulos, nos cálculos e nas exportações.</span></button>
+            <span class="gmp-sp"></span>
+            <button class="tbtn" id="lpFltClear">× Limpar filtro</button>
+            <button class="tbtn gmp-p" id="lpFltApply">✓ Aplicar filtro</button>
           </div>
-          <div class="hint" style="margin-top:7px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Filtro de feições" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O filtro não apaga feições. Ele controla o que aparece no mapa 2D, no 3D, no Layout, nos rótulos, nos cálculos e nas exportações.</span></button></div>
         </div>
       </div><!-- /lpPaneFlt -->
     </div>
-    <div class="lp-actions" aria-label="Ações da camada">
-      <button class="tbtn" id="lpApply" style="justify-content:center;background:var(--amber);color:#1a1206;font-weight:600">Aplicar à camada</button>
-      <button class="tbtn" id="lpAttr" style="justify-content:center">▤ Tabela de atributos</button>
-      <button class="tbtn" id="lpZoom" style="justify-content:center">Zoom</button>
-      <button class="tbtn" id="lpSave" title="Escolher o formato de saída da camada" style="justify-content:center">Exportar</button>
-      <button class="tbtn" id="lpDel" style="justify-content:center;color:#ffb4b4">🗑 Remover camada</button>
+    <div class="gmp-f" aria-label="Ações da camada">
+      <button class="tbtn gmp-p" id="lpApply" title="Aplicar à camada">Aplicar</button>
+      <button class="tbtn" id="lpAttr" title="Tabela de atributos">Tabela</button>
+      <button class="tbtn" id="lpZoom">Zoom</button>
+      <button class="tbtn" id="lpSave" title="Escolher o formato de saída da camada">Exportar</button>
+      <span class="gmp-sp"></span>
+      <button class="tbtn gmp-d" id="lpDel" aria-label="Remover camada" title="Remover camada">🗑</button>
     </div>
   </div>
 </div>

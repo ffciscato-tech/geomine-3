@@ -2357,6 +2357,7 @@ function rasGerarClasses(){
 }
 function openRasProps(r){
   rasCur=r;
+  if(typeof gmpOpen==='function') gmpOpen('rasModal');
   /* Compatibilidade com declividades geradas por versões anteriores: o
      algoritmo antigo gravava graus, embora a janela exibisse “m”. */
   if(rasEhDeclividade(r) && !r.quantity){r.quantity='slope';r.unit='deg';}
@@ -2483,6 +2484,14 @@ function rasProjectStoreInfo(){
       'Ainda não existe GeoTIFF deste produto na pasta de trabalho.';
     if(b)b.textContent='💾 Salvar GeoTIFF nativo na pasta de trabalho';
   }
+  rasSecStatusSync();
+}
+/* Resumo ao lado do título das seções recolhíveis da janela do raster. */
+function rasSecStatusSync(){
+  if(!rasCur || typeof gmpStatus!=='function') return;
+  gmpStatus('rasSecPastaSt', rasCur.projectFile?'salvo':'só na memória', rasCur.projectFile?'ok':'warn');
+  const tex=(document.getElementById('rasTex3D')||{}).value;
+  gmpStatus('rasSec3dSt', tex==='orto'?'ortofoto':tex==='solida'?'cor sólida':'mesmo estilo da camada');
 }
 async function abreLocalFonteRaster(r){
   if(!r)return;
@@ -2747,7 +2756,7 @@ function bindRasModal(){
      o usa faria o usuário mexer nele e não ver nada mudar. */
   window.rasSolidaSync=()=>{
     const md=document.getElementById('rasMode'), bx=document.getElementById('rasSolidaBox');
-    if(bx) bx.style.display=(md&&md.value==='solida')?'grid':'none';
+    if(bx) bx.style.display=(md&&md.value==='solida')?'':'none';
   };
   const rmd=document.getElementById('rasMode');
   if(rmd)rmd.onchange=()=>{
@@ -2868,6 +2877,7 @@ function bindRasModal(){
       /* Textura é só aparência. O papel geométrico permanece intacto para
          não trocar contenção por furo (ou vice-versa) ao mudar a cor. */
       infoOrto();
+      rasSecStatusSync();
       if(typeof v3Auto==='function') v3Auto();
     };
     const t=document.getElementById('rasTex3D'); if(t)t.onchange=aplicaTex;

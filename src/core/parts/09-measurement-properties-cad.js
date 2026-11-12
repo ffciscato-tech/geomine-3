@@ -1213,17 +1213,38 @@ function lpInfoHTML(L){
   info+=`Classificação: <b>${s.mode==='single'?'símbolo único':s.mode==='grad'?'graduada por "'+s.field+'"':'categorizada por "'+s.field+'"'}</b>`;
   if(L.attrFilter&&L.attrFilter.enabled!==false&&L.attrFilter.field)
     info+=`<br>Filtro ativo: <b>${attrFilterCount(L).toLocaleString('pt-BR')} de ${L.features.length.toLocaleString('pt-BR')} feições visíveis</b>`;
-  info+=selectedDimensionsHTML(L)+featureContinueHTML(L);
-  const ownStyles=(L.features||[]).filter(f=>window.GeoMineFeatureStyleBrush?.has(L,f)).length;
-  if(ownStyles) info+=`<br><button type="button" class="tbtn" data-feature-style-reset title="Remove os estilos individuais; cada feição volta à simbologia ou classificação da camada">Restaurar estilo da camada em todas as feições (${ownStyles})</button>`;
-  info+=window.GeoMineGeology?.boreholeProperties?.layerActionsHTML(L)||'';
+  info+=selectedDimensionsHTML(L);
   return info;
+}
+/* Ações que dependem da seleção ou do tipo da camada. Ficam visíveis no corpo
+   da janela (#lpAcoes): o painel do botão i guarda só o que se lê. */
+function lpAcoesHTML(L){
+  let html=featureContinueHTML(L);
+  const ownStyles=(L.features||[]).filter(f=>window.GeoMineFeatureStyleBrush?.has(L,f)).length;
+  if(ownStyles) html+=`<button type="button" class="tbtn" data-feature-style-reset title="Remove os estilos individuais; cada feição volta à simbologia ou classificação da camada">Restaurar estilo da camada em todas as feições (${ownStyles})</button>`;
+  html+=window.GeoMineGeology?.boreholeProperties?.layerActionsHTML(L)||'';
+  return html;
+}
+/* Preenche o painel do i e a faixa de ações, e religa os botões das duas. */
+function lpInfoRender(L){
+  const info=document.getElementById('lpInfo'), acoes=document.getElementById('lpAcoes');
+  if(info){
+    info.innerHTML=lpInfoHTML(L);
+    const b=info.querySelector('[data-open-src]');
+    if(b) b.onclick=()=>abreLocalFonteCamada(L);
+  }
+  if(acoes){
+    acoes.innerHTML=lpAcoesHTML(L);
+    bindFeatureContinue(acoes,L);
+    window.GeoMineGeology?.boreholeProperties?.bindLayerActions(acoes,L);
+  }
 }
 function openLayerProps(L){
   window.GeoMineFeatureStyleBrush?.cancel();
   if(L?._geology?.kind==='surpac-mesh'&&window.GeoMineGeology?.meshes)
     return window.GeoMineGeology.meshes.open(L._geology.meshId);
   lpLayer=L;
+  if(typeof gmpOpen==='function') gmpOpen('lpModal');
   { const v=document.getElementById('lpVisReal');
     if(v){ v.checked=!!L.visReal;
       v.onchange=e=>{ L.visReal=!!e.target.checked;
@@ -1256,11 +1277,7 @@ function openLayerProps(L){
   document.getElementById('lpRename').value=L.name;
   document.getElementById('lpName').textContent=L.name;
   document.getElementById('lpMeta').textContent=`${L.gtype} · ${L.features.length} feições`;
-  document.getElementById('lpInfo').innerHTML=lpInfoHTML(L);
-  bindFeatureContinue(document.getElementById('lpInfo'),L);
-  window.GeoMineGeology?.boreholeProperties?.bindLayerActions(document.getElementById('lpInfo'),L);
-  { const b=document.querySelector('#lpInfo [data-open-src]');
-    if(b)b.onclick=()=>abreLocalFonteCamada(L); }
+  lpInfoRender(L);
   lpSyncCtrl();
   renderLpClasses();
   lpFillLabels(L);
@@ -1269,9 +1286,7 @@ function openLayerProps(L){
     if(cp)cp.onclick=()=>{layerStyleCopy(L);if(ps)ps.disabled=!S._layerStyleClipboard||S._layerStyleClipboard.gtype!==L.gtype;};
     if(ps){ps.disabled=!S._layerStyleClipboard||S._layerStyleClipboard.gtype!==L.gtype;ps.onclick=()=>{
       if(!layerStylePaste(L))return;lpSyncCtrl();renderLpClasses();lpFillLabels(L);lpFillFilter(L);
-      document.getElementById('lpInfo').innerHTML=lpInfoHTML(L);
-      bindFeatureContinue(document.getElementById('lpInfo'),L);
-      window.GeoMineGeology?.boreholeProperties?.bindLayerActions(document.getElementById('lpInfo'),L);
+      lpInfoRender(L);
     };}
   }
   lpTab('sym');
@@ -1346,7 +1361,7 @@ function lpApplyFilter(){
   S.msel.items=(S.msel.items||[]).filter(it=>{const X=S.layers.find(x=>x.id===it.layerId),f=X&&X.features[it.idx];return X&&f&&attrFilterMatch(X,f);});
   try{mselHL();mselCount();}catch(e){}
   drawLayer(L);refreshUI();layoutSeVisivel();lpFillFilter(L);
-  document.getElementById('lpInfo').innerHTML=lpInfoHTML(L);
+  lpInfoRender(L);
   document.getElementById('lpMeta').textContent=`${L.gtype} · ${attrFilterCount(L)} de ${L.features.length} feições`;
   toast('Filtro aplicado: '+attrFilterCount(L).toLocaleString('pt-BR')+' de '+L.features.length.toLocaleString('pt-BR')+' feições');
 }
@@ -1354,7 +1369,7 @@ function lpClearFilter(){
   const L=lpLayer;if(!L)return;
   if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
   delete L.attrFilter;drawLayer(L);refreshUI();layoutSeVisivel();lpFillFilter(L);
-  document.getElementById('lpInfo').innerHTML=lpInfoHTML(L);
+  lpInfoRender(L);
   document.getElementById('lpMeta').textContent=`${L.gtype} · ${L.features.length} feições`;
   toast('Filtro removido — todas as feições estão visíveis');
 }
@@ -1708,7 +1723,7 @@ function lpCollect(silencioso){
      simbologia (ou confirmar Aplicar) devolve as feições ao estilo da camada. */
   if(!silencioso||layerStyleAppearanceStamp(L)!==before)window.GeoMineFeatureStyleBrush?.resetLayer(L);
   drawLayer(L); refreshUI(); renderClassList();
-  document.getElementById('lpInfo').innerHTML=lpInfoHTML(L);
+  lpInfoRender(L);
   lpPointSizeSync(L);
   if(!silencioso) toast('Simbologia aplicada');
 }
@@ -1767,9 +1782,7 @@ document.getElementById('lpModal').addEventListener('click',e=>{
   const n=window.GeoMineFeatureStyleBrush?.resetLayer(L)||0;
   if(!n)return;
   drawLayer(L);refreshUI();layoutSeVisivel();
-  document.getElementById('lpInfo').innerHTML=lpInfoHTML(L);
-  bindFeatureContinue(document.getElementById('lpInfo'),L);
-  window.GeoMineGeology?.boreholeProperties?.bindLayerActions(document.getElementById('lpInfo'),L);
+  lpInfoRender(L);
   toast('Estilo da camada restaurado em '+n+' feição(ões)');
 });
 document.getElementById('lpRenameBtn').onclick=()=>{
@@ -2113,7 +2126,7 @@ document.getElementById('btnLpClassify').onclick=()=>{
     +document.getElementById('lpNCls').value,
     document.getElementById('lpMethod').value,
     document.getElementById('lpRamp').value);
-  if(ok){ renderLpClasses(); document.getElementById('lpInfo').innerHTML=lpInfoHTML(lpLayer); syncSymPanel(); }
+  if(ok){ renderLpClasses(); lpInfoRender(lpLayer); syncSymPanel(); }
 };
 document.getElementById('btnLpPointSymbols').onclick=()=>{
   if(!lpLayer||!window.GeoMinePointSymbols)return;
@@ -2121,7 +2134,7 @@ document.getElementById('btnLpPointSymbols').onclick=()=>{
   const n=window.GeoMinePointSymbols.applyToLayer(lpLayer,{force:true});
   window.GeoMineFeatureStyleBrush?.resetLayer(lpLayer);
   renderLpClasses();drawLayer(lpLayer);refreshUI();renderClassList();layoutSeVisivel();
-  document.getElementById('lpInfo').innerHTML=lpInfoHTML(lpLayer);
+  lpInfoRender(lpLayer);
   toast(n?`${n} categoria${n===1?'':'s'} associada${n===1?'':'s'} à biblioteca de símbolos`:'Nenhum valor conhecido na biblioteca');
 };
 function lpApplyPointSizeAll(){

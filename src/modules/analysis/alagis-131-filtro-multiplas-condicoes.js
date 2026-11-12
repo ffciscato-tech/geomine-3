@@ -78,7 +78,7 @@ const CSS=`
   padding:0 9px;height:30px;cursor:pointer;font-weight:700;line-height:1}
 #lpFltJoinBox{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px}
 #lpFltJoinBox select{width:auto}
-#lpFltAdd{margin-top:8px;width:100%;justify-content:center}
+#lpFltAdd{margin-top:8px;justify-content:center}
 @media(max-width:520px){ #lpFltExtras .fx{grid-template-columns:1fr 1fr;} }
 `;
 (function(){ const s=document.createElement('style'); s.id='flt131-css';
@@ -199,8 +199,7 @@ if(typeof window.lpApplyFilter==='function'){
         if(st) st.textContent=n.toLocaleString('pt-BR')+' de '+L.features.length.toLocaleString('pt-BR')+' visíveis';
         const meta=document.getElementById('lpMeta');
         if(meta) meta.textContent=L.gtype+' · '+n+' de '+L.features.length+' feições';
-        const info=document.getElementById('lpInfo');
-        if(info && typeof lpInfoHTML==='function') info.innerHTML=lpInfoHTML(L);
+        if(typeof lpInfoRender==='function') lpInfoRender(L);
         toast('Filtro com '+(extras.length+1)+' condições ('+(join==='or'?'OU':'E')+'): '+
               n.toLocaleString('pt-BR')+' de '+L.features.length.toLocaleString('pt-BR')+' feições');
       }catch(e){}

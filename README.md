@@ -3,17 +3,20 @@
 Código-fonte do GeoMine, o GIS web da CCM publicado em https://geomine-3.web.app/
 (projeto Firebase `geomine-3`).
 
-A raiz deste repositório corresponde à versão publicada em 12/11/2026 às 15h12
-(horário de Brasília). Ela foi trazida da pasta `GeoMine/atual` do Google Drive
-e a montagem feita a partir daqui reproduz o site byte a byte:
+A base deste repositório é a versão publicada em 12/11/2026 às 15h12 (horário
+de Brasília), trazida da pasta `GeoMine/atual` do Google Drive. Sobre ela está
+uma mudança **ainda não publicada no site**: as novas janelas de propriedades da
+ortofoto, da camada vetorial e do MDT (veja "Janelas de propriedades" abaixo).
 
-| Arquivo gerado | SHA-256 |
-|---|---|
-| `dist/GeoMine.html` | `1ed165eaf310aea13787fa5595d1c4bafe70a727fb63d1af8e3e84042ee1898f` |
-| `public/index.html` | `24f494ea94ffeca131949c378639ec43f321d34e368cbac83b1ffd7c7cc8a21c` |
+| Arquivo gerado | No site (15h12) | Este repositório |
+|---|---|---|
+| `dist/GeoMine.html` | `1ed165eaf310aea13787fa5595d1c4bafe70a727fb63d1af8e3e84042ee1898f` | `1eb9a28f0f4967a37e99d78087f211fe1114bd1193f6d5086a11519aa934e4f0` |
+| `public/index.html` | `24f494ea94ffeca131949c378639ec43f321d34e368cbac83b1ffd7c7cc8a21c` | `b8c88706a1fd961037cf91868e2416d52c312f0bb4c785e44b44ae43aefa2bc3` |
 
-Os mesmos valores estão em `CURRENT_RELEASE.json` (`distSha256` e
-`publishedSha256`), junto com o histórico de publicações e validações.
+`CURRENT_RELEASE.json` descreve a versão que está no site (`distSha256` e
+`publishedSha256`), com o histórico de publicações e validações. O commit
+`3d24d76` reproduz o site byte a byte. Ao publicar esta versão, atualize o
+`CURRENT_RELEASE.json` com os valores da coluna da direita.
 
 ## Montar
 
@@ -57,6 +60,13 @@ publicou de outro lugar e este repositório está desatualizado.
   essa opção. A prévia reduzida só pode aparecer enquanto o original não está
   disponível. Qualquer mudança na importação precisa preservar esse padrão
   (`S.orthoHD` e `S.orthoDispFull` na ortofoto; `demHD` e `dispFull` no MDT).
+- **Janelas de propriedades só com controles.** Nas janelas de propriedades da
+  ortofoto (`#imgModal`), da camada vetorial (`#lpModal`) e do MDT
+  (`#rasModal`), o nome, o botão Renomear e os dados de leitura (arquivo, CRS,
+  tamanho, datas) ficam no painel aberto pelo botão **i** do cabeçalho. Os
+  textos de cada seção ficam no **i** ao lado do título. Na janela ficam só os
+  controles, com botões do tamanho do texto (nada de largura total) e as seções
+  pouco usadas recolhidas. Layout aprovado em 12/11/2026.
 
 ## Organização
 
@@ -74,6 +84,32 @@ publicou de outro lugar e este repositório está desatualizado.
 | `firestore.rules`, `firestore.indexes.json`, `storage.rules` | Regras da colaboração em nuvem |
 | `docs/` | Notas técnicas por funcionalidade |
 | `reference/HASHES.sha256` | Hashes de proveniência da versão-base histórica |
+
+## Janelas de propriedades
+
+As três janelas usam o mesmo conjunto de classes, definido no fim de
+`src/styles/app.css` (bloco `.gmp`):
+
+| Classe | Papel |
+|---|---|
+| `.gmp` | marca a janela (`<div class="modal gmp">`) |
+| `.gmp-i` + `.gmp-info` | botão **i** do cabeçalho e o painel que ele abre (nome, Renomear, dados de leitura) |
+| `details.gmp-sec` | seção recolhível; `data-gmp-sec` é a chave com que o navegador lembra se ficou aberta |
+| `.gmp-st` | resumo ao lado do título da seção (preenchido por `gmpStatus(id, texto, tipo)`) |
+| `.gmp-row`, `.gmp-g2` | linha com rótulo e campo lado a lado; grade de dois campos |
+| `.gmp-sw` | caixa de marcar desenhada como interruptor |
+| `.gmp-f` | rodapé fixo com as ações da janela |
+
+O comportamento está em `src/core/parts/09b-properties-help.js`: `gmpOpen(id)`
+é chamado ao abrir cada janela, o botão **i** de uma seção usa o balão de ajuda
+que já existia e `data-help-from` aceita vários ids, para reunir num balão os
+textos de leitura da seção. Os ids dos controles não mudaram.
+
+Na janela vetorial, as ações que dependem da seleção (continuar desenho,
+restaurar estilo, sondagens) ficam visíveis em `#lpAcoes`; use
+`lpInfoRender(L)` para atualizar o painel do **i** e essa faixa juntos. Na
+janela do MDT, as abas Estilo e Dados estão no próprio HTML e
+`src/modules/raster/raster-panel-tabs.js` só troca a aba visível.
 
 ## Uma única linha de código
 

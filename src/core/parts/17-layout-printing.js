@@ -2631,6 +2631,7 @@ function openImgProps(){
   if(!S.img || !S.img.url){ toast('Nenhuma ortofoto carregada'); return; }
   const g=id=>document.getElementById(id);
   const b=S.img.b||[0,0,0,0];
+  if(typeof gmpOpen==='function') gmpOpen('imgModal');
   g('imModName').textContent=S.img.name||'ortofoto';
   g('imModName2').value=S.img.name||'';
   g('imModMeta').textContent=S.img._w? `${S.img._w}×${S.img._h} px` : 'imagem';
@@ -2680,7 +2681,7 @@ function openImgProps(){
           (I._cog&&I._cog.nOv?` · pirâmide com ${I._cog.nOv} nível(is)`:' · sem pirâmide (mais lento)');
       }else{
         est.innerHTML='<b>Sem o GeoTIFF de origem:</b> <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Resolução da ortofoto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>o projeto guarda só a prévia da ortofoto, '+
-          'então o zoom não passa dela. Toque em <b>Buscar a ortofoto original</b> abaixo e indique o .tif '+
+          'então o zoom não passa dela. Toque em <b>Selecionar o GeoTIFF original e mostrar</b> e indique o .tif '+
           'para voltar à resolução plena e ligar os tiles.</span></button>';
       }
     }
@@ -2709,13 +2710,13 @@ function imgModalSyncExtras(){
       ? `Prévia da tela: ${prev}<br>Original: <b>${I._W0}×${I._H0}</b> px · ${cm(larg/I._W0)} — `+
         `<b style="color:var(--ok)">arquivo vinculado</b>${S.orthoHD?' · tiles originais ativos':''}`+
         (I._cog&&I._cog.nOv?` · pirâmide com ${I._cog.nOv} nível(is)`:' · sem pirâmide (tiles mais lentos)')
-      : `Em uso: apenas a <b>prévia</b> ${prev}<br>Original: <b>GeoTIFF ainda não vinculado</b> — indique o .tif abaixo.`;
+      : `Em uso: apenas a <b>prévia</b> ${prev}<br>Original: <b>GeoTIFF ainda não vinculado</b> — indique o .tif pelo botão desta seção.`;
   }
   const hd=g('imModHDInfo');
   if(hd) hd.innerHTML= temArq
     ? (S.orthoHD?'<b style="color:var(--ok)">Ativo:</b> <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original da ortofoto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>o GeoTIFF original é relido por janela conforme o zoom.</span></button>'
                 :'Arquivo original disponível. <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original da ortofoto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Ative para reler cada janela na densidade do zoom.</span></button>')
-    : '<b>Arquivo original não vinculado.</b> <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original da ortofoto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Use o botão acima para selecionar o GeoTIFF desta ortofoto.</span></button>';
+    : '<b>Arquivo original não vinculado.</b> <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original da ortofoto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Use o botão desta seção para selecionar o GeoTIFF desta ortofoto.</span></button>';
   const df=g('imModDispFull'); if(df){ df.checked=!!S.orthoDispFull; df.disabled=!temArq; }
   const bt=g('btnOrtoReligar');
   if(bt) bt.innerHTML= temArq?'✓ Mostrar o arquivo original em alta resolução':'⤓ Selecionar o GeoTIFF original e mostrar';
@@ -2743,8 +2744,18 @@ function imgModalSyncExtras(){
   if(sel && typeof fillCRSSelect==='function') fillCRSSelect(sel, I._crsFixo||S.workCRS);
   const ef=g('imModExpFmt');
   if(ef){ const o=ef.querySelector('option[value="tifsrc"]'); if(o){ o.disabled=!temRaw; if(o.disabled&&ef.value==='tifsrc') ef.value='png'; } }
-  const lb=g('imModCantosLbl');
-  if(lb) lb.textContent=`Cantos em ${CRS_LABELS[I._crsFixo||S.workCRS]||(I._crsFixo||S.workCRS)} (reposicionar)`;
+  imgSecStatusSync();
+}
+/* Resumo ao lado do título de cada seção: o estado continua visível com a
+   seção recolhida. */
+function imgSecStatusSync(){
+  const I=S.img; if(!I || typeof gmpStatus!=='function') return;
+  const temArq=!!(I._img0&&I._tiff), crs=I._crsFixo||S.workCRS;
+  gmpStatus('imSecResSt', temArq?(S.orthoHD?'Original ativo':'Original disponível'):'Só a prévia',
+    temArq?(S.orthoHD?'ok':''):'warn');
+  gmpStatus('imSecPastaSt', I.projectFile?'salva':(orthoTemOriginal(I)?'só na memória':'só a prévia'),
+    I.projectFile?'ok':'warn');
+  gmpStatus('imSecCantosSt', CRS_LABELS[crs]||crs);
 }
 (function bindImgModal(){
   const g=id=>document.getElementById(id);
@@ -2759,6 +2770,7 @@ function imgModalSyncExtras(){
       return;
     }
     S.orthoHD=e.target.checked; _tileFails=0; syncOrthoTiles();
+    imgSecStatusSync();
     toast(S.orthoHD?'Ortofoto por TILES: resolução acompanha o zoom':'Ortofoto: usando o preview fixo'); };
   g('imModClose').onclick=close;
   g('imgModal').addEventListener('click',e=>{ if(e.target.id==='imgModal') close(); });

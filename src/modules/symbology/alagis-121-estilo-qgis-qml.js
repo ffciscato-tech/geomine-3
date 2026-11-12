@@ -766,14 +766,14 @@ function qsInjetaBotao(L){
   let box=document.getElementById('lpQsBox');
   if(!box){
     box=document.createElement('div');
-    box.className='lp-cls-ctrl'; box.id='lpQsCtrl';
-    box.innerHTML='<label class="field">Estilo no padrão do QGIS</label>'+
-      '<div id="lpQsBox">'+
-        '<button class="tbtn" type="button" id="lpQsImp">⇧ Importar .qml</button>'+
-        '<button class="tbtn" type="button" id="lpQsExp">⇩ Exportar .qml</button>'+
-      '</div>'+
-      '<div class="hint" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Estilo QGIS" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O mesmo arquivo que o QGIS grava em Camada › Propriedades › Estilo › Salvar. '+
-      'Traz símbolo, classes por atributo, rótulos e opacidade.</span></button></div>';
+    box.className='gmp-sec'; box.id='lpQsCtrl';
+    box.innerHTML='<div class="gmp-hd"><span class="gmp-t">Estilo no padrão do QGIS</span><span class="gmp-st"></span>'+
+      '<button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Estilo QGIS" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O mesmo arquivo que o QGIS grava em Camada › Propriedades › Estilo › Salvar. '+
+      'Traz símbolo, classes por atributo, rótulos e opacidade.</span></button></div>'+
+      '<div class="gmp-c"><div class="gmp-row" id="lpQsBox">'+
+        '<button class="tbtn gmp-grow" type="button" id="lpQsImp">⇧ Importar .qml</button>'+
+        '<button class="tbtn gmp-grow" type="button" id="lpQsExp">⇩ Exportar .qml</button>'+
+      '</div></div>';
     pane.insertBefore(box,pane.firstChild);
   }
   const imp=document.getElementById('lpQsImp'), exp=document.getElementById('lpQsExp');

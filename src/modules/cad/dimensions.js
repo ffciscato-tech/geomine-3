@@ -171,7 +171,8 @@ function properties(L){
  for(const key of Object.keys(v)){const el=box.querySelector('[data-dim="'+key+'"]');if(el){if(el.type==='checkbox')el.checked=!!v[key];else el.value=typeof v[key]==='number'?+v[key].toFixed(6):v[key];}}
  box.querySelector('[data-dim-apply]').onclick=()=>{try{const next={};box.querySelectorAll('[data-dim]').forEach(el=>next[el.dataset.dim]=el.type==='checkbox'?el.checked:el.type==='number'?Number(el.value):el.value);const n=applyStyle(L,next);box.querySelector('[data-dim-result]').textContent=n+' cota(s) atualizada(s)';if(typeof lpSyncCtrl==='function')lpSyncCtrl();lpFillLabels(L);}catch(e){box.querySelector('[data-dim-result]').textContent=e.message;}};
  document.getElementById('lpInfo').innerHTML='<b>'+L.features.filter(f=>isFeature(L,f)).length+' cota(s)</b><br>Os ajustes abaixo se aplicam a todas as cotas desta camada.';
- document.getElementById('lpInfo').insertAdjacentElement('afterend',box);
+ /* O painel do i guarda só leitura: os ajustes das cotas ficam visíveis no corpo da janela. */
+ (document.getElementById('lpAcoes')||document.getElementById('lpInfo')).insertAdjacentElement('afterend',box);
 }
 const baseProps=window.openLayerProps;window.openLayerProps=function(L){const result=baseProps.apply(this,arguments);properties(L);return result;};
 function dxfText(L,f){
