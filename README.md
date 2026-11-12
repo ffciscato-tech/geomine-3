@@ -56,7 +56,6 @@ publicou de outro lugar e este repositório está desatualizado.
 | `validation/` | Relatórios e testes das validações de cada entrega |
 | `firestore.rules`, `firestore.indexes.json`, `storage.rules` | Regras da colaboração em nuvem |
 | `docs/` | Notas técnicas por funcionalidade |
-| `firebase/`, `cloud/` | Projetos auxiliares (functions e protótipo Next.js) |
 | `reference/HASHES.sha256` | Hashes de proveniência da versão-base histórica |
 
 ## Uma única linha de código
@@ -69,6 +68,8 @@ retiradas da árvore e continuam recuperáveis pelo histórico do git:
   `arquivo/base-2026-11-06/`.
 - **Árvore não oficial com placas de 02/09/2026**: commit `29d224a`, pasta
   `reference/nao_oficial_com_placas_2026-09-02/`.
+- **Projetos auxiliares de hospedagem** (`cloud/`, protótipo Next.js, e
+  `firebase/`, portão por Cloud Functions): commit `12c7c22`.
 
 Para consultar uma delas: `git show 29d224a:arquivo/base-2026-11-06/README.md`
 ou `git checkout 29d224a -- arquivo/`.
