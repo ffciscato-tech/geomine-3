@@ -1,7 +1,0 @@
-meshoptimizer 1.0 — MeshoptSimplifier, copyright Arseny Kapoulkine.
-Source: https://raw.githubusercontent.com/zeux/meshoptimizer/v1.0/js/meshopt_simplifier.js
-License: meshopt-simplifier.LICENSE.md (MIT).
-Upstream SHA256: b8fb6180d6ec894aa2a1a2b3c4415274f47e43d3f1fd5dc1c38177939f382db2
-GeoMine adaptation: replace the ES module export with a globalThis assignment,
-so the same code can run embedded in the offline HTML and in a classic Worker.
-The algorithm and embedded WebAssembly are unchanged.

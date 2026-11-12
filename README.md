@@ -57,24 +57,21 @@ publicou de outro lugar e este repositório está desatualizado.
 | `firestore.rules`, `firestore.indexes.json`, `storage.rules` | Regras da colaboração em nuvem |
 | `docs/` | Notas técnicas por funcionalidade |
 | `firebase/`, `cloud/` | Projetos auxiliares (functions e protótipo Next.js) |
-| `reference/` | Referências históricas da migração para a árvore modular |
-| `arquivo/base-2026-11-06/` | Linha anterior do código, descrita abaixo |
+| `reference/HASHES.sha256` | Hashes de proveniência da versão-base histórica |
 
-## Duas linhas de código
+## Uma única linha de código
 
-Até 06/11/2026 existiam duas árvores no Drive que evoluíram em paralelo:
+Este repositório mantém somente a versão publicada. As cópias antigas foram
+retiradas da árvore e continuam recuperáveis pelo histórico do git:
 
-- **`GeoMine/src` (base de 06/11).** Recebeu a etapa de compartimentação de
-  06/11: `core/layer-store.js`, `core/project-state.js` e o ribbon dividido em
-  `modules/ui/ribbon-*.js`. Não é a versão publicada. Está preservada em
+- **Base de 06/11/2026** (`GeoMine/src` do Drive, com a etapa de
+  compartimentação que não chegou à versão publicada): commit `29d224a`, pasta
   `arquivo/base-2026-11-06/`.
-- **`GeoMine/development/Blasting` (publicada).** Recebeu tudo o que foi ao ar
-  depois: desmonte (blasting), licenças ambientais, geoestatística, refinamento
-  de TPI, área de trabalho para tablet e ortofotos por tiles. É a raiz deste
-  repositório.
+- **Árvore não oficial com placas de 02/09/2026**: commit `29d224a`, pasta
+  `reference/nao_oficial_com_placas_2026-09-02/`.
 
-A compartimentação de 06/11 não foi incorporada à linha publicada. Se ela for
-retomada, o trabalho é portá-la de `arquivo/base-2026-11-06/` para `src/`.
+Para consultar uma delas: `git show 29d224a:arquivo/base-2026-11-06/README.md`
+ou `git checkout 29d224a -- arquivo/`.
 
 Os HTML monolíticos de referência (acima de 2 MB) e os pacotes `.zip` de
 entregas antigas ficaram só no Drive.

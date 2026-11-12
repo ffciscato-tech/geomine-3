@@ -1,5 +1,0 @@
-
-.fv-federal-direct{margin:10px 0;padding:10px;border:1px solid #b9cde0;border-radius:10px;background:#f7fbff;display:grid;gap:8px}
-.fv-federal-direct select{width:100%;min-height:36px}.fv-federal-checks{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
-.fv-federal-checks label{display:flex;align-items:center;gap:7px;min-width:0}.fv-source-download{background:#f6a800!important;color:#13283a!important;font-weight:800}.fv-federal-direct .hout{white-space:normal}
-@media(max-width:620px){.fv-federal-checks{grid-template-columns:1fr}}
