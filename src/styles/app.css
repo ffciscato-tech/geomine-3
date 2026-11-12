@@ -324,7 +324,17 @@
   .gc-pt{background:none!important;border:none!important}
   /* Régua (medição no mapa) */
   #gmLoadProgress{padding:7px 10px;flex:0 0 auto;border-bottom:1px solid var(--line);background:var(--panel);color:var(--ink)}
-  #cmdBox.gm-progress-active{min-height:220px!important}
+  /* Caixa de comandos no rodapé. Altura AUTOMÁTICA (.cmd-auto): acompanha o
+     conteúdo, com o histórico limitado às últimas linhas; o andamento do
+     carregamento soma a própria altura, sem forçar um tamanho fixo.
+     MINIMIZADA (.cmd-min): só a barra de título e, havendo carregamento, as
+     barras de andamento. Nenhum carregamento tira a caixa do estado minimizado. */
+  #cmdBox.cmd-auto,#cmdBox.cmd-min{height:auto!important;min-height:0!important;max-height:70vh}
+  #cmdBox.cmd-auto #cmdLog{flex:0 1 auto;max-height:calc(4.5em + 12px)}
+  #cmdBox.cmd-min :is(#cmdLog,#cmdEntrada,#cmdGrip,#cmdCnt,#cmdCopy,#cmdClear){display:none!important}
+  #cmdBox.cmd-min #cmdBar{border-bottom:0!important}
+  #cmdCnt{white-space:nowrap;flex:0 0 auto}
+  #cmdBox.cmd-min #gmLoadProgress{border-bottom:0;border-top:1px solid var(--line)}
   #gmLoadProgress[hidden],#gmLoadProgress [hidden]{display:none!important}
   #gmLoadProgress .gm-progress-label{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;font-size:11px;line-height:1.4}
   #gmLoadTitle,#gmTileTitle{overflow-wrap:anywhere;min-width:0;flex:1 1 170px;max-height:2.8em;overflow:hidden}

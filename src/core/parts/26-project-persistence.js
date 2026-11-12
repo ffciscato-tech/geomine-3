@@ -1271,7 +1271,7 @@ bindRasModal();
   const b=$('btnCmd'); if(b) b.onclick=()=>cmdToggle();
   const bf=$('btnCmdFlut'); if(bf) bf.onclick=()=>cmdToggle();
   const bm=$('cmdModo'); if(bm) bm.onclick=()=>cmdSetModo(CMD.modo==='flut'?'fixo':'flut');
-  const ba=$('cmdAlt'); if(ba) ba.onclick=()=>cmdSetAlt(CMD.alt==='mini'?'normal':'mini');
+  const ba=$('cmdAlt'); if(ba) ba.onclick=()=>cmdSetAlt(CMD.alt==='min'?'auto':'min');
   cmdArrasta();
   // arraste da alça superior: redimensiona a altura no modo FIXO
   (function(){
@@ -1286,8 +1286,10 @@ bindRasModal();
       if(!arr) return;
       const dy=arr.y-e.clientY;                     // arrastar p/ CIMA aumenta
       const maxH=Math.max(120, window.innerHeight-90);
-      CMD.hFix=Math.max(70, Math.min(maxH, Math.round(arr.h+dy)));
-      box.style.height=CMD.hFix+'px'; cmdAncora();
+      // Abaixo de 110 px a altura volta a ser automática (acompanha o conteúdo).
+      const alvo=Math.min(maxH, Math.round(arr.h+dy));
+      CMD.hFix=alvo<110?0:alvo;
+      cmdAplicaModo();
     });
     const solta=e=>{ if(arr){ arr=null; try{ grip.releasePointerCapture(e.pointerId); }catch(_){}
       const el=$('cmdLog'); if(el) el.scrollTop=el.scrollHeight; } };

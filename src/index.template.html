@@ -96,7 +96,7 @@
   <div id="cmdBox" style="position:fixed;left:0;right:0;bottom:38px;height:210px;
        z-index:2400;background:#0d1117f2;backdrop-filter:blur(3px);border-top:1px solid #ffffff22;
        display:none;flex-direction:column;font-family:var(--font)">
-    <div id="cmdGrip" title="Arraste para redimensionar" style="position:absolute;left:0;right:0;top:0;height:7px;
+    <div id="cmdGrip" title="Arraste para definir a altura. Arraste até o mínimo para voltar à altura automática" style="position:absolute;left:0;right:0;top:0;height:7px;
       cursor:ns-resize;z-index:5;background:transparent"></div>
     <!-- CCMGIS_MODULE:asset-011 -->
     <div id="cmdBar" style="display:flex;align-items:center;gap:8px;padding:5px 10px;
@@ -110,7 +110,7 @@
         <button class="mini" id="cmdStatusCancel" title="Cancelar (Esc)" style="font-size:11px;color:#ef8f8f">✕</button>
       </span>
       <span style="flex:1"></span>
-      <button class="mini" id="cmdAlt" style="font-size:11px" title="Aumentar ou reduzir a altura">⌃</button>
+      <button class="mini" id="cmdAlt" style="font-size:11px" title="Minimizar: fica só esta barra e o andamento do carregamento" aria-label="Minimizar a caixa de comandos">▾</button>
       <button class="mini" id="cmdModo" style="font-size:11px" title="Alternar entre fixo no rodapé e janela flutuante">⧉ Flutuante</button>
       <button class="mini" id="cmdCopy" style="font-size:11px">Copiar</button>
       <button class="mini" id="cmdClear" style="font-size:11px">Limpar</button>
@@ -127,7 +127,7 @@
       </div>
     </section>
     <div id="cmdLog" style="flex:1;overflow:auto;padding:6px 10px;font-size:11.5px;line-height:1.5;color:#d6d6d6"></div>
-    <div style="display:flex;gap:6px;padding:6px 10px;border-top:1px solid #ffffff18">
+    <div id="cmdEntrada" style="display:flex;gap:6px;padding:6px 10px;border-top:1px solid #ffffff18">
       <span style="color:var(--amber);font-size:12px">&gt;</span>
       <input id="cmdIn" placeholder="ajuda, limpar, camadas, superficies, crs, versao"
         style="flex:1;background:#ffffff10;border:1px solid #ffffff22;color:#eee;border-radius:6px;

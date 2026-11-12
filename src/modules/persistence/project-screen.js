@@ -21,7 +21,7 @@ function capture(){
   activeLayerId:S.activeId??null,activeRaster:r===S.img&&r?{type:'image'}:r?{type:'raster',id:r.id}:null,
   selection:f&&f.layer&&f.layer.features[f.idx]?{layerId:f.layer.id,index:f.idx,partIdx:f.partIdx??null}:null,
   panels:{propertiesCollapsed:document.body.classList.contains('prop-dock-collapsed'),sideOpen:el('side')?.classList.contains('open'),
-   attributes:el('attrPanel')?.classList.contains('open'),commands:el('cmdBox')?.style.display!=='none',commandHeight:CMD.hFix||null,commandSize:CMD.alt||'mini'},
+   attributes:el('attrPanel')?.classList.contains('open'),commands:el('cmdBox')?.style.display!=='none',commandHeight:CMD.hFix||null,commandSize:CMD.alt||'auto'},
   layout:{mode:S.loMode||'fig',zoom:S.loZoom||1},
   scroll:Object.fromEntries(scrollIds.filter(id=>el(id)).map(id=>[id,{left:el(id).scrollLeft,top:el(id).scrollTop}])),
   camera:camera(),controls:Object.fromEntries(controls.filter(id=>el(id)).map(id=>[id,el(id).type==='checkbox'?el(id).checked:el(id).value]))};
@@ -52,8 +52,8 @@ function restore(d){
   else if(document.body.classList.contains('prop-dock-collapsed')!==p.propertiesCollapsed)button?.click();
  }
  if(typeof p.sideOpen==='boolean')el('side')?.classList.toggle('open',p.sideOpen);
- if(['mini','max','grande','normal'].includes(p.commandSize))CMD.alt=p.commandSize;
- CMD.hFix=finite(p.commandHeight)&&p.commandHeight>=30&&p.commandHeight<=2000?p.commandHeight:null;
+ // O tamanho da caixa de comandos é escolha do aparelho, não do projeto:
+ // abrir um projeto não a tira do estado minimizado nem da altura automática.
  if(typeof p.commands==='boolean')cmdToggle(p.commands);
  for(const id of controls){const e=el(id),v=q.controls?.[id];if(!e||v==null)continue;
   if(e.type==='checkbox'){if(typeof v==='boolean')e.checked=v;}

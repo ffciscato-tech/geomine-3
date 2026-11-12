@@ -72,6 +72,13 @@ publicou de outro lugar e este repositório está desatualizado.
   textos de cada seção ficam no **i** ao lado do título. Na janela ficam só os
   controles, com botões do tamanho do texto (nada de largura total) e as seções
   pouco usadas recolhidas. Layout aprovado em 12/11/2026.
+- **Caixa de comandos discreta.** No rodapé, a caixa tem altura automática:
+  barra, andamento do carregamento (quando há), as últimas linhas do histórico
+  e o campo de comando. Minimizada (botão ▾), mostra só a barra e o andamento
+  do carregamento, e continua assim ao carregar arquivos, recarregar a página
+  ou abrir projetos. Nada deve forçar uma altura fixa nem reabri-la sozinha
+  (`CMD.alt` em `01-bootstrap-crs-state-command.js`; classes `.cmd-auto` e
+  `.cmd-min` em `app.css`).
 
 ## Organização
 

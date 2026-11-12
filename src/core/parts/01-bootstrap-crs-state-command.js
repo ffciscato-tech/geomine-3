@@ -365,7 +365,8 @@ function cmdLog(msg, tipo){
   CMD.linhas.push({hh, dt, msg:String(msg), tipo:tipo||'info'});
   if(CMD.linhas.length>CMD.max) CMD.linhas.splice(0, CMD.linhas.length-CMD.max);
   const el=document.getElementById('cmdLog');
-  if(el && document.getElementById('cmdBox').style.display!=='none'){
+  // Minimizada, a caixa não mostra o histórico: ele é pintado ao restaurar.
+  if(el && document.getElementById('cmdBox').style.display!=='none' && !(CMD.modo==='fixo'&&CMD.alt==='min')){
     cmdPinta(); el.scrollTop=el.scrollHeight;
   }
   const c=document.getElementById('cmdCnt');
@@ -383,12 +384,16 @@ function cmdPinta(){
    e FLUTUANTE (janela arrastável pela barra de título e redimensionável pelo
    canto). O modo e a posição valem para a sessão.                          */
 CMD.modo='fixo'; CMD.pos={left:60, top:80, w:560, h:320};
-/* Altura no modo fixo: 'mini' fica sempre à vista sem roubar o mapa; 'normal'
-   abre para acompanhar operação longa. Começa aberta em mini, como a linha de
-   comando do CAD, que está lá o tempo todo.                                 */
-CMD.alt='mini';
-CMD.hFix=0;                                       // altura livre no modo fixo (0 = usa mini/normal)
-const CMD_H={mini:'96px', normal:'240px'};
+/* Altura no modo fixo:
+   'auto' — a caixa acompanha o conteúdo: barra, andamento do carregamento (se
+            houver), as últimas linhas do histórico e o campo de comando;
+   'min'  — minimizada: só a barra e o andamento do carregamento. Fica assim
+            até a pessoa restaurar; nenhum carregamento a reabre.
+   CMD.hFix > 0 é a altura escolhida arrastando a alça, que vale no lugar da
+   automática. A escolha entre 'auto' e 'min' é do aparelho, não do projeto. */
+const CMD_ALT_KEY='geomine.cmd.alt.v1';
+CMD.alt=(()=>{try{return localStorage.getItem(CMD_ALT_KEY)==='min'?'min':'auto';}catch(_){return 'auto';}})();
+CMD.hFix=0;                                       // altura escolhida na alça (0 = automática)
 /* No modo fixo a caixa acompanha a área PRINCIPAL, comum ao Mapa 2D, 3D e
    Layout. Assim a troca de vista não perde a referência quando #map some.   */
 function cmdAncora(){
@@ -411,6 +416,9 @@ function cmdAplicaModo(){
   const b=document.getElementById('cmdBox'); if(!b) return;
   const bar=document.getElementById('cmdBar');
   const bt=document.getElementById('cmdModo');
+  const min=CMD.modo==='fixo'&&CMD.alt==='min';
+  b.classList.toggle('cmd-min',min);
+  b.classList.toggle('cmd-auto',CMD.modo==='fixo'&&!min&&!CMD.hFix);
   if(CMD.modo==='flut'){
     const p=CMD.pos;
     b.style.left=p.left+'px'; b.style.top=p.top+'px';
@@ -423,7 +431,7 @@ function cmdAplicaModo(){
     if(bar) bar.style.cursor='move';
     if(bt) bt.textContent='▭ Fixar';
   } else {
-    b.style.height=(CMD.hFix? CMD.hFix+'px' : (CMD_H[CMD.alt]||CMD_H.mini));
+    b.style.height=(!min&&CMD.hFix)? CMD.hFix+'px' : 'auto';
     cmdAncora();                                  // largura e posição = área do mapa
     b.style.border='none'; b.style.borderTop='1px solid #ffffff22';
     b.style.borderRadius='0'; b.style.boxShadow='none';
@@ -434,11 +442,17 @@ function cmdAplicaModo(){
   if(CMD.modo==='fixo') cmdAncora();
   const ba=document.getElementById('cmdAlt');
   if(ba){ ba.style.display=(CMD.modo==='flut')?'none':'';
-    ba.textContent=(CMD.alt==='mini')?'⌃':'⌄';
-    ba.title=(CMD.alt==='mini')?'Aumentar a altura':'Reduzir a altura'; }
+    ba.textContent=min?'▴':'▾';
+    ba.title=min?'Restaurar a caixa de comandos':'Minimizar: fica só esta barra e o andamento do carregamento';
+    ba.setAttribute('aria-label',min?'Restaurar a caixa de comandos':'Minimizar a caixa de comandos');
+    ba.setAttribute('aria-expanded',String(!min)); }
 }
-function cmdSetAlt(a){ CMD.alt=a; cmdAplicaModo();
-  const el=document.getElementById('cmdLog'); if(el) el.scrollTop=el.scrollHeight; }
+function cmdSetAlt(a){
+  CMD.alt=a==='min'?'min':'auto';
+  try{localStorage.setItem(CMD_ALT_KEY,CMD.alt);}catch(_){}
+  cmdAplicaModo();
+  if(CMD.alt!=='min'){ cmdPinta();
+    const el=document.getElementById('cmdLog'); if(el) el.scrollTop=el.scrollHeight; } }
 function cmdSetModo(m){
   // CCMGIS 3.0: a linha pertence ao rodapé e nunca vira uma janela solta.
   if(document.body.classList.contains('alagis3')) m='fixo';
