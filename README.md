@@ -90,6 +90,31 @@ publicou de outro lugar e este repositório está desatualizado.
 | `docs/` | Notas técnicas por funcionalidade |
 | `reference/HASHES.sha256` | Hashes de proveniência da versão-base histórica |
 
+## Projeto sempre na versão mais recente
+
+Quem atualiza um projeto por fora do GeoMine (por exemplo o Claude, pelo
+conector do Google Drive) só consegue **criar um arquivo novo** na pasta, não
+sobrescrever o original. Por isso, para um projeto aberto pelo comando
+**Abrir do Google Drive**, o GeoMine procura na mesma pasta do Drive o arquivo
+`.ccmgis` mais recente com o **mesmo `projectId`** e abre esse arquivo:
+
+- ao recarregar a página, sozinho, enquanto a sessão do Drive estiver válida
+  (cerca de 50 minutos depois da última autorização);
+- ao tocar em **↻** ao lado do nome do projeto, sempre.
+
+Edições locais não salvas nunca são substituídas: o GeoMine mantém o que está
+no aparelho e avisa que há versão mais nova. Um arquivo escolhido à mão no
+seletor é aberto como pedido, com um aviso se a pasta tiver versão mais nova.
+
+Regras para quem grava a versão nova: salve na **mesma pasta** do arquivo que
+está aberto e **preserve o `projectId`** do projeto (ele fica no começo do
+JSON). O nome do arquivo é livre.
+
+O código está em `src/modules/persistence/drive-project-source.js` (`latest`)
+e `project-tab-session.js` (`reopen`). A leitura da pasta usa o escopo
+`drive.readonly`, pedido em `web/gate.template.html`; sem ele o GeoMine
+continua abrindo só o arquivo vinculado.
+
 ## Janelas de propriedades
 
 As três janelas usam o mesmo conjunto de classes, definido no fim de

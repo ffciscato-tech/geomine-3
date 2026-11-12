@@ -42,12 +42,12 @@ async function pick(){
     picker.setVisible(true);
   });
 }
-async function request(source,query,signal){
+async function request(source,query,signal,extraHeaders){
   if(!isSource(source))throw Error('Vínculo do projeto com o Drive inválido.');
   const provider=drive(),token=await provider.driveAccess(false);
   const url=new URL('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(source.id));
   url.search=new URLSearchParams({...query,supportsAllDrives:'true'});
-  const headers={Authorization:'Bearer '+token};
+  const headers={Authorization:'Bearer '+token,...(extraHeaders||{})};
   if(source.resourceKey && /^[\w-]+$/.test(source.resourceKey))headers['X-Goog-Drive-Resource-Keys']=source.id+'/'+source.resourceKey;
   const response=await fetch(url,{headers,signal,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
   if(response.status===401){provider.clearDriveAccess();throw Error('Toque em ↻ ao lado do nome do projeto para reconectar ao Drive.');}
@@ -72,6 +72,54 @@ async function read(source,signal){
   }
   throw Error('O projeto mudou durante a leitura. Atualize novamente para abrir a versão completa.');
 }
-root.GeoMineDriveProject={pick,isSource,metadata,read};
+/* Uma atualização feita fora do GeoMine chega ao Drive como um ARQUIVO NOVO na
+   mesma pasta, com outro id, e não como nova revisão do arquivo vinculado.
+   latest() procura nessa pasta o arquivo de projeto mais recente que tenha o
+   mesmo projectId. Lê só o começo de cada candidato, onde o projectId fica, e
+   devolve null quando não há nada mais novo ou quando a conta não autorizou a
+   leitura da pasta (o chamador continua com o arquivo vinculado). */
+const PROJECT_FILE=/\.(ccmgis|alagis|geocampo)$/i, DRIVE_ID=/^[\w-]{1,200}$/;
+async function listFolder(parent,driveId,signal){
+  const provider=drive(),token=await provider.driveAccess(false);
+  const query={q:"'"+parent+"' in parents and trashed = false",orderBy:'modifiedTime desc',pageSize:'100',
+    fields:'files(id,name,version,modifiedTime,size,resourceKey)',supportsAllDrives:'true',includeItemsFromAllDrives:'true'};
+  if(driveId&&DRIVE_ID.test(driveId)){query.corpora='drive';query.driveId=driveId;}
+  const url=new URL('https://www.googleapis.com/drive/v3/files');url.search=new URLSearchParams(query);
+  const response=await fetch(url,{headers:{Authorization:'Bearer '+token},signal,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+  if(response.status===401){provider.clearDriveAccess();throw Error('Toque em ↻ ao lado do nome do projeto para reconectar ao Drive.');}
+  if(!response.ok)throw Error('O Google Drive não listou a pasta do projeto (HTTP '+response.status+').');
+  return (await response.json()).files||[];
+}
+async function head(source,bytes,signal){
+  const response=await request(source,{alt:'media'},signal,{Range:'bytes=0-'+(bytes-1)});
+  const reader=response.body?.getReader?.();
+  if(!reader)return (await response.text()).slice(0,bytes);
+  const decoder=new TextDecoder();let text='',size=0;
+  // Se o servidor ignorar o Range, para de ler assim que tiver o começo.
+  try{while(size<bytes){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;text+=decoder.decode(part.value,{stream:true});}}
+  finally{try{await reader.cancel();}catch(_){}}
+  return text;
+}
+async function latest(source,projectId,signal){
+  if(!isSource(source)||typeof projectId!=='string'||!projectId)return null;
+  const info=await (await request(source,{fields:'id,parents,driveId,modifiedTime'},signal)).json();
+  const parent=info.parents?.[0];
+  if(!parent||!DRIVE_ID.test(parent))return null;
+  const base=Date.parse(info.modifiedTime)||0,time=f=>Date.parse(f.modifiedTime)||0;
+  const newer=(await listFolder(parent,info.driveId,signal))
+    .filter(f=>f.id!==source.id&&PROJECT_FILE.test(f.name||'')&&time(f)>base)
+    .sort((a,b)=>time(b)-time(a)).slice(0,8);
+  for(const file of newer){
+    const candidate={kind:'drive',id:file.id,resourceKey:file.resourceKey||''};
+    if(!isSource(candidate))continue;
+    let text='';
+    try{text=await head(candidate,4096,signal);}catch(error){if(error.name==='AbortError')throw error;continue;}
+    const found=/"projectId"\s*:\s*"([^"\\]{1,200})"/.exec(text);
+    if(found&&found[1]===projectId)
+      return {...candidate,name:file.name,version:String(file.version||''),lastModified:time(file),size:Number(file.size)||0};
+  }
+  return null;
+}
+root.GeoMineDriveProject={pick,isSource,metadata,read,latest};
 })(window);
 

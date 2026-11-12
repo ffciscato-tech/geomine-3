@@ -268,17 +268,35 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
       snapshots:true, operations:['layer.replace'], maxUploadBytes:MAX_ARQUIVO },
     get user(){ return perfil(); },
     get drivePickerConfig(){return {appId:firebaseConfig.messagingSenderId,key:firebaseConfig.pickerBrowserKey};},
-    clearDriveAccess(){driveSession=null;try{sessionStorage.removeItem('geomine.drive.access.v1');}catch(_){}},
+    clearDriveAccess(){driveSession=null;try{sessionStorage.removeItem('geomine.drive.access.v2');}catch(_){}},
     async driveAccess(interactive){
-      const user=usuario(),storageKey='geomine.drive.access.v1';
+      const user=usuario(),storageKey='geomine.drive.access.v2';
       let saved=driveSession;
       try{saved=saved||JSON.parse(sessionStorage.getItem(storageKey)||'null');}catch(_){}
       if(saved?.owner===user.uid&&saved.until>Date.now()&&saved.token)return saved.token;
       if(!interactive)throw Error('Toque em ↻ ao lado do nome do projeto para reconectar ao Drive.');
       const provider=new GoogleAuthProvider();
       provider.addScope('https://www.googleapis.com/auth/drive.file');
+      /* Leitura do Drive: permite achar, na pasta do projeto, a versão mais
+         recente quando ela chega como um arquivo novo (drive-project-source.js).
+         O GeoMine não grava nem apaga nada no Drive com esta permissão.
+         Se o Google recusar o pedido duas vezes seguidas, as tentativas dos
+         sete dias seguintes pedem só o acesso por arquivo, para que Abrir do
+         Drive continue funcionando. */
+      const recusaKey='geomine.drive.leitura.recusas.v1';
+      let recusa={n:0,at:0};
+      try{recusa=JSON.parse(localStorage.getItem(recusaKey)||'null')||recusa;}catch(_){}
+      const soArquivo=recusa.n>=2&&Date.now()-recusa.at<7*86400000;
+      if(!soArquivo)provider.addScope('https://www.googleapis.com/auth/drive.readonly');
       provider.setCustomParameters({login_hint:user.email});
-      const result=await reauthenticateWithPopup(user,provider);
+      let result;
+      try{result=await reauthenticateWithPopup(user,provider);}
+      catch(error){
+        if(!soArquivo&&error?.code!=='auth/popup-blocked')
+          try{localStorage.setItem(recusaKey,JSON.stringify({n:(Date.now()-recusa.at<600000?recusa.n:0)+1,at:Date.now()}));}catch(_){}
+        throw error;
+      }
+      if(!soArquivo)try{localStorage.removeItem(recusaKey);}catch(_){}
       if(auth.currentUser?.uid!==user.uid||result.user.uid!==user.uid)throw Error('A conta do projeto mudou.');
       const token=GoogleAuthProvider.credentialFromResult(result)?.accessToken;
       if(!token)throw Error('A conta Google não autorizou a leitura do arquivo.');

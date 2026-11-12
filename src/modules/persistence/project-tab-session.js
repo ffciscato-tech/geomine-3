@@ -1,6 +1,9 @@
 /* Referência ao ARQUIVO de cada aba — nunca snapshot, rascunho ou autosave.
    No reload, lê o arquivo atual se a permissão já estiver concedida. Nenhum caminho
-   privado é inferido de nomes; handles não são compartilhados entre contas. */
+   privado é inferido de nomes; handles não são compartilhados entre contas.
+   Projeto vinculado ao Google Drive: ao recarregar ou tocar em ↻, abre a versão
+   mais recente do MESMO projeto (mesmo projectId) que estiver na mesma pasta do
+   Drive, mesmo que ela tenha chegado como um arquivo novo. */
 (function(){
 'use strict';
 if(window.GeoMineProjectTabSession)return;
@@ -154,7 +157,7 @@ function updateSourceButton(){
     place.after(button);
   }
   const linked=window.GeoMineDriveProject.isSource(record.source);
-  const label=linked?'Atualizar este projeto do Google Drive':'Vincular este projeto ao Google Drive';
+  const label=linked?'Abrir a versão mais recente deste projeto no Google Drive':'Vincular este projeto ao Google Drive';
   button.title=label;button.setAttribute('aria-label',label);
   button.onclick=()=>linked?reopen():openDrive(true);
 }
@@ -216,7 +219,7 @@ async function reopen(options){
   if(!options?.discardConfirmed&&(S.auto?.dirty||session?.state?.dirty)&&!confirm('Há alterações não salvas. Reabrir o arquivo atual e descartá-las?'))return false;
   const token=++operation,owner=account,id=tabId,gen=generation(),version=session?.state?.version,project=S.projectId;
   const valid=()=>current()&&operation===token&&owner===account&&id===tabId&&record===previousRecord&&generation()===gen&&session?.state?.version===version&&S.projectId===project;
-  let shown=false,committed=false;
+  let shown=false,committed=false,switched=false;
   const opening=window.GeoMineProjectOpenProgress?.begin({title:'Solicitando acesso ao projeto…',current:valid});
   busy=true;needsPermission=false;lastError='';lastNotice='';hide();
   try{
@@ -226,6 +229,16 @@ async function reopen(options){
       if(!automatic)await opening.wait(window.GeoMineCloudProvider.driveAccess(true));
       opening.phase('Conferindo a versão do arquivo no Drive…');
       source=await opening.wait(drive.metadata(target.source,opening.signal));
+      // Sem options.source: a pessoa não escolheu um arquivo agora, então vale
+      // a versão mais recente deste projeto na pasta. Falha aqui não impede
+      // abrir o arquivo vinculado.
+      if(!options?.source&&target.projectId&&drive.latest){
+        opening.phase('Procurando a versão mais recente na pasta do Drive…');
+        let newer=null;
+        try{newer=await opening.wait(drive.latest(source,target.projectId,opening.signal));}
+        catch(e){if(e.name==='AbortError'||!valid())throw e;try{cmdLog('Versão mais recente no Drive: '+(e.message||e),'warn');}catch(_){}}
+        if(newer){source=newer;switched=true;}
+      }
     }else{
       const permission=automatic?await handle.queryPermission?.({mode:'read'}):
         await (handle.requestPermission?.({mode:'read'})||Promise.resolve('granted'));
@@ -244,7 +257,7 @@ async function reopen(options){
       const changed=source.kind==='drive'&&draft.baseRevision ? draft.baseRevision!==source.version :
         !draft.baseModified||draft.baseModified!==source.lastModified;
       if(changed&&remote)resumeIssue={project:target.projectId,id:source.id,conflict:true};
-      if(changed)lastError=remote?'O arquivo do Drive mudou. Suas edições locais foram mantidas. Para usar o original, pesquise “Atualizar do Google Drive”.':
+      if(changed)lastError=remote?'Há uma versão mais recente no Drive. Suas edições locais foram mantidas. Para abrir a versão do Drive, toque em ↻ ao lado do nome do projeto.':
         'O arquivo mudou. Suas edições locais foram mantidas. Use Abrir para escolher a versão do arquivo.';
       return false;
     }
@@ -261,7 +274,18 @@ async function reopen(options){
     if(target.folder&&typeof PROJECT_DIR_HANDLE!=='undefined')PROJECT_DIR_HANDLE=target.folder;
     const restored=()=>{window.startAutosave(file.name||target.name,handle||null,source);pending=false;committed=true;hide();};
     if(opening)await opening.commit(data,restored);else{window.loadProject(data);restored();}
-    if(!automatic)notify('Projeto reaberto do arquivo atual. O salvamento continua manual.');return true;
+    if(switched)notify('Versão mais recente carregada do Drive: “'+(file.name||source.name)+'”.');
+    else if(!automatic)notify('Projeto reaberto do arquivo atual. O salvamento continua manual.');
+    // Arquivo escolhido à mão: é respeitado agora, mas avisa se a pasta já tem
+    // uma versão mais nova, que será a aberta na próxima recarga.
+    if(options?.source&&remote&&drive.latest){
+      const picked=source,project=data.projectId;
+      Promise.resolve(drive.latest(picked,project)).then(newer=>{
+        if(newer&&current()&&record?.source?.id===picked.id&&S.projectId===project)
+          notify('Há uma versão mais recente deste projeto na pasta: “'+newer.name+'”. Toque em ↻ ao lado do nome para abri-la.');
+      }).catch(()=>{});
+    }
+    return true;
   }catch(e){
     if(valid()&&e.name!=='AbortError'){
       if(options?.source){notify(e.message);return false;}
