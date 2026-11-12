@@ -57,3 +57,19 @@ test('full native cache applies half-cell correction once, never modifies origin
  for(const corrected of [false,true]){const r=raster(true,true,corrected),before=JSON.stringify(r.d),s=await ctx.window.GeoMineChannelDEM.prepare(r,{workCRS:'EPSG:31983'});
  assert.equal(s.grid.xll,9);assert.equal(s.grid.yll,21);assert.equal((await s.cells([[3,4]]))[0],43);assert.equal(JSON.stringify(r.d),before);s.close();}
 });
+test('a tap beside the thalweg is moved to the nearest cell of the dominant flow line, not downstream',async()=>{
+ // Vale em V correndo para o sul (linha crescente), talvegue na coluna 60.
+ const s=source(121,161,(x,y)=>500-y*0.5+Math.abs(x-60)*2);
+ const onLine=await engine.locateOutlet(s,{col:60,row:100},{searchCells:4});
+ assert.equal(onLine.moved,false);assert.deepEqual([onLine.col,onLine.row],[60,100]);
+ const beside=await engine.locateOutlet(s,{col:62,row:100},{searchCells:4});
+ assert.equal(beside.moved,true);assert.equal(beside.col,60);
+ assert(Math.abs(beside.row-100)<=1,'fica na mesma estação do toque, sem descer o vale: linha '+beside.row);
+ assert(beside.cellsAtOutlet>20*beside.cellsAtTap);
+ // Longe do talvegue, fora do raio de busca: o ponto não é deslocado.
+ const far=await engine.locateOutlet(s,{col:90,row:100},{searchCells:4});
+ assert.equal(far.moved,false);assert.deepEqual([far.col,far.row],[90,100]);
+ // A bacia delimitada a partir do exutório ajustado é a do vale, não a da encosta.
+ const slope=await engine.analyze(s,{seed:{col:62,row:100}}),valley=await engine.analyze(s,{seed:{col:beside.col,row:beside.row}});
+ assert(valley.cells>50*slope.cells,valley.cells+' x '+slope.cells);
+});

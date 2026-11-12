@@ -7,12 +7,12 @@ const fmt=(v,d=2)=>Number(v).toLocaleString('pt-BR',{maximumFractionDigits:d});
 let job=null,armed=null,context=null,describing=0,anchor=null,pointMarker=null;
 panel.id='secPointCatchment';panel.className='hsec';panel.style.display='none';
 panel.innerHTML=`<h2>Área contribuinte no ponto <span class="tag">MDT original</span></h2>
-<div class="hint">Marque um ponto da linha de fluxo para delimitar somente a área que drena até ele.</div>
+<div class="hint">Marque o exutório: um ponto da linha de fluxo ou qualquer ponto do MDT. O resultado é toda a área que drena até ele.</div>
 <label class="field" for="pointCatchmentRaster">MDT</label><select id="pointCatchmentRaster"></select>
 <div class="hint" id="pointCatchmentInfo" style="margin:7px 0"></div>
 <button class="tbtn" id="pointCatchmentMark" style="width:100%;justify-content:center;background:var(--amber);color:#1a1206;font-weight:700">◎ Marcar ponto</button>
 <div class="hout" id="pointCatchmentResult" role="status" aria-live="polite" style="white-space:pre-line;margin-top:8px">A área será informada em m² e hectares.</div>
-<div class="hint" style="margin-top:8px">Fluxo contínuo no MDT nativo, sem alterar cotas. O toque é ajustado à linha mais próxima, sem buscar outro ponto rio abaixo.</div>
+<div class="hint" style="margin-top:8px">Fluxo contínuo no MDT nativo, sem alterar cotas. O ponto é ajustado ao talvegue mais próximo no MDT, sem descer o rio; o marcador mostra o exutório usado.</div>
 <button class="mini" id="pointCatchmentRain" style="margin-top:12px">Chuva e inundação…</button>`;
 ($('secHidroBacia')?.parentElement||document.body).appendChild(panel);
 const status=t=>{$('pointCatchmentResult').textContent=t;};
@@ -24,6 +24,27 @@ const rasters=()=>S.rasters.filter(r=>root.GeoMineChannelDEM.isElevation(r)&&!de
 const selected=()=>rasters().find(r=>String(r.id)===$('pointCatchmentRaster').value);
 const aborted=()=>Object.assign(Error('Consulta cancelada: o projeto ou o MDT mudou.'),{name:'AbortError'});
 function scale(s){const p=proj4(s.sourceCRS).oProj,k=Number(p.to_meter??1);if(p.projName==='longlat'||!Number.isFinite(k)||k<=0)throw Error('Use um MDT com CRS projetado para calcular a área em metros quadrados.');return k;}
+/* Memória para a análise: aparelhos móveis fecham a aba bem antes de um
+   computador. Bacias que não cabem na resolução nativa são recalculadas numa
+   grade agregada (média das cotas), e o resultado diz qual grade foi usada. */
+const memoryMB=()=>root.GeoMineImportHandoff?.mobile?.()||navigator.maxTouchPoints>1?96:navigator.deviceMemory>=8?512:256;
+function coarsen(base,factor){
+  const nc=Math.ceil(base.nc/factor),nr=Math.ceil(base.nr/factor),cy=base.csy||base.cs;
+  return {...base,nc,nr,cs:base.cs*factor,csy:cy*factor,yll:base.yll+base.nr*cy-nr*cy*factor,float32:true,noData:null,
+    readWindow:async([x0,y0,x1,y1])=>{
+      const W=x1-x0,H=y1-y0,sum=new Float64Array(W*H),n=new Uint16Array(W*H),out=new Float32Array(W*H),
+        X0=x0*factor,X1=Math.min(base.nc,x1*factor),Y0=y0*factor,Y1=Math.min(base.nr,y1*factor),
+        step=Math.max(factor,Math.floor(1500000/Math.max(1,X1-X0)/factor)*factor);
+      for(let y=Y0;y<Y1;y+=step){
+        const yEnd=Math.min(Y1,y+step),values=await base.readWindow([X0,y,X1,yEnd]),width=X1-X0;
+        if(values.length!==width*(yEnd-y))throw Error('Bloco incompleto do MDT original.');
+        for(let r=y;r<yEnd;r++){const line=(Math.floor(r/factor)-y0)*W-x0,offset=(r-y)*width-X0;
+          for(let c=X0;c<X1;c++){const v=values[offset+c];if(Number.isFinite(v)&&(base.noData==null||v!==base.noData)){const i=line+Math.floor(c/factor);sum[i]+=v;n[i]++;}}}
+      }
+      for(let i=0;i<out.length;i++)out[i]=n[i]?Math.fround(sum[i]/n[i]):NaN;
+      return out;
+    }};
+}
 function controls(){
   const busy=!!job;
   $('pointCatchmentRaster').disabled=busy;
@@ -55,7 +76,7 @@ function arm(){
   const r=selected();if(!r){status(rasters().length?'Escolha o MDT no campo acima e toque em Marcar ponto.':'Carregue um MDT original para marcar o ponto.');$('pointCatchmentRaster').focus();return;}
   if(!mapaVista2D())switchView('map');
   armed={r,project:S.projectId,generation:gen()};setTool('basin');controls();
-  status('Toque no ponto da linha de fluxo. O marcador mostrará o ponto usado na linha.');
+  status('Toque no exutório: na linha de fluxo ou em qualquer ponto do MDT. O marcador mostrará o ponto usado.');
 }
 async function click(latlng){
   if(job)return;
@@ -82,17 +103,41 @@ async function click(latlng){
       p=snap?snap.point:tap,seed=sampler.locate(p);
     const ll=toWGS(q.crs,...p);pointMarker.setLatLng([ll[1],ll[0]]).setStyle({color:'#1b3560'});
     if(!seed)throw Error('O ponto está fora do MDT.');
-    const result=await root.GeoMineContinuousCatchment.analyze({...sampler.grid,float32:sampler.float32,unitScale:k,readWindow:sampler.readWindow,isCurrent:current},{
-      seed:{col:seed.col,row:seed.row},signal:q.controller.signal,maxMemoryMB:96,decodedCacheMB:12,tileSize:128,
-      onProgress:v=>{check();status((v.phase==='contour'?'Traçando o contorno':v.phase==='read'?'Lendo cotas nativas':v.phase==='expand'?'Ampliando a busca a montante':v.phase==='routing'?'Conectando o escoamento sem alterar cotas':'Delimitando a montante')+'…'+(v.cells?'\n'+fmt(v.cells,0)+' células · '+fmt((v.areaM2||v.cells*sampler.grid.cs*sampler.grid.csy*k*k)/10000,4)+' ha':''));}
-    });check();
+    const engine=root.GeoMineContinuousCatchment,memory=memoryMB(),
+      native={...sampler.grid,float32:sampler.float32,unitScale:k,readWindow:sampler.readWindow,isCurrent:current},
+      nativeRes=Math.min(native.cs,native.csy||native.cs)*k,
+      // Raio de busca do talvegue: o dedo (14 px no terreno), ao menos 3 células
+      // e, com linha vetorial, ao menos 3 m de folga entre a linha e o MDT.
+      searchM=Math.min(40,Math.max(1.4*Math.hypot(sideXY[0]-tap[0],sideXY[1]-tap[1]),3*nativeRes,snap?3:0));
+    let source=native,factor=1,start={col:seed.col,row:seed.row},adjust=0,result,reached=0;
+    for(;;){
+      const res=Math.min(source.cs,source.csy||source.cs)*k;
+      status(factor>1?'Bacia grande: calculando em grade de '+fmt(res,2)+' m…':'Ajustando o exutório ao talvegue do MDT…');
+      // O exutório é procurado em cada grade: a média das cotas pode deslocar o talvegue.
+      const outlet=await engine.locateOutlet(source,start,{searchCells:Math.max(factor>1?2:1,Math.ceil(searchM/res)),signal:q.controller.signal,maxMemoryMB:memory});check();
+      if(factor===1){adjust=outlet.moved?outlet.distance:0;
+        const at=toWGS(q.crs,...sampler.toWork([native.xll+(outlet.col+.5)*native.cs,native.yll+(native.nr-outlet.row-.5)*(native.csy||native.cs)]));
+        pointMarker.setLatLng([at[1],at[0]]);}
+      try{
+        result=await engine.analyze(source,{
+          seed:{col:outlet.col,row:outlet.row},signal:q.controller.signal,maxMemoryMB:memory,decodedCacheMB:12,tileSize:128,initialRadiusM:reached||undefined,
+          onProgress:v=>{check();if(v.window)reached=Math.max(reached,(v.window[2]-v.window[0])*source.cs*k/2);
+            status((factor>1?'Grade de '+fmt(res,2)+' m · ':'')+(v.phase==='contour'?'Traçando o contorno':v.phase==='read'?'Lendo cotas nativas':v.phase==='expand'?'Ampliando a busca a montante':v.phase==='routing'?'Conectando o escoamento sem alterar cotas':'Delimitando a montante')+'…'+(v.cells?'\n'+fmt(v.cells,0)+' células · '+fmt((v.areaM2||v.cells*source.cs*(source.csy||source.cs)*k*k)/10000,4)+' ha':''));}
+        });check();break;
+      }catch(e){
+        // Não coube na memória nesta resolução: repete numa grade com o dobro da célula.
+        if(e.code!=='memory'||factor>=64||Math.ceil(native.nc/factor)<64)throw e;
+        check();factor*=2;source=coarsen(native,factor);
+        start={col:Math.min(source.nc-1,Math.floor(seed.col/factor)),row:Math.min(source.nr-1,Math.floor(seed.row/factor))};
+      }
+    }
     const geom=[];let vertices=0;
     for(const ring of result.rings){const out=[];for(const xy of ring){out.push(sampler.toWork(xy));if(++vertices%4096===0){await new Promise(r=>setTimeout(r,0));check();}}geom.push(out);}
     const outlet=sampler.toWork(result.outlet),partial=result.touchesEdge||result.touchesNoData,
       props={AREA_M2:result.areaM2,AREA_HA:result.areaM2/10000,CELULAS:result.cells,
-        E_TOQUE:tap[0],N_TOQUE:tap[1],AJUSTE_M:snap?.distance||0,LINHA:snap?.layer.name||'',E_PONTO:p[0],N_PONTO:p[1],E_CELULA:outlet[0],N_CELULA:outlet[1],COTA_M:result.seedZ,
-        RES_X_M:result.resolution.x,RES_Y_M:result.resolution.y,MDT:r.name,
-        METODO:'Fluxo contínuo D8 — cotas originais',LIMITE_DADOS:partial?'Sim':'Não'},
+        E_TOQUE:tap[0],N_TOQUE:tap[1],AJUSTE_M:snap?.distance||0,LINHA:snap?.layer.name||'',E_PONTO:p[0],N_PONTO:p[1],AJUSTE_MDT:adjust,E_CELULA:outlet[0],N_CELULA:outlet[1],COTA_M:result.seedZ,
+        RES_X_M:result.resolution.x,RES_Y_M:result.resolution.y,RES_MDT_M:nativeRes,MDT:r.name,
+        METODO:factor>1?'Fluxo contínuo D8 — grade agregada '+factor+'× (média das cotas)':'Fluxo contínuo D8 — cotas originais',LIMITE_DADOS:partial?'Sim':'Não'},
       fields=Object.entries(props).map(([name,value])=>({name,type:typeof value==='number'?'N':'C',length:typeof value==='number'?20:100,decimal:['CELULAS'].includes(name)?0:6}));
     check();
     const layer=addLayer({sourceLayer:'R:'+r.id,name:'Área contribuinte — '+fmt(props.AREA_HA,4)+' ha',gtype:'polygon',crs:q.crs,
@@ -101,7 +146,9 @@ async function click(latlng){
     refreshUI();
     const text='Área contribuinte: '+fmt(props.AREA_HA,4)+' ha\n'+fmt(props.AREA_M2,4)+' m² · '+fmt(props.CELULAS,0)+' células'+
       (partial?'\nA área toca a borda ou células sem dados do MDT; pode haver contribuição fora dos dados disponíveis.':'')+
-      (snap?'\nPonto na linha: '+snap.layer.name+' · ajuste '+fmt(snap.distance,2)+' m':'\nPonto usado no MDT; nenhuma linha de fluxo visível próxima.');
+      (snap?'\nPonto na linha: '+snap.layer.name+' · ajuste '+fmt(snap.distance,2)+' m':'')+
+      (adjust?'\nExutório ajustado ao talvegue do MDT: '+fmt(adjust,2)+' m do ponto.':'\nExutório na célula do ponto marcado.')+
+      (factor>1?'\nBacia grande: calculada em grade de '+fmt(result.resolution.x,2)+' m (MDT nativo de '+fmt(nativeRes,2)+' m), por limite de memória deste aparelho.':'');
     status(text);cmdLog(text.replaceAll('\n',' · '),'ok');
   }catch(e){if(q.project===S.projectId&&q.generation===gen()){status(e.name==='AbortError'?'Consulta cancelada.':e.message);if(e.name!=='AbortError')cmdLog('Área contribuinte: '+e.message,'warn');}}
   finally{clearInterval(timer);sampler?.close();if(job===q)job=null;controls();}
@@ -111,7 +158,7 @@ $('pointCatchmentMark').onclick=arm;
 $('pointCatchmentRain').onclick=()=>{cancel();ribbonOpen($('secHidroMancha'),anchor||$('pointCatchmentRain'),'Chuva e inundação');};
 const category=CATS.find(c=>c.id==='hidrologia');
 for(const group of category?.grupos||[])for(const item of group.it||[]){
-  if(item.ic==='bacia-hidrografica'){item.nome='Área Contribuinte';item.desc='Clique no ponto da linha de fluxo · MDT original sem preenchimento';item.act=open;}
+  if(item.ic==='bacia-hidrografica'){item.nome='Área Contribuinte';item.desc='Toque no exutório, na linha de fluxo ou no MDT · área que drena até o ponto';item.act=open;}
   if(item.ic==='mancha-inundacao')item.act=open;
 }
 $('btnBasin').onclick=()=>{refresh();arm();};

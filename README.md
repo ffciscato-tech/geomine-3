@@ -122,6 +122,28 @@ e `project-tab-session.js` (`reopen`). A leitura da pasta usa o escopo
 `drive.readonly`, pedido em `web/gate.template.html`; sem ele o GeoMine
 continua abrindo só o arquivo vinculado.
 
+## Área contribuinte no ponto (Hidro)
+
+O comando **Área Contribuinte** (faixa Hidrologia, também aberto pelo ícone de
+mancha de inundação) delimita toda a área que drena até um exutório marcado no
+mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
+
+- **Exutório no talvegue.** O toque, ou o ponto projetado numa linha vetorial,
+  quase nunca cai na célula exata por onde o escoamento passa no MDT, e uma
+  célula de encosta ao lado devolve só alguns metros quadrados. Por isso
+  `locateOutlet` (`continuous-catchment-engine.js`) procura, num raio pequeno
+  (o dedo, ao menos 3 células, no máximo 40 m), a linha de escoamento dominante
+  e move o ponto para a célula **mais próxima** dela, sem descer o rio. O
+  marcador e o resultado mostram o exutório usado e o ajuste em metros.
+- **Bacias grandes.** A análise é feita na resolução nativa. Se a bacia não
+  couber na memória do aparelho, ela é refeita numa grade agregada (2×, 4×…,
+  média das cotas) e o resultado informa a grade usada (`coarsen` em
+  `point-catchment.js`). Nunca devolver erro de memória sem tentar a grade
+  agregada.
+
+Testes do motor: `node src/modules/hydrology/continuous-catchment.test.cjs` e
+`node src/modules/hydrology/point-catchment.test.cjs`.
+
 ## Janelas de propriedades
 
 As três janelas usam o mesmo conjunto de classes, definido no fim de

@@ -10,7 +10,8 @@ const abort=()=>Object.assign(Error('Cálculo cancelado.'),{name:'AbortError'});
 async function routeWindow(source,window,options={}){
   const [left,top,right,bottom]=window,W=right-left,H=bottom-top,total=W*H,cs=source.cs,cy=source.csy||cs,
     maxBytes=(options.maxMemoryMB||96)*1048576,cellBytes=source.float32?4:8;
-  if(total*(cellBytes+1.125)>maxBytes*.83)throw Error('A bacia ainda exige uma área maior de análise na resolução nativa. A memória disponível não permite concluí-la neste aparelho; nenhum resultado parcial foi salvo.');
+  // code:'memory' deixa o chamador repetir a análise numa grade agregada.
+  if(total*(cellBytes+1.125)>maxBytes*.83)throw Object.assign(Error('A bacia ainda exige uma área maior de análise na resolução nativa. A memória disponível não permite concluí-la neste aparelho; nenhum resultado parcial foi salvo.'),{code:'memory',window});
   const z=source.float32?new Float32Array(total):new Float64Array(total),state=new Uint8Array(total),
     weight=N.map(([x,y])=>1/Math.hypot(x*cs,y*cy));
   let last=Date.now(),lastProgress=0,processed=0,valid=0,heap=new Uint32Array(4096),size=0,peak=0;
@@ -19,7 +20,7 @@ async function routeWindow(source,window,options={}){
     if(now-last>12){await new Promise(r=>setTimeout(r,0));last=Date.now();check();}};
   const less=(a,b)=>z[a]<z[b]||(z[a]===z[b]&&a<b);
   function push(i){
-    if(size===heap.length){const capacity=heap.length*2;if(total*(cellBytes+1.125)+capacity*4+heap.byteLength>maxBytes)throw Error('A continuidade do escoamento excedeu a memória disponível. Nenhuma área parcial foi salva.');const next=new Uint32Array(capacity);next.set(heap);heap=next;}
+    if(size===heap.length){const capacity=heap.length*2;if(total*(cellBytes+1.125)+capacity*4+heap.byteLength>maxBytes)throw Object.assign(Error('A continuidade do escoamento excedeu a memória disponível. Nenhuma área parcial foi salva.'),{code:'memory',window});const next=new Uint32Array(capacity);next.set(heap);heap=next;}
     let p=size++;while(p){const parent=(p-1)>>1;if(!less(i,heap[parent]))break;heap[p]=heap[parent];p=parent;}heap[p]=i;peak=Math.max(peak,size);
   }
   function pop(){const first=heap[0],v=heap[--size];let p=0;while(p*2+1<size){let c=p*2+1;if(c+1<size&&less(heap[c+1],heap[c]))c++;if(!less(heap[c],v))break;heap[p]=heap[c];p=c;}if(size)heap[p]=v;return first;}
@@ -66,6 +67,7 @@ async function routeWindow(source,window,options={}){
   check();
   const seed=options.seed,x=seed.col-left,y=seed.row-top,start=y*W+x;
   if(x<0||y<0||x>=W||y>=H||(state[start]&15)===9)throw Error('O ponto está fora da área válida do MDT original.');
+  if(options.routingOnly)return {window,W,H,state,start};
   const seedZ=z[start],queue=new Uint32Array(z.buffer,0,total),mask=new Uint8Array(Math.ceil(total/8));
   let a=0,b=1,edge=false,noData=false,crop=false,hash1=0,hash2=0,bounds=[x,y,x,y];queue[0]=start;mask[start>>3]|=1<<(start&7);
   while(a<b){
@@ -115,5 +117,44 @@ async function analyze(source,options={}){
     await new Promise(resolve=>setTimeout(resolve,0));
   }
 }
-root.GeoMineContinuousCatchment={analyze,routeWindow};
+/* Exutório no talvegue. O toque, ou o ponto projetado numa linha vetorial, quase
+   nunca cai na célula exata por onde o escoamento passa no MDT: uma célula de
+   encosta ao lado devolve só alguns metros quadrados em vez da bacia. Numa
+   janela local, calcula quantas células drenam para cada célula e procura,
+   dentro do raio de busca, a linha de escoamento dominante. Se o ponto já está
+   nela, fica onde está; senão vai para a célula MAIS PRÓXIMA dessa linha, sem
+   descer o rio. As cotas não são alteradas. */
+async function locateOutlet(source,seed,options={}){
+  if(!seed||!Number.isInteger(seed.col)||!Number.isInteger(seed.row)||seed.col<0||seed.row<0||seed.col>=source.nc||seed.row>=source.nr)throw Error('O ponto está fora do MDT.');
+  const search=Math.max(1,Math.min(48,Math.ceil(options.searchCells||3))),radius=Math.max(64,search*4),
+    w=[Math.max(0,seed.col-radius),Math.max(0,seed.row-radius),Math.min(source.nc,seed.col+radius+1),Math.min(source.nr,seed.row+radius+1)],
+    r=await routeWindow(source,w,{signal:options.signal,maxMemoryMB:options.maxMemoryMB,seed,routingOnly:true}),
+    {W,H,state,start}=r,total=W*H,receiver=new Int32Array(total).fill(-1),pending=new Uint8Array(total),count=new Uint32Array(total),order=new Uint32Array(total);
+  for(let i=0;i<total;i++){
+    const d=state[i]&15;if(d===9)continue;count[i]=1;if(!d)continue;
+    const x=i%W+N[d-1][0],y=Math.floor(i/W)+N[d-1][1];if(x<0||y<0||x>=W||y>=H||(state[y*W+x]&15)===9)continue;
+    receiver[i]=y*W+x;pending[y*W+x]++;
+  }
+  // O roteamento é acíclico: soma das cabeceiras para jusante.
+  let head=0,tail=0;for(let i=0;i<total;i++)if(count[i]&&!pending[i])order[tail++]=i;
+  while(head<tail){const i=order[head++],k=receiver[i];if(k<0)continue;count[k]+=count[i];if(--pending[k]===0)order[tail++]=k;}
+  const x0=start%W,y0=Math.floor(start/W),cs=source.cs,cy=source.csy||cs,limit=search*Math.min(cs,cy);
+  let dominant=0;
+  const inside=[];
+  for(let y=Math.max(0,y0-search);y<=Math.min(H-1,y0+search);y++)for(let x=Math.max(0,x0-search);x<=Math.min(W-1,x0+search);x++){
+    const i=y*W+x,distance=Math.hypot((x-x0)*cs,(y-y0)*cy);if(!count[i]||distance>limit)continue;
+    inside.push([i,distance]);if(count[i]>dominant)dominant=count[i];
+  }
+  let best=start,bestDistance=0;
+  if(count[start]*2<dominant){
+    bestDistance=Infinity;
+    for(const [i,distance] of inside){
+      if(count[i]*2<dominant)continue;
+      if(distance<bestDistance-1e-9||Math.abs(distance-bestDistance)<=1e-9&&count[i]>count[best]){best=i;bestDistance=distance;}
+    }
+  }
+  return {col:w[0]+best%W,row:w[1]+Math.floor(best/W),moved:best!==start,distance:bestDistance*(source.unitScale||1),
+    searchCells:search,cellsAtTap:count[start],cellsAtOutlet:count[best]};
+}
+root.GeoMineContinuousCatchment={analyze,routeWindow,locateOutlet};
 })(typeof window!=='undefined'?window:globalThis);
