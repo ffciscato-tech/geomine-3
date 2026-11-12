@@ -1,0 +1,55 @@
+{
+  "buildHash": "3b48076baff51b59076a67ebb60547ba89e9c47e459e45f5933fca9d8ac1cde0",
+  "results": [
+    {
+      "name": "retângulo na seta: L1, L2 e Q1 inteiros dentro; L3 cruzando a borda fica fora; camada com cadeado ignorada",
+      "pass": true
+    },
+    {
+      "name": "Shift + retângulo soma Q2 à seleção (sem o zoom por caixa do Leaflet)",
+      "pass": true
+    },
+    {
+      "name": "arrastar uma feição selecionada move as quatro; Ctrl+Z devolve",
+      "pass": true
+    },
+    {
+      "name": "menu na feição selecionada: \"Girar seleção\" gira as quatro 90° em torno do centro do conjunto; um Ctrl+Z desfaz",
+      "pass": true
+    },
+    {
+      "name": "Girar com o mouse gira o conjunto inteiro (as quatro feições juntas)",
+      "pass": true
+    },
+    {
+      "name": "menu numa feição avulsa: Girar 90° só nela, em torno do centro dela",
+      "pass": true
+    },
+    {
+      "name": "esquerda→direita = inteiro dentro (azul); direita→esquerda = tudo que toca (verde)",
+      "pass": true
+    },
+    {
+      "name": "arrasto que começa em cima de uma linha não selecionada também vira retângulo",
+      "pass": true
+    },
+    {
+      "name": "depois de editar vértice (e de desligar o editor) o arrasto ainda desenha o retângulo, sem mover o mapa",
+      "pass": true
+    },
+    {
+      "name": "select: both directions include/exclude containing, crossing, outside and enclosing polygon without internal vertices",
+      "pass": true
+    },
+    {
+      "name": "selpoly: both directions include/exclude containing, crossing, outside and enclosing polygon without internal vertices",
+      "pass": true
+    },
+    {
+      "name": "pointercancel abandons rectangle, no selection or geometry change",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "pass": true
+}

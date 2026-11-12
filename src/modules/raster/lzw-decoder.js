@@ -62,13 +62,12 @@ function decodeLZW(buffer,directory){
   let position=0,width=9,next=258,old=-1,first=0,written=0,started=false;
   function readCode(){
     if(position+width>input.byteLength*8)throw invalid('fluxo incompleto antes do código de término');
-    let code=0,remaining=width;
-    while(remaining){
-      const byte=Math.floor(position/8),available=8-position%8,count=Math.min(available,remaining);
-      code=code*2**count+((input[byte]>>(available-count))&((1<<count)-1));
-      position+=count;remaining-=count;
-    }
-    return code;
+    // TIFF codes are 9–12 bits: at most three bytes, regardless of alignment.
+    // Avoid exponentiation and a per-byte loop for every dictionary code.
+    const byte=Math.floor(position/8),shift=position%8,
+      bits=(input[byte]<<16)|((input[byte+1]||0)<<8)|(input[byte+2]||0),
+      code=(bits>>>(24-shift-width))&((1<<width)-1);
+    position+=width;return code;
   }
   function reserve(count){
     const needed=written+count;
@@ -99,7 +98,7 @@ function decodeLZW(buffer,directory){
     while(count)output[written++]=stack[--count];
     if(next<LIMIT){prefix[next]=old;suffix[next]=first;next++;}
     old=incoming;
-    if(width<12&&next+1>=2**width&&!terminalOldWidthEOI(input,position,width))width++;
+    if(width<12&&next+1>=(1<<width)&&!terminalOldWidthEOI(input,position,width))width++;
   }
   if(shape&&!written)throw invalid('o bloco não contém pixels');
   if(shape&&written%shape.rowBytes)throw invalid('a última linha do bloco está incompleta');

@@ -191,8 +191,8 @@ Object.assign(PT_SYMS,{
     return out;
   }
   function base(shape,size,extra){return Object.assign({shape,size:size||34,color:'#ffffff',stroke:'#111111',weight:1.5},extra||{});}
-  function builtIn(value){
-    const n=norm(value); if(!n)return null;
+  function builtIn(value,n=norm(value)){
+    if(!n||!/[A-Z]/.test(n))return null;
     if(n.includes('CAMINHO SEGURO'))return base('seg_caminho_seguro',48);
     if(n.includes('CELULAR')&&n.includes('PROIB'))return base('seg_sem_celular',58);
     if((n.includes('VELOCIDADE')||n.includes('LIMITE'))&&/\b\d{1,3}\b/.test(n)){
@@ -218,8 +218,8 @@ Object.assign(PT_SYMS,{
     try{const d=JSON.parse(localStorage.getItem(KEY)||'null');return d&&d.version===VERSION&&d.entries&&typeof d.entries==='object'?d.entries:{};}catch(e){return {};}
   }
   function write(entries){try{localStorage.setItem(KEY,JSON.stringify({version:VERSION,updatedAt:new Date().toISOString(),entries}));return true;}catch(e){return false;}}
-  function resolve(value){
-    const key=norm(value), bi=builtIn(value), mem=cleanStyle(read()[key]);
+  function resolve(value,entries=read()){
+    const key=norm(value), bi=builtIn(value,key), mem=cleanStyle(entries[key]);
     if(!bi)return mem;
     if(!mem)return cleanStyle(bi);
     return cleanStyle(Object.assign({},bi,mem,{symbolParams:Object.assign({},bi.symbolParams||{},mem.symbolParams||{})}));
@@ -234,9 +234,11 @@ Object.assign(PT_SYMS,{
     const map=new Map();(L.features||[]).forEach(f=>{const v=f&&f.props?f.props[field]:null;if(v==null||String(v).trim()==='')return;const k=String(v);map.set(k,(map.get(k)||0)+1);});return map;
   }
   function chooseField(L){
-    let best=null;
+    // A numeric block model may have millions of distinct attribute values.
+    // Read the small style library once per classification, not per value.
+    const entries=read();let best=null;
     (L.fields||[]).forEach(fd=>{const field=typeof fd==='string'?fd:fd&&fd.name;if(!field)return;
-      const vals=valuesFor(L,field), known=[...vals.keys()].filter(v=>resolve(v)).length;
+      const vals=valuesFor(L,field), known=[...vals.keys()].filter(v=>resolve(v,entries)).length;
       const hint=/SINAL|PLACA|TRANSITO|TRAFEGO|TIPO/i.test(norm(field)+' '+norm(L.name));
       const score=known*10+(hint?5:0)-(vals.size-known);
       if(known&&(!best||score>best.score))best={field,values:vals,known,total:vals.size,score,hint};
@@ -250,10 +252,10 @@ Object.assign(PT_SYMS,{
     if(L.sym.mode!=='cat'&&!opt.autoConvert&&!opt.force)return 0;
     const old=new Map((L.sym.cats||[]).map(c=>[String(c.value),c])), cols=rampColors(L.sym.ramp||'aleatorio',picked.values.size);
     const generalSize=!!(L.sym.pt&&L.sym.pt.sizeGeneralSet);
-    let matched=0,i=0;
+    const entries=read();let matched=0,i=0;
     const cats=[...picked.values.entries()].map(([value,count])=>{
       const prev=old.get(value), c=prev?Object.assign({},prev,{value,count}):{value,count,color:cols[i],stroke:'#111111',weight:1.5};i++;
-      const st=resolve(value);
+      const st=resolve(value,entries);
       const hadOwnSize=!!(prev&&Object.prototype.hasOwnProperty.call(prev,'size')&&Number.isFinite(+prev.size));
       if(st&&(!prev||opt.force||migrate||!prev.shape)){Object.assign(c,clone(st));matched++;}
       if(generalSize){if(hadOwnSize)c.size=prev.size;else delete c.size;}

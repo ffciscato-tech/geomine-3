@@ -1,0 +1,44 @@
+✔ desktop Import opens its picker synchronously and retains exact File/handle identities (8.3197ms)
+✔ both ortho locate inputs keep their existing change handlers and capture capabilities (71.592ms)
+✔ mobile, unsupported browsers and non-gesture clicks retain native input behavior (31.3459ms)
+✔ project/generation changes and replaced ortho discard delayed selections (6.0058ms)
+✔ cancel is quiet and denied desktop handles offer a fresh simple-picker gesture (18.2552ms)
+✔ dropped files capture the exact capability without reconstructing a pathname (9.4375ms)
+✔ successful TIFF imports remember original Files rather than temporary decoded sources (275.4234ms)
+✔ TIFF completion never remembers a target after import cancellation or project generation changes (112.8167ms)
+✔ legacy source handle storage also remembers the raster and respects delayed project changes (2370.2127ms)
+✔ exact remembered handles survive a new module and serialized project, with account/project isolation (82.0233ms)
+✔ revoked permission and changed external bytes cannot restore a remembered source (52.9606ms)
+✔ unsaved legacy project reload accepts both validated previous and resulting previews (86.7292ms)
+✔ forSave remaps the preview to the serialized grid; explicit descriptor authorizes the same verified file (98.9412ms)
+✔ edited cells block remembered, legacy-handle and folder fallback, including reopened invalidation (163.3023ms)
+✔ complete PNG/JPEG/WebP images are excluded, while TIFF provenance takes precedence (20.2573ms)
+✔ deferred dropped-handle lookup cannot remember a source after project, generation, account or in-place grid edits (119.7974ms)
+✔ one read-only folder selection binds all legacy images, and the unchanged unsaved project reloads from aliases (143.6431ms)
+✔ recursive homonyms are refused for legacy images, and verified fingerprints select the correct source (230.1704ms)
+✔ legacy ortho candidates with wrong byte length, overlapping but different extent, wrong CRS or too few bands are rejected (42.0813ms)
+✔ a unique legacy RGB ortho with matching source size, full extent and declared CRS is restored using headers only (18.4148ms)
+✔ failed persistence retains newer folder and source capabilities in session memory instead of reading stale IndexedDB records (8.6176ms)
+✔ a cloud-folder enumeration timeout is logged without preventing restoration from another known folder (72.7947ms)
+✔ an in-flight resolution is discarded when the project, account or same grid cells change while fingerprinting (112.4533ms)
+✔ iPad input selection persists real bytes with 1 MiB backpressure and restores after fresh page state (1890.319ms)
+✔ large iPad TIFF is staged before decoding, then adopted without a second byte copy (6993.3751ms)
+✔ a matching existing device copy is reused, including a fresh page and repeated selection (247.5622ms)
+✔ device copies stay scoped to account and project and altered cached bytes are rejected (500.525ms)
+✔ insufficient quota is explicit; it preserves session access and never pretends persistence succeeded (407.1837ms)
+✔ copy failure and in-place edits remove only their own partial file, without altering the project (2092.5078ms)
+✔ missing or truncated cached file is replaced once and a later cache failure cannot advertise device availability (310.9987ms)
+✔ failed IDB publication stays session-only even when its complete file already exists on disk (326.9877ms)
+✔ ordinary workspace round trip restores without any filesystem handle or TIFF emergency checkpoint (1686.7286ms)
+✔ manual save ensures session copy is committed without changing .ccmgis writer result (1606.0557ms)
+✔ resuming the same workspace preserves its authorized original file handle (2880.613ms)
+✔ failed replacement keeps the prior complete checkpoint (3040.1688ms)
+✔ account mismatch, corrupt chunk and explicit project switch do not restore stale geometry (873.2761ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26257.1501

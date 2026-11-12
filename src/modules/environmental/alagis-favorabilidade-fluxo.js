@@ -15,7 +15,10 @@
       ambiente_relatorio:fvIcon('fvar','<path d="M7 4h13l5 5v19H7z" fill="@s"/><path d="M20 4v6h6M11 14h10M11 18h10M11 22h7"/><path d="m10 9 2 2 4-4" stroke="#668653" stroke-width="1.45"/>'),
       ambiente_fontes:fvIcon('fvaf','<ellipse cx="13" cy="8" rx="8" ry="3" fill="@g"/><path d="M5 8v12c0 2 4 3 8 3s8-1 8-3V8M5 14c0 2 4 3 8 3s8-1 8-3" fill="@g"/><path d="M18 18h9v9M27 18l-10 10" stroke="#668653" stroke-width="1.7"/>'),
       ambiente_federais:fvIcon('fvafed','<path d="M16 4c5.8 0 10.5 4.7 10.5 10.5S21.8 25 16 25 5.5 20.3 5.5 14.5 10.2 4 16 4z" fill="@g"/><path d="M5.8 13h20.4M16 4c2.5 2.8 3.8 6.3 3.8 10.5S18.5 22.2 16 25M16 4c-2.5 2.8-3.8 6.3-3.8 10.5S13.5 22.2 16 25"/><path d="M9 27h14M11 24.5v2.5m10-2.5V27" stroke="#668653" stroke-width="1.25"/>'),
-      ambiente_estaduais:fvIcon('fvaest','<path d="M6 11 16 5l10 6v14H6z" fill="@s"/><path d="M4 11h24M9 11v11m4-11v11m6-11v11m4-11v11M5 25h22"/><path d="M13 7.8h6" stroke="#668653" stroke-width="1.35"/>')
+      ambiente_estaduais:fvIcon('fvaest','<path d="M6 11 16 5l10 6v14H6z" fill="@s"/><path d="M4 11h24M9 11v11m4-11v11m6-11v11m4-11v11M5 25h22"/><path d="M13 7.8h6" stroke="#668653" stroke-width="1.35"/>'),
+      /* América do Sul: silhueta do continente com os quatro países do catálogo
+         internacional (Colômbia, Guiana Francesa, Uruguai e Argentina) marcados. */
+      ambiente_americasul:fvIcon('fvasul','<path d="M9.6 4.9C10.6 4.2 11.9 3.8 13.2 3.7C14.5 3.6 16.3 4.0 17.6 4.3C18.9 4.6 20.0 5.0 21.2 5.6C22.4 6.2 23.6 7.1 24.6 8.1C25.6 9.1 27.1 10.2 27.4 11.4C27.7 12.6 27.2 14.1 26.5 15.4C25.8 16.7 24.4 18.0 23.4 19.2C22.3 20.4 21.1 21.3 20.2 22.4C19.3 23.5 18.7 24.8 18.0 25.9C17.3 27.0 16.7 28.3 16.0 29.1C15.3 29.9 14.6 30.8 13.9 30.7C13.2 30.6 12.5 29.7 12.1 28.8C11.7 27.9 11.7 26.6 11.3 25.3C10.9 24.0 10.3 22.4 9.7 21.0C9.1 19.6 8.1 18.3 7.5 16.9C6.9 15.5 6.3 13.9 6.2 12.4C6.1 10.9 6.5 9.3 7.1 8.1C7.7 6.8 8.6 5.6 9.6 4.9z" fill="@g"/><path d="M11.6 10.4c3.4-1 6.8-.5 10.1.8M10.8 16.6c2.9.5 5.7.2 8.4-.9M13.1 22.4c1.8.3 3.5 0 5.1-.7" stroke="#F7F0DB"/><circle cx="10.6" cy="8.6" r="1.55" fill="@s"/><circle cx="21.6" cy="8.3" r="1.55" fill="@s"/><circle cx="17.9" cy="22.2" r="1.55" fill="@s"/><circle cx="14.4" cy="25.6" r="1.55" fill="@s"/>')
     });
   }
   const labels={1:'Favorabilidade',2:'Critérios',3:'Calcular',4:'Classes vetoriais',5:'Órgãos federais'};

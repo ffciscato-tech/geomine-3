@@ -1,0 +1,10 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+const source=fs.readFileSync(path.join(__dirname,'../src/modules/environmental/channel-native-source.js'),'utf8');
+function setup({badGeometry=false,change=false}={}){
+ const file=new Blob(['verified original']),r={crs:'EPSG:31982',d:{nc:2,nr:2,cs:2,xll:680000,yll:6870000,z:new Float32Array(4),srcDims:[4,4],resampled:2}},state={projectId:'cached-3d',rasters:[r]},counts={resolve:0,open:0,close:0};
+ const image={getWidth:()=>4,getHeight:()=>4,getBoundingBox:()=>badGeometry?[0,0,4,4]:[680000,6870000,680004,6870004],getGeoKeys:()=>({ProjectedCSTypeGeoKey:31982}),getSamplesPerPixel:()=>1};
+ const c={S:state,AbortController,setTimeout,clearTimeout,GeoMineOriginalSources:{async resolve(item,kind){counts.resolve++;assert.equal(item,r);assert.equal(kind,'raster');if(change)state.projectId='different';return {file};}},GeoMineRasterImport:{async open(raw){counts.open++;assert.equal(raw,file);return {getImage:async()=>image,close:()=>counts.close++};}}};c.window=c;vm.createContext(c);vm.runInContext(source,c);return {api:c.GeoMineChannelNativeSource,r,counts,image};
+}
+test('native sampler/3D can lease the verified iPad cache without a folder, picker or map mutation',async()=>{const q=setup(),before=q.r.d,lease=await q.api.resolve(q.r);assert(lease);assert.equal(lease.image,q.image);assert.equal(lease.sourceCRS,'EPSG:31982');assert.equal(q.r.d,before);assert(!q.r.d._tiff);assert.equal(q.counts.open,1);lease.close();lease.close();assert.equal(q.counts.close,1);});
+test('cached sources with a mismatched footprint are closed and rejected',async()=>{const q=setup({badGeometry:true});assert.equal(await q.api.resolve(q.r),null);assert.equal(q.counts.close,1);});
+test('project changes while looking up the cache prevent TIFF opening',async()=>{const q=setup({change:true});await assert.rejects(q.api.resolve(q.r),e=>e.name==='AbortError');assert.equal(q.counts.open,0);});

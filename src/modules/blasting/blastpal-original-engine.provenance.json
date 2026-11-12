@@ -1,0 +1,20 @@
+{
+  "source": "G:\\Drives compartilhados\\Gerencia\\desensolvimento_software\\BlastPal\\index-v1.33.html",
+  "version": "1.33",
+  "archive": "G:\\Drives compartilhados\\Gerencia\\desensolvimento_software\\BlastPal\\blastpal-v1.33.zip",
+  "archive_sha256": "53aeecf05e64ad9c73dbb3599674ab44ebb4da9df073773ba09dadf9dc49ccce",
+  "html_sha256": "c01b62f3d7796b87583b6fe75b6e63b286946dd715ff395620eccf3f290de972",
+  "block_sha256": "e3d3d337eddb7a58aed5a13fee979f05c860b0b6d826cc6eb410d2bd7269fc76",
+  "block_start_line": 10924,
+  "block_end_line": 11035,
+  "export": "C:\\Users\\filip\\.codex\\visualizations\\2026\\10\\01\\01a0f706-ba83-7da2-bac5-a521852b1b24\\blastpal-original-fogo.js",
+  "pure_functions": [
+    "_fogoPip",
+    "_fogoDistRing",
+    "fogoBestAz",
+    "fogoGrid",
+    "fogoBuild",
+    "fogoCollarCSV",
+    "fogoSurveyCSV"
+  ]
+}

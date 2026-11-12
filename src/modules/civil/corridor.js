@@ -171,7 +171,7 @@ function uiStamp(){return JSON.stringify([...document.querySelectorAll('#secCivi
 function replace(C,kind,name,gtype,features,fields,color){
  let layer=layers(C).find(l=>l._civilCorridorKind===kind);
  if(layer){layer.features=features;layer.fields=fields;layer.visible=true;drawLayer(layer);}
- else{layer=addLayer({name:C.name+' — '+name,gtype,crs:C.crs,features,fields,color});layer._civilDesignId=C.id;layer._civilCorridorKind=kind;}
+ else{layer=addLayer({sourceLayer:'L:'+C.alignmentId,name:C.name+' — '+name,gtype,crs:C.crs,features,fields,color});layer._civilDesignId=C.id;layer._civilCorridorKind=kind;}
  return layer;
 }
 function draw(C,ss,secs){
@@ -278,7 +278,7 @@ el('civUseAxis').onclick=()=>{
   if(!l||l.gtype!=='line'||l.features.length!==1||l.features[0].multi||l.crs!==S.workCRS)throw Error('Ative uma camada com uma única linha 3D, no CRS do projeto.');
   const f=l.features[0],axis=f.geom.map((p,i)=>({x:p[0],y:p[1],z:f.zg?.[i]??p[2]}));stations(axis,10);
   const C=GeoMineCivil.create();C.name=l.name+' — corredor';C.eixo=axis;C.A=[axis[0].x,axis[0].y];C.B=[axis.at(-1).x,axis.at(-1).y];
-  const copy=addLayer({name:C.name+' — eixo',gtype:'line',crs:C.crs,features:clone(l.features),fields:clone(l.fields||[]),color:'#1f7ae0'});copy._civilDesignId=C.id;copy._civAlinhamento=true;C.alignmentId=copy.id;
+  const copy=addLayer({sourceLayer:l,name:C.name+' — eixo',gtype:'line',crs:C.crs,features:clone(l.features),fields:clone(l.fields||[]),color:'#1f7ae0'});copy._civilDesignId=C.id;copy._civAlinhamento=true;C.alignmentId=copy.id;
   GeoMineCivil.sync();civDesenhaPontos();proposal=null;el('civApply').hidden=true;toast('Eixo copiado para uma nova estrada.');
  }catch(e){toast(e.message);}
 };

@@ -17,130 +17,222 @@ function fillCRSSelect(sel, current){
       if(code===current)o.selected=true; og.appendChild(o);}); sel.appendChild(og);
   }
 }
-/* ---------- Grupos e ordenação (topo da lista = por cima no mapa) ---------- */
-function displayList(){
-  const nodes=stackSync();
-  const by={}; nodes.forEach(n=>by[nodeKey(n.t,n.id)]=n);
-  const out=[]; const seen=new Set();
-  // grupos vazios entram NA POSIÇÃO da pilha (chave G:id)
-  const order=S.stack.slice();
-  const nodeOf=k=>by[k];
-  const emptyHandled=new Set();
-  const pushEmptyBefore=key=>{
-    // insere todos os G: que precedem esta chave na pilha
-    for(const k of order){
-      if(k===key) break;
-      if(k.startsWith('G:') && !emptyHandled.has(k)){
-        const g=S.groups.find(x=>x.id===+k.slice(2));
-        if(g && !seen.has(g.id)){ out.push({kind:'group',g}); seen.add(g.id); }
-        emptyHandled.add(k);
-      }
-    }
-  };
-  nodes.forEach(n=>{
-    pushEmptyBefore(nodeKey(n.t,n.id));
-    const gi=n.o.groupId;
-    if(gi!=null && !seen.has(gi)){
-      const g=S.groups.find(x=>x.id===gi);
-      if(g){ out.push({kind:'group',g}); seen.add(g.id); } else n.o.groupId=null;
-    }
-    const kind = n.t==='L'?'layer' : n.t==='R'?'raster' : 'img';
-    out.push({kind, n, L:(n.t==='L'?n.o:undefined), r:(n.t==='R'?n.o:undefined), img:(n.t==='I'?n.o:undefined)});
-  });
-  // grupos vazios que ficaram no fim da pilha
-  for(const k of order){
-    if(k.startsWith('G:') && !emptyHandled.has(k)){
-      const g=S.groups.find(x=>x.id===+k.slice(2));
-      if(g && !seen.has(g.id)){ out.push({kind:'group',g}); seen.add(g.id); }
-      emptyHandled.add(k);
-    }
+/* ---------- Grupos, subgrupos e ordem de desenho ---------- */
+function groupParentValue(g){
+  if(Object.prototype.hasOwnProperty.call(g,'parentId'))return g.parentId;
+  return g.parentGroupId??g.groupId??null;
+}
+function groupPath(id){
+  const by=new Map((S.groups||[]).map(g=>[String(g.id),g])),out=[],seen=new Set();
+  while(id!=null&&by.has(String(id))&&!seen.has(String(id))){
+    seen.add(String(id));const g=by.get(String(id));out.unshift(g);id=groupParentValue(g);
   }
   return out;
 }
-function toggleGroupVisibility(g){
- const members=groupMembers(g.id),shown=members.filter(n=>n.o.visible!==false);
- if(shown.length){
-  g.visibilityResume=shown.map(n=>nodeKey(n.t,n.id));
-  shown.forEach(n=>nodeSetVis(n,false));
- }else{
-  const resume=new Set(Array.isArray(g.visibilityResume)?g.visibilityResume:[]);
-  members.forEach(n=>{if(resume.has(nodeKey(n.t,n.id)))nodeSetVis(n,true);});
-  if(!members.some(n=>n.o.visible!==false))toast('Ligue uma camada do grupo para definir o que exibir.');
-  g.visibilityResume=[];
- }
- zApply();refreshUI();
-}
-function groupMembers(gidv){ return stackSync().filter(n=>n.o.groupId===gidv); }
-function boundarySnap(items, idx){ // impede soltar um grupo dentro de outro
-  const ok=i=>{ if(i<=0) return true; const p=items[i-1];
-    if(p.kind==='group') return false;
-    if(p.n && p.n.o.groupId!=null){
-      const q=items[i]; if(q && q.n && q.n.o.groupId===p.n.o.groupId) return false;
-      return true; }
-    return true; };
-  while(idx<items.length && !ok(idx)) idx++;
-  return idx;
-}
-function reorderModel(kind, id, dispIdx){
-  let items=displayList();
-  let blockIdx=[];
-  if(kind==='node'){ const i=items.findIndex(it=>it.n && nodeKey(it.n.t,it.n.id)===id); if(i<0)return; blockIdx=[i]; }
-  else { items.forEach((it,i)=>{ if((it.kind==='group'&&it.g.id===id)||(it.n&&it.n.o.groupId===id)) blockIdx.push(i); });
-    if(!blockIdx.length) return; }
-  const block=blockIdx.map(i=>items[i]);
-  const removedBefore=blockIdx.filter(i=>i<dispIdx).length;
-  let tgt=Math.max(0, Math.min(dispIdx-removedBefore, items.length));
-  items=items.filter((_,i)=>!blockIdx.includes(i));
-  if(kind==='group') tgt=boundarySnap(items, Math.min(tgt, items.length));
-  tgt=Math.max(0, Math.min(tgt, items.length));
-  if(kind==='node'){
-    const prev=items[tgt-1], nd=block[0].n;
-    nd.o.groupId = !prev ? null : prev.kind==='group' ? prev.g.id : (prev.n ? prev.n.o.groupId : null);
+function treeItemKey(it){return it.kind==='group'?'G:'+it.g.id:nodeKey(it.n.t,it.n.id);}
+/* Uma única árvore define tanto a lista quanto a pilha do mapa. As chaves de
+   TODOS os grupos preservam a posição de subgrupos vazios e recolhidos. Em
+   projetos antigos, a posição do grupo deriva do primeiro descendente. */
+function buildLayerTree(nodes,stack){
+  const groups=S.groups||[],byGroup=new Map(groups.map(g=>[String(g.id),g]));
+  for(const g of groups){
+    const raw=groupParentValue(g),parent=raw==null?null:byGroup.get(String(raw));
+    g.parentId=parent&&parent!==g?parent.id:null;
+    delete g.parentGroupId;delete g.groupId;
   }
-  items.splice(tgt,0,...block);
-  const nodes=items.filter(it=>it.n).map(it=>it.n);
-  const hasMember=id=>nodes.some(n=>n.o.groupId===id);
-  S.stack=items.map(it=> it.n ? nodeKey(it.n.t,it.n.id)
-    : (!hasMember(it.g.id) ? 'G:'+it.g.id : null)).filter(Boolean);
-  S.layers=nodes.filter(n=>n.t==='L').map(n=>n.o);   // ordem dos vetores segue a pilha
-  zApply(); refreshUI();
-  if(typeof layoutSeVisivel==='function')layoutSeVisivel();
+  // Referências órfãs e ciclos legados nunca podem ocultar parte da árvore.
+  for(const g of groups){
+    const seen=new Set([g.id]);let parent=byGroup.get(String(g.parentId));
+    while(parent){
+      if(seen.has(parent.id)){g.parentId=null;break;}
+      seen.add(parent.id);parent=parent.parentId==null?null:byGroup.get(String(parent.parentId));
+    }
+  }
+  const entries=new Map(),children=new Map([[null,[]]]);
+  for(const g of groups){entries.set('G:'+g.id,{kind:'group',g,parentId:g.parentId});children.set(g.id,[]);}
+  for(const n of nodes){
+    const parent=n.o.groupId==null?null:byGroup.get(String(n.o.groupId));
+    if(n.o.groupId!=null)n.o.groupId=parent?parent.id:null;
+    const kind=n.t==='L'?'layer':n.t==='R'?'raster':'img';
+    entries.set(nodeKey(n.t,n.id),{kind,n,L:n.t==='L'?n.o:undefined,r:n.t==='R'?n.o:undefined,
+      img:n.t==='I'?n.o:undefined,parentId:parent?parent.id:null});
+  }
+  const order=[],seen=new Set();
+  for(const k of Array.isArray(stack)?stack:[]){if(entries.has(k)&&!seen.has(k)){order.push(k);seen.add(k);}}
+  for(const n of nodes){const k=nodeKey(n.t,n.id);if(!seen.has(k)){seen.add(k);if(n.t==='L')order.unshift(k);else order.push(k);}}
+  const positions=new Map(order.map((k,i)=>[k,i]));
+  for(const it of entries.values())children.get(it.parentId).push(it);
+  const ranks=new Map(),groupIndex=new Map(groups.map((g,i)=>[g.id,i]));
+  const rank=it=>{
+    const key=treeItemKey(it);if(ranks.has(key))return ranks.get(key);
+    let value=positions.get(key);
+    if(value==null){
+      const child=children.get(it.g.id);
+      value=child.length?Math.min(...child.map(rank)):-1-groupIndex.get(it.g.id);
+    }
+    ranks.set(key,value);return value;
+  };
+  const out=[];
+  const emit=(parentId,ancestors)=>{
+    const siblings=children.get(parentId);siblings.sort((a,b)=>rank(a)-rank(b));
+    for(const it of siblings){
+      it.depth=ancestors.length;it.ancestors=ancestors;out.push(it);
+      if(it.kind==='group')emit(it.g.id,ancestors.concat(it.g.id));
+      it.end=out.length;
+    }
+  };
+  emit(null,[]);return out;
+}
+function displayList(){const nodes=stackSync();return buildLayerTree(nodes,S.stack);}
+/* A lista usa apenas nomes. A numeração continua disponível somente como
+   opção explícita de plotagem, sem alterar nomes ou IDs do projeto. */
+function groupNumbering(items=displayList()){
+  const numbers=new Map(),counts=new Map();
+  for(const it of items){if(it.kind!=='group')continue;
+    const n=(counts.get(it.parentId)||0)+1;counts.set(it.parentId,n);
+    const prefix=numbers.get(it.parentId);numbers.set(it.g.id,prefix!=null?prefix+'.'+n:String(n));
+  }
+  return numbers;
+}
+function groupDisplayName(g,numbers,numbered=false){
+  const name=String(g.name||''),number=numbers?.get(g.id);
+  return numbered&&number!=null?number+'. '+name:name;
+}
+/* A cor pertence à identidade do grupo, não à sua posição ou ao seu nome.
+   O ângulo áureo separa os IDs consecutivos sem repetir uma paleta curta. */
+function groupTreeHue(g){
+  const id=String(g.id);let seed=Number(id);
+  if(!Number.isSafeInteger(seed)){
+    seed=0;for(let i=0;i<id.length;i++)seed=(Math.imul(seed,31)+id.charCodeAt(i))>>>0;
+  }
+  return ((seed*137.50776405003785+210)%360+360)%360;
+}
+function groupMembers(id){return displayList().filter(it=>it.n&&it.ancestors.includes(id)).map(it=>it.n);}
+function toggleGroupVisibility(g){
+  const members=groupMembers(g.id),shown=members.filter(n=>n.o.visible!==false);
+  if(shown.length){
+    g.visibilityResume=shown.map(n=>nodeKey(n.t,n.id));shown.forEach(n=>nodeSetVis(n,false));
+  }else{
+    const resume=new Set(Array.isArray(g.visibilityResume)?g.visibilityResume:[]);
+    members.forEach(n=>{if(resume.has(nodeKey(n.t,n.id)))nodeSetVis(n,true);});
+    if(!members.some(n=>n.o.visible!==false))toast('Ligue uma camada do grupo para definir o que exibir.');
+    g.visibilityResume=[];
+  }
+  zApply();refreshUI();
+}
+function treeDropAllowed(kind,id,target){
+  if(!target)return false;
+  const key=kind==='group'?'G:'+id:id;
+  if(target.key===key)return false;
+  if(kind!=='group'||target.mode==='root-end')return true;
+  const item=displayList().find(it=>treeItemKey(it)===target.key);if(!item)return false;
+  const parentId=target.mode==='inside'&&item.kind==='group'?item.g.id:item.parentId;
+  return !groupPath(parentId).some(g=>g.id===id);
+}
+function reorderModel(kind,id,target){
+  const items=displayList(),key=kind==='group'?'G:'+id:id;
+  const from=items.findIndex(it=>treeItemKey(it)===key);if(from<0)return false;
+  if(typeof target==='number')target=target>=items.length?{mode:'root-end'}:{mode:'before',key:treeItemKey(items[Math.max(0,target)])};
+  if(!treeDropAllowed(kind,id,target))return false;
+  const source=items[from],block=items.slice(from,kind==='group'?source.end:from+1);
+  const remaining=items.filter(it=>!block.includes(it));
+  let parentId=null,at=remaining.length;
+  if(target.mode!=='root-end'){
+    at=remaining.findIndex(it=>treeItemKey(it)===target.key);if(at<0)return false;
+    const dest=remaining[at];parentId=dest.parentId;
+    if(target.mode==='inside'){
+      if(dest.kind!=='group')return false;
+      parentId=dest.g.id;dest.g.collapsed=false;
+    }
+    if(target.mode==='inside'||target.mode==='after'){
+      at++;
+      if(dest.kind==='group')while(at<remaining.length&&remaining[at].ancestors.includes(dest.g.id))at++;
+    }
+  }
+  if(kind==='group')source.g.parentId=parentId;else source.n.o.groupId=parentId;
+  remaining.splice(at,0,...block);S.stack=remaining.map(treeItemKey);
+  const nodes=stackSync();S.layers=nodes.filter(n=>n.t==='L').map(n=>n.o);
+  zApply();refreshUI();if(typeof layoutSeVisivel==='function')layoutSeVisivel();return true;
 }
 function addGroup(){
-  const name=prompt('Nome do grupo:','Grupo '+gid); if(!name) return;
-  const g={id:gid++, name, collapsed:false};
-  S.groups.push(g); (S.stack=S.stack||[]).unshift('G:'+g.id); refreshUI();
+  const name=prompt('Nome do grupo:','Grupo');if(!name)return;
+  const g={id:gid++,name,parentId:null,collapsed:false};
+  S.groups.push(g);(S.stack=S.stack||[]).unshift('G:'+g.id);refreshUI();layoutSeVisivel();
 }
 function deleteGroup(g){
-  allNodes().forEach(n=>{ if(n.o.groupId===g.id) n.o.groupId=null; });
-  S.groups=S.groups.filter(x=>x!==g); refreshUI();
+  const items=displayList(),parentId=g.parentId??null;
+  allNodes().forEach(n=>{if(n.o.groupId===g.id)n.o.groupId=parentId;});
+  S.groups.forEach(child=>{if(child.parentId===g.id)child.parentId=parentId;});
+  S.groups=S.groups.filter(x=>x!==g);S.stack=items.filter(it=>it.g!==g).map(treeItemKey);
+  zApply();refreshUI();layoutSeVisivel();
+}
+function treeRowData(el,it,di){
+  el.dataset.di=di;el.dataset.treeKey=treeItemKey(it);el.dataset.depth=it.depth;
+  if(it.kind==='group')el.dataset.groupId=it.g.id;
+  el.style.marginLeft=(it.depth*16)+'px';
+}
+function treeVisibleItems(items,query){
+  if(!query)return new Set(items.filter(it=>!it.ancestors.some(id=>S.groups.find(g=>g.id===id)?.collapsed)).map(treeItemKey));
+  const q=query.toLocaleLowerCase('pt-BR'),matches=new Set(),byId=new Map(S.groups.map(g=>[g.id,g]));
+  for(const it of items){
+    const names=[it.kind==='group'?it.g.name:it.n.o.name,...it.ancestors.map(id=>byId.get(id)?.name)];
+    if(names.some(name=>String(name||'').toLocaleLowerCase('pt-BR').includes(q))){
+      matches.add(treeItemKey(it));it.ancestors.forEach(id=>matches.add('G:'+id));
+    }
+  }
+  return matches;
 }
 
-/* ---------- Drag & drop (pointer events — funciona no touch) ---------- */
+/* ---------- Arraste: centro = dentro; bordas = antes/depois ---------- */
 let dropIdx=null;
-function clearDropInd(){ document.querySelectorAll('.drop-before,.drop-after').forEach(e=>e.classList.remove('drop-before','drop-after')); }
-function dragOverY(y){
-  const list=document.getElementById('layerList');
-  const rows=[...list.children].filter(r=>r.dataset && r.dataset.di!==undefined);
-  clearDropInd(); if(!rows.length) return 0;
-  for(let i=0;i<rows.length;i++){ const r=rows[i].getBoundingClientRect();
-    if(y < r.top + r.height/2){ rows[i].classList.add('drop-before'); return +rows[i].dataset.di; } }
-  rows[rows.length-1].classList.add('drop-after');
-  return +rows[rows.length-1].dataset.di + 1;
+function clearDropInd(){document.querySelectorAll('.drop-before,.drop-after,.drop-inside,.drop-invalid').forEach(el=>el.classList.remove('drop-before','drop-after','drop-inside','drop-invalid'));}
+function dragOverY(y,x,kind,id){
+  const list=document.getElementById('layerList');clearDropInd();
+  const bounds=list.getBoundingClientRect();if(x!=null&&(x<bounds.left||x>bounds.right))return null;
+  const root=list.querySelector('.tree-root-drop');
+  if(root){const r=root.getBoundingClientRect();if(y>=r.top&&y<=r.bottom){root.classList.add('drop-inside');return {mode:'root-end'};}}
+  const rows=[...list.children].filter(row=>row.dataset?.treeKey);
+  if(!rows.length)return {mode:'root-end'};
+  let row=rows[rows.length-1],mode='after';
+  for(const candidate of rows){
+    const r=candidate.getBoundingClientRect();
+    if(y<r.top){row=candidate;mode='before';break;}
+    if(y<=r.bottom){
+      row=candidate;const p=(y-r.top)/Math.max(1,r.height);
+      mode=candidate.dataset.groupId!=null&&p>=.25&&p<=.75?'inside':p<.5?'before':'after';break;
+    }
+  }
+  const target={mode,key:row.dataset.treeKey};
+  if(!treeDropAllowed(kind,id,target)){row.classList.add('drop-invalid');return null;}
+  row.classList.add('drop-'+mode);return target;
 }
-function bindDrag(el, kind, id){
-  const h=el.querySelector('.drag'); if(!h) return;
+function bindDrag(el,kind,id){
+  const h=el.querySelector('.drag');if(!h)return;
+  h.title='Arrastar: centro do grupo para colocar dentro; bordas para reordenar';
   h.addEventListener('pointerdown',e=>{
-    e.preventDefault(); e.stopPropagation();
-    el.classList.add('dragging'); dropIdx=null;
-    const mv=ev=>{ ev.preventDefault(); dropIdx=dragOverY(ev.clientY); };
-    const up=ev=>{ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up);
-      clearDropInd(); el.classList.remove('dragging');
-      if(dropIdx!=null) reorderModel(kind,id,dropIdx); dropIdx=null; };
-    document.addEventListener('pointermove',mv);
-    document.addEventListener('pointerup',up);
+    if(e.button!=null&&e.button!==0)return;
+    e.preventDefault();e.stopPropagation();
+    const list=document.getElementById('layerList');let moved=false;
+    el.classList.add('dragging');list.classList.add('tree-drag-active');dropIdx=null;
+    const mv=ev=>{
+      if(ev.pointerId!==e.pointerId)return;
+      if(Math.hypot(ev.clientX-e.clientX,ev.clientY-e.clientY)<5&&!moved)return;
+      moved=true;ev.preventDefault();dropIdx=dragOverY(ev.clientY,ev.clientX,kind,id);
+    };
+    const finish=cancel=>{
+      document.removeEventListener('pointermove',mv);document.removeEventListener('pointerup',up);
+      document.removeEventListener('pointercancel',cancelPointer);document.removeEventListener('keydown',key);
+      clearDropInd();el.classList.remove('dragging');list.classList.remove('tree-drag-active');
+      const target=dropIdx;dropIdx=null;if(!cancel&&moved&&target)reorderModel(kind,id,target);
+    };
+    const up=ev=>{if(ev.pointerId===e.pointerId){if(moved)mv(ev);finish(false);}};
+    const cancelPointer=ev=>{if(ev.pointerId===e.pointerId)finish(true);};
+    const key=ev=>{if(ev.key==='Escape'){ev.preventDefault();finish(true);}};
+    document.addEventListener('pointermove',mv,{passive:false});document.addEventListener('pointerup',up);
+    document.addEventListener('pointercancel',cancelPointer);document.addEventListener('keydown',key);
   });
 }
+
 
 /* A prancha guarda um SVG já montado. Redesenhar o mapa não a atualiza —
    é preciso remontar. Chamado após mudanças de rótulo e de simbologia.     */
@@ -324,6 +416,7 @@ function containerCountLegendSync(){
     (niveis?'<div style="margin-top:2px;color:#587087">'+esc(niveis)+'</div>':'');
 }
 function refreshUI(){
+  try{if(typeof profSyncSources==='function')profSyncSources();}catch(e){console.warn('fontes do perfil:',e);}
   if(typeof refreshCivilMdt==='function')refreshCivilMdt();
   /* refresh explícito satisfaz qualquer atualização deferida por addLayer. */
   if(S._layerTreeRefreshTimer!=null){
@@ -353,23 +446,19 @@ function refreshUI(){
   const list=document.getElementById('layerList'); list.innerHTML='';
   document.getElementById('noLayers').style.display=(S.layers.length||S.groups.length||(S.rasters&&S.rasters.length)||(S.solidos&&S.solidos.length)||(S.img&&S.img.url))?'none':'block';
   const items=displayList();
-  const q=(S._layerQuery||'').trim().toLowerCase();
-  const matchName=nm=>!q || (nm||'').toLowerCase().includes(q);
+  const q=(S._layerQuery||'').trim();
+  const visibleItems=treeVisibleItems(items,q);
   items.forEach((it,di)=>{
-    // filtro de busca por nome (grupos, rasters, imagens e vetores)
-    if(q){
-      let nm='';
-      if(it.kind==='group') nm=it.g.name;
-      else if(it.kind==='raster'||it.kind==='img') nm=it.n.o.name||'';
-      else if(it.L) nm=it.L.name;
-      if(!matchName(nm)) return;
-    }
+    if(!visibleItems.has(treeItemKey(it)))return;
     if(it.kind==='group'){
       const g=it.g; const members=groupMembers(g.id);
       const allVis=members.some(n=>n.o.visible!==false);
-      const el=document.createElement('div'); el.className='grp'; el.dataset.di=di;
+      const el=document.createElement('div'); el.className='grp'; treeRowData(el,it,di);
+      if(it.depth>0){
+        el.classList.add('subgrp');el.style.setProperty('--subgroup-hue',groupTreeHue(g));
+      }
       el.innerHTML=`<span class="drag" title="Arrastar">⠿</span>
-        <span class="gchev">${g.collapsed?'▸':'▾'}</span>
+        <span class="gchev" role="button" aria-label="${g.collapsed?'Expandir grupo':'Recolher grupo'}" aria-expanded="${!g.collapsed}">${g.collapsed?'▸':'▾'}</span>
         <span class="eye ${allVis?'on':''}">${allVis?'◉':'○'}</span>
         <span class="nm">${esc(g.name)}</span><span class="cnt">${members.length}</span>
         <span class="gdel" title="Desfazer grupo">✕</span>`;
@@ -377,8 +466,8 @@ function refreshUI(){
       el.querySelector('.eye').onclick=e=>{e.stopPropagation();
         toggleGroupVisibility(g);};
       el.querySelector('.gdel').onclick=e=>{e.stopPropagation();
-        if(confirm(`Desfazer grupo "${g.name}"? (as camadas voltam à raiz)`)) deleteGroup(g);};
-      el.querySelector('.nm').ondblclick=()=>{const n=prompt('Renomear grupo:',g.name); if(n){g.name=n;refreshUI();}};
+        if(confirm(`Desfazer grupo "${g.name}"? As camadas e subgrupos vão para ${g.parentId==null?'a raiz':'o grupo acima'}.`)) deleteGroup(g);};
+      el.querySelector('.nm').ondblclick=()=>{const n=prompt('Renomear grupo:',g.name); if(n){g.name=n;refreshUI();layoutSeVisivel();}};
       bindDrag(el,'group',g.id);
       list.appendChild(el);
       return;
@@ -388,7 +477,6 @@ function refreshUI(){
     if(it.kind==='raster' || it.kind==='img'){
       const n=it.n, o=n.o;
       const gg=o.groupId!=null?S.groups.find(x=>x.id===o.groupId):null;
-      if(gg && gg.collapsed && !q) return;   // na busca, mostra membro mesmo em grupo recolhido
       const key=nodeKey(n.t,n.id);
       const vis=o.visible!==false;
       const isRas=it.kind==='raster';
@@ -402,23 +490,27 @@ function refreshUI(){
         :(o._tinMesh&&o._tinMesh.indices?(o._tinMesh.indices.length/3|0):0)):0;
       const sw = isRas ? 'linear-gradient(135deg,#1a6b3c,#e8e07a,#8d6e63)'
                        : 'linear-gradient(135deg,#4c7a34,#9ab87a,#cfcfc4)';
-      const cnt = isTIN ? (nTri?`▲ ${nTri.toLocaleString('pt-BR')}`:'TIN')
-        : (isRas ? `${o.d.nc}×${o.d.nr}` : (o._w? `${o._w}×${o._h}` : 'imagem'));
+      const nativeReady=isRas?!!(o.d?._img0&&o.d._W0&&o.d._H0):!!(o._img0&&o._W0&&o._H0),
+        previewSize=isRas?`${o.d.nc}×${o.d.nr}`:(o._w?`${o._w}×${o._h}`:'imagem'),
+        nativeSize=nativeReady?(isRas?`${o.d._W0}×${o.d._H0}`:`${o._W0}×${o._H0}`):null,
+        sizeTitle=isTIN?'Triângulos da superfície':nativeReady?`Original nativo: ${nativeSize} · prévia: ${previewSize}`:isRas&&projectRasterReady(o)?'Grade nativa':!isRas&&window.GeoMineOriginalSources?.needsOrtho?.(o)===false?`Imagem completa: ${previewSize}`:`Prévia salva: ${previewSize} · TIFF nativo ainda não disponível`,
+        cnt = isTIN ? (nTri?`▲ ${nTri.toLocaleString('pt-BR')}`:'TIN'):(nativeSize||previewSize);
       const el=document.createElement('div');
-      el.className='layer'+(gg?' ingrp':'')+(S._layerMulti.has(key)?' multi-selected':''); el.dataset.di=di;
-      el.innerHTML=`<span class="drag" title="Arrastar">⠿</span>${layerMultiHTML(key)}
+      el.className='layer tree-column-row'+(gg?' ingrp':'')+(S._layerMulti.has(key)?' multi-selected':''); treeRowData(el,it,di);
+      el.innerHTML=`<span class="tree-label"><span class="drag" title="Arrastar">⠿</span>${layerMultiHTML(key)}
         <span class="eye ${vis?'on':''}" title="Visibilidade">${vis?'◉':'○'}</span>
         ${isTIN
           ?`<span class="swatch" title="Superfície TIN — cálculos pelos triângulos" style="background:#123024;display:flex;align-items:center;justify-content:center;color:#7fe0a8;font-size:10px;font-weight:700">▲</span>`
           :`<span class="swatch" style="background:${sw}"></span>`}
-        <span class="nm">${esc(o.name||(isRas?'MDE':'ortofoto'))}</span>
-        <span class="cnt">${cnt}</span>
-        <span class="gset" title="${isRas?'Propriedades, resolução e curvas de nível':'Propriedades da ortofoto'}">⚙</span>
-        <span class="gdel ndel" title="Remover">✕</span>`;
+        <span class="nm">${esc(o.name||(isRas?'MDE':'ortofoto'))}</span></span>
+        <span class="cnt" title="${esc(sizeTitle)}">${cnt}</span>
+        <span class="tree-row-actions"><span class="gset" title="${isRas?'Propriedades, resolução e curvas de nível':'Propriedades da ortofoto'}">⚙</span>
+        <span class="gdel ndel" title="Remover">✕</span></span>`;
       el.querySelector('.gset').onclick=e=>{e.stopPropagation(); isRas? openRasProps(o) : openImgProps();};
+      el.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();isRas?openRasProps(o):openImgProps();};
       el.querySelector('.eye').onclick=e=>{e.stopPropagation(); nodeSetVis(n,!vis); zApply(); refreshUI();};
       el.querySelector('.ndel').onclick=e=>{e.stopPropagation();
-        if(isRas){ if(confirm(`Remover a superfície "${o.name}" (${o.d.nc}×${o.d.nr})?\nEsta ação não pode ser desfeita.`)) deleteRaster(o); }
+        if(isRas){ if(confirm(`Remover a superfície "${o.name}" (${o.d.nc}×${o.d.nr})?\n${o.src?.kind==='cava2-clipped'?'Você pode desfazer com Ctrl+Z.':'Esta ação não pode ser desfeita.'}`)) deleteRaster(o); }
         else { if(!confirm('Remover a ortofoto/imagem de fundo?')) return;
                if(o.overlay) map.removeLayer(o.overlay); S.img=null; refreshUI(); } };
       const ms=el.querySelector('.lmsel');if(ms)ms.onclick=e=>layerMultiHandle(key,e);
@@ -451,27 +543,26 @@ function refreshUI(){
     const L=it.L;
     const meshInfo=window.GeoMineGeology?.meshViews?.info(L);
     const g=L.groupId!=null?S.groups.find(x=>x.id===L.groupId):null;
-    if(g && g.collapsed && !q) return; // membros de grupo recolhido não renderizam (exceto na busca)
     const s=L.sym;
     const collabLocked=typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false,true);
     const classed=(s.mode==='grad'&&s.classes.length)||(s.mode==='cat'&&s.cats.length);
     const keyL=nodeKey('L',L.id);
-    const el=document.createElement('div'); el.className='layer'+(L.id===S.activeId?' active':'')+(g?' ingrp':'')+(S._layerMulti.has(keyL)?' multi-selected':'');
-    el.dataset.di=di;
+    const el=document.createElement('div'); el.className='layer tree-column-row'+(L.id===S.activeId?' active':'')+(g?' ingrp':'')+(S._layerMulti.has(keyL)?' multi-selected':'');
+    treeRowData(el,it,di);
     let extra='';
     if(!meshInfo && L.gtype!=='point' && L.features.length<=2000){ const t=layerTotals(L);
       extra = L.gtype==='polygon' ? `<span class="area">${fmtArea(t.area)}</span>` : `<span class="area">${fmtLen(t.comp)}</span>`; }
-    el.innerHTML=`<span class="drag" title="Arrastar">⠿</span>${layerMultiHTML(keyL)}`+
+    el.innerHTML=`<span class="tree-label"><span class="drag" title="Arrastar">⠿</span>${layerMultiHTML(keyL)}`+
       (classed?`<span class="gchev cchev">${L.clsOpen?'▾':'▸'}</span>`:'')+
-      `<button class="lfreeze mini" type="button" aria-pressed="${!!L.locked}" title="${L.locked?'Descongelar camada — liberar edição':'Congelar camada — bloquear edição'}" aria-label="${L.locked?'Descongelar camada':'Congelar camada'}" style="padding:0;width:24px;min-width:24px;max-width:24px;height:22px;flex:none">${L.locked?'🔒':'🔓'}</button>
-      <span class="eye ${L.visible?'on':''}" title="Visibilidade">${L.visible?'◉':'○'}</span>
+      `<span class="eye ${L.visible?'on':''}" title="Visibilidade">${L.visible?'◉':'○'}</span>
       ${L._cavaLimiteDin
         ?`<span class="swatch" title="Limite paramétrico — cópia editável que comanda a cava/pilha" style="background:#fff;border:2px dashed #7b3fd4;box-sizing:border-box;display:flex;align-items:center;justify-content:center;color:#7b3fd4;font-size:13px;font-weight:800;line-height:1">◈</span>`
         :swatchHTML(L)}
-      <span class="nm"${collabLocked?' title="Camada em edição por outra pessoa ou aberta como leitura"':''}>${(L.locked||collabLocked)?'🔒 ':''}${esc(L.name)}</span>${extra}<span class="cnt"${meshInfo?' title="'+esc(meshInfo.label)+'"':''}>${meshInfo?meshInfo.count.toLocaleString('pt-BR'):L.features.length}</span>
-      <button class="lstyle mini" type="button" title="Opções da camada — copiar e colar estilo" aria-label="Opções da camada" style="padding:0;width:22px;min-width:22px;height:22px;flex:none">⋮</button>
+      <span class="nm"${collabLocked?' title="Camada em edição por outra pessoa ou aberta como leitura"':''}>${esc(L.name)}</span></span>${extra}<span class="cnt"${meshInfo?' title="'+esc(meshInfo.label)+'"':''}>${meshInfo?meshInfo.count.toLocaleString('pt-BR'):L.features.length}</span>
+      <button class="lfreeze mini" type="button" aria-pressed="${!!L.locked}" title="${collabLocked?'Camada em edição por outra pessoa ou aberta como leitura':L.locked?'Descongelar camada — liberar edição':'Congelar camada — bloquear edição'}" aria-label="${L.locked?'Descongelar camada':'Congelar camada'}" style="padding:0;width:24px;min-width:24px;max-width:24px;height:22px;flex:none">${L.locked||collabLocked?'🔒':'🔓'}</button>
+      <span class="tree-row-actions"><button class="lstyle mini" type="button" title="Opções da camada — copiar e colar estilo" aria-label="Opções da camada" style="padding:0;width:22px;min-width:22px;height:22px;flex:none">⋮</button>
       <span class="lcfg" title="Simbologia e rótulos" style="cursor:pointer;padding:0 5px;opacity:.65">⚙</span>
-      <span class="gdel ldel" title="Remover camada">✕</span>`;
+      <span class="gdel ldel" title="Remover camada">✕</span></span>`;
     el.querySelector('.eye').onclick=e=>{e.stopPropagation();
       if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false,true)){collabCanEditLayer(L,true,true);return;}
       nodeSetVis({t:'L',id:L.id,o:L},!L.visible);zApply();refreshUI();};
@@ -524,7 +615,7 @@ function refreshUI(){
         const on=c.vis!==false;
         const label=s.mode==='grad'?`${fmt(c.min)} – ${fmt(c.max)}`:String(c.value);
         const row=document.createElement('div');
-        row.className='clsrow'+(g?' ingrp2':'');
+        row.className='clsrow'+(g?' ingrp2':'');row.style.paddingLeft=(34+it.depth*16)+'px';
         row.innerHTML=`<span class="eye ${on?'on':''}">${on?'◉':'○'}</span>
           ${swatchHTML(L,c)}
           <span class="nm" title="Um clique: selecionar · Dois cliques: propriedades · Três cliques: zoom nas feições da classe" style="cursor:pointer">${esc(label)}</span><span class="cnt">${c.count??''}</span>`;
@@ -561,6 +652,8 @@ function refreshUI(){
   });
   /* sólidos gerados pela cubagem entram na árvore como itens próprios */
   try{ if(typeof solRenderArvore==='function') solRenderArvore(list); }catch(e){ console.warn('sol arvore',e); }
+  const rootDrop=document.createElement('div');rootDrop.className='tree-root-drop';
+  rootDrop.textContent='Solte aqui para mover à raiz';list.appendChild(rootDrop);
   // crs selects
   fillCRSSelect(document.getElementById('workCRS'), S.workCRS);
   const A=activeLayer();

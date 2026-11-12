@@ -14,7 +14,7 @@ function capture(value='new',dissolve=false){
   const target=value==='new'?null:(S.layers||[]).find(L=>'layer:'+L.id===value);
   if(value!=='new'&&(!target||target.gtype!=='polygon'||!editable(target)))throw Error('Escolha uma camada de polígonos desbloqueada e editável.');
   const cached=target&&seeds.get(target.id),seed=target&&(S.layers.includes(cached)&&editable(cached)?cached:S.layers.find(L=>L.gtype==='point'&&editable(L)&&L.features.some(f=>f[tag]?.kind==='seed'&&f[tag].targetId===target.id)));
-  return {project:S.projectId,generation:generation(),workCRS:S.workCRS,target,seed:seed||null,dissolve:!!target&&!!dissolve,
+  return {project:S.projectId,generation:generation(),workCRS:S.workCRS,source:(S.rasters||[]).find(r=>String(r.id)===String(S.hidro?.sourceRasterId)),target,seed:seed||null,dissolve:!!target&&!!dissolve,
     targets:[target,seed].filter(Boolean).map(L=>({L,features:L.features,fields:L.fields,crs:L.crs,rev:L._rev,stamp:stamp(L)}))};
 }
 function current(q,deep=false){
@@ -137,9 +137,9 @@ function commit(q,staged){
   if(staged.seed&&seed)changes.push({L:seed,features:seed.features.concat([staged.seed]),fields:staged.seedFields});
   const action=transaction(changes,()=>{
     const added=[];
-    if(!target){let name='Inundação',n=2;while(S.layers.some(L=>L.name===name))name='Inundação ('+(n++)+')';target=addLayer({name,gtype:'polygon',crs:staged.crs,features:staged.features,fields:staged.fields,color:'#1565c0'});if(!target)throw Error('Não foi possível criar a camada de inundação.');added.push(target);target.fill=.35;if(target.sym)target.sym.fill=.35;}
+    if(!target){let name='Inundação',n=2;while(S.layers.some(L=>L.name===name))name='Inundação ('+(n++)+')';target=addLayer({sourceLayer:q.source,name,gtype:'polygon',crs:staged.crs,features:staged.features,fields:staged.fields,color:'#1565c0'});if(!target)throw Error('Não foi possível criar a camada de inundação.');added.push(target);target.fill=.35;if(target.sym)target.sym.fill=.35;}
     for(const f of staged.outputs)f[tag].targetId=target.id;
-    if(staged.seed){staged.seed[tag].targetId=target.id;if(!seed){seed=addLayer({name:'Pontos de inundação — '+target.name,gtype:'point',crs:staged.seedCRS,features:[staged.seed],fields:staged.seedFields,color:'#e53935'});if(!seed)throw Error('Não foi possível registrar o ponto de partida.');added.push(seed);}}
+    if(staged.seed){staged.seed[tag].targetId=target.id;if(!seed){seed=addLayer({sourceLayer:target,name:'Pontos de inundação — '+target.name,gtype:'point',crs:staged.seedCRS,features:[staged.seed],fields:staged.seedFields,color:'#e53935'});if(!seed)throw Error('Não foi possível registrar o ponto de partida.');added.push(seed);}}
     S.activeId=target.id;return added;
   },target);
   if(seed)seeds.set(target.id,seed);return {target,seed,action};

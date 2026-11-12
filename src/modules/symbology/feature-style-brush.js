@@ -128,10 +128,28 @@ function pick(L,idx){
   return true;
  }catch(e){toast(e.message||String(e));return false;}
 }
+/* Painting an unfilled area is intentional. Keep this hit policy local to
+   the brush: ordinary selection must still pass through transparent areas.
+   Prefer containment before tolerance, so an adjacent quadrant's nearer
+   outline cannot steal a click that is inside the intended destination. */
+function targetAt(ll){
+ const type=current?.copied.gtype,selected=activeLayer();
+ const order=[selected,...camadasNaOrdemDeSelecao().filter(L=>L!==selected)]
+  .filter(L=>L&&L.visible!==false&&L.gtype===type&&L.features?.length);
+ if(type==='polygon')for(const L of order){
+  const hit=poligonoSobPonto(ll,L,{includeTransparent:true});
+  if(hit)return hit;
+ }
+ for(const L of order){
+  const hit=feicaoMaisProximaPx(ll,S.touch?Math.round(SNAP_PX*1.6):SNAP_PX,false,[L]);
+  if(hit)return hit;
+ }
+ return null;
+}
 function mapClick(e){
  if(!active())return false;
  const ll=e?.latlng;if(!ll)return false;
- const hit=feicaoSobPonto(ll,S.touch?Math.round(SNAP_PX*1.6):SNAP_PX);
+ const hit=targetAt(ll);
  if(!hit){toast('Pincel: clique em uma feição de destino.');return false;}
  // Só o clique explícito de destino troca a feição ativa. Chamadas de
  // colagem/programáticas não podem escolher uma feição inativa por índice.

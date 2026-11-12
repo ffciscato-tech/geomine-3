@@ -4,10 +4,11 @@
 (function(){
 'use strict';
 if(window.GeoMineProjectTabSession)return;
-const VIEW='geomine.project.workspace.v1',STORAGE='geomine.project.tab.v1',PREFIX='projectTabSession:v1:',VERSION=1;
+const VIEW='geomine.project.workspace.v1',STORAGE='geomine.project.tab.v1',PREFIX='projectTabSession:v1:',VERSION=1,URL_TAB='__gm_tab';
 const session=window.GeoMineSessionAutosave,baseStart=window.startAutosave,baseOpen=window.openProjectFile;
 let tabId=null,account=null,initialized=false,published=false,record=null,pending=false,busy=false,
   persistent=false,handlePersisted=false,operation=0,revision=0,releaseLock=null,writeQueue=Promise.resolve(),inputFile=null,lastError='',lastNotice='',needsPermission=false,recordGeneration=null;
+let resumeIssue=null;
 let resolveReady;const ready=new Promise(resolve=>{resolveReady=resolve;});
 const uid=()=>window.GeoMineCloudProvider?.user?.uid||null;
 const newId=()=>crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)+'-'+Math.random().toString(36).slice(2);
@@ -54,16 +55,23 @@ function applyWorkspace(data,target){
   if(window.GeoMineProjectScreen?.validMap(v.screen?.map))data.screen=v.screen;
   for(const r of data.rasters||[]){
     const q=v.rasterViews?.find(q=>q.id===r.rid&&q.name===r.name&&q.projectFile===(r.projectFile||null));
-    if(q){r.dispFull=!!q.dispFull;r.demHD=!!q.demHD;}
+    if(q){r.dispFull=true;r.demHD=true;}
   }
   if(data.img&&v.ortho?.name===data.img.name&&v.ortho.projectFile===(data.img.projectFile||null)){
-    data.img.orthoHD=!!v.ortho.hd;data.img.orthoDispFull=!!v.ortho.full;
+    data.img.orthoHD=true;data.img.orthoDispFull=true;
   }
 }
 function storageId(reuse){
   let id=null;try{if(reuse)id=sessionStorage.getItem(STORAGE);}catch(_){}
   if(!/^[\w-]{12,100}$/.test(id||''))id=newId();
   try{sessionStorage.setItem(STORAGE,id);}catch(_){}return id;
+}
+function urlId(){try{const id=new URL(location.href).searchParams.get(URL_TAB);return /^[\w-]{12,100}$/.test(id||'')?id:null;}catch(_){return null;}}
+function rememberId(id){
+  try{sessionStorage.setItem(STORAGE,id);}catch(_){}
+  // The URL survives iOS discarding sessionStorage. It contains only a random
+  // tab token; project names, coordinates and file access never enter the URL.
+  try{const url=new URL(location.href);url.searchParams.set(URL_TAB,id);history.replaceState(history.state,'',url.href);}catch(_){}
 }
 async function claim(id){
   if(!navigator.locks?.request)return true;
@@ -88,10 +96,20 @@ function write(value){
     }
   });return writeQueue;
 }
-function remember(name,handle){
+function fileSource(info,name){
+  const source={name:info?.name||name};
+  if(Number.isFinite(info?.size))source.size=info.size;
+  if(Number.isFinite(info?.lastModified))source.lastModified=info.lastModified;
+  if(window.GeoMineDriveProject?.isSource(info)){
+    source.kind='drive';source.id=info.id;source.version=String(info.version||'');
+    source.resourceKey=String(info.resourceKey||'');
+  }
+  return source;
+}
+function remember(name,handle,info){
   if(!initialized){
     const owner=uid(),project=S.projectId,gen=generation();
-    return ready.then(()=>current()&&owner===uid()&&project===S.projectId&&gen===generation()?remember(name,handle):false);
+    return ready.then(()=>current()&&owner===uid()&&project===S.projectId&&gen===generation()?remember(name,handle,info):false);
   }
   if(!current())return Promise.resolve(false);
   operation++;busy=false;pending=false;needsPermission=false;lastError='';lastNotice='';hide();
@@ -100,21 +118,76 @@ function remember(name,handle){
   // loadProject registers its display name before the input handler registers
   // the selected file. Preserve metadata across those two synchronous calls,
   // but never carry it to another project/generation or a different handle.
-  const source=file?{name:clean,size:file.size,lastModified:file.lastModified}:
-    (!handle&&!record?.handle&&record?.name===clean&&record?.projectId===(S.projectId||null)&&recordGeneration===generation()?record.source:{name:clean});
+  const source=info||file?fileSource(info||file,clean):
+    ((!handle&&!record?.handle||handle&&handle===record?.handle)&&record?.name===clean&&record?.projectId===(S.projectId||null)&&recordGeneration===generation()?record.source:{name:clean});
   record={version:VERSION,tabId,ownerUid:account,projectId:S.projectId||null,name:clean,
     source,handle:isHandle(handle)?handle:null,...(typeof PROJECT_DIR_HANDLE!=='undefined'&&PROJECT_DIR_HANDLE?{folder:PROJECT_DIR_HANDLE}:{}),at:Date.now()};recordGeneration=generation();handlePersisted=false;
-  return write(record).then(()=>true);
+  updateSourceButton();return write(record).then(()=>true);
 }
 function startIn(){
   const bound=pending||(record?.projectId===(S.projectId||null)&&recordGeneration===generation());
   return current()&&bound&&isHandle(record?.handle)?record.handle:null;
 }
+function pickerStartIn(){
+  const file=startIn();if(file)return file;
+  return current()&&!pending&&record?.projectId===S.projectId&&recordGeneration===generation()&&record.folder?.kind==='directory'?record.folder:null;
+}
 function forget(){
   if(!initialized){const owner=uid();return ready.then(()=>current()&&owner===uid()?forget():undefined);}
   try{sessionStorage.removeItem(VIEW);}catch(_){}
   operation++;record=null;pending=false;busy=false;needsPermission=false;inputFile=null;lastError='';lastNotice='';recordGeneration=null;handlePersisted=false;hide();
-  return current()?write(null):Promise.resolve();
+  updateSourceButton();return current()?write(null):Promise.resolve();
+}
+function bindingFor(projectId){
+  return current()&&record?.projectId===projectId ? record : null;
+}
+function updateSourceButton(){
+  const place=document.getElementById('a3OpenProjectName');
+  if(!place)return;
+  let button=document.getElementById('gmCurrentProjectSource');
+  if(!current()||!record||isHandle(record.handle)||record.projectId!==S.projectId||!window.GeoMineCloudProvider?.drivePickerConfig?.key){
+    button?.remove();return;
+  }
+  if(!button){
+    button=document.createElement('button');button.type='button';button.className='tbtn';
+    button.id='gmCurrentProjectSource';button.textContent='↻';button.style.cssText='padding:0 5px;min-width:25px;font-size:16px';
+    place.after(button);
+  }
+  const linked=window.GeoMineDriveProject.isSource(record.source);
+  const label=linked?'Atualizar este projeto do Google Drive':'Vincular este projeto ao Google Drive';
+  button.title=label;button.setAttribute('aria-label',label);
+  button.onclick=()=>linked?reopen():openDrive(true);
+}
+async function openDrive(bindCurrent=false){
+  const token=++operation,owner=account,gen=generation(),version=session?.state?.version;
+  try{
+    const source=await window.GeoMineDriveProject.pick();
+    if(token!==operation||owner!==account||!current()||gen!==generation()||version!==session?.state?.version)return false;
+    return reopen({source,expectedProject:bindCurrent===true?S.projectId:null});
+  }catch(error){if(error.name!=='AbortError')notify(error.message);return false;}
+}
+function showResumeIssue(){
+  const issue=resumeIssue;resumeIssue=null;
+  if(!issue||!current()||record?.source?.id!==issue.id||S.projectId!==issue.project)return;
+  updateSourceButton();
+  if(!issue.conflict){
+    const message='Exibindo a cópia local de “'+record.name+'”. '+issue.message;
+    try{cmdLog(message,'warn');}catch(_){}
+    notify(message);return;
+  }
+  const binding=record;
+  const box=document.createElement('dialog');
+  box.setAttribute('aria-label','Arquivo atualizado no Drive');box.id='gmDriveConflict';
+  box.style.cssText='max-width:min(390px,90vw);padding:16px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px';
+  const title=document.createElement('strong');title.textContent='Arquivo atualizado no Drive';
+  const description=document.createElement('p');
+  description.textContent='“'+record.name+'” mudou no Drive e há edições neste aparelho. Carregar o arquivo do Drive substitui essas edições.';
+  const keep=document.createElement('button'),load=document.createElement('button');
+  keep.textContent='Manter edições locais';load.textContent='Carregar versão do Drive';
+  keep.className='tbtn';load.className='tbtn primary';keep.onclick=()=>box.close();
+  load.onclick=()=>{box.close();if(current()&&record===binding)void reopen({discardConfirmed:true});};
+  box.append(title,description,keep,load);box.addEventListener('close',()=>box.remove(),{once:true});
+  document.body.append(box);box.showModal();
 }
 function open(){
   if(current()&&pending&&needsPermission&&isHandle(record?.handle))return reopen();
@@ -122,47 +195,79 @@ function open(){
   operation++;busy=false;
   // Only the project handle from THIS tab is eligible. Export images and
   // generic lembraLocal() must not decide the project's opening directory.
-  const previous=S._lastDir,anchor=startIn();S._lastDir=anchor;
+  const previous=S._lastDir,anchor=pickerStartIn();S._lastDir=anchor;
   try{return Promise.resolve(baseOpen.apply(this,arguments)).finally(()=>{if(S._lastDir===anchor)S._lastDir=previous;});}
   catch(e){if(S._lastDir===anchor)S._lastDir=previous;throw e;}
 }
 async function reopen(options){
   const automatic=options?.automatic===true;
-  if(!current()||busy||!record)return false;
-  const target=record,handle=target.handle;
-  if(!isHandle(handle)){lastError='Use Abrir para selecionar “'+target.name+'”. O navegador não conservou o acesso a este arquivo.';render();return false;}
+  const previousRecord=record;
+  const target=options?.source?{source:options.source,name:'Projeto do Drive'}:record;
+  if(!current()||busy||!target)return false;
+  const handle=target.handle,drive=window.GeoMineDriveProject;
+  const remote=drive?.isSource(target.source);
+  if(!remote&&!isHandle(handle)){
+    lastError=window.GeoMineCloudProvider?.drivePickerConfig?.key
+      ?'Cópia local. Para acompanhar alterações do original, toque em ↻ ao lado do nome do projeto e vincule o original uma vez.'
+      :'Use Abrir para selecionar “'+target.name+'”. O navegador não conservou o acesso a este arquivo.';
+    render();return false;
+  }
   if(automatic&&(S.auto?.dirty||session?.state?.dirty))return false;
-  if((S.auto?.dirty||session?.state?.dirty)&&!confirm('Há alterações não salvas. Reabrir o arquivo atual e descartá-las?'))return false;
+  if(!options?.discardConfirmed&&(S.auto?.dirty||session?.state?.dirty)&&!confirm('Há alterações não salvas. Reabrir o arquivo atual e descartá-las?'))return false;
   const token=++operation,owner=account,id=tabId,gen=generation(),version=session?.state?.version,project=S.projectId;
-  const valid=()=>current()&&operation===token&&owner===account&&id===tabId&&record===target&&generation()===gen&&session?.state?.version===version&&S.projectId===project;
+  const valid=()=>current()&&operation===token&&owner===account&&id===tabId&&record===previousRecord&&generation()===gen&&session?.state?.version===version&&S.projectId===project;
   let shown=false,committed=false;
   const opening=window.GeoMineProjectOpenProgress?.begin({title:'Solicitando acesso ao projeto…',current:valid});
   busy=true;needsPermission=false;lastError='';lastNotice='';hide();
   try{
     // Invoke permission in the click turn, without awaiting IndexedDB first.
-    const permission=automatic
-      ?(typeof handle.queryPermission==='function'?handle.queryPermission({mode:'read'}):Promise.resolve('prompt'))
-      :(typeof handle.requestPermission==='function'?handle.requestPermission({mode:'read'}):Promise.resolve('granted'));
-    if(await (opening?opening.wait(permission):permission)!=='granted'){
-      if(!valid())return false;needsPermission=true;
-      if(automatic){lastError='O navegador precisa de autorização para retomar “'+target.name+'”. Clique em Abrir para autorizar.';return false;}
-      throw Error('A permissão de leitura não foi concedida. Use Abrir para autorizar o acesso ao original.');}
+    let source,file;
+    if(remote){
+      if(!automatic)await opening.wait(window.GeoMineCloudProvider.driveAccess(true));
+      opening.phase('Conferindo a versão do arquivo no Drive…');
+      source=await opening.wait(drive.metadata(target.source,opening.signal));
+    }else{
+      const permission=automatic?await handle.queryPermission?.({mode:'read'}):
+        await (handle.requestPermission?.({mode:'read'})||Promise.resolve('granted'));
+      if(!valid())return false;
+      if(permission!=='granted'){
+        needsPermission=true;throw Error('Autorize a leitura do arquivo em Abrir.');
+      }
+      const access=handle.getFile();
+      file=await (opening?opening.wait(access):access);
+      source=fileSource(file,file.name);
+    }
     if(!valid())return false;
+    const draft=automatic?await window.GeoMineWorkspaceResume?.pendingSnapshot(target.projectId):null;
+    if(!valid())return false;
+    if(draft?.dirty){
+      const changed=source.kind==='drive'&&draft.baseRevision ? draft.baseRevision!==source.version :
+        !draft.baseModified||draft.baseModified!==source.lastModified;
+      if(changed&&remote)resumeIssue={project:target.projectId,id:source.id,conflict:true};
+      if(changed)lastError=remote?'O arquivo do Drive mudou. Suas edições locais foram mantidas. Para usar o original, pesquise “Atualizar do Google Drive”.':
+        'O arquivo mudou. Suas edições locais foram mantidas. Use Abrir para escolher a versão do arquivo.';
+      return false;
+    }
     if(opening)opening.phase('Acessando a versão atual do arquivo…');else{showLoad('Reabrindo a versão atual do arquivo…');shown=true;}
-    const access=handle.getFile(),file=await (opening?opening.wait(access):access);if(!valid())return false;
+    if(remote){const download=await opening.wait(drive.read(source,opening.signal));file=download.file;source=download.source;}
     if(!file.size)throw Error('O arquivo está vazio ou ainda não está disponível no provedor.');
     const text=opening?await opening.read(file):await readProjectFileCompat(file);if(!valid())return false;
     const data=opening?await opening.parse(text):JSON.parse(text);
     if(!data||!['ALAGIS','CCMGIS','CCMGeoCampo'].includes(data.app))throw Error('O arquivo atual não é um projeto GeoMine válido.');
     if(!valid())return false;
+    const expectedProject=options?.expectedProject||(automatic&&remote&&target.projectId);
+    if(expectedProject&&data.projectId!==expectedProject)throw Error('O arquivo escolhido corresponde a outro projeto. Selecione o original desta aba.');
     applyWorkspace(data,target);
     if(target.folder&&typeof PROJECT_DIR_HANDLE!=='undefined')PROJECT_DIR_HANDLE=target.folder;
-    const restored=()=>{window.startAutosave(file.name||handle.name||target.name,handle);pending=false;committed=true;hide();};
+    const restored=()=>{window.startAutosave(file.name||target.name,handle||null,source);pending=false;committed=true;hide();};
     if(opening)await opening.commit(data,restored);else{window.loadProject(data);restored();}
     if(!automatic)notify('Projeto reaberto do arquivo atual. O salvamento continua manual.');return true;
   }catch(e){
-    if(valid()&&e.name!=='AbortError'){pending=true;needsPermission=needsPermission||e.name==='NotAllowedError'||e.name==='SecurityError';
-      lastError='Não foi possível reabrir “'+target.name+'”: '+(e.message||e)+'. Use Abrir para tentar novamente.';}
+    if(valid()&&e.name!=='AbortError'){
+      if(options?.source){notify(e.message);return false;}
+      if(remote&&automatic)resumeIssue={project:target.projectId,id:target.source.id,message:e.message};
+      pending=true;needsPermission=needsPermission||e.name==='NotAllowedError'||e.name==='SecurityError';
+      lastError='Não foi possível reabrir “'+target.name+'”. '+(e.message||e);}
     return false;
   }finally{if(operation===token)busy=false;if(opening)opening.finish();else if(shown&&(operation===token||committed))try{hideLoad();}catch(_){}if(pending)render();}
 }
@@ -173,24 +278,25 @@ async function initialize(owner){
   const reload=nav==='reload'||nav==='back_forward',coordinated=!!navigator.locks?.request;
   // A duplicated tab may copy sessionStorage and even report reload. Without
   // an exclusive browser lock, fail closed instead of sharing its destination.
-  tabId=storageId(reload&&coordinated);
+  const durableId=urlId();let resume=coordinated&&(reload||!!durableId);
+  tabId=coordinated&&durableId?durableId:storageId(reload&&coordinated);
   if(reload&&!coordinated)notify('Este navegador não permite retomar com segurança o arquivo de cada aba. Use Abrir e selecione o arquivo novamente; o salvamento continua manual.');
-  if(!await claim(tabId)){tabId=storageId(false);await claim(tabId);}
+  if(!await claim(tabId)){tabId=storageId(false);await claim(tabId);resume=false;}
   if(operation!==token)return;
-  initialized=true;
+  rememberId(tabId);initialized=true;
   try{
     const saved=typeof idbGet==='function'?await idbGet(key(owner,tabId)):null;
     if(operation!==token||!current())return;
     if(saved?.version===VERSION&&saved.tabId===tabId&&saved.ownerUid===owner&&typeof saved.name==='string'&&saved.name&&
       !('txt' in saved)&&!('data' in saved)&&!('layers' in saved)){
       record={version:VERSION,tabId,ownerUid:owner,name:saved.name,projectId:saved.projectId||null,
-        source:{name:saved.source?.name||saved.name,...(Number.isFinite(saved.source?.size)?{size:saved.source.size}:{}),...(Number.isFinite(saved.source?.lastModified)?{lastModified:saved.source.lastModified}:{})},
+        source:fileSource(saved.source,saved.name),
         handle:isHandle(saved.handle)?saved.handle:null,folder:saved.folder?.kind==='directory'?saved.folder:null,at:saved.at};
       persistent=true;handlePersisted=!!record.handle;pending=true;
-      if(reload)await reopen({automatic:true});
+      if(resume)await reopen({automatic:true});
     }
   }catch(_){persistent=false;}
-  finally{resolveReady(state());}
+  finally{updateSourceButton();resolveReady(state());}
 }
 function accountChanged(owner){
   // The first login after reload identifies the owner of the existing tab.
@@ -199,14 +305,14 @@ function accountChanged(owner){
     try{sessionStorage.removeItem(STORAGE);sessionStorage.removeItem(VIEW);}catch(_){} }
   if(owner)void initialize(owner);
 }
-if(typeof baseStart==='function')window.startAutosave=function(name,handle){const out=baseStart.apply(this,arguments);void remember(name,handle);return out;};
+if(typeof baseStart==='function')window.startAutosave=function(name,handle,info){const out=baseStart.apply(this,arguments);void remember(name,handle,info);return out;};
 if(typeof baseOpen==='function')window.openProjectFile=open;
 if(session?.prepareNewProject){const base=session.prepareNewProject;session.prepareNewProject=async function(){window.GeoMineProjectOpenProgress?.cancel('novo projeto');await forget();return base.apply(this,arguments);};}
 document.addEventListener('change',event=>{if(event.target?.id==='projIn')inputFile=event.target.files?.[0]||null;},true);
 window.addEventListener('geomine:cloud-ready',event=>accountChanged(event.detail?.user?.uid||uid()));
 window.addEventListener('geomine:cloud-disconnected',()=>accountChanged(null));
 function boot(){published=('GeoMineCloudProvider' in window)||!!document.getElementById('gmPortao');if(!published||uid())void initialize(uid());}
-window.GeoMineProjectTabSession={ready,state,reopen,open,forget,remember,startIn,captureWorkspace,rememberFolder};
+window.GeoMineProjectTabSession={ready,state,reopen,open,openDrive,forget,remember,bindingFor,showResumeIssue,startIn,pickerStartIn,captureWorkspace,rememberFolder};
 window.addEventListener('beforeunload',captureWorkspace);
 window.addEventListener('pagehide',captureWorkspace);
 if(typeof window.projectHandleStore==='function'){

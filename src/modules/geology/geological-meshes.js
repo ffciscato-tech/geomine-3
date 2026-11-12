@@ -58,10 +58,10 @@
     if(m.faces.some(f=>!Array.isArray(f)||f.length!==3||f.some(i=>!Number.isInteger(i)||i<0||i>=m.vertices.length)))throw new Error('A malha contém referências inválidas de triângulos.');
   }
   function viewName(m,role){return m.name+' · '+(role==='surface'?(m.topology?.closedSolid?'Sólido':'Superfície'):'Vetores');}
-  function configureView(l,m,role){
+  function configureView(l,m,role,frozen=true){
     l._geology={...l._geology,schemaVersion:2,kind:'surpac-mesh',family:'modelo',meshId:m.id,meshRole:role};
     if(m.source?.simplification)l._geology.simplifiedForVisualization=true;
-    l.features=[];l.fields=[];l.gtype=role==='surface'?'polygon':'line';l.locked=true;
+    l.features=[];l.fields=[];l.gtype=role==='surface'?'polygon':'line';l.locked=!!frozen;
     l.sym=l.sym||{};l.sym.mode='single';l.sym.dash='';l.sym.color=l.color;l.sym.stroke=l.color;
     l.fill=l.sym.fill=role==='surface'?1:0;l.weight=l.sym.weight=role==='surface'?0:1;
     l.sym.opacity=1;
@@ -82,15 +82,17 @@
       const ls=views(m),legacy=ls.find(l=>!l._geology.meshRole);
       if(legacy){
         m.name=m.name||legacy.name;m.color=validColor(legacy.color||m.color);
-        legacy.name=viewName(m,'surface');configureView(legacy,m,'surface');
-        const vectors=createView(m,'vectors',legacy.groupId);vectors.visible=legacy.visible;
+        const frozen=legacy.locked!==false;
+        legacy.name=viewName(m,'surface');configureView(legacy,m,'surface',frozen);
+        const vectors=createView(m,'vectors',legacy.groupId);vectors.visible=legacy.visible;vectors.locked=frozen;
         const i=S.layers.indexOf(legacy);S.layers=S.layers.filter(l=>l!==vectors);S.layers.splice(i,0,vectors);
         const key='L:'+legacy.id,at=(S.stack||[]).indexOf(key);
         if(at>=0){S.stack=S.stack.filter(k=>k!=='L:'+vectors.id);S.stack.splice(at,0,'L:'+vectors.id);}
       }
       const current=views(m);m.layerId=current.find(l=>l._geology.meshRole==='surface')?.id||current[0]?.id;
       m.vectorLayerId=current.find(l=>l._geology.meshRole==='vectors')?.id;
-      current.forEach(l=>{l.locked=true;drawLayer(l);});
+      // Surface and edge lock choices remain independent across reopening.
+      current.forEach(l=>{if(typeof l.locked!=='boolean')l.locked=true;drawLayer(l);});
     }
     S.activeId=selected;S.selRaster=selectedRaster;
     try{zApply();}catch(_){}

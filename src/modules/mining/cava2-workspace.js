@@ -43,7 +43,7 @@ function atualizaCursorGlobal(ev){
 function tipoNome(tipo){return tipo==='pilha'?'DCE':'Cava';}
 function desenhoAtual(){return estado.desenhos.find(d=>d.id===estado.desenhoId)||null;}
 function alvoAtual(){return desenhoAtual()?.tipo||document.getElementById('cava2Target')?.value||estado.alvo||'cava';}
-function nomeCamada(d){return `${tipoNome(d.tipo)} — ${d.nome}`;}
+function nomeCamada(d){return `${d.nome} — Bruta`;}
 function novoId(){estado.seq++;return `cava2-${Date.now().toString(36)}-${estado.seq.toString(36)}`;}
 function nomeUnico(base,ignorarId){
   base=String(base||'').trim()||'Desenho 2D';
@@ -59,16 +59,40 @@ function proximoNome(tipo){
 function novoRegistro(tipo,nome){
   tipo=tipo==='pilha'?'pilha':'cava';
   return {id:novoId(),nome:nomeUnico(nome||proximoNome(tipo)),tipo,engine:null,baseZ:0,
-    crs:(typeof S!=='undefined'&&S.workCRS)||null,fonte:null,mdtId:estado.mdtTrabalhoId||null,cutMdt:false,
+    crs:(typeof S!=='undefined'&&S.workCRS)||null,fonte:null,mdtId:estado.mdtTrabalhoId||null,cutMdt:false,variante:'bruta',resultadoCorte:null,
     criadoEm:new Date().toISOString()};
 }
 
 function criaInterface(){
   const host=workspace();if(!host||host.dataset.ready)return;
   host.dataset.ready='1';
-  host.innerHTML=`<div class="cava2-design-tabs" id="cava2DesignTabs"></div>
+  host.innerHTML=`<nav class="cava2-design-nav" aria-label="Cavas e DCEs">
+    <select id="cava2NewDesign" aria-label="Criar cava ou DCE" title="Criar cava ou DCE" disabled>
+      <option value="">＋ Nova</option><option value="cava">Nova cava</option><option value="pilha">Nova DCE</option>
+    </select>
+    <button id="cava2TabsPrev" type="button" aria-label="Rolar abas para a esquerda" title="Abas anteriores" disabled>‹</button>
+    <div class="cava2-design-tabs" id="cava2DesignTabs" role="tablist" aria-label="Desenhos da cava"></div>
+    <button id="cava2TabsNext" type="button" aria-label="Rolar abas para a direita" title="Próximas abas" disabled>›</button>
+    <select id="cava2DesignList" aria-label="Ir para cava ou DCE" title="Todas as cavas e DCEs" disabled></select>
+  </nav>
   <iframe id="cava2Frame" title="Área 2D — cava e DCE" sandbox="allow-scripts allow-same-origin allow-downloads"></iframe>`;
   estado.frame=document.getElementById('cava2Frame');
+  const abas=document.getElementById('cava2DesignTabs'),novo=document.getElementById('cava2NewDesign'),listaAbas=document.getElementById('cava2DesignList');
+  novo.onchange=()=>{const tipo=novo.value;novo.value='';if(tipo)criaNovoDesenho(tipo);};
+  listaAbas.onchange=()=>{const opt=listaAbas.selectedOptions[0];if(opt?.dataset.designId)trocaDesenho(opt.dataset.designId,opt.dataset.variant);};
+  for(const [id,sentido] of [['cava2TabsPrev',-1],['cava2TabsNext',1]])document.getElementById(id).onclick=()=>{
+    abas.scrollBy({left:sentido*Math.max(80,abas.clientWidth*.8),behavior:'auto'});
+  };
+  abas.addEventListener('scroll',()=>atualizaNavegacaoAbas(false),{passive:true});
+  abas.addEventListener('keydown',ev=>{
+    const bs=[...abas.querySelectorAll('[role="tab"]')],i=bs.indexOf(ev.target);if(i<0)return;
+    const dest=({ArrowLeft:bs[(i+bs.length-1)%bs.length],ArrowRight:bs[(i+1)%bs.length],Home:bs[0],End:bs.at(-1)})[ev.key];
+    if(dest){ev.preventDefault();dest.click();abas.querySelector('[aria-selected="true"]')?.focus({preventScroll:true});}
+  });
+  let resizeFrame=0;
+  const ajustaAbas=()=>{cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>atualizaNavegacaoAbas(true));};
+  if(typeof ResizeObserver==='function')new ResizeObserver(ajustaAbas).observe(abas);
+  else window.addEventListener('resize',ajustaAbas);
   /* A barra de ponte com o mapa GIS foi removida: tipo, nome, cota-base, MDT,
      criação de cava/DCE, importação da seleção, sincronização manual e retorno
      ao mapa clássico continuam disponíveis pela API pública do módulo. */
@@ -77,7 +101,7 @@ function criaInterface(){
   const lista=document.getElementById('layerList');
   if(lista&&!lista.dataset.cava2Context){
     lista.dataset.cava2Context='1';
-    const atualiza=()=>setTimeout(()=>{if(S._view==='cava2')atualizaContexto();},0);
+    const atualiza=()=>{if(S._view==='cava2')agendaContexto();};
     lista.addEventListener('click',atualiza,true);lista.addEventListener('change',atualiza,true);
   }
   estado.frame.addEventListener('load',()=>{
@@ -103,7 +127,7 @@ function criaInterface(){
     if(estado.projetoPendente!==undefined)aplicaEstadoProjeto(estado.projetoPendente);
     else{
       const local=leRegistroLocal();
-      if(local?.designs?.length)aplicaEstadoProjeto(local);
+      if(Array.isArray(local?.designs))aplicaEstadoProjeto(local);
       else{
         const legado=leEstadoMotor();
         if(legado?.bases?.cava||legado?.bases?.pilha){
@@ -163,6 +187,13 @@ function ligaFerramentasGlobais(){
     const b=e.target.closest('.mtool');if(!b)return;
     const dedicado=b.id==='btnCavaClear',tool=dedicado?'clear':b.dataset.tool,cmd=comandoGlobalDaCava(tool);
     if(!cmd)return;
+    if(tool==='poly'){
+      e.preventDefault();e.stopImmediatePropagation();
+      if(iniciaDesenho(alvoAtual())!==false)marcaFerramentaGlobalCava(tool);return;
+    }
+    if(desenhoAtual()?.variante==='recortada'){
+      e.preventDefault();e.stopImmediatePropagation();status('Abra a aba Bruta para editar a cava.');return;
+    }
     if(['point','line','poly'].includes(tool)&&!rasterDoDesenho(desenhoAtual())){
       e.preventDefault();e.stopImmediatePropagation();exigeMdt();return;
     }
@@ -174,6 +205,7 @@ function ligaFerramentasGlobais(){
 
 function abre(){
   criaInterface();const host=workspace();if(host)host.classList.add('on');
+  requestAnimationFrame(()=>atualizaNavegacaoAbas(true));
   aplicaTemaNoMotor();aplicaPainel();atualizaBarraGlobalCava(true);
   if(estado.ready)atualizaContexto();
 }
@@ -206,7 +238,7 @@ function aplicaTipoNoMotor(tipo){
   const D=doc2D();if(!D)return;
   D.body.dataset.ccmgisTarget=tipo;
   const tc=D.getElementById('t_cava'),tp=D.getElementById('t_pilha');
-  if(tc)tc.hidden=tipo!=='cava';if(tp)tp.hidden=tipo!=='pilha';
+  if(tc)tc.hidden=false;if(tp)tp.hidden=false;
 }
 function caminhosDaGeometria(g,out){
   out=out||[];if(!Array.isArray(g)||!g.length)return out;
@@ -295,6 +327,13 @@ function contextoDasCamadas(){
   const limite=240000,camadas=[...(S.layers||[])].sort((a,b)=>(b._cava2Managed?1:0)-(a._cava2Managed?1:0));
   for(const L of camadas){
     if(L.visible===false||!['line','polygon','point'].includes(L.gtype))continue;
+    const dono=L._cava2DesignId||L._cava2CutOf||L._cava2CutFillOf||L._cava2CutSnapshotOf;
+    if(dono){
+      if(dono!==atual?.id)continue;
+      if(atual.variante==='recortada'){
+        if(L._cava2CutSnapshotId!==atual.resultadoCorte?.id)continue;
+      }else if(L._cava2CutSnapshotOf||L._cava2CutFillOf)continue;
+    }
     /* Quando a aba ativa tem receita paramétrica, sua versão editável será
        desenhada pelo motor. Sem receita, a camada continua como referência
        para nunca abrir um canvas aparentemente vazio. */
@@ -303,7 +342,7 @@ function contextoDasCamadas(){
       if(!f?.geom||(typeof featureVisible==='function'&&!featureVisible(L,f)))continue;
       let st={stroke:L.color||'#687786',color:L.color||'#687786',weight:L.weight||1,fill:L.fill||0,dash:''};
       try{if(typeof featureStyle==='function')st={...st,...featureStyle(L,f)};}catch(e){}
-      for(const P0 of caminhosDaGeometria(f.geom))if(P0?.length)candidatos.push({L,P0,st,
+      for(const P0 of caminhosDaGeometria(f.geom))if(P0?.length)candidatos.push({L,f,P0,st,
         closed:L.gtype==='polygon',point:L.gtype==='point'});
     }
   }
@@ -312,17 +351,21 @@ function contextoDasCamadas(){
      deformava limites oficiais. */
   const baseTotal=candidatos.reduce((s,c)=>s+Math.min(c.P0.length,4000),0),
     fator=baseTotal>limite?limite/baseTotal:1;
+  const gruposPoligonos=new Map();
   for(const c of candidatos){
     const minimo=c.point?1:(c.closed?4:2),alvo=Math.max(minimo,Math.floor(Math.min(c.P0.length,4000)*fator)),
       reduzido=reduzCaminhoPreservandoForma(c.P0,alvo,c.closed),P=reduzido.map(p=>pontoNoTrabalho(c.L,p));
-    if(P.length)out.push({paths:[P],foreground:!!c.L._cava2CutOf,color:c.st.stroke||c.st.color||c.L.color||'#687786',
+    if(!P.length)continue;
+    if(c.closed&&gruposPoligonos.has(c.f)){gruposPoligonos.get(c.f).paths.push(P);continue;}
+    const item={paths:[P],foreground:!!c.L._cava2CutOf||c.L._cava2SnapshotRole==='line',color:c.st.stroke||c.st.color||c.L.color||'#687786',
       fillColor:c.st.color||c.st.stroke||c.L.color||'#687786',
-      weight:+c.st.weight||1,dash:c.st.dash||'',opacity:Number.isFinite(+c.st.opacity)?+c.st.opacity:1,
+      weight:Number.isFinite(+c.st.weight)?+c.st.weight:1,dash:c.st.dash||'',opacity:Number.isFinite(+c.st.opacity)?+c.st.opacity:1,
       /* Mesma regra do Mapa 2D: hatch=none significa contorno sem qualquer
          preenchimento, mesmo quando um valor antigo de fill ainda existe. */
       fill:c.closed&&c.st.hatch!=='none'?(+c.st.fill||0):0,
+      fillOpacity:c.closed&&c.st.hatch!=='none'?(+c.st.fill||0):0,
       hatch:c.closed?(c.st.hatch||'solid'):'none',hatchScale:n(c.st.hatchScale,1),
-      closed:c.closed,point:c.point});
+      closed:c.closed,point:c.point};out.push(item);if(c.closed)gruposPoligonos.set(c.f,item);
   }
   /* As superfícies e a ortofoto pertencem à mesma árvore visual do 2D.
      Reaproveitar o PNG já renderizado evita recalcular MDTs grandes e mantém
@@ -346,6 +389,7 @@ function contextoDasCamadas(){
 }
 function visibilidadeDoDesenho(d){
   if(!d)return {on:false,crista:false,pe:false,rampa:false};
+  if(d.variante==='recortada')return {on:false,crista:false,pe:false,rampa:false};
   const bruta=camadaDoDesenho(d.id),corte=camadaCorteDoDesenho(d.id),
     L=d.cutMdt&&corte?corte:bruta;
   if(d.cutMdt&&corte?._cava2CutFinalized)return {on:false,crista:false,pe:false,rampa:false};
@@ -355,10 +399,10 @@ function visibilidadeDoDesenho(d){
   };
   return {on:L.visible!==false,crista:vis('Crista'),pe:vis('Pé'),rampa:vis('Rampa')};
 }
-function aplicaVisibilidadeDesenho(){
+function aplicaVisibilidadeDesenho(redraw=true){
   const A=api(),d=desenhoAtual();
   if(!A||!d||typeof A.setObjectVisibility!=='function')return false;
-  A.setObjectVisibility(d.tipo,visibilidadeDoDesenho(d));return true;
+  A.setObjectVisibility(d.tipo,visibilidadeDoDesenho(d),redraw);return true;
 }
 function estilosDoDesenho(d){
   const bruta=camadaDoDesenho(d?.id),corte=camadaCorteDoDesenho(d?.id),
@@ -373,45 +417,93 @@ function estilosDoDesenho(d){
   };
   return {crista:item('Crista'),pe:item('Pé'),rampa:item('Rampa'),intersecao:item('Interseção')};
 }
-function aplicaEstiloDesenho(){
+function aplicaEstiloDesenho(redraw=true){
   const A=api(),d=desenhoAtual(),e=d&&estilosDoDesenho(d);
   if(!A||!d||!e||typeof A.setObjectStyle!=='function')return false;
-  A.setObjectStyle(d.tipo,e);return true;
+  A.setObjectStyle(d.tipo,e,redraw);return true;
+}
+/* Publicar várias camadas dispara uma notificação de estilo por camada.
+   A reconstrução continua exata, mas ocorre só uma vez no próximo frame. */
+function agendaContexto(){
+  if(!api()||estado.contextFrame)return;
+  estado.contextFrame=requestAnimationFrame(()=>{estado.contextFrame=0;atualizaContexto();});
 }
 function atualizaContexto(){
+  if(estado.contextFrame){cancelAnimationFrame(estado.contextFrame);estado.contextFrame=0;}
   const A=api();if(!A||typeof A.setContextLayers!=='function')return false;
-  A.setContextLayers(contextoDasCamadas());aplicaVisibilidadeDesenho();aplicaEstiloDesenho();return true;
+  aplicaVarianteCava(desenhoAtual());
+  A.setContextLayers(contextoDasCamadas(),false);aplicaVisibilidadeDesenho(false);aplicaEstiloDesenho(false);
+  const d=desenhoAtual();A.setVolumeSummary?.(d?{name:d.nome,type:d.tipo,swelling:d.empolamento??null,
+    cut:d.variante==='recortada'?d.resultadoCorte?.volumes:null}:null);A.redesenha();return true;
+}
+function atualizaNavegacaoAbas(revelaAtiva){
+  const box=document.getElementById('cava2DesignTabs');if(!box||!box.clientWidth)return;
+  const ativa=box.querySelector('.on');
+  if(revelaAtiva&&ativa){
+    const b=box.getBoundingClientRect(),a=ativa.getBoundingClientRect();
+    if(a.left<b.left)box.scrollLeft-=b.left-a.left;
+    else if(a.right>b.right)box.scrollLeft+=a.right-b.right;
+  }
+  const prev=document.getElementById('cava2TabsPrev'),next=document.getElementById('cava2TabsNext');
+  if(prev)prev.disabled=box.scrollLeft<=1;
+  if(next)next.disabled=box.scrollLeft+box.clientWidth>=box.scrollWidth-1;
 }
 function renderAbas(){
   const box=document.getElementById('cava2DesignTabs');if(!box)return;
   box.innerHTML='';
+  const lista=document.getElementById('cava2DesignList'),novo=document.getElementById('cava2NewDesign');
+  if(novo)novo.disabled=!estado.ready;
+  if(lista){lista.replaceChildren(new Option('▾',''));lista.disabled=!estado.desenhos.length;}
   estado.desenhos.forEach(d=>{
+   for(const variante of d.somenteRecortada?['recortada']:['bruta',...(d.resultadoCorte?['recortada']:[])]){
     const b=document.createElement('button');b.type='button';b.className='cava2-design-tab';
-    b.classList.toggle('on',d.id===estado.desenhoId);b.dataset.designId=d.id;
-    b.innerHTML=`<span class="cava2-tab-kind">${esc(tipoNome(d.tipo))}</span><span>${esc(d.nome)}</span>`;
-    b.title=`Abrir ${tipoNome(d.tipo).toLowerCase()} “${d.nome}”`;
-    b.onclick=()=>trocaDesenho(d.id);box.appendChild(b);
+    b.classList.toggle('on',d.id===estado.desenhoId&&(d.variante||'bruta')===variante);b.dataset.designId=d.id;b.dataset.variant=variante;
+    const versao=variante==='bruta'?'Bruta':'Recortada';
+    b.innerHTML=`<span class="cava2-tab-kind">${esc(versao)}</span><span class="cava2-tab-name">${esc(d.nome)}</span>`;
+    b.title=`${d.nome} — ${versao}`;b.setAttribute('aria-label',b.title);
+    b.setAttribute('role','tab');b.setAttribute('aria-selected',String(b.classList.contains('on')));b.tabIndex=b.classList.contains('on')?0:-1;
+    b.onclick=()=>trocaDesenho(d.id,variante);box.appendChild(b);
+    if(lista){const o=new Option(b.title,`${d.id}/${variante}`);o.dataset.designId=d.id;o.dataset.variant=variante;lista.add(o);}
+   }
   });
+  if(!estado.desenhos.length){const vazio=document.createElement('span');vazio.className='cava2-tabs-empty';vazio.textContent='Crie uma cava ou DCE em ＋ Nova';box.appendChild(vazio);}
+  requestAnimationFrame(()=>atualizaNavegacaoAbas(true));
 }
 function atualizaCampos(d){
   if(!d)return;
   estado.alvo=d.tipo;estado.baseZ=n(d.baseZ);estado.crs=d.crs||S.workCRS;estado.fonte=clone(d.fonte)||null;
   const t=document.getElementById('cava2Target'),nm=document.getElementById('cava2Name'),z=document.getElementById('cava2BaseZ');
   if(t)t.value=d.tipo;if(nm)nm.value=d.nome;if(z)z.value=String(estado.baseZ);
+  const swelling=doc2D()?.getElementById('ccmgisEmpolamento');if(swelling)swelling.value=d.empolamento??'';
   populaMdts(d);
   aplicaTipoNoMotor(d.tipo);
 }
 function criaNovoDesenho(tipo){
+  if(!estado.ready||estado.busyCut)return null;
   salvaAtual(true);
   const d=novoRegistro(tipo);estado.desenhos.push(d);estado.desenhoId=d.id;
   aplicaDesenho(d,false);renderAbas();salvaRegistroLocal();
   status(rasterDoDesenho(d)?`${tipoNome(d.tipo)} “${d.nome}” criada · desenhe o limite; a Interseção será dinâmica.`:
     `${tipoNome(d.tipo)} “${d.nome}” criada · escolha primeiro o MDT de trabalho.`,!rasterDoDesenho(d));
+  window.GeoMineWorkspaceResume?.request();return d;
 }
-function trocaDesenho(id){
-  if(id===estado.desenhoId)return;
-  salvaAtual(true);const d=estado.desenhos.find(x=>x.id===id);if(!d)return;
+function iniciaDesenho(tipo){
+  if(!estado.ready||estado.busyCut)return false;
+  tipo=tipo==='pilha'?'pilha':'cava';
+  const d=desenhoAtual(),A=api(),temBase=Object.values(A?.objs||{}).some(o=>o?.base?.length);
+  if(!d||d.somenteRecortada||temBase||d.tipo!==tipo)criaNovoDesenho(tipo);
+  if(!rasterDoDesenho(desenhoAtual())){exigeMdt();return false;}
+  return api()?.beginDrawing?.(tipo);
+}
+function trocaDesenho(id,variante){
+  if(estado.busyCut){status('Aguarde o recorte terminar para trocar de aba.');return false;}
+  const d=estado.desenhos.find(x=>x.id===id);if(!d)return;
+  if(d.somenteRecortada)variante='recortada';
+  if(id===estado.desenhoId&&(!variante||variante===d.variante))return;
+  salvaAtual(true);
+  if(variante)d.variante=variante==='recortada'&&resultadoCavaDisponivel(d)?'recortada':'bruta';
   estado.desenhoId=id;aplicaDesenho(d,false);renderAbas();salvaRegistroLocal();
+  if(typeof refreshUI==='function')refreshUI();
   status(`${tipoNome(d.tipo)} “${d.nome}” ativa.`);
 }
 function renomeiaAtual(nome){
@@ -556,11 +648,21 @@ function configuraCotaTrabalho(d,R){
   box.title=`Cota de trabalho · mínima ${formataCota(c.min)} m · máxima ${formataCota(c.max)} m`;
   const externo=document.getElementById('cava2BaseZ');if(externo)externo.value=String(c.value);return true;
 }
-function sincronizaSuperficieTrabalhoNoMotor(d,R){
+function sincronizaSuperficieTrabalhoNoMotor(d,R,redraw=true,forcar=false){
   const A=api();if(!A||typeof A.setWorkSurface!=='function')return false;
   d=d||desenhoAtual();R=R||rasterDoDesenho(d);
-  if(!d||!R){A.setWorkSurface(null);return false;}
+  const anterior=estado.workSurfaceState,igual=key=>!forcar&&anterior?.length===key.length&&key.every((v,i)=>Object.is(v,anterior[i]));
+  if(!d||!R){const key=[A,S.projectId,null];if(!igual(key)){A.setWorkSurface(null,redraw);estado.workSurfaceState=key;}return false;}
   const origem=d.crs||S.workCRS,g=R.d,destino=R.crs||g.crs||S.workCRS;
+  /* Identidades e revisões independentes: reimportar uma grade com o mesmo
+     nome/tamanho, religar o original ou trocar CRS invalida a amostragem.
+     Uma sincronização manual também força a invalidação para integrações
+     antigas que alteram a matriz no lugar, sem incrementar revisão. */
+  const key=[A,S.projectId,d.id,R,R.id,R.name,g,g.z,g.tin,g._img0,g._full,g._full?.z,
+    R._projectNativeBinding,R._projectSourceRaw,R._dataRev,R._rev,g._rev,
+    S.workCRS,origem,destino,g.crs,g.srcCRS,g.nc,g.nr,g.cs,g.csy,g.xll,g.yll,g.x0,g.y0,
+    g.native,g.resampled,+d.baseZ,R.style?.opacity,R.opacity];
+  if(igual(key))return true;
   const sampleZ=(x,y)=>{
     let px=+x,py=+y;if(!Number.isFinite(px)||!Number.isFinite(py))return NaN;
     try{
@@ -570,9 +672,10 @@ function sincronizaSuperficieTrabalhoNoMotor(d,R){
       return sampleZbil(g,px,py);
     }catch(e){return NaN;}
   };
-  return A.setWorkSurface({id:R.id,name:R.name||String(R.id),designId:d.id,
+  const result=A.setWorkSurface({id:R.id,name:R.name||String(R.id),designId:d.id,
     revision:R._dataRev??g._rev??R._rev??0,workZ:+d.baseZ,cellSize:+g.cs||1,tolerance:.1,
-    opacity:R.style?.opacity??R.opacity??1,sampleZ});
+    opacity:R.style?.opacity??R.opacity??1,sampleZ},redraw);
+  estado.workSurfaceState=key;return result;
 }
 function defineCotaTrabalho(valor,silencioso){
   const d=desenhoAtual(),R=rasterDoDesenho(d),lim=limitesCotaRedonda(R);if(!d||!R||!lim)return false;
@@ -598,7 +701,7 @@ function populaMdts(d){
   }
   sincronizaSeletorMdtMotor(d,rasters);return rasters;
 }
-function sincronizaSeletorMdtMotor(d,rasters){
+function sincronizaSeletorMdtMotor(d,rasters,options={}){
   const D=doc2D(),el=D&&D.getElementById('ccmgis_mdt');if(!el)return false;
   d=d||desenhoAtual();rasters=rasters||listaMdtsValidos();
   const valor=String(d?.mdtId??estado.mdtTrabalhoId??'');
@@ -611,7 +714,7 @@ function sincronizaSeletorMdtMotor(d,rasters){
   const R=rasters.find(r=>String(r.id)===el.value);
   cmd?.setAttribute('data-tooltip',ok?`MDT: ${R?.name||el.value}`:'Escolher MDT de trabalho');
   configuraCotaTrabalho(d,R||null);
-  sincronizaSuperficieTrabalhoNoMotor(d,R||null);
+  sincronizaSuperficieTrabalhoNoMotor(d,R||null,options.redraw!==false,!!options.force);
   if(cut){cut.disabled=!ok;cut.classList.toggle('corte-finalizado',!!d?.cutMdt);}
   for(const id of ['t_cava','t_pilha','b_escolher']){
     const b=D.getElementById(id);if(!b)continue;
@@ -684,13 +787,23 @@ function configuraMdtNoMotor(){
     cota.addEventListener('input',()=>defineCotaTrabalho(cota.value,true));
     cota.addEventListener('change',()=>defineCotaTrabalho(cota.value,false));
     cut.addEventListener('click',()=>rasterDoDesenho(desenhoAtual())?cortaMdtAtual(true):exigeMdt());
+    const swelling=D.getElementById('ccmgisEmpolamento');
+    swelling?.addEventListener('input',()=>{
+      const d=desenhoAtual();if(!d)return;
+      d.empolamento=swelling.value.trim()!==''&&Number.isFinite(swelling.valueAsNumber)&&swelling.valueAsNumber>=0?swelling.valueAsNumber:null;
+      salvaRegistroLocal();atualizaContexto();window.GeoMineWorkspaceResume?.request();
+    });
   }
   if(!D.documentElement.dataset.ccmgisMdtGuard){
     D.documentElement.dataset.ccmgisMdtGuard='1';
     D.addEventListener('click',ev=>{
       const b=ev.target?.closest?.('#t_cava,#t_pilha,#b_escolher,#b_novo_lim');
-      if(!b||rasterDoDesenho(desenhoAtual()))return;
-      ev.preventDefault();ev.stopImmediatePropagation();exigeMdt();
+      if(!b)return;
+      if(b.id==='t_cava'||b.id==='t_pilha'){
+        ev.preventDefault();ev.stopImmediatePropagation();iniciaDesenho(b.id==='t_pilha'?'pilha':'cava');return;
+      }
+      if(!desenhoAtual())criaNovoDesenho(alvoAtual());
+      if(!rasterDoDesenho(desenhoAtual())){ev.preventDefault();ev.stopImmediatePropagation();exigeMdt();}
     },true);
   }
   sincronizaSeletorMdtMotor(desenhoAtual());return true;
@@ -753,11 +866,87 @@ function estiloCamada(L,feats){
 }
 function camadaDoDesenho(id){return S.layers.find(L=>L._cava2DesignId===id);}
 function idDesenhoDaCamada(L){return L?._cava2DesignId||L?._cava2CutOf||L?._cava2CutFillOf||null;}
+// Ausência de uma saída excluída pelo usuário não é falha de sincronização.
+// As marcas pertencem à receita, para sobreviver a salvar/reabrir o projeto.
+const PAPEIS_SAIDA_RECORTE=new Set(['intersection','cutFill','cutLine','cutSnapshotFill','cutSurface']);
+function saidaSuprimida(d,papel){
+  return !!d?.suppressedOutputs?.[papel]&&!(estado.regenerandoSaidasId===d?.id&&PAPEIS_SAIDA_RECORTE.has(papel));
+}
+function confirmaSaidasRegeneradas(d){
+  if(!d?.suppressedOutputs||estado.regenerandoSaidasId!==d.id)return;
+  const presentes=new Set((S.layers||[]).map(saidaDaCamada).filter(q=>q?.id===d.id).map(q=>q.role));
+  if((S.rasters||[]).some(R=>R.id===d.resultadoCorte?.surfaceId))presentes.add('cutSurface');
+  for(const papel of presentes)if(PAPEIS_SAIDA_RECORTE.has(papel))delete d.suppressedOutputs[papel];
+  if(!Object.keys(d.suppressedOutputs).length)delete d.suppressedOutputs;
+}
+function saidaDaCamada(L){
+  if(L?._cava2CutSnapshotOf)return {id:L._cava2CutSnapshotOf,role:L._cava2SnapshotRole==='fill'?'cutSnapshotFill':'cutLine'};
+  if(L?._cava2CutFillOf)return {id:L._cava2CutFillOf,role:'cutFill'};
+  if(L?._cava2CutOf)return {id:L._cava2CutOf,role:'intersection'};
+  if(L?._cava2DesignId&&L.gtype==='polygon')return {id:L._cava2DesignId,role:'rawFill'};
+  return null;
+}
+function resultadoCavaDisponivel(d){
+  if(!d?.resultadoCorte)return false;
+  const ls=camadasResultadoCava(d);return !!(ls.line||ls.fill||(S.rasters||[]).some(R=>R.id===d.resultadoCorte.surfaceId));
+}
+function migraSaidasRecortadasAusentes(d){
+  // A versão anterior conservava o resultado na receita após excluir todas
+  // as saídas. Somente um corte concluído, sem nenhum produto remanescente,
+  // permite reconhecer esse caso; receitas antigas/incompletas não inferem exclusão.
+  const corte=d?.resultadoCorte;if(!corte?.id||!corte?.surfaceId)return false;
+  const temCamada=(S.layers||[]).some(L=>{const q=saidaDaCamada(L);
+    return q?.id===d.id&&PAPEIS_SAIDA_RECORTE.has(q.role)||L._cava2CutSnapshotId===corte.id;});
+  const temRaster=(S.rasters||[]).some(R=>R.id===corte.surfaceId||R.src?.kind==='cava2-clipped'&&R.src.designId===d.id);
+  if(temCamada||temRaster)return false;
+  d.suppressedOutputs={...d.suppressedOutputs};
+  for(const papel of PAPEIS_SAIDA_RECORTE)d.suppressedOutputs[papel]=true;
+  d.variante='bruta';corte.sourceVisible=true;
+  return true;
+}
+function preparaExclusaoSaida(saida){
+  const d=estado.desenhos.find(d=>d.id===saida?.id);if(!d)return null;
+  if(d.id===estado.desenhoId)salvaAtual(false);
+  return {kind:'output',id:d.id,role:saida.role,previousSuppressed:!!d.suppressedOutputs?.[saida.role],previousVariant:d.variante};
+}
+function registraExclusaoSaida(snapshot){
+  const d=estado.desenhos.find(d=>d.id===snapshot?.id);if(!d||snapshot.kind!=='output')return false;
+  clearTimeout(estado.syncTimer);estado.syncTimer=0;
+  d.suppressedOutputs={...d.suppressedOutputs,[snapshot.role]:true};
+  if(d.variante==='recortada'&&!resultadoCavaDisponivel(d))d.variante='bruta';
+  estado.outputKey=null;renderAbas();salvaRegistroLocal();atualizaContexto();
+  window.GeoMineWorkspaceResume?.request();return true;
+}
+function restauraExclusaoSaida(snapshot){
+  const d=estado.desenhos.find(d=>d.id===snapshot?.id);if(!d||snapshot.kind!=='output')return false;
+  if(snapshot.previousSuppressed)d.suppressedOutputs={...d.suppressedOutputs,[snapshot.role]:true};
+  else if(d.suppressedOutputs){delete d.suppressedOutputs[snapshot.role];if(!Object.keys(d.suppressedOutputs).length)delete d.suppressedOutputs;}
+  if(snapshot.previousVariant==='recortada'&&resultadoCavaDisponivel(d))d.variante='recortada';
+  estado.outputKey=null;renderAbas();salvaRegistroLocal();atualizaContexto();
+  window.GeoMineWorkspaceResume?.request();return true;
+}
+function preparaExclusaoRaster(R){
+  const id=R?.src?.kind==='cava2-clipped'?R.src.designId:estado.desenhos.find(d=>d.resultadoCorte?.surfaceId===R?.id)?.id;
+  return id?preparaExclusaoSaida({id,role:'cutSurface'}):null;
+}
+function limpaSaidasSuprimidasDaTentativa(d,antes){
+  if(!d||!antes)return;
+  for(const L of [...(S.layers||[])]){
+    const q=saidaDaCamada(L);
+    if(q?.id===d.id&&antes.suppressed[q.role]&&!antes.layers.has(L.id))removeCamadaGerada(L);
+  }
+  for(const R of [...(S.rasters||[])])if(antes.suppressed.cutSurface&&R.src?.kind==='cava2-clipped'&&R.src.designId===d.id&&!antes.rasters.has(R.id)){
+    try{if(R.overlay&&typeof map!=='undefined')map.removeLayer(R.overlay);}catch(e){}
+    S.rasters=S.rasters.filter(q=>q!==R);S.stack=(S.stack||[]).filter(k=>k!==`R:${R.id}`);
+  }
+}
 /* Chamado ANTES da exclusão geral da camada. Guarda a entidade lógica inteira
    para que um único Ctrl+Z possa restaurar camada, aba e receita sem duplicar. */
 function preparaExclusaoCamada(L){
+  const saida=saidaDaCamada(L);if(saida)return preparaExclusaoSaida(saida);
   const id=idDesenhoDaCamada(L),idx=estado.desenhos.findIndex(d=>d.id===id);
   if(!id||idx<0)return null;
+  if(id===estado.desenhoId)salvaAtual(false);
   return {id,index:idx,activeId:estado.desenhoId,design:clone(estado.desenhos[idx]),
     cutHash:estado.cutHashes[id]??null,
     companions:(S.layers||[]).map((q,i)=>({L:q,idx:i})).filter(x=>x.L!==L&&
@@ -778,6 +967,7 @@ function limpaMotorSemDesenho(){
 /* Chamado DEPOIS que a camada clicada saiu de S.layers. Remove somente o
    desenho que possui o mesmo DESIGN_ID, suas camadas derivadas e sua aba. */
 function removeDesenhoDaCamada(L,snapshot){
+  if(snapshot?.kind==='output')return registraExclusaoSaida(snapshot);
   snapshot=snapshot||preparaExclusaoCamada(L);const id=snapshot?.id||idDesenhoDaCamada(L);
   const idx=estado.desenhos.findIndex(d=>d.id===id);if(!id||idx<0)return false;
   clearTimeout(estado.syncTimer);estado.syncTimer=0;
@@ -795,6 +985,7 @@ function removeDesenhoDaCamada(L,snapshot){
   return true;
 }
 function restauraExclusaoCamada(snapshot,Lrestaurada){
+  if(snapshot?.kind==='output')return restauraExclusaoSaida(snapshot);
   if(!snapshot?.id||!snapshot.design)return false;
   if(!estado.desenhos.some(d=>d.id===snapshot.id))
     estado.desenhos.splice(Math.min(snapshot.index??estado.desenhos.length,estado.desenhos.length),0,clone(snapshot.design));
@@ -856,7 +1047,7 @@ function assinaturaMdt(R){
     valor(0,0),valor(0,Math.max(0,nc-1)),valor(Math.floor(nr/2),Math.floor(nc/2)),valor(Math.max(0,nr-1),Math.max(0,nc-1))]);
 }
 function hashCorteMdt(d,R,finalizado){
-  return `${assinaturaMdt(R)}|${finalizado?'corte':'preview'}|${d.tipo}|${n(d.baseZ)}|${JSON.stringify(d.engine||{})}`;
+  return `contato-mdt-3|${assinaturaMdt(R)}|${finalizado?'corte':'preview'}|${d.tipo}|${n(d.baseZ)}|${JSON.stringify(d.engine||{})}`;
 }
 function mostraBrutaSemCorte(d,mensagem,erro){
   const L=camadaDoDesenho(d?.id),C=camadaCorteDoDesenho(d?.id);
@@ -890,7 +1081,7 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
   }
   const feats=finalizado?todas:inter,ativo=S.activeId;let C=existente;
   if(!C){
-    C=addLayer({name:nomeCorteMdt(d,R),gtype:'line',features:feats,
+    C=addLayer({sourceLayer:camadaDoDesenho(d.id)||R,name:nomeCorteMdt(d,R),gtype:'line',features:feats,
       fields:['FID','DESENHO','DESIGN_ID','PROJETO','ELEMENTO','COTA','ORDEM','BANCO','MDT','ORIGEM'],
       crs:d.crs||S.workCRS,color:'#0d9488',src:'Área 2D · Cava2 · interseção dinâmica'});
     C._cava2CutOf=d.id;
@@ -904,30 +1095,85 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
   if(ativo!=null&&S.layers.some(x=>x.id===ativo))S.activeId=ativo;
   estado.cutHashes[d.id]=hash;if(!silencioso&&typeof refreshUI==='function')refreshUI();return C;
 }
-function cortaMdtAtual(forcar){
+async function cortaMdtAtual(forcar){
+  if(estado.busyCut)return false;
+  const d=desenhoAtual(),project=S.projectId,variant=d?.variante;
+  if(!d)return false;
+  const antes={layers:new Set((S.layers||[]).map(L=>L.id)),rasters:new Set((S.rasters||[]).map(R=>R.id)),suppressed:{...d.suppressedOutputs},resultadoCorte:clone(d.resultadoCorte)};
+  let concluido=false;
+  estado.busyCut=true;showLoad('Recortando a cava no MDT…');
+  try{
+    await new Promise(resolve=>setTimeout(resolve,30));
+    if(S.projectId!==project||desenhoAtual()?.id!==d.id)return false;
+    estado.regenerandoSaidasId=d.id;
+    concluido=await executaCorteMdtAtual(forcar);return concluido;
+  }catch(error){
+    console.error('Recorte da cava',error);
+    if(S.projectId===project&&desenhoAtual()?.id===d.id){
+      const temporaryLine=camadaCorteDoDesenho(d.id),temporaryFill=camadaPreenchimentoCorteDoDesenho(d.id);
+      if(temporaryLine?._cava2CutFinalized)removeCamadaGerada(temporaryLine);
+      if(temporaryFill)removeCamadaGerada(temporaryFill);
+      d.cutMdt=false;d.variante=variant||'bruta';estado.cutHashes[d.id]=null;estado.outputKey=null;atualizaContexto();
+      const message=`Não foi possível concluir o recorte: ${error.message||error}. A cava bruta foi preservada.`;
+      status(message,true);if(typeof toast==='function')toast(message);
+    }
+    return false;
+  }finally{
+    estado.regenerandoSaidasId=null;estado.busyCut=false;
+    if(S.projectId===project){
+      if(!concluido){
+        limpaSaidasSuprimidasDaTentativa(d,antes);
+        if(Object.keys(antes.suppressed).length)d.suppressedOutputs={...d.suppressedOutputs,...antes.suppressed};
+        d.resultadoCorte=antes.resultadoCorte;d.variante=variant==='recortada'&&resultadoCavaDisponivel(d)?'recortada':'bruta';
+        estado.outputKey=null;salvaRegistroLocal();atualizaContexto();if(typeof refreshUI==='function')refreshUI();
+      }
+      hideLoad();
+    }
+  }
+}
+async function executaCorteMdtAtual(forcar){
   const d=desenhoAtual();if(!d)return false;
+  if(d.somenteRecortada){status('Abra o projeto de origem para alterar e recortar esta cava.',true);return false;}
+  const def=typeof proj4==='function'?proj4.defs(d.crs||S.workCRS):null;
+  if(!def||def.projName==='longlat'||def.units&&def.units!=='m')throw new Error('Use um CRS projetado em metros para gerar o MDT de 0,20 m.');
   salvaAtual(false);d.mdtId=estado.mdtTrabalhoId||d.mdtId||null;
   const R=rasterDoDesenho(d);if(!R)return exigeMdt();
+  clearTimeout(estado.syncTimer);estado.syncTimer=0;
+  publicaDesenho(d,designRuntime(d),true);
   const design=designRuntime(d),C=publicaCorteMdt(d,design,false,!!forcar,true);
   if(!C){d.cutMdt=false;mostraBrutaSemCorte(d);sincronizaSeletorMdtMotor(d);salvaRegistroLocal();return false;}
-  const congelado=cava2CongelaCorte(d,R,C,camadaPreenchimentoCorteDoDesenho(d.id));
+  const project=S.projectId,engine=d.engine,
+    current=()=>S.projectId===project&&desenhoAtual()===d&&d.engine===engine;
+  const grid=await GeoMineCavaTerrain.rasterize(C._cava2CutSurface,{cellSize:.2,crs:d.crs||S.workCRS,
+    terrain:R.d,keepAbove:d.tipo==='pilha',isCurrent:current,
+    onProgress:percent=>showLoad(`MDT recortado · 0,20 m · ${percent}%`)});
+  if(!current())throw Object.assign(new Error('O projeto mudou durante o recorte.'),{name:'AbortError'});
+  const superficie=cava2PublicaMdtRecortado(d,R,grid);
+  const congelado=cava2CongelaCorte(d,R,C,null);
+  delete C._cava2CutSurface;
   if(!congelado){d.cutMdt=false;mostraBrutaSemCorte(d);sincronizaSeletorMdtMotor(d);return false;}
-  /* O corte salvo fica imóvel. A camada vinculada volta imediatamente a ser
-     apenas a interseção dinâmica, e a cava original permanece editável para
-     que outra cota gere um novo `_c`. */
+  d.resultadoCorte={id:congelado.id,criadoEm:new Date().toISOString(),mdtId:R.id,
+    mdtNome:R.name,cota:n(d.baseZ),engine:clone(d.engine),surfaceId:superficie.id,
+    volumes:grid.cutVolume,sourceVisible:d.resultadoCorte?.sourceVisible??(R.visible!==false)};
+  confirmaSaidasRegeneradas(d);
+  d.variante='recortada';estado.outputKey=null;
   d.cutMdt=false;estado.cutHashes[d.id]=null;
   publicaCorteMdt(d,design,true,true,false);
-  sincronizaSeletorMdtMotor(d);salvaRegistroLocal();if(typeof refreshUI==='function')refreshUI();atualizaContexto();
+  const temporario=camadaPreenchimentoCorteDoDesenho(d.id);if(temporario)removeCamadaGerada(temporario);
+  sincronizaSeletorMdtMotor(d);renderAbas();salvaRegistroLocal();atualizaContexto();if(typeof refreshUI==='function')refreshUI();
   try{if(typeof layoutSeVisivel==='function')layoutSeVisivel();}catch(e){}
   const ni=congelado.line.features.filter(f=>f.props?.ELEMENTO==='Interseção').length;
-  status(`${d.nome}: corte salvo na nova camada “${congelado.name}” · ${ni} interseção(ões) fechada(s).`);
+  status(`${d.nome}: Bruta preservada · Recortada aberta · ${ni} interseção(ões).`);
+  window.GeoMineWorkspaceResume?.request();
+  estado.savingCut=salvaArquivoDaCava(d).catch(e=>{status(`Recorte mantido no projeto; falha ao gerar o arquivo: ${e.message||e}`,true);return false;});
   try{if(S._view==='v3d'&&typeof v3Auto==='function')v3Auto();}catch(e){}return true;
 }
 function removeCorteMdt(){
   const d=desenhoAtual();if(!d)return false;
+  d.variante='bruta';
   d.cutMdt=false;estado.cutHashes[d.id]=null;mostraBrutaSemCorte(d);salvaRegistroLocal();
   sincronizaCamadas(false);sincronizaSeletorMdtMotor(d);
-  status(`${d.nome}: corte final removido; a Interseção dinâmica continua ativa.`);return true;
+  status(`${d.nome}: Bruta aberta; a versão Recortada permanece salva.`);return true;
 }
 function designRuntime(d){
   const A=api();if(!d||!A)return null;
@@ -942,6 +1188,7 @@ function designRuntime(d){
 }
 function salvaAtual(publicar){
   const d=desenhoAtual();if(!d||!estado.ready)return d;
+  if(d.somenteRecortada)return d;
   d.engine=leEstadoMotor();d.baseZ=n(document.getElementById('cava2BaseZ')?.value,estado.baseZ);
   d.crs=estado.crs||d.crs||S.workCRS;d.fonte=clone(estado.fonte)||d.fonte||null;
   if(publicar)publicaDesenho(d,designRuntime(d),true);
@@ -1014,7 +1261,7 @@ function aplicaDesenho(d,publicar){
   if(!d)return false;atualizaCampos(d);if(!carregaMotor(d))return false;
   if(publicar)publicaDesenho(d,designRuntime(d),false);
   atualizaContexto();configuraMdtNoMotor();
-  if(d.mdtId&&d.engine)agendarSincronizacao();
+  if(d.mdtId&&d.engine&&d.variante!=='recortada')agendarSincronizacao();
   try{doc2D()?.getElementById('b_ajustar')?.click();}catch(e){}
   return true;
 }
@@ -1060,6 +1307,7 @@ function migraCamadasAntigas(){
 }
 function aplicaEstadoProjeto(st){
   if(!estado.ready){estado.projetoPendente=clone(st);return false;}
+  estado.outputKey=null;
   estado.projetoPendente=undefined;const m=migraEstado(st);
   estado.mdtTrabalhoId=m?.mdtTrabalhoId??m?.designs?.find(q=>q?.mdtId)?.mdtId??null;
   const usados=new Set();
@@ -1067,15 +1315,21 @@ function aplicaEstadoProjeto(st){
     const tipo=d.tipo==='pilha'?'pilha':'cava',id=d.id||novoId(),base=String(d.nome||proximoNome(tipo)).trim()||tipoNome(tipo);
     let nome=base,i=2;while(usados.has(nome.toLowerCase()))nome=`${base} ${i++}`;usados.add(nome.toLowerCase());
     return {...d,id,nome,tipo,baseZ:n(d.baseZ),crs:d.crs||S.workCRS,
-      mdtId:d.mdtId??estado.mdtTrabalhoId??null,cutMdt:!!d.cutMdt};
+      mdtId:d.mdtId??estado.mdtTrabalhoId??null,cutMdt:!!d.cutMdt,
+      variante:d.variante==='recortada'&&d.resultadoCorte?'recortada':'bruta'};
   });
-  if(!estado.desenhos.length)estado.desenhos.push(novoRegistro('cava'));
+  // Projetos antigos podem guardar a receita do corte sem seus produtos.
+  // Isso não autoriza ocultar o MDT de origem nem bloquear o editor na Recortada.
+  for(const d of estado.desenhos){
+    migraSaidasRecortadasAusentes(d);
+    if(d.variante==='recortada'&&!resultadoCavaDisponivel(d))d.variante='bruta';
+  }
   estado.seq=Math.max(n(m.seq),estado.seq);estado.painelFechado=m.painelFechado!==false;
-  estado.desenhoId=estado.desenhos.some(d=>d.id===m.activeId)?m.activeId:estado.desenhos[0].id;
+  estado.desenhoId=estado.desenhos.some(d=>d.id===m.activeId)?m.activeId:estado.desenhos[0]?.id||null;
   migraCamadasAntigas();
   for(const d of estado.desenhos){const L=camadaDoDesenho(d.id);if(!d.engine&&L?._cava2Engine)d.engine=clone(L._cava2Engine);}
-  aplicaPainel();aplicaDesenho(desenhoAtual(),false);reconstroiCamadasAusentes();
-  renderAbas();salvaRegistroLocal();if(typeof refreshUI==='function')refreshUI();return true;
+  aplicaPainel();if(desenhoAtual())aplicaDesenho(desenhoAtual(),false);else limpaMotorSemDesenho();reconstroiCamadasAusentes();
+  renderAbas();atualizaContexto();salvaRegistroLocal();if(typeof refreshUI==='function')refreshUI();return true;
 }
 
 /* Publicação cartográfica do motor Cava2.
@@ -1163,10 +1417,13 @@ function feicoesCartograficasDoDesign(design,baseZ,meta){
     });
   });
   (design.limites||[]).forEach((lim,i)=>{
-    const geom=cava2GeomFechada(lim.P);if(geom.length<4)return;
-    const z=n(baseZ)+n(lim.z0);
-    out.push({geom,multi:false,zg:geom.map(()=>z),props:{FID:fid++,...cava2Props(meta,{
-      ELEMENTO:'Limite exterior',COTA:z,ROTULO:'',ORDEM:900000+i,BANCO:null,
+    const aberta=lim.aberta===true,P=lim.P||[],geom=aberta?limpaPontos(P):cava2GeomFechada(P);
+    if(geom.length<(aberta?2:4))return;
+    // As partes da união já carregam o deslocamento do bloco em cada Z.
+    // Não fechar a parte nem ligar alturas diferentes por uma corda artificial.
+    const zg=aberta?P.map(p=>n(baseZ)+n(p.z,lim.z0)):geom.map(()=>n(baseZ)+n(lim.z0));
+    out.push({geom,multi:false,zg,props:{FID:fid++,...cava2Props(meta,{
+      ELEMENTO:'Limite exterior',COTA:zg[0],ROTULO:'',ORDEM:900000+i,BANCO:null,
       CLASSE:'rb31-limite',ORIGEM:'Área 2D · Cava2 · limite exterior'})}});
   });
   return out;
@@ -1191,7 +1448,7 @@ function feicoesPreenchimentoDoDesign(design,baseZ,meta){
     if(gExt.length>=4){const z=n(baseZ)+n(exterior.z);out.push({geom:gExt,multi:false,zg:gExt.map(()=>z),
       props:{FID:fid++,...cava2Props(meta,{ELEMENTO:'Área projetada',COTA:z,ROTULO:'',ORDEM:bi*10000+1,
         BANCO:null,CLASSE:'rb31-area'})}});}
-    if(gInt.length>=4){const z=n(baseZ)+n(interior.z);out.push({geom:gInt,multi:false,zg:gInt.map(()=>z),
+    if(gInt.length>=4&&!b.hasContinuation){const z=n(baseZ)+n(interior.z);out.push({geom:gInt,multi:false,zg:gInt.map(()=>z),
       props:{FID:fid++,...cava2Props(meta,{ELEMENTO:meta?.tipo==='pilha'?'Topo':'Fundo',COTA:z,
         ROTULO:cava2NomeBloco(meta,bi),ORDEM:bi*10000+2,BANCO:0,CLASSE:'rb31-fundo'})}});}
     const corredores=d.corredores||[];
@@ -1276,17 +1533,8 @@ function cava2OrdenaLinhaSobrePreenchimento(L,F){
   if(typeof zApply==='function')zApply();
 }
 
-/* Um corte concluído é um produto independente. A camada `_cava2CutOf`
-   continua reservada para a interseção dinâmica; cada clique em Cortar cava
-   congela uma cópia comum, que não será movida nem recalculada quando a cota
-   de trabalho ou a cava paramétrica mudar. */
-function cava2NomeLivreComC(base){
-  const nomes=new Set((S.layers||[]).map(L=>String(L.name||'').trim().toLowerCase())),
-    raiz=String(base||'Cava').trim().replace(/_c$/i,'')||'Cava';
-  let nome=`${raiz}_c`,i=2;
-  while(nomes.has(nome.toLowerCase()))nome=`${raiz}_${i++}_c`;
-  return nome;
-}
+/* A versão Recortada só muda por um novo recorte explícito. A camada
+   `_cava2CutOf` continua reservada para a interseção dinâmica da Bruta. */
 function cava2CopiaAparencia(origem,destino){
   if(!origem||!destino)return destino;
   destino.color=origem.color;destino.weight=origem.weight;destino.fill=origem.fill;
@@ -1314,37 +1562,47 @@ function cava2OrdenaCorteCongelado(d,camadas){
     (anterior.get(a.id)??0)-(anterior.get(b.id)??0));
   try{if(typeof zApply==='function')zApply();}catch(e){}
 }
+function cava2PublicaMdtRecortado(d,source,grid){
+  if(saidaSuprimida(d,'cutSurface'))return null;
+  let R=S.rasters.find(r=>r.id===d.resultadoCorte?.surfaceId);
+  if(!R){R={id:rid++,overlay:null,groupId:camadaDoDesenho(d.id)?.groupId??null};S.rasters.push(R);}
+  Object.assign(R,{name:`${d.nome} — MDT recortado · 0,20 m`,d:grid,crs:d.crs||S.workCRS,
+    quantity:'elevation',unit:'m',visible:true,style:{mode:'hipso_hs',opacity:1},
+    src:{kind:'cava2-clipped',designId:d.id,sourceRasterId:source.id,sourceName:source.name,
+      sourceCellSize:source.d.cs,cellSize:.2,volumes:grid.cutVolume,generatedAt:new Date().toISOString()},
+    _v3:{papel:d.tipo==='pilha'?'dce':'cava',cor:d.tipo==='pilha'?'#a6a3a0':'#b99262'}});
+  if(typeof placeProductAbove==='function')placeProductAbove(R,source);
+  renderRaster(R);return R;
+}
 function cava2CongelaCorte(d,R,C,CF){
   if(!d||!C||(C.features||[]).length===0)return null;
-  const original=camadaDoDesenho(d.id),nome=cava2NomeLivreComC(original?.name||nomeCamada(d)),
-    corteId=`cava2-cut-${Date.now().toString(36)}-${(++estado.seq).toString(36)}`,
+  if(saidaSuprimida(d,'cutLine'))return null;
+  const anterior=camadasResultadoCava(d),original=camadaDoDesenho(d.id),nome=`${d.nome} — Recortada`,
+    corteId=d.resultadoCorte?.id||`cava2-cut-${Date.now().toString(36)}-${(++estado.seq).toString(36)}`,
     grupo=original?.groupId??C.groupId??null,
-    comum={crs:d.crs||C.crs||S.workCRS,fields:clone(C.fields||[]),features:clone(C.features||[])};
-  const L=addLayer({name:nome,gtype:'line',...comum,color:C.color||'#111111',
+    comum={crs:d.crs||C.crs||S.workCRS,fields:clone(C.fields||[]),features:clone(C.features||[])
+      .filter(f=>['Interseção','Crista','Pé','Rampa','Retorno'].includes(f.props?.ELEMENTO))
+      .map((f,i)=>({...f,props:{...f.props,FID:i+1,ELEMENTO:f.props.ELEMENTO==='Retorno'?'Rampa':f.props.ELEMENTO}}))};
+  const L=anterior.line||addLayer({sourceLayer:C,name:nome,gtype:'line',...comum,color:C.color||'#111111',
     src:'Área 2D · Cava2 · corte congelado'});
+  Object.assign(L,comum,{name:nome});
+  delete L._cava2DesignId;delete L._cava2CutOf;delete L._cava2CutFillOf;
   cava2CopiaAparencia(C,L);L.groupId=grupo;L.visible=true;L._cava2Kind=d.tipo;
+  L.sym.cats=L.sym.cats.filter(c=>['Interseção','Crista','Pé','Rampa'].includes(c.value));
+  for(const c of L.sym.cats)c.count=L.features.filter(f=>f.props.ELEMENTO===c.value).length;
   L._cava2CutSnapshotOf=d.id;L._cava2CutSnapshotId=corteId;L._cava2CutZ=n(d.baseZ);
   L._cava2SnapshotRole='line';L._cava2MdtId=R?.id??null;L._cava2Managed=false;
-  let F=null;
-  if(CF&&(CF.features||[]).length){
-    const nomeF=cava2NomeLivreComC(nome.replace(/_c$/i,'')+'_preenchimento');
-    F=addLayer({name:nomeF,gtype:'polygon',crs:d.crs||CF.crs||S.workCRS,
-      fields:clone(CF.fields||[]),features:clone(CF.features||[]),color:CF.color,
-      src:'Área 2D · Cava2 · preenchimento de corte congelado'});
-    cava2CopiaAparencia(CF,F);F.groupId=grupo;F.visible=true;F._cava2Kind=d.tipo;
-    F._cava2CutSnapshotOf=d.id;F._cava2CutSnapshotId=corteId;F._cava2CutZ=n(d.baseZ);
-    F._cava2SnapshotRole='fill';F._cava2MdtId=R?.id??null;F._cava2Managed=false;
-  }
-  try{if(typeof drawLayer==='function'){drawLayer(L);if(F)drawLayer(F);}}catch(e){}
-  cava2OrdenaCorteCongelado(d,[L,F]);S.activeId=L.id;
-  return {line:L,fill:F,id:corteId,name:nome};
+  if(anterior.fill)removeCamadaGerada(anterior.fill);
+  if(typeof drawLayer==='function')drawLayer(L);
+  cava2OrdenaCorteCongelado(d,[L]);S.activeId=L.id;
+  return {line:L,fill:null,id:corteId,name:nome};
 }
 
 function publicaDesenho(d,design,silencioso){
-  if(!d)return null;
+  if(!d||d.somenteRecortada)return null;
   const feats=feicoesCartograficasDoDesign(design,n(d.baseZ),d),areas=feicoesPreenchimentoDoDesign(design,n(d.baseZ),d),
     ativo=S.activeId;let F=camadaPreenchimentoDoDesenho(d.id),L=camadaDoDesenho(d.id),criou=false;
-  if(!F&&areas.length){
+  if(!F&&areas.length&&!saidaSuprimida(d,'rawFill')){
     F=addLayer({name:nomeCamadaPreenchimento(d),gtype:'polygon',features:areas,
       fields:['FID','DESENHO','DESIGN_ID','PROJETO','ELEMENTO','COTA','ROTULO','ORDEM','BANCO','ORIGEM'],
       crs:d.crs||S.workCRS,color:d.tipo==='pilha'?'#9aa0a8':'#c9b18a',src:'Área 2D · Cava2 · estilo'});
@@ -1368,8 +1626,8 @@ function publicaDesenho(d,design,silencioso){
 
 function designRuntime(d){
   const A=api();if(!d||!A)return null;
-  const ordem=k=>k===d.tipo?-1:n(String(k).split('#')[1],0),entradas=Object.keys(A.objs||{})
-    .filter(k=>k===d.tipo||k.startsWith(d.tipo+'#')).sort((a,b)=>ordem(a)-ordem(b))
+  const entradas=(typeof A.alvos==='function'?A.alvos():Object.keys(A.objs||{}))
+    .filter(k=>k===d.tipo||k.startsWith(d.tipo+'#'))
     .map((key,index)=>({key,index,o:A.objs[key],design:A.objs[key]?.design})).filter(q=>q.design);
   if(!entradas.length)return null;
   const primeiro=entradas[0].design,ultimo=entradas.at(-1).design,
@@ -1377,8 +1635,14 @@ function designRuntime(d){
   return {...primeiro,
     aneis:entradas.flatMap(q=>(q.design.aneis||[]).map(a=>({...a,_bloco:q.key,_blocoIndice:q.index}))),
     corredores:entradas.flatMap(q=>(q.design.corredores||[]).map(c=>({...c,_bloco:q.key,_blocoIndice:q.index}))),
-    limites:entradas.map(q=>({key:q.key,index:q.index,P:q.o?.base||null,z0:n(q.o?.z0)})).filter(q=>Array.isArray(q.P)&&q.P.length>=3),
-    _blocos:entradas.map(q=>({key:q.key,index:q.index,z0:n(q.o?.z0),base:q.o?.base||null,design:q.design})),
+    limites:entradas.flatMap(q=>{
+      const partes=q.design.contornoExterior?.partes;
+      if(Array.isArray(partes)&&partes.length)return partes.filter(P=>Array.isArray(P)&&P.length>=2)
+        .map((P,parte)=>({key:q.key,index:q.index,parte,P,aberta:true,z0:n(q.o?.z0)}));
+      const P=q.o?.base;return Array.isArray(P)&&P.length>=3?[{key:q.key,index:q.index,P,z0:n(q.o?.z0)}]:[];
+    }),
+    _blocos:entradas.map(q=>({key:q.key,index:q.index,z0:n(q.o?.z0),base:q.o?.base||null,design:q.design,
+      hasContinuation:entradas.some(c=>c.o?.paiDe===q.key)})),
     avisos:entradas.flatMap(q=>q.design.avisos||[]),
     curvasAgudas:entradas.flatMap(q=>q.design.curvasAgudas||[]),
     raioMinReal:raios.length?Math.min(...raios):null,
@@ -1398,101 +1662,26 @@ function mostraBrutaSemCorte(d,mensagem,erro){
   if(mensagem)status(mensagem,erro);return null;
 }
 
-/* A interseção publicada precisa ser um ANEL, e não uma costura entre pontas
-   abertas de bancos diferentes. O motor radial percorre 360° em ordem, mas pode
-   devolver mais de um fragmento quando algum raio sai do MDT. Agregamos todos os
-   fragmentos numa única função polar r(θ), usamos a interseção da superfície como
-   apoio nos raios ausentes e interpolamos apenas os intervalos ainda vazios.
-   Isso mantém um ponto por direção, fecha a volta e impede o zigue-zague. */
-function cava2SegmentosSeCruzam(a,b,c,d,eps){
-  const o=(p,q,r)=>(q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]),
-    o1=o(a,b,c),o2=o(a,b,d),o3=o(c,d,a),o4=o(c,d,b);
-  return o1*o2<-(eps*eps)&&o3*o4<-(eps*eps);
-}
-function cava2AnelSemAutocruzamento(g,eps){
-  const n0=(g||[]).length-1;if(n0<3)return false;
-  for(let i=0;i<n0;i++)for(let j=i+1;j<n0;j++){
-    if(j===i||j===i+1||(i===0&&j===n0-1))continue;
-    if(cava2SegmentosSeCruzam(g[i],g[(i+1)%n0],g[j],g[(j+1)%n0],eps))return false;
-  }
-  return true;
-}
-function cava2ReconstruiAnelRadial(curvas,linhas,g,apoio){
-  const base=linhas?.[0]?.ring;if(!base?.length||!g)return null;
-  const cx=base.reduce((s,p)=>s+n(p[0]),0)/base.length,
-    cy=base.reduce((s,p)=>s+n(p[1]),0)/base.length,
-    raioMax=Math.max(...linhas.flatMap(ln=>(ln.ring||[]).map(p=>Math.hypot(n(p[0])-cx,n(p[1])-cy))),1),
-    alvo=Math.max(.35,Math.min(1.5,Math.max(n(g.cs,1),n(g.csy,n(g.cs,1)))*.65)),
-    N=Math.max(240,Math.min(1440,Math.ceil(2*Math.PI*raioMax/alvo))),doisPi=2*Math.PI,
-    fechaTol=Math.max(1e-7,n(g.cs,1)*1e-6),eps=Math.max(1e-9,n(g.cs,1)*1e-9),bins=Array(N).fill(null);
-  const agrega=(fs,fonte)=>{
-    for(const f of fs||[]){
-      const raw=(f.geom||[]).map((p,i)=>({p:[n(p[0]),n(p[1])],
-        z:Number.isFinite(+f.zg?.[i])?+f.zg[i]:NaN}));
-      if(raw.length>2&&Math.hypot(raw[0].p[0]-raw.at(-1).p[0],raw[0].p[1]-raw.at(-1).p[1])<=fechaTol)raw.pop();
-      for(const q of raw){
-        const r=Math.hypot(q.p[0]-cx,q.p[1]-cy);if(!(r>eps))continue;
-        let a=Math.atan2(q.p[1]-cy,q.p[0]-cx);if(a<0)a+=doisPi;
-        const k=((Math.round(a*N/doisPi)%N)+N)%N,alvoA=k*doisPi/N,
-          err=Math.abs(Math.atan2(Math.sin(a-alvoA),Math.cos(a-alvoA))),atual=bins[k],cand={...q,r,err,fonte};
-        if(fonte==='radial'){
-          if(!atual||atual.fonte!=='radial'||err<atual.err)bins[k]=cand;
-        }else if(!atual||atual.fonte!=='radial'&&r>atual.r)bins[k]=cand;
-      }
+/* Publica somente o contato calculado entre a superfície de projeto e o
+   MDT. Componentes abertas permanecem abertas, inclusive junto a NoData. */
+function cava2RecortaSuperficieNoMdt(src,g,modoUp,passo,guardarAreas){
+  const feats=[],linhas=[];
+  for(const f of src||[]){
+    const e=String(f.props?.ELEMENTO||''),ring=cava2GeomFechada((f.geom||[]).map(p=>({x:p[0],y:p[1]})));
+    if(['Crista','Pé'].includes(e)&&ring.length>=4){
+      ring.pop();linhas.push({ring,z:+f.props.COTA});
     }
-  };
-  agrega(curvas,'radial');const amostrasRadiais=bins.filter(Boolean).length;
-  agrega(apoio,'superficie');const conhecidos=bins.map((q,i)=>q?i:-1).filter(i=>i>=0);
-  /* Poucas amostras isoladas não definem uma interseção. Um arco real, mesmo
-     interrompido pela borda do raster, fornece dezenas de direções. */
-  if(conhecidos.length<Math.max(8,Math.ceil(N*.01)))return null;
-  let interpoladas=0;
-  for(let ii=0;ii<conhecidos.length;ii++){
-    const ia=conhecidos[ii],ib=conhecidos[(ii+1)%conhecidos.length],salto=(ib-ia+N)%N;
-    if(salto<=1)continue;
-    const A=bins[ia],B=bins[ib];
-    for(let s=1;s<salto;s++){
-      const u=s/salto,k=(ia+s)%N,a=k*doisPi/N,r=A.r+(B.r-A.r)*u,
-        p=[cx+Math.cos(a)*r,cy+Math.sin(a)*r],zt=sampleZbil(g,p[0],p[1]),
-        zi=Number.isFinite(A.z)&&Number.isFinite(B.z)?A.z+(B.z-A.z)*u:(Number.isFinite(A.z)?A.z:B.z);
-      bins[k]={p,z:Number.isFinite(zt)?zt:zi,r,err:0,fonte:'interpolada'};interpoladas++;
-    }
+    if(f.geom?.length>1)feats.push(...(cavaRecortaFeicaoNoMdt(f,g,modoUp,passo)||[]));
   }
-  if(bins.some(q=>!q))return null;
-  const geom=bins.map(q=>q.p.slice()),zg=bins.map(q=>Number.isFinite(q.z)?q.z:sampleZbil(g,q.p[0],q.p[1]));
-  if(geom.some((p,i)=>i&&Math.hypot(p[0]-geom[i-1][0],p[1]-geom[i-1][1])<=eps))return null;
-  geom.push(geom[0].slice());zg.push(zg[0]);
-  if(!cava2AnelSemAutocruzamento(geom,eps))return null;
-  let area=0;for(let i=1;i<geom.length;i++)area+=geom[i-1][0]*geom[i][1]-geom[i][0]*geom[i-1][1];
-  if(Math.abs(area)<=eps)return null;
-  return {geom,zg,area:Math.abs(area)/2,amostrasRadiais,
-    amostrasSuperficie:conhecidos.length-amostrasRadiais,interpoladas};
-}
-
-/* Reutiliza a ferramenta radial que já faz parte do motor, mas publica apenas
-   a volta completa, reordenada pelos próprios raios. Fragmentos ou resultados
-   autointersectantes são rejeitados em vez de aparecerem como zigue-zague. */
-function cava2IntersecaoRadialExistente(src,g,modoUp,apoio){
-  if(typeof cavaIntersecaoRadial!=='function'||!g)return [];
-  const linhas=(src||[]).filter(f=>['Crista','Pé'].includes(String(f?.props?.ELEMENTO||'')))
-    .map(f=>{
-      const geom=(f.geom||[]).map(p=>[n(p[0]),n(p[1])]);
-      if(geom.length>3&&Math.hypot(geom[0][0]-geom.at(-1)[0],geom[0][1]-geom.at(-1)[1])<1e-7)geom.pop();
-      const zs=(f.zg||[]).filter(Number.isFinite),z=Number.isFinite(+f.props?.COTA)?+f.props.COTA:
-        (zs.length?zs.reduce((a,b)=>a+b,0)/zs.length:NaN);
-      return {ring:geom,z,bench:n(f.props?.BANCO)};
-    }).filter(q=>q.ring.length>=3&&Number.isFinite(q.z));
-  if(linhas.length<2)return [];
-  linhas.sort((a,b)=>modoUp?a.z-b.z:b.z-a.z);
-  const cotas=linhas.map(q=>q.z),H=Math.max(.1,...cotas.slice(1)
-    .map((z,i)=>Math.abs(z-cotas[i])).filter(x=>x>.01));
-  let curvas=[];
-  try{curvas=cavaIntersecaoRadial(linhas,g,H)||[];}
-  catch(e){console.warn('Interseção radial existente',e);return [];}
-  const anel=cava2ReconstruiAnelRadial(curvas,linhas,g,apoio);if(!anel)return [];
-  return [{geom:anel.geom,zg:anel.zg,multi:false,props:{TIPO:'Interseção cava × terreno',
-    BANCO:null,COTA:null,ALTURA:H,BERMA:null,ANGULO:null,CLASSE:'daylight',
-    METODO:'radial existente 360° por anéis × MDT',TOPOLOGIA:'anel fechado'}}];
+  const area=r=>{const o=r[0];let a=0;for(let i=1;i<r.length-1;i++)
+    a+=(r[i][0]-o[0])*(r[i+1][1]-o[1])-(r[i][1]-o[1])*(r[i+1][0]-o[0]);return Math.abs(a);};
+  linhas.sort((a,b)=>(modoUp?a.z-b.z:b.z-a.z)||area(b.ring)-area(a.ring));
+  const stats={},poligonos={surface:[],floor:[]},inter=GeoMineCavaTerrain.intersect(linhas,g,{stats,keepAbove:modoUp,
+    onPolygon:guardarAreas?(p,t)=>poligonos[t].push(p):null}).map(f=>({geom:f.geom,zg:f.zg,multi:false,
+    props:{TIPO:'Interseção cava × terreno',BANCO:null,COTA:null,CLASSE:'daylight',
+      METODO:'superfície de projeto × MDT — amostragem por célula',
+      TOPOLOGIA:Math.hypot(f.geom[0][0]-f.geom.at(-1)[0],f.geom[0][1]-f.geom.at(-1)[1])<1e-6?'fechada':'aberta'}}));
+  return {feats:feats.concat(inter),stats,poligonos};
 }
 function cava2RecortaLimitesNoMdt(design,d,R,g,modoUp,passo){
   if(typeof cavaRecortaFeicaoNoMdt!=='function')return [];
@@ -1503,43 +1692,45 @@ function cava2RecortaLimitesNoMdt(design,d,R,g,modoUp,passo){
       PROJETO:tipoNome(d.tipo),ELEMENTO:'Limite exterior',CLASSE:'rb31-limite',MDT:R.name||'MDT',
       ORIGEM:'Área 2D · Cava2 · limite exterior cortado pelo MDT'}})));
 }
-function cava2AreasCortadasNoMdt(design,d,R,g,modoUp,passo,inter){
-  if(typeof cavaRecortaPoligonoNoMdt!=='function')return [];
-  let fid=1;const contorno=(inter||[]).find(f=>f.props?.ELEMENTO==='Interseção'),out=[];
-  /* A área geral usa literalmente o anel de daylight. Recortar apenas a borda
-     do antigo polígono de projeção não detecta uma ilha inteiramente interna e
-     deixava o preenchimento ultrapassar a linha preta. */
-  if(contorno?.geom?.length>3)out.push({geom:contorno.geom.map(p=>p.slice()),multi:false,
-    zg:(contorno.zg||[]).slice(),props:{FID:fid++,...cava2Props(d,{ELEMENTO:'Área projetada',
-      COTA:null,ROTULO:'',ORDEM:1,BANCO:null,CLASSE:'rb31-area',MDT:R.name||'MDT',
-      ORIGEM:'Área 2D · Cava2 · área limitada pelo anel de interseção'})}});
-  const detalhes=feicoesPreenchimentoDoDesign(design,n(d.baseZ),d)
-    .filter(f=>f.props?.ELEMENTO!=='Área projetada');
-  out.push(...detalhes.flatMap(f=>
-    (cavaRecortaPoligonoNoMdt(f,g,modoUp,passo)||[]).map(q=>({...q,multi:false,
-      props:{...(f.props||{}),...(q.props||{}),FID:fid++,DESENHO:d.nome,DESIGN_ID:d.id,
-        PROJETO:tipoNome(d.tipo),ELEMENTO:f.props?.ELEMENTO,COTA:f.props?.COTA,
-        CLASSE:f.props?.CLASSE,MDT:R.name||'MDT',ORIGEM:'Área 2D · Cava2 · preenchimento cortado pelo MDT'}}))));
+function cava2AreasCortadasNoMdt(design,d,R,g,modoUp,passo,poligonos){
+  const out=[];let fid=1;
+  const adiciona=(partes,props)=>{
+    const validas=GeoMineCavaTerrain.mergePolygons(partes,g);if(!validas.length)return;
+    out.push({geom:validas.map(p=>p.map(q=>q.slice(0,2)).concat([p[0].slice(0,2)])),
+      zg:validas.map(p=>p.map(q=>q[2]).concat([p[0][2]])),multi:true,
+      props:{...cava2Props(d,{COTA:null,ROTULO:'',ORDEM:1,BANCO:null,MDT:R.name||'MDT',
+        ORIGEM:'Área 2D · Cava2 · superfície recortada pelo MDT',...props}),FID:fid++}});
+  };
+  adiciona(poligonos?.surface||[],{ELEMENTO:'Área projetada',CLASSE:'rb31-area'});
+  adiciona(poligonos?.floor||[],{ELEMENTO:modoUp?'Topo':'Fundo',CLASSE:modoUp?'rb31-topo':'rb31-fundo'});
+  for(const f of feicoesPreenchimentoDoDesign(design,n(d.baseZ),d).filter(f=>f.props?.ELEMENTO==='Rampa')){
+    const points=f.geom.map((p,i)=>[p[0],p[1],f.zg?.[i]??f.props.COTA]);
+    adiciona(GeoMineCavaTerrain.clipPolygon(points,g,{keepAbove:modoUp}),{...f.props,ORDEM:3});
+  }
   return out;
 }
 function cava2PublicaPreenchimentoCortado(d,R,areas){
+  if(saidaSuprimida(d,'cutFill'))return null;
   let F=camadaPreenchimentoCorteDoDesenho(d.id);
   if(!areas.length){if(F)removeCamadaGerada(F);return null;}
   if(!F){
-    F=addLayer({name:nomeCamadaPreenchimentoCorte(d),gtype:'polygon',features:areas,
+    F=addLayer({sourceLayer:camadaPreenchimentoDoDesenho(d.id)||camadaDoDesenho(d.id)||R,name:nomeCamadaPreenchimentoCorte(d),gtype:'polygon',features:areas,
       fields:['FID','DESENHO','DESIGN_ID','PROJETO','ELEMENTO','COTA','ROTULO','ORDEM','BANCO','MDT','ORIGEM'],
       crs:d.crs||S.workCRS,color:d.tipo==='pilha'?'#9aa0a8':'#c9b18a',
       src:'Área 2D · Cava2 · preenchimento cortado pelo MDT'});
     F._cava2CutFillOf=d.id;F._cava2Role='cut-fill';
   }else{F.features=areas;F.crs=d.crs||F.crs||S.workCRS;F.name=nomeCamadaPreenchimentoCorte(d);}
   F._cava2MdtId=R.id;F._cava2Kind=d.tipo;F._cava2Managed=true;F.visible=true;
-  estiloCamadaPreenchimento(F,areas);return F;
+  estiloCamadaPreenchimento(F,areas);
+  for(const c of F.sym.cats)c.weight=0;
+  return F;
 }
 function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
   const finalizado=!!(finalizar||d?.cutMdt),R=rasterDoDesenho(d),g=R?.d;
   if(!d||!g)return mostraBrutaSemCorte(d,'Escolha um MDT válido para calcular a interseção.',true);
-  if(typeof cavaRecortaAneisFechadosNoMdt!=='function')
+  if(typeof GeoMineCavaTerrain?.intersect!=='function')
     return mostraBrutaSemCorte(d,'O algoritmo de interseção da cava não está disponível.',true);
+  if(saidaSuprimida(d,'intersection'))return null;
   const hash=hashCorteMdt(d,R,finalizado),existente=camadaCorteDoDesenho(d.id),
     fillCorte=camadaPreenchimentoCorteDoDesenho(d.id);
   if(!forcar&&existente&&estado.cutHashes[d.id]===hash){
@@ -1554,37 +1745,34 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
     if(existente)removeCamadaGerada(existente);if(fillCorte)removeCamadaGerada(fillCorte);estado.cutHashes[d.id]=null;
     return mostraBrutaSemCorte(d,silencioso?'':`${d.nome}: desenhe primeiro um limite fechado.`,!silencioso);
   }
-  const passo=Math.max(.2,Math.min(.75,n(g.cs,.5))),modoUp=d.tipo==='pilha';let q;
-  try{q=cavaRecortaAneisFechadosNoMdt(feicoesCompativeisCorte(src),g,modoUp,passo);}
+  const passo=Math.min(.75,Math.abs(n(g.cs,.5))*.5,Math.abs(n(g.csy,g.cs))*.5),modoUp=d.tipo==='pilha';let q;
+  try{q=cava2RecortaSuperficieNoMdt(feicoesCompativeisCorte(src),g,modoUp,passo,finalizado);}
   catch(e){console.error('Interseção Área 2D × MDT',e);return mostraBrutaSemCorte(d,
     `Falha ao calcular a interseção com “${R.name}”: ${e.message||e}`,true);}
-  const normalizadas=normalizaCorteMdt(q?.feats,d,R),
-    apoio=normalizadas.filter(f=>f.props?.ELEMENTO==='Interseção');
+  const normalizadas=normalizaCorteMdt(q?.feats,d,R);
   let todas=normalizadas.filter(f=>f.props?.ELEMENTO!=='Interseção');
-  /* A malha continua responsável pelo corte das strings. A linha apresentada,
-     porém, vem da volta radial 360° já existente, que garante a ordem circular
-     e impede as ligações triangulares entre bancos vistas anteriormente. */
-  const inter=normalizaCorteMdt(cava2IntersecaoRadialExistente(src,g,modoUp,apoio),d,R)
-    .filter(f=>f.props?.ELEMENTO==='Interseção');
-  if(!inter.length){
+  const inter=normalizadas.filter(f=>f.props?.ELEMENTO==='Interseção');
+  if(!inter.length&&(!finalizado||!todas.length)){
     if(existente)removeCamadaGerada(existente);if(fillCorte)removeCamadaGerada(fillCorte);estado.cutHashes[d.id]=null;
-    return mostraBrutaSemCorte(d,`${d.nome}: não foi possível formar uma interseção fechada e válida com “${R.name}” na cota ${formataCota(d.baseZ)} m.`,!silencioso);
+    return mostraBrutaSemCorte(d,`${d.nome}: a superfície desenhada não encontra cotas válidas de “${R.name}” nesta extensão.`,!silencioso);
   }
   todas=todas.concat(inter);
-  const limites=finalizado?cava2RecortaLimitesNoMdt(design,d,R,g,modoUp,passo):[],
-    feats=finalizado?todas.concat(limites):inter,ativo=S.activeId;let C=existente;
+  const feats=finalizado?todas:inter,ativo=S.activeId;let C=existente;
   if(!C){
-    C=addLayer({name:nomeCorteMdt(d,R),gtype:'line',features:feats,
+    C=addLayer({sourceLayer:camadaDoDesenho(d.id)||R,name:nomeCorteMdt(d,R),gtype:'line',features:feats,
       fields:['FID','DESENHO','DESIGN_ID','PROJETO','ELEMENTO','COTA','ROTULO','ORDEM','BANCO','MDT','ORIGEM'],
-      crs:d.crs||S.workCRS,color:'#000000',src:'Área 2D · Cava2 · interseção dinâmica fechada'});
+      crs:d.crs||S.workCRS,color:'#000000',src:'Área 2D · Cava2 · interseção entre superfícies'});
     C._cava2CutOf=d.id;
   }else{C.features=feats;C.crs=d.crs||C.crs||S.workCRS;C.name=nomeCorteMdt(d,R);
-    C.src=finalizado?'Área 2D · Cava2 · cava cortada':'Área 2D · Cava2 · interseção dinâmica fechada';}
+    C.src=finalizado?'Área 2D · Cava2 · cava cortada':'Área 2D · Cava2 · interseção entre superfícies';}
   C._cava2MdtId=R.id;C._cava2Kind=d.tipo;C._cava2Managed=true;C._cava2CutFinalized=finalizado;
   C._cava2IntersectionPreview=!finalizado;C.visible=true;estiloCamada(C,feats);
-  const L=camadaDoDesenho(d.id),F=camadaPreenchimentoDoDesenho(d.id),
-    areas=finalizado?cava2AreasCortadasNoMdt(design,d,R,g,modoUp,passo,inter):[],
-    CF=finalizado?cava2PublicaPreenchimentoCortado(d,R,areas):camadaPreenchimentoCorteDoDesenho(d.id);
+  const L=camadaDoDesenho(d.id),F=camadaPreenchimentoDoDesenho(d.id),CF=camadaPreenchimentoCorteDoDesenho(d.id);
+  if(finalizado){
+    const ramps=feicoesPreenchimentoDoDesign(design,n(d.baseZ),d).filter(f=>['Rampa','Retorno'].includes(f.props?.ELEMENTO))
+      .flatMap(f=>GeoMineCavaTerrain.clipPolygon(f.geom.map((p,i)=>[p[0],p[1],f.zg?.[i]??f.props.COTA]),g,{keepAbove:modoUp}));
+    C._cava2CutSurface={surface:q.poligonos.surface,floor:q.poligonos.floor,ramps};
+  }
   if(L){L.visible=!finalizado;drawLayer(L);}if(F){F.visible=!finalizado;drawLayer(F);}
   if(CF){CF.visible=finalizado;drawLayer(CF);}drawLayer(C);if(CF)cava2OrdenaLinhaSobrePreenchimento(C,CF);
   if(ativo!=null&&S.layers.some(x=>x.id===ativo))S.activeId=ativo;
@@ -1607,32 +1795,37 @@ function renomeiaAtual(nome){
     CF=camadaPreenchimentoCorteDoDesenho(d.id);
   if(L)L.name=nomeCamada(d);if(F)F.name=nomeCamadaPreenchimento(d);if(C)C.name=nomeCorteMdt(d,rasterDoDesenho(d));
   if(CF)CF.name=nomeCamadaPreenchimentoCorte(d);
+  const resultado=camadasResultadoCava(d);if(resultado.line)resultado.line.name=`${d.nome} — Recortada`;
+  if(resultado.fill)resultado.fill.name=`${d.nome} — Recortada · áreas`;
   if(typeof refreshUI==='function')refreshUI();renderAbas();salvaRegistroLocal();status(`Desenho renomeado para “${d.nome}”.`);
 }
 function sincronizaCamadas(manual){
   clearTimeout(estado.syncTimer);estado.syncTimer=0;const A=api(),d=desenhoAtual();
   if(!A||!d){if(manual)status('A área 2D ainda está carregando.',true);return false;}
+  if(d.somenteRecortada){atualizaContexto();return true;}
   salvaAtual(false);const design=designRuntime(d),L=publicaDesenho(d,design,true),R=rasterDoDesenho(d),
     C=R?publicaCorteMdt(d,design,true,false,!!d.cutMdt):null;
   if(manual)reconstroiCamadasAusentes();if(typeof refreshUI==='function')refreshUI();
   try{if(typeof layoutSeVisivel==='function')layoutSeVisivel();}catch(e){}
   try{if(S._view==='v3d'&&typeof v3Auto==='function')v3Auto();}catch(e){}
   const total=L?.features?.length||0,ni=C?.features?.filter(f=>f.props?.ELEMENTO==='Interseção').length||0;
-  atualizaContexto();salvaRegistroLocal();sincronizaSeletorMdtMotor(d);
+  salvaRegistroLocal();sincronizaSeletorMdtMotor(d,null,{redraw:false,force:!!manual});
+  estado.outputKey=null;atualizaContexto();
   status(total?`${d.nome}: estilo da aba Cava publicado no Mapa 2D/Layout · ${ni} interseção(ões) dinâmica(s)${d.cutMdt?' · corte final ativo':''}.`:
     `${d.nome}: desenhe um limite fechado para criar a camada.`,manual&&!total);return true;
 }
 function reconstroiCamadasAusentes(){
   const ativoId=estado.desenhoId,ativo=desenhoAtual();
+  let recarregou=false;
   for(const d of estado.desenhos){
-    const faltaBruta=!camadaDoDesenho(d.id),faltaFill=!camadaPreenchimentoDoDesenho(d.id),
-      faltaIntersecao=!!d.mdtId&&!camadaCorteDoDesenho(d.id),
-      faltaFillCorte=!!d.cutMdt&&!camadaPreenchimentoCorteDoDesenho(d.id);
+    const faltaBruta=!camadaDoDesenho(d.id),faltaFill=!saidaSuprimida(d,'rawFill')&&!camadaPreenchimentoDoDesenho(d.id),
+      faltaIntersecao=!saidaSuprimida(d,'intersection')&&!!d.mdtId&&!camadaCorteDoDesenho(d.id),
+      faltaFillCorte=!saidaSuprimida(d,'cutFill')&&!!d.cutMdt&&!camadaPreenchimentoCorteDoDesenho(d.id);
     if((!faltaBruta&&!faltaFill&&!faltaIntersecao&&!faltaFillCorte)||!d.engine)continue;
-    carregaMotor(d);const design=designRuntime(d);if(faltaBruta||faltaFill)publicaDesenho(d,design,true);
+    recarregou=true;carregaMotor(d);const design=designRuntime(d);if(faltaBruta||faltaFill)publicaDesenho(d,design,true);
     if(d.mdtId)publicaCorteMdt(d,design,true,true,!!d.cutMdt);
   }
-  estado.desenhoId=ativoId;if(ativo)carregaMotor(ativo);configuraMdtNoMotor();
+  estado.desenhoId=ativoId;if(recarregou&&ativo)carregaMotor(ativo);configuraMdtNoMotor();
 }
 function migraEstado(st){
   if(st?.version===2&&Array.isArray(st.designs))return clone(st);
@@ -1653,15 +1846,176 @@ function migraEstado(st){
 }
 
 
+function camadasResultadoCava(d){
+  const id=d?.resultadoCorte?.id,ls=id?(S.layers||[]).filter(L=>L._cava2CutSnapshotId===id):[];
+  return {line:ls.find(L=>L._cava2SnapshotRole==='line'),fill:ls.find(L=>L._cava2SnapshotRole==='fill')};
+}
+function aplicaVarianteCava(d){
+  const A=api(),D=doc2D();if(!d||!A||!D)return;
+  const cut=d.variante==='recortada'&&resultadoCavaDisponivel(d),key=`${d.id}/${cut}/${d.resultadoCorte?.id||''}`;
+  if(estado.outputKey!==key){
+    estado.outputKey=key;
+    for(const L of S.layers||[]){
+      let show;
+      if(L._cava2DesignId===d.id||L._cava2CutOf===d.id)show=!cut;
+      if(L._cava2CutFillOf===d.id)show=false;
+      if(L._cava2CutSnapshotOf===d.id)show=cut&&L._cava2CutSnapshotId===d.resultadoCorte?.id;
+      if(show!==undefined&&L.visible!==show){L.visible=show;if(typeof drawLayer==='function')drawLayer(L);}
+    }
+    const surface=S.rasters.find(r=>r.id===d.resultadoCorte?.surfaceId),source=rasterDoDesenho(d);
+    if(surface){surface.visible=cut;if(surface.overlay)surface.overlay.setOpacity(cut?(surface.style?.opacity??1):0);}
+    if(source&&source!==surface&&d.resultadoCorte){source.visible=cut?false:d.resultadoCorte.sourceVisible!==false;
+      if(source.overlay)source.overlay.setOpacity(source.visible?(source.style?.opacity??1):0);}
+    if(cut){A.sel=null;A.setTool('mover');S.activeId=camadasResultadoCava(d).line?.id??S.activeId;}
+  }
+  D.body.classList.toggle('ccmgis-cut-preview',cut);
+  const liberados=new Set(['t_mover','t_cava','t_pilha','b_ajustar','b_png','b_dxf','ccmgisPainelCorner','ccmgisEmpolamento',...(!d.somenteRecortada?['ccmgis_cortar_cava']:[])]);
+  for(const el of D.querySelectorAll('button,input,select,textarea')){
+    if(liberados.has(el.id)||el.closest('.cava-number')?.querySelector('#ccmgisEmpolamento'))continue;
+    if(cut){if(el.dataset.cutDisabled==null)el.dataset.cutDisabled=el.disabled?'1':'0';el.disabled=true;}
+    else if(el.dataset.cutDisabled!=null){el.disabled=el.dataset.cutDisabled==='1';delete el.dataset.cutDisabled;}
+  }
+  if(!D.documentElement.dataset.cutGuard){
+    D.documentElement.dataset.cutGuard='1';
+    D.addEventListener('keydown',e=>{
+      if(desenhoAtual()?.variante!=='recortada')return;
+      if(e.target.closest?.('.cava-number')?.querySelector('#ccmgisEmpolamento'))return;
+      if((e.ctrlKey||e.metaKey)&&!['z','y'].includes(e.key.toLowerCase()))return;
+      if(e.key!=='Tab'){e.preventDefault();e.stopImmediatePropagation();}
+    },true);
+    D.addEventListener('click',e=>{
+      if(desenhoAtual()?.variante!=='recortada')return;
+      if(e.target.closest('#b_dxf')){e.preventDefault();e.stopImmediatePropagation();exportaDxfRecortado();}
+    },true);
+  }
+}
+function arquivoCava(d){return String(d.nome||'Cava').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_')+'.ccmgis';}
+function comandoVetorialCava(command){
+  if(S._view!=='cava2')return false;
+  if(['simplif','densif','suaviz'].includes(command))return editaGeometriaCava(command);
+  const d=desenhoAtual(),A=api();
+  if(!d||!A)return true;
+  if(d.variante==='recortada'){toast('Abra a subaba Bruta para editar o desenho da cava/DCE.');return true;}
+  if(command==='undo'||command==='redo'){A[command]();return true;}
+  if(['sel','vadd','vdel','vmove'].includes(command)){
+    A.activateExternalTool('vertex',d.tipo);
+    toast(command==='vadd'?'Toque no + de um segmento para inserir um vértice.':
+      command==='vdel'?'Toque duas vezes no vértice para apagá-lo.':'Selecione a linha e arraste seus vértices.');
+  }
+  return true;
+}
+function editaGeometriaCava(command){
+  const d=desenhoAtual(),A=api();
+  if(!d||!A){toast('Aguarde o carregamento da Cava.');return true;}
+  if(d.variante==='recortada'){toast('Abra a subaba Bruta para editar o desenho da cava/DCE.');return true;}
+  const names={simplif:'Simplificar',densif:'Densificar',suaviz:'Suavizar'},name=names[command];
+  if(!name)return false;
+  let target;
+  try{
+    target=A.vectorEditTarget();
+    const projection=proj4(d.crs||S.workCRS).oProj;
+    if(projection.projName==='longlat'||Math.abs((projection.to_meter||1)-1)>1e-9)
+      throw Error('A Cava precisa de um CRS projetado em metros para editar as linhas.');
+  }catch(e){toast(e.message);return true;}
+  let bg=document.getElementById('cavaVectorModal');
+  if(!bg){
+    bg=document.createElement('div');bg.id='cavaVectorModal';bg.className='modal-bg';
+    bg.innerHTML=`<div class="modal" style="width:min(420px,94vw)">
+      <div class="modal-h"><b id="cavaVectorTitle"></b><div style="flex:1"></div><button class="tbtn" id="cavaVectorClose">Fechar</button></div>
+      <div class="modal-b"><div id="cavaVectorTarget" class="hout"></div>
+      <label class="field" for="cavaVectorValue" id="cavaVectorLabel"></label><input type="number" id="cavaVectorValue">
+      <div class="hint">Linha-base e bancadas vinculadas do bloco selecionado.</div>
+      <div id="cavaVectorResult" role="status"></div>
+      <button class="tbtn" id="cavaVectorApply" style="width:100%;justify-content:center;margin-top:12px;background:var(--amber);color:#1a1206"></button></div></div>`;
+    document.body.appendChild(bg);
+    document.getElementById('cavaVectorClose').onclick=()=>bg.classList.remove('on');
+  }
+  const value=document.getElementById('cavaVectorValue'),result=document.getElementById('cavaVectorResult'),
+    button=document.getElementById('cavaVectorApply'),before=A.estadoAtual(),block=target.alvo.split('#')[1];
+  document.getElementById('cavaVectorTitle').textContent=`${name} · ${d.nome}`;
+  document.getElementById('cavaVectorTarget').textContent=`${block?'Bloco '+(+block+1):'Bloco inicial'} · ${target.points.length} vértices`;
+  document.getElementById('cavaVectorLabel').textContent=command==='simplif'?'Tolerância (m)':command==='densif'?'Distância máxima entre vértices (m)':'Iterações';
+  value.value=command==='densif'?5:command==='simplif'?.5:1;
+  value.min=command==='suaviz'?1:.001;value.max=command==='suaviz'?5:'';value.step=command==='suaviz'?1:.1;
+  result.textContent='';button.textContent=name;button.disabled=false;
+  button.onclick=async()=>{
+    button.disabled=true;result.textContent='Atualizando o desenho…';
+    try{
+      const amount=Number(value.value.replace(',','.'));
+      if(!Number.isFinite(amount)||amount<=0||(command==='suaviz'&&(!Number.isInteger(amount)||amount>5)))throw Error('Informe um valor válido.');
+      await new Promise(resolve=>setTimeout(resolve,20));
+      if(S._view!=='cava2'||desenhoAtual()!==d||api()!==A||A.estadoAtual()!==before)throw Error('O desenho mudou. Feche e abra o comando novamente.');
+      const points=target.points,layer={gtype:'polygon',crs:d.crs||S.workCRS},feature={geom:points.map(p=>[p.x,p.y]),props:{}};
+      let output;
+      if(command==='simplif')output=GeoMineSimplify.simplifyFeature(layer,feature,amount).feature.geom;
+      else if(command==='suaviz'){
+        if(points.length*2**amount>20000)throw Error('Reduza as iterações: a linha-base ultrapassaria 20 mil vértices.');
+        output=GeoMineSmooth.smoothFeature(layer,feature,amount).feature.geom;
+      }else{
+        const counts=points.map((p,i)=>{const q=points[(i+1)%points.length];return Math.max(1,Math.ceil(Math.hypot(q.x-p.x,q.y-p.y)/amount));});
+        if(counts.reduce((s,n)=>s+n,0)>20000)throw Error('Aumente a distância: a linha-base ultrapassaria 20 mil vértices.');
+        output=[];points.forEach((p,i)=>{const q=points[(i+1)%points.length],n=counts[i];
+          for(let j=0;j<n;j++)output.push([p.x+(q.x-p.x)*j/n,p.y+(q.y-p.y)*j/n]);});
+      }
+      const change=A.replaceBasePoints(target.alvo,output.map(p=>({x:p[0],y:p[1]})));
+      salvaAtual(false);window.GeoMineWorkspaceResume?.request();
+      const message=`${d.nome} · ${name}: ${change.before} → ${change.after} vértices${change.changed?' · bancadas atualizadas':''}.`;
+      toast(message);cmdLog(message,'info');bg.classList.remove('on');estado.frame.focus();
+    }catch(e){result.textContent=e.message||String(e);}
+    finally{button.disabled=false;}
+  };
+  bg.classList.add('on');value.focus();value.select();return true;
+}
+function projetoDaCava(d){
+  salvaAtual(false);
+  d.exportProjectId=d.exportProjectId||`cava-${crypto.randomUUID()}`;
+  const layers=[camadasResultadoCava(d).line].filter(Boolean),surfaceId=d.resultadoCorte?.surfaceId,
+    all=projectData({borrowGeometry:true,layerIds:layers.map(L=>L.id),rasterIds:[surfaceId]}),
+    savedDesign={...clone(d),somenteRecortada:true,engine:null,mdtId:surfaceId,variante:'recortada',
+      resultadoCorte:{...clone(d.resultadoCorte),engine:null}},
+    data={app:'ALAGIS',v:1,savedAt:new Date().toISOString(),projectId:d.exportProjectId,
+      projectFileName:arquivoCava(d),projectMeta:{name:d.nome},workCRS:d.crs||S.workCRS,
+      screen:all.screen,groups:[],layers:all.layers.map(L=>({...L,groupId:null})),rasters:all.rasters,
+      stack:[],img:null,wms:[],plates:[],cava2:{version:2,activeId:d.id,seq:estado.seq,
+        painelFechado:estado.painelFechado,mdtTrabalhoId:surfaceId,designs:[savedDesign]}};
+  data.stack=[...data.layers.map(L=>`L:${L.id}`),...(data.rasters||[]).map(R=>`R:${R.id}`)];
+  return data;
+}
+async function salvaArquivoDaCava(d){
+  const data=projetoDaCava(d),name=arquivoCava(d),blob=window.projectBlobPorPartes?
+    projectBlobPorPartes(data):new Blob([JSON.stringify(data)],{type:'application/x-ccmgis'});
+  const result=await download(blob,name,{skipPicker:true,reportResult:true});
+  if(result===false||result?.status==='canceled'||result?.status==='failed')throw Error('o navegador não concluiu o envio do arquivo');
+  if(desenhoAtual()?.id===d.id)status(`${d.nome}: camada classificada e MDT de 0,20 m · arquivo “${name}” enviado para download.`);
+  window.GeoMineWorkspaceResume?.request();return true;
+}
+function exportaDxfRecortado(){
+  const d=desenhoAtual(),L=camadasResultadoCava(d).line;if(!L)return;
+  const lines=['0','SECTION','2','HEADER','9','$INSUNITS','70','6','0','ENDSEC','0','SECTION','2','ENTITIES'];
+  for(const f of L.features||[]){
+    const parts=f.multi?f.geom:[f.geom],zs=f.multi?f.zg:[f.zg],layer=String(f.props?.ELEMENTO||'Cava').replace(/[^a-zA-Z0-9_]/g,'_');
+    parts.forEach((pts,j)=>{
+      lines.push('0','POLYLINE','8',layer,'66','1','70','8');
+      pts.forEach((p,i)=>lines.push('0','VERTEX','8',layer,'10',String(p[0]),'20',String(p[1]),'30',String(zs[j]?.[i]??f.props?.COTA??0),'70','32'));
+      lines.push('0','SEQEND');
+    });
+  }
+  lines.push('0','ENDSEC','0','EOF');download(new Blob([lines.join('\r\n')],{type:'application/dxf'}),`${d.nome} — Recortada.dxf`);
+}
+
 window.CCMGISCava2={open:abre,close:fecha,importSelected:importaSelecionada,
   exportToMap:()=>sincronizaCamadas(true),syncLayers:()=>sincronizaCamadas(true),snapshot,
   restoreProjectState:aplicaEstadoProjeto,frame:()=>estado.frame,state:estado,
   openMiningMode:abreModoCava,newDesign:criaNovoDesenho,selectDesign:trocaDesenho,
-  syncTheme:aplicaTemaNoMotor,syncStyles:atualizaContexto,
+  selectVariant:variante=>trocaDesenho(estado.desenhoId,variante),cutProject:()=>projetoDaCava(desenhoAtual()),
+  syncTheme:aplicaTemaNoMotor,syncStyles:agendaContexto,
+  editGeometry:editaGeometriaCava,vectorCommand:comandoVetorialCava,
   beforeLayerDelete:preparaExclusaoCamada,onLayerDeleted:removeDesenhoDaCamada,
   restoreLayerDeletion:restauraExclusaoCamada,chooseWorkMdt:selecionaMdtTrabalho,
+  beforeRasterDelete:preparaExclusaoRaster,onRasterDeleted:(R,snapshot)=>registraExclusaoSaida(snapshot),
+  restoreRasterDeletion:(snapshot,R)=>restauraExclusaoSaida(snapshot),
   canDraw:()=>!!rasterDoDesenho(desenhoAtual()),
-  startDrawing:tipo=>rasterDoDesenho(desenhoAtual())?api()?.beginDrawing?.(tipo):exigeMdt(),
+  startDrawing:iniciaDesenho,
   cutCurrent:()=>cortaMdtAtual(true),clearActiveCut:removeCorteMdt,requireWorkMdt:exigeMdt,
   _featuresFromDesign:feicoesDoDesign,_fillFeaturesFromDesign:feicoesPreenchimentoDoDesign,_intersectionFeaturesFromDesign:feicoesFechadasParaIntersecao,getFillLayer:id=>camadaPreenchimentoDoDesenho(id),getCutFillLayer:id=>camadaPreenchimentoCorteDoDesenho(id),_reduceContextPath:reduzCaminhoPreservandoForma};
 })();

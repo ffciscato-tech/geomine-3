@@ -440,6 +440,7 @@ function ensureGeoTIFF(){
    tablet segue conservador, porque lá o canvas é o gargalo.
    --------------------------------------------------------------------------- */
 const EH_MOVEL = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent||'') ||
+  (/Macintosh|Mac/i.test((navigator.userAgent||'')+' '+(navigator.platform||''))&&navigator.maxTouchPoints>1) ||
   (navigator.maxTouchPoints>1 && !(window.matchMedia&&window.matchMedia('(pointer:fine)').matches));
 /* Perfil manual de desempenho. “Automático” conserva a detecção física,
    “Mobile” permite forçar o LOD leve e “PC” libera a TIN integral. Isto muda
@@ -455,20 +456,17 @@ function alagisModoMobile(){
 }
 function alagisPerf3D(){
   const mobile=alagisModoMobile();
+  // O dispositivo limita só cadência e detalhes auxiliares, nunca a geometria.
   return mobile
-    ?{mobile:true,pixelRatio:1.25,gridSide:300,clipSide:560,
-      exactTinMax:240000,wireMax:60000,fps:30,anisotropy:4}
-    :{mobile:false,pixelRatio:2,gridSide:420,clipSide:1000,
-      exactTinMax:Infinity,wireMax:220000,fps:60,anisotropy:16};
+    ?{mobile:true,pixelRatio:window.devicePixelRatio||1,wireMax:60000,fps:30,anisotropy:4}
+    :{mobile:false,pixelRatio:window.devicePixelRatio||1,wireMax:220000,fps:60,anisotropy:16};
 }
-/* Compatibilidade do material Lambert. O Three.js embarcado em alguns
-   navegadores não expõe flatShading como propriedade configurável e emitia
-   um aviso a cada malha. Aplica a opção somente quando o motor a suporta;
-   malhas TIN exatas já são desindexadas e mantêm normais planas por face. */
+/* Three r128 não implementa flatShading no Lambert. Phong sem componente
+   especular calcula a normal de cada face no fragment shader: mantém vincos
+   sem soldar vértices, duplicar a TIN nem alterar os índices originais. */
 function v3LambertMaterial(opt,flat){
-  const m=new THREE.MeshLambertMaterial(opt||{});
-  if('flatShading' in m){m.flatShading=!!flat;m.needsUpdate=true;}
-  return m;
+  if(flat)return new THREE.MeshPhongMaterial({...opt,flatShading:true,specular:0x000000,shininess:0});
+  return new THREE.MeshLambertMaterial(opt||{});
 }
 /* Aparência única para Mapa, Layout e 3D. "hipso" permanece como nome
    histórico da opção, mas significa usar o estilo atual da camada raster. */
@@ -496,9 +494,35 @@ function v3RasterStyleHasLight(r,tex3d){
   const modo=(r&&r.style&&r.style.mode)||'hipso_hs';
   return modo==='hs'||modo==='hipso_hs'||/sombread/.test(modo);
 }
+function v3RasterOpacity(r){
+  const raw=r&&r.style&&r.style.opacity;
+  if(raw===undefined||raw===null||String(raw).trim()==='')return 1;
+  const n=Number(typeof raw==='string'?raw.replace(',','.'):raw);
+  return Number.isFinite(n)?Math.max(0,Math.min(1,n)):1;
+}
+/* A opacidade pertence à superfície, não ao raio X dos vetores. Um MDT a
+   100% escreve no depth buffer normalmente. Partes auxiliares, como a malha
+   de arestas a 20%, conservam sua proporção de transparência e depthWrite. */
+function v3ApplySurfaceOpacity(r,material,factor){
+  if(Array.isArray(material)){material.forEach(m=>v3ApplySurfaceOpacity(r,m,factor));return;}
+  if(!material)return;
+  const base=material._v3RasterOpacityBase||(material._v3RasterOpacityBase={
+    factor:factor===undefined?(Number.isFinite(material.opacity)?material.opacity:1):factor,
+    depthWrite:material.depthWrite!==false,
+    visible:material.visible!==false
+  });
+  const opacity=v3RasterOpacity(r)*base.factor,transparent=opacity<1,
+    depthWrite=opacity>=1&&base.depthWrite,visible=opacity>0&&base.visible;
+  const changed=material.transparent!==transparent||material.depthWrite!==depthWrite||
+    material.visible!==visible;
+  material.opacity=opacity;material.transparent=transparent;
+  material.depthWrite=depthWrite;material.visible=visible;
+  if(changed)material.needsUpdate=true;
+}
 function v3SurfaceMaterial(r,opt,flat,tex3d){
-  if(v3RasterStyleHasLight(r,tex3d))return v3LambertMaterial(opt,flat);
-  return new THREE.MeshBasicMaterial(opt||{});
+  const mat=v3RasterStyleHasLight(r,tex3d)?v3LambertMaterial(opt,flat):new THREE.MeshBasicMaterial(opt||{});
+  v3ApplySurfaceOpacity(r,mat,1);
+  return mat;
 }
 /* Separa apenas os vincos fortes da TIN. Dentro de um mesmo talude os
    triângulos compartilham normal; entre berma horizontal e talude inclinado
@@ -596,7 +620,7 @@ const TIFF_CHUNK_SAMPLES=8e6;         // amostras por bloco de leitura
    agrupa os acessos ao provider. Arquivos pequenos ainda aceitam cópia RAM.
    --------------------------------------------------------------------------- */
 function rasterImportCheck(control){
-  if(control&&control.signal&&control.signal.aborted)
+  if(control&&((control.signal&&control.signal.aborted)||(control.isCurrent&&control.isCurrent()===false)))
     throw Object.assign(new Error('Importação cancelada'),{name:'AbortError'});
 }
 function rasterImportError(error){
@@ -742,7 +766,7 @@ async function parseTIFF(src,control){
 
   let progress=0,lastPercent=-1;
   const sampled=preview?await rasterImportWait(preview.read(img,nc,nr,{
-    isCurrent:()=>!(control&&control.signal&&control.signal.aborted),
+    isCurrent:()=>!(control&&control.signal&&control.signal.aborted)&&(!control||!control.isCurrent||control.isCurrent()),
     onProgress:({loaded,total})=>{
       progress=loaded;
       const pct=Math.floor(100*loaded/Math.max(1,total));
@@ -990,7 +1014,12 @@ function assinaturaBate(a, b){
   }
   return tot>0 && ok/tot >= 0.85;                  // 85% das amostras batem
 }
-async function lembraFonte(r,h){ if(h) try{ await idbSet(fonteKey(r), h); }catch(_){} }
+async function lembraFonte(r,h){
+  const project=S.projectId,generation=window.GeoMineSessionAutosave?.state?.generation;
+  if(h)try{await idbSet(fonteKey(r),h);}catch(_){}
+  if(S.projectId!==project||window.GeoMineSessionAutosave?.state?.generation!==generation||!(S.rasters||[]).includes(r))return;
+  try{await window.GeoMineOriginalSources?.remember(r,'raster',h,r._projectSourceRaw);}catch(_){}
+}
 async function recuperaFonte(r){ try{ return await idbGet(fonteKey(r)); }catch(_){ return null; } }
 /* true quando a grade em memória NÃO serve como dado bruto */
 function precisaFonte(d){
@@ -1007,7 +1036,7 @@ function precisaFonte(d){
 function mesmaArea(a, b){
   const tol=Math.max(3*(b.cs||1), 3);
   return Math.abs(a.xll-b.xll)<=tol && Math.abs(a.yll-b.yll)<=tol &&
-         Math.abs(a.nc*a.cs - b.nc*b.cs)<=tol && Math.abs(a.nr*a.cs - b.nr*b.cs)<=tol;
+         Math.abs(a.nc*a.cs - b.nc*b.cs)<=tol && Math.abs(a.nr*(a.csy||a.cs) - b.nr*(b.csy||b.cs))<=tol;
 }
 /* O GeoTIFF pode JÁ estar aberto nesta sessão, em outra superfície ou no MDE do
    Hidro. Nesse caso pedir o arquivo de novo é só incômodo: basta emprestar os
@@ -1033,41 +1062,308 @@ function adotaFonte(r, q){
   r.d.fromProject=false;
   return r.d;
 }
-async function religaFonte(r, file){
-  const projeto=S.projectId,gradeAnterior=r.d;
-  const pertencia=(S.rasters||[]).includes(r);
-  const nova=await parseTIFF(file);
-  if(S.projectId!==projeto||r.d!==gradeAnterior||
-     (pertencia&&!(S.rasters||[]).includes(r)))return false;
-  const d=r.d;
-  // valida por ÁREA e, se houver assinatura guardada, por CONTEÚDO (aceita renomeado)
-  const areaOK=mesmaArea(nova, d);
-  const sigGuardada=d._sig || (r.src&&r.src.sig) || null;
-  const sigNova=assinaturaMDT(nova);
-  const conteudoOK = sigGuardada? assinaturaBate(sigGuardada, sigNova) : true;
-  if(!areaOK || !conteudoOK){
-    const fmt=g=>`${g.xll.toFixed(0)}–${(g.xll+g.nc*g.cs).toFixed(0)} × `+
-                 `${g.yll.toFixed(0)}–${(g.yll+g.nr*(g.csy||g.cs)).toFixed(0)}`;
-    const motivo = !areaOK? 'cobre outra área ('+fmt(nova)+' vs '+fmt(d)+')'
-                          : 'o conteúdo não confere com a superfície gravada';
-    toast('“'+file.name+'” '+motivo+' — não é o arquivo desta superfície');
-    return false;
+/* Legacy projects have no byte fingerprint yet. Verify their saved mean
+   preview against small windows of the SAME TIFF overview, never a fresh
+   full preview. Limits cover physical compressed/decoded blocks as well as
+   output pixels; a 1-pixel window may otherwise decode a multi-GB strip. */
+const RASTER_LEGACY_VERIFY_LIMITS=Object.freeze({
+  images:16,headerBlocks:1000000,headerBytes:16*1024*1024,previewPixels:12000000,windows:256,
+  windowPixels:16384,totalPixels:1048576,windowBlocks:64,minValid:16,
+  decodedBlockBytes:8*1024*1024,compressedBlockBytes:8*1024*1024,workingBytes:32*1024*1024,
+  totalDecodedBytes:256*1024*1024,totalCompressedBytes:128*1024*1024,fallbackPixels:1000000
+});
+function rasterLegacyUnsupported(reason,safeFallback=false){return {status:'unsupported',reason,safeFallback};}
+function rasterLegacyMismatch(reason){return {status:'mismatch',reason,safeFallback:false};}
+function rasterLegacyArray(value){
+  return Array.isArray(value)||ArrayBuffer.isView(value)?value:Number.isSafeInteger(value)?[value]:null;
+}
+function rasterLegacyEPSG(value){
+  const match=/^(?:EPSG:)?(\d+)$/i.exec(String(value||'').trim());
+  const number=match&&Number(match[1]);return Number.isSafeInteger(number)&&number>0&&number!==32767?number:null;
+}
+function rasterLegacyBlockCost(layout,bx,by){
+  const index=by*layout.across+bx,offset=Number(layout.offsets[index]),compressed=Number(layout.counts[index]);
+  const height=layout.tiled?layout.th:Math.min(layout.th,layout.height-by*layout.th);
+  const decoded=layout.tw*height*layout.bytesPerPixel;
+  return {offset,compressed,decoded,working:3*decoded+2*compressed};
+}
+async function rasterLegacyImageLayout(image,fileSize,control){
+  const L=RASTER_LEGACY_VERIFY_LIMITS,fd=image.fileDirectory||image.getFileDirectory?.()||{},
+    width=Number(image.getWidth()),height=Number(image.getHeight()),samples=Number(image.getSamplesPerPixel()),
+    bits=rasterLegacyArray(fd.BitsPerSample),tiled=fd.TileOffsets!=null,
+    tw=Number(tiled?fd.TileWidth:width),th=Number(tiled?fd.TileLength:fd.RowsPerStrip||height),
+    offsets=rasterLegacyArray(tiled?fd.TileOffsets:fd.StripOffsets),
+    counts=rasterLegacyArray(tiled?fd.TileByteCounts:fd.StripByteCounts);
+  if(![width,height,tw,th].every(v=>Number.isSafeInteger(v)&&v>0)||samples!==1||
+     !bits||bits.length!==1||![8,16,32,64].includes(Number(bits[0]))||!offsets||!counts)
+    return null;
+  const across=Math.ceil(width/tw),down=Math.ceil(height/th),blocks=across*down,
+    bytesPerPixel=Number(bits[0])/8,outputBytes=Math.max(4,bytesPerPixel);
+  if(!Number.isSafeInteger(blocks)||blocks>L.headerBlocks||offsets.length!==blocks||counts.length!==blocks)return null;
+  const layout={image,width,height,tiled,tw,th,across,down,offsets,counts,bytesPerPixel,outputBytes};
+  for(let index=0;index<blocks;index++){
+    if(index%16384===0){rasterImportCheck(control);if(index)await new Promise(resolve=>setTimeout(resolve,0));}
+    const cost=rasterLegacyBlockCost(layout,index%across,Math.floor(index/across));
+    if(!Number.isSafeInteger(cost.offset)||!Number.isSafeInteger(cost.compressed)||cost.offset<0||cost.compressed<0||
+       ((cost.offset===0)!==(cost.compressed===0))||!Number.isSafeInteger(cost.offset+cost.compressed)||
+       cost.offset+cost.compressed>fileSize||!Number.isSafeInteger(cost.decoded)||cost.decoded<=0||
+       cost.decoded>L.decodedBlockBytes||cost.compressed>L.compressedBlockBytes||cost.working>L.workingBytes)return null;
   }
-  const eraDem=(S.hidro && S.hidro.dem===d);
-  if(eraDem && typeof hShadeOff==='function') hShadeOff(true);
-  // preserva a assinatura (agora confirmada) para as próximas aberturas
-  nova._sig = sigNova;
-  r.d=nova;r._st=null;r._stFull=null;r.srcName=file.name;
-  if(typeof projectNativeInvalidate==='function')projectNativeInvalidate(r);
-  if(typeof projectNativeBindRasterSource==='function')projectNativeBindRasterSource(r,file);
-  else r._projectSourceRaw=file;
-  if(r.src) r.src.sig=sigNova; else r.src={sig:sigNova};
-  if(eraDem){ S.hidro.dem=nova; if(typeof hInvalidaD8==='function') hInvalidaD8(nova); }
-  if(typeof layoutInvalidateOrtho==='function')layoutInvalidateOrtho('mdt-source');
-  try{ renderRaster(r); }catch(e){}
-  refreshUI();
-  toast('“'+r.name+'” religada ao arquivo pleno ('+nova.nc+'×'+nova.nr+', '+nova.cs.toFixed(2)+' m)');
-  return true;
+  return layout;
+}
+function rasterLegacyWindowCost(layout,window,blockLimit=RASTER_LEGACY_VERIFY_LIMITS.windowBlocks){
+  const [left,top,right,bottom]=window;
+  if(!window.every(Number.isSafeInteger)||left<0||top<0||right>layout.width||bottom>layout.height||right<=left||bottom<=top)return null;
+  const x0=Math.floor(left/layout.tw),y0=Math.floor(top/layout.th),x1=Math.ceil(right/layout.tw),y1=Math.ceil(bottom/layout.th),
+    blocks=(x1-x0)*(y1-y0),pixels=(right-left)*(bottom-top);
+  if(blocks>blockLimit||!Number.isSafeInteger(pixels))return null;
+  let decoded=0,compressed=0;
+  for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+    const cost=rasterLegacyBlockCost(layout,x,y);decoded+=cost.decoded;compressed+=cost.compressed;
+  }
+  return {pixels,blocks,decoded,compressed,working:3*decoded+2*compressed+pixels*layout.outputBytes};
+}
+async function rasterLegacyProofPoints(d,control){
+  const L=RASTER_LEGACY_VERIFY_LIMITS,nc=d.nc,nr=d.nr,z=d.z,cells=nc*nr;
+  if(!Number.isSafeInteger(nc)||nc<1||!Number.isSafeInteger(nr)||nr<1||!Number.isSafeInteger(cells)||
+     cells>L.previewPixels||!z||z.length!==cells)return null;
+  const divisions=16,valid=new Array(256),empty=new Array(256);
+  let validCount=0,min=Infinity,max=-Infinity,minIndex=-1,maxIndex=-1;
+  for(let row=0;row<nr;row++){
+    if(row%32===0){rasterImportCheck(control);await new Promise(resolve=>setTimeout(resolve,0));}
+    const gy=Math.min(15,Math.floor(row*divisions/nr)),cy=(gy+.5)*nr/divisions;
+    for(let col=0;col<nc;col++){
+      const index=row*nc+col,value=z[index],finite=Number.isFinite(value),gx=Math.min(15,Math.floor(col*divisions/nc)),
+        cell=gy*divisions+gx,cx=(gx+.5)*nc/divisions,distance=(row+.5-cy)**2+(col+.5-cx)**2,slots=finite?valid:empty;
+      if(!slots[cell]||distance<slots[cell].distance)slots[cell]={index,distance};
+      if(finite){validCount++;if(value<min){min=value;minIndex=index;}if(value>max){max=value;maxIndex=index;}}
+    }
+  }
+  if(validCount<L.minValid)return null;
+  const chosen=new Map(),add=index=>{
+    if(index>=0&&!chosen.has(index))chosen.set(index,{row:Math.floor(index/nc),col:index%nc,expected:z[index]});
+  };
+  const distributed=(slots,limit)=>{
+    const rows=slots.filter(Boolean),count=Math.min(limit,rows.length);
+    for(let i=0;i<count;i++)add(rows[Math.floor((i+.5)*rows.length/count)].index);
+  };
+  distributed(valid,144);add(minIndex);add(maxIndex);distributed(empty,32);
+  for(let row=0;row<8;row++)for(let col=0;col<8;col++)add(Math.floor((row+.5)*nr/8)*nc+Math.floor((col+.5)*nc/8));
+  // Very sparse small extents may occupy few strata. Add evenly spaced valid
+  // cells instead of accepting fewer than the minimum content comparisons.
+  let selectedValid=[...chosen.values()].filter(p=>Number.isFinite(p.expected)).length;
+  if(selectedValid<L.minValid){
+    const target=Math.min(32,validCount),step=validCount/target;let ordinal=0,next=.5*step;
+    for(let index=0;index<cells;index++)if(Number.isFinite(z[index])){
+      if(ordinal>=Math.floor(next)){add(index);next+=step;}ordinal++;
+    }
+    selectedValid=[...chosen.values()].filter(p=>Number.isFinite(p.expected)).length;
+  }
+  if(selectedValid<L.minValid||chosen.size>L.windows)return null;
+  return {points:[...chosen.values()],validCount,validSamples:selectedValid,nodataSamples:chosen.size-selectedValid};
+}
+function rasterLegacyFloatMatches(actual,expected){
+  if(!Number.isFinite(actual)||!Number.isFinite(expected))return !Number.isFinite(actual)&&!Number.isFinite(expected);
+  const floats=new Float32Array(2),bits=new Uint32Array(floats.buffer);floats[0]=actual;floats[1]=expected;
+  const ordered=value=>(value&0x80000000)?0x80000000-(value&0x7fffffff):0x80000000+value;
+  return Math.abs(ordered(bits[0])-ordered(bits[1]))<=2;
+}
+async function rasterVerifyLegacyPreview(r,file,tiff,control={}){
+  const L=RASTER_LEGACY_VERIFY_LIMITS,d=r.d,expectedSize=Number(r.src?.size),
+    unsupported=reason=>rasterLegacyUnsupported(reason,false);
+  rasterImportCheck(control);
+  if(expectedSize>0&&file.size!==expectedSize)return rasterLegacyMismatch('o tamanho do arquivo não confere com o original gravado');
+  if(!Number.isSafeInteger(file.size)||file.size<=0)return unsupported('o tamanho do arquivo não está disponível');
+  const images=[],layouts=[];let headerBlocks=0,headerBytes=0;
+  for(let index=0;index<=L.images;index++){
+    let image;
+    try{image=await rasterImportWait(tiff.getImage(index),control);}
+    catch(error){
+      if(index>0&&['Error','RangeError'].includes(error?.name)&&error.message==='No image at index '+index)break;
+      throw error;
+    }
+    if(index===L.images)return unsupported('o TIFF excede o limite de imagens internas para esta conferência');
+    images.push(image);
+    const fd=image.fileDirectory||image.getFileDirectory?.()||{};
+    // Offset/count arrays from earlier IFDs remain alive with the TIFF. Bound
+    // their aggregate, including masks, rather than granting each IFD a fresh budget.
+    const offsets=rasterLegacyArray(fd.TileOffsets??fd.StripOffsets);
+    headerBlocks+=offsets?.length||0;
+    for(const value of Object.values(fd))headerBytes+=typeof value==='string'?value.length*2:
+      ArrayBuffer.isView(value)?value.byteLength:Array.isArray(value)?value.length*8:8;
+    if(headerBlocks>L.headerBlocks||headerBytes>L.headerBytes)
+      return unsupported('os índices acumulados do TIFF excedem o limite seguro de memória');
+    // The tile renderer skips mask IFDs. Every other possible source level
+    // must be safe before attachment, not only the overview sampled below.
+    if(index>0&&((Number(fd.NewSubfileType)||0)&4)){layouts.push(null);continue;}
+    const layout=await rasterLegacyImageLayout(image,file.size,control);
+    if(!layout)return unsupported('os blocos físicos ou metadados do TIFF excedem o limite seguro de leitura');
+    layouts.push(layout);
+  }
+  rasterImportCheck(control);
+  const base=images[0],layout0=layouts[0];
+  if(!base||!layout0)return unsupported('o TIFF não contém uma grade nativa válida');
+  const W=layout0.width,H=layout0.height,bb=base.getBoundingBox(),
+    fd=base.fileDirectory||base.getFileDirectory?.()||{},keys=base.getGeoKeys?.()||base.geoKeys||{},
+    actualCRS=rasterLegacyEPSG(keys.ProjectedCSTypeGeoKey||keys.GeographicTypeGeoKey),
+    expectedCRS=rasterLegacyEPSG(d.srcCRS||d.crs||S.workCRS),
+    sig=control.expectedSignature||d._sig||r.src?.sig,
+    dimensions=d.srcDims||sig?.srcDims||sig?.dims;
+  if(!bb||bb.length!==4||bb.some(value=>!Number.isFinite(value))||!(bb[2]>bb[0]&&bb[3]>bb[1]))return unsupported('a extensão do TIFF não é válida');
+  if(dimensions&&dimensions.length===2&&dimensions.every(value=>Number.isSafeInteger(value)&&value>0)&&
+     (dimensions[0]!==W||dimensions[1]!==H))return rasterLegacyMismatch('as dimensões nativas não conferem com a superfície gravada');
+  if(actualCRS&&expectedCRS&&actualCRS!==expectedCRS)return rasterLegacyMismatch('o CRS do TIFF não confere com o CRS da superfície');
+  const stored=[d.xll,d.yll,d.xll+d.nc*d.cs,d.yll+d.nr*(d.csy||d.cs)],
+    nativeStep=Math.max((bb[2]-bb[0])/W,(bb[3]-bb[1])/H),tolerance=Math.max(.000001,nativeStep*.00001);
+  if(stored.some(value=>!Number.isFinite(value))||stored.some((value,index)=>Math.abs(value-bb[index])>tolerance))
+    return rasterLegacyMismatch('a extensão georreferenciada do TIFF não confere com a superfície gravada');
+  const whole=W*H<=L.fallbackPixels?rasterLegacyWindowCost(layout0,[0,0,W,H],4096):null,
+    safeFallback=!!whole&&whole.working<=L.workingBytes;
+  const limited=reason=>rasterLegacyUnsupported(reason,safeFallback);
+  if(!actualCRS||!expectedCRS||!dimensions||dimensions.length!==2)return limited('faltam metadados para conferir CRS e dimensões nativas');
+  const transform=fd.ModelTransformation;
+  if((transform&&(Number(transform[1])!==0||Number(transform[4])!==0))||(fd.Orientation!=null&&Number(fd.Orientation)!==1))
+    return limited('a orientação da grade exige uma conferência específica');
+  if(d.previewMethod!=='mean'||!Number.isInteger(d.ovr)||d.ovr<0||d.ovr>=images.length||!layouts[d.ovr])
+    return limited('a overview usada na prévia não está registrada ou não está disponível neste TIFF');
+  if(!Number.isInteger(d.resampled)||d.resampled<1||Math.max(2,Math.floor(W/d.resampled))!==d.nc||Math.max(2,Math.floor(H/d.resampled))!==d.nr)
+    return limited('a grade salva não informa a mesma redução usada na importação');
+  const layout=layouts[d.ovr],image=images[d.ovr],width=layout.width,height=layout.height,
+    lowerScale=Math.max(W/width,H/height),upperScale=Math.min(width>1?W/(width-1):Infinity,height>1?H/(height-1):Infinity);
+  if(width<d.nc||height<d.nr||width>W||height>H||lowerScale>upperScale+1e-9)
+    return limited('as dimensões da overview não correspondem à grade salva');
+  const selected=await rasterLegacyProofPoints(d,control);
+  if(!selected)return limited('não há amostras válidas suficientes dentro do limite de conferência');
+  const reads=[];let pixels=0,decoded=0,compressed=0;
+  for(const point of selected.points){
+    const left=Math.min(width-1,Math.floor(point.col*width/d.nc)),top=Math.min(height-1,Math.floor(point.row*height/d.nr)),
+      right=Math.max(left+1,Math.min(width,Math.floor((point.col+1)*width/d.nc))),
+      bottom=Math.max(top+1,Math.min(height,Math.floor((point.row+1)*height/d.nr))),window=[left,top,right,bottom],cost=rasterLegacyWindowCost(layout,window);
+    if(!cost||cost.pixels>L.windowPixels||cost.working>L.workingBytes)return limited('uma janela de conferência excede o limite seguro de leitura');
+    pixels+=cost.pixels;decoded+=cost.decoded;compressed+=cost.compressed;
+    if(pixels>L.totalPixels||decoded>L.totalDecodedBytes||compressed>L.totalCompressedBytes)return limited('a conferência excede o orçamento total de leitura');
+    reads.push({point,window,cost});
+  }
+  let nd=base.getGDALNoData?.();if(nd==null&&fd.GDAL_NODATA!=null)nd=parseFloat(fd.GDAL_NODATA);
+  const runtime=globalThis.GeoMineTileRuntime;
+  for(let index=0;index<reads.length;index++){
+    rasterImportCheck(control);const {point,window,cost}=reads[index];
+    if(typeof showLoad==='function')showLoad('Conferindo amostras do original — '+Math.floor(100*index/reads.length)+'%');
+    const options={samples:[0],window,signal:control.signal};
+    const bands=await rasterImportWait(runtime?runtime.read(image,options,{isCurrent:control.isCurrent,priority:-100}):image.readRasters(options),control);
+    const band=bands?.[0];
+    if(!band||band.length!==cost.pixels)throw Error('O TIFF devolveu uma janela de conferência incompleta.');
+    let sum=0,count=0;
+    for(let k=0;k<band.length;k++){
+      const value=band[k];if((nd!=null&&value===nd)||!Number.isFinite(value)||value<-1e30)continue;
+      sum+=value;count++;
+    }
+    const actual=count?Math.fround(sum/count):NaN;
+    if(!rasterLegacyFloatMatches(actual,point.expected))return rasterLegacyMismatch('as cotas ou a máscara NoData não conferem com a superfície gravada');
+    if(index%8===7)await new Promise(resolve=>setTimeout(resolve,0));
+  }
+  rasterImportCheck(control);
+  return {status:'verified',safeFallback:false,proof:{method:'mean-overview-v1',overview:d.ovr,
+    validSamples:selected.validSamples,nodataSamples:selected.nodataSamples,windows:reads.length,pixels,
+    decodedBytes:decoded,compressedBytes:compressed,headerBlocks,headerBytes}};
+}
+async function religaFonte(r, file,options={}){
+  if(!r||!r.d||!file)return false;
+  const projeto=S.projectId,generation=window.GeoMineSessionAutosave?.state?.generation,
+    account=window.GeoMineCloudProvider?.user?.uid||'offline',crs=S.workCRS,
+    gradeAnterior=r.d,previousPreview=projectNativePreview(r,'raster'),
+    originalSource=r.originalSource,nativeSource=r.projectNativeSource,
+    identity=projectNativeRasterIdentity(r),raw=r._projectSourceRaw,
+    pertencia=(S.rasters||[]).includes(r);
+  const current=()=>!options.signal?.aborted&&S.projectId===projeto&&S.workCRS===crs&&
+    window.GeoMineSessionAutosave?.state?.generation===generation&&
+    (window.GeoMineCloudProvider?.user?.uid||'offline')===account&&r.d===gradeAnterior&&r._projectSourceRaw===raw&&
+    r.originalSource===originalSource&&r.projectNativeSource===nativeSource&&projectNativeRasterIdentity(r)===identity&&
+    (!pertencia||(S.rasters||[]).includes(r))&&(!options.isCurrent||options.isCurrent());
+  const unchanged=()=>current()&&projectNativePreview(r,'raster')===previousPreview;
+  const control={...options,isCurrent:current};
+  let temporary=null,committed=false;
+  try{
+    if(!current())return false;
+    const descriptors=[
+      originalSource?.v===1&&!originalSource.invalidated&&originalSource.kind==='raster'&&originalSource.preview===previousPreview?originalSource:null,
+      nativeSource?.v===1&&!nativeSource.invalidated&&!r.projectSavePending&&nativeSource.preview===previousPreview?nativeSource:null
+    ].filter(Boolean);
+    if(!descriptors.length&&(
+      originalSource?.v===1&&(originalSource.invalidated||originalSource.kind!=='raster'||originalSource.preview!==previousPreview)||
+      nativeSource?.v===1&&(nativeSource.invalidated||nativeSource.preview!==previousPreview))){
+      toast('A superfície foi alterada desde o vínculo com este original. A prévia foi preservada; importe o original como uma nova camada.');
+      return false;
+    }
+    if(descriptors.length){
+      // File inputs on iPad supply bytes, not reusable filesystem handles.
+      // Confirm the saved byte identity before attaching only the TIFF index.
+      const candidates=descriptors.filter(d=>d.size===file.size);
+      const fingerprint=candidates.length?await rasterImportWait(projectNativeFingerprint(file),control):null;
+      if(!unchanged())return false;
+      const matched=candidates.find(d=>d.fingerprint===fingerprint);
+      if(!matched){toast('“'+file.name+'” não confere com o original gravado desta superfície. O projeto foi mantido.');return false;}
+      const ok=await projectAttachNativeRaster(r,file,{...control,descriptor:matched===nativeSource?nativeSource:null});
+      if(ok)toast('“'+r.name+'” religada ao original; prévia preservada e resolução nativa disponível.');
+      return ok;
+    }
+    // A legacy project has no confirmed byte identity. Prove its mean preview
+    // from bounded windows before attaching the original, without rebuilding Z.
+    const sigGuardada=options.expectedSignature||gradeAnterior._sig||(r.src&&r.src.sig)||null;
+    if(Number(r.src?.size)>0&&file.size!==Number(r.src.size)){
+      toast('“'+file.name+'” não tem o tamanho do original gravado desta superfície. O projeto foi mantido.');return false;
+    }
+    await rasterImportWait(ensureGeoTIFF(),control);rasterImportCheck(control);
+    temporary=await rasterImportOpen(file,control);rasterImportCheck(control);
+    const verification=await rasterVerifyLegacyPreview(r,file,temporary,control);
+    if(!unchanged())return false;
+    if(verification.status==='verified'){
+      // projectAttachNativeRaster owns this TIFF, including an early abort.
+      const ready=temporary;temporary=null;
+      const ok=await projectAttachNativeRaster(r,file,{...control,tiff:ready});
+      if(ok){
+        window.GeoMineOriginalSources?.validated(r,'raster',previousPreview);
+        toast('“'+r.name+'” conferida e ligada ao original, mantendo a grade e as coordenadas do projeto.');
+      }
+      return ok;
+    }
+    if(verification.status==='mismatch'||!verification.safeFallback){
+      toast('“'+file.name+'”: '+verification.reason+'. A leitura foi interrompida sem alterar o projeto.');return false;
+    }
+    // Small files without reproducible overview metadata keep the established
+    // validation path, only after the whole native read passed the hard budget.
+    const nova=await parseTIFF(file,{...control,tiff:temporary});
+    if(!unchanged())return false;
+    const areaOK=mesmaArea(nova,gradeAnterior),sigNova=assinaturaMDT(nova),
+      conteudoOK=sigGuardada?assinaturaBate(sigGuardada,sigNova):true;
+    if(!areaOK||!conteudoOK){
+      const fmt=g=>`${g.xll.toFixed(0)}–${(g.xll+g.nc*g.cs).toFixed(0)} × `+
+                   `${g.yll.toFixed(0)}–${(g.yll+g.nr*(g.csy||g.cs)).toFixed(0)}`;
+      const motivo=!areaOK?'cobre outra área ('+fmt(nova)+' vs '+fmt(gradeAnterior)+')'
+                          :'o conteúdo não confere com a superfície gravada';
+      toast('“'+file.name+'” '+motivo+' — não é o arquivo desta superfície');return false;
+    }
+    nova._sig=sigNova;
+    const staged={d:nova};projectNativeBindRasterSource(staged,file);
+    if(!unchanged())return false;
+    if(globalThis.GeoMineRasterImport)GeoMineRasterImport.release(temporary);
+    const eraDem=S.hidro&&S.hidro.dem===gradeAnterior;
+    r.d=nova;r._st=null;r._stFull=null;r.srcName=file.name;r.demHD=true;r.dispFull=true;
+    r._projectSourceRaw=staged._projectSourceRaw;r._projectNativeBinding=staged._projectNativeBinding;
+    if(r.src)r.src.sig=sigNova;else r.src={sig:sigNova};
+    if(eraDem)S.hidro.dem=nova;
+    committed=true;
+    window.GeoMineOriginalSources?.validated(r,'raster',previousPreview);
+    projectNativeInvalidate(r);
+    try{
+      if(eraDem){if(typeof hShadeOff==='function')hShadeOff(true);if(typeof hInvalidaD8==='function')hInvalidaD8(nova);}
+      if(typeof layoutInvalidateOrtho==='function')layoutInvalidateOrtho('mdt-source');
+      renderRaster(r);refreshUI();
+    }catch(e){console.warn('Exibição do MDT religado:',e);}
+    toast('“'+r.name+'” religada ao arquivo pleno ('+nova.nc+'×'+nova.nr+', '+nova.cs.toFixed(2)+' m)');
+    return true;
+  }catch(error){if(error?.name==='AbortError')return false;throw error;}
+  finally{if(!committed&&temporary)await projectCloseNativeRasterSource(temporary);}
 }
 /* ---------------------------------------------------------------------------
    pedeFonte — janela pedindo o GeoTIFF original.
@@ -1674,7 +1970,7 @@ function hMontaTopo(){
       const nr2={id:rid++, name:'Topografia final', d:{nc:g.nc,nr:g.nr,cs:g.cs,xll:g.xll,yll:g.yll,z:Float64Array.from(g.z)},
         src:{file:'topografia', at:new Date().toISOString()},
         style:{mode:'hipso_hs', opacity:0.85}, visible:true, overlay:null};
-      S.rasters.push(nr2); renderRaster(nr2); refreshUI();
+      S.rasters.push(nr2);placeProductAbove(nr2,base); renderRaster(nr2); refreshUI();
       projectAutoSaveRaster(nr2);
       hideLoad();
       out.innerHTML=`<b>Topografia final</b> sobre “${esc(base.name)}” · ${g.nc}×${g.nr} · ${g.cs.toFixed(2)} m`+
@@ -2137,6 +2433,7 @@ document.getElementById('btnIdfManual').onclick=()=>{
 document.getElementById('hASC').addEventListener('change',async e=>{
   const f=e.target.files[0]; if(!f)return;
   try{ showLoad('Lendo MDE…');
+    await window.GeoMineImportRecovery?.before();
     const ext=(f.name.split('.').pop()||'').toLowerCase();
     let d;
     if(ext==='tif'||ext==='tiff') d=await parseTIFF(await bufferFonte(f));
@@ -2208,7 +2505,7 @@ document.getElementById('btnRaw').onclick=async()=>{
   try{laminaD8Status();}catch(e){}
 };
 
-function hDirecaoSetas(d){
+function hDirecaoSetas(d,source=(S.rasters||[]).find(r=>String(r.id)===String(S.hidro.sourceRasterId))){
   const valid=d.dir.reduce((n,v)=>n+(v>=0),0);
   const passo=Math.max(1,Math.ceil(Math.sqrt(valid/5000)));
   const feats=[], cs=+d.cs||1, csy=+(d.csy||d.cs)||cs;
@@ -2223,7 +2520,7 @@ function hDirecaoSetas(d){
     feats.push({geom:[[a,e],[h1,e,h2]],multi:true,props:{AZIMUTE:+az.toFixed(1),CELULA:k}});
   }
   const velhas=S.layers.filter(l=>/^Direção de fluxo D8/.test(l.name)); velhas.forEach(deleteVectorLayer);
-  const L=addLayer({name:'Direção de fluxo D8 — setas',gtype:'line',crs:S.workCRS,features:feats,
+  const L=addLayer({sourceLayer:source,name:'Direção de fluxo D8 — setas',gtype:'line',crs:S.workCRS,features:feats,
     fields:[{name:'AZIMUTE',type:'N',length:8,decimal:1},{name:'CELULA',type:'N',length:12,decimal:0}],
     color:'#2585c7'});
   L.weight=1.4; if(L.sym){L.sym.weight=1.4;L.sym.color='#2585c7';}
@@ -2231,12 +2528,13 @@ function hDirecaoSetas(d){
   return feats.length;
 }
 document.getElementById('btnD8Dir').onclick=async()=>{
+  const source=(S.rasters||[]).find(r=>String(r.id)===String(S.hidro.sourceRasterId));
   const d=S.hidro.dem; if(!d){toast('Carregue o MDE primeiro');return;}
   progStart(`Direção de fluxo D8 · ${d.nc}×${d.nr}`);
   try{
     await d8dirAsync(d,0,1);
     delete d.acc;
-    const n=hDirecaoSetas(d);
+    const n=hDirecaoSetas(d,source);
     document.getElementById('hDirOut').innerHTML=`Direção D8 calculada. <b>${n.toLocaleString('pt-BR')}</b> setas amostradas no mapa.`;
     document.getElementById('btnD8Acc').disabled=false;
     document.getElementById('btnStreams').disabled=true;
@@ -2255,6 +2553,7 @@ function hAccSelectRefresh(selId){
   if([...s.options].some(o=>o.value===String(prev)))s.value=String(prev);
 }
 document.getElementById('btnD8Acc').onclick=async()=>{
+  const source=(S.rasters||[]).find(r=>String(r.id)===String(S.hidro.sourceRasterId));
   const d=S.hidro.dem; if(!d||!d.dir){toast('Gere primeiro a direção de fluxo');return;}
   progStart(`Acumulação de fluxo · ${d.nc}×${d.nr}`);
   try{
@@ -2264,7 +2563,7 @@ document.getElementById('btnD8Acc').onclick=async()=>{
     const r={id:rid++,name:'Acumulação de fluxo D8',d:gd,
       src:{file:'D8('+((S.hidro.demName)||'MDE')+')',size:0,at:new Date().toISOString()},
       style:{mode:'hipso',opacity:.82},visible:true,overlay:null};
-    S.rasters.push(r);renderRaster(r);S.selRaster=r;refreshUI();hAccSelectRefresh(r.id);
+    S.rasters.push(r);placeProductAbove(r,source);renderRaster(r);S.selRaster=r;refreshUI();hAccSelectRefresh(r.id);
     projectAutoSaveRaster(r);
     document.getElementById('hAccOut').innerHTML=`Acumulação calculada para <b>${d.nc*d.nr}</b> células e adicionada como raster.`;
     ['btnStreams','btnBasin'].forEach(id=>document.getElementById(id).disabled=false);
@@ -2350,7 +2649,7 @@ document.getElementById('btnStreams').onclick=()=>{
         f.props=f.props||{};
         f.props.LIMIAR=thr;f.props.FONTE=fonte;f.props.REDE=n;
       });
-      const L=addLayer({
+      const L=addLayer({sourceLayer:ar||'R:'+S.hidro.sourceRasterId,
         name:`Rede de drenagem ${n} — limiar ${thr}${d._bruto?' · bruto':''}`,
         gtype:'line',crs:S.workCRS,features:feats,
         fields:[
@@ -2459,6 +2758,7 @@ function baciaRegistraExutorio(w,nome){
   return L;
 }
 function runBasinClick(latlng){
+  if(window.GeoMinePointCatchment)return window.GeoMinePointCatchment.click(latlng);
   const d=S.hidro.dem;
   const c=fromWGS(S.workCRS, latlng.lng, latlng.lat);
   const raioEl=document.getElementById('hBaciaSnap');
@@ -2472,7 +2772,7 @@ function runBasinClick(latlng){
     toast('Fora do MDE ou bacia não delimitável — modo encerrado'); return; }
   const nExut=((S.layers||[]).find(l=>l._exutorios)?.features||[]).length+1;
   const nome='Exutório '+nExut;
-  addLayer({name:'Bacia '+nExut+' ('+fmtArea(w.areaM2)+')', gtype:'polygon', crs:S.workCRS,
+  addLayer({sourceLayer:'R:'+S.hidro.sourceRasterId,name:'Bacia '+nExut+' ('+fmtArea(w.areaM2)+')', gtype:'polygon', crs:S.workCRS,
     features:[{geom:[w.ring],multi:true,props:{NOME:nome,
       AREA_M2:+w.areaM2.toFixed(0),AREA_HA:+(w.areaM2/10000).toFixed(3),
       E_EXUT:+w.outlet[0].toFixed(2),N_EXUT:+w.outlet[1].toFixed(2),
@@ -2901,7 +3201,7 @@ async function cnPoligonizarRaster(r,areaMin,totalArea){
     {name:'PERIM_M',type:'N',length:14,decimal:2},{name:'FONTE',type:'C',length:80,decimal:0},
     {name:'METODO',type:'C',length:40,decimal:0}
   ];
-  const L=addLayer({name:`Polígonos CN — grupo ${(r.cnMeta&&r.cnMeta.grupo)||'C'}`,
+  const L=addLayer({sourceLayer:r,name:`Polígonos CN — grupo ${(r.cnMeta&&r.cnMeta.grupo)||'C'}`,
     gtype:'polygon',crs:S.workCRS,features:feats,fields,color:'#2585c7'});
   L._cnVector=true;L.cnRasterId=r.id;
   L.sym={...L.sym,mode:'cat',field:'CLASSE',cats};
@@ -2985,7 +3285,7 @@ async function gerarCnOrto(){
       cnMeta:{grupo:vals.grupo,rock:vals.rock,ant:vals.ant,veg:vals.veg,limite:lim.nome,
         algoritmo:'K-means RGB+ExG+saturação+luminosidade+textura',
         mdt:mdt?mdt.name:null,classes:[...detalhes.values()],counts:{rock:nr,ant:na,veg:nv,nodata:nd}}};
-    S.rasters.push(r);S._cnRaster=r;renderRaster(r);S.selRaster=r;
+    S.rasters.push(r);placeProductAbove(r,I);S._cnRaster=r;renderRaster(r);S.selRaster=r;
     projectAutoSaveRaster(r);
     if(mdt){
       const velha=(S.rasters||[]).find(x=>x._cnSlope);
@@ -2998,7 +3298,7 @@ async function gerarCnOrto(){
           {value:3,label:'Moderado — 8 a 20%',color:'#fdae61'},
           {value:4,label:'Íngreme — acima de 20%',color:'#d7191c'}]},
         visible:false,overlay:null,_cnSlope:true};
-      S.rasters.push(rd);renderRaster(rd);
+      S.rasters.push(rd);placeProductAbove(rd,mdt);renderRaster(rd);
       projectAutoSaveRaster(rd);
     }
     const n=nr+na+nv, pct=x=>n?100*x/n:0;
@@ -3307,7 +3607,7 @@ async function runLaminaChuva(latlng){
       TC_MIN:+tc.toFixed(0), BACIA_HA:+(A/1e4).toFixed(2), COEF_C:+C.toFixed(3),
       METODO:escRun.metodo, PERDAS_MM:+escRun.perda.toFixed(1), CN_EQ:escRun.CN?+escRun.CN.toFixed(1):null,
       VOL_ESCOADO_M3:+V.toFixed(0), BARRAMENTO:(B?B.L.name:'—') }};
-    const cam=addLayer({ name:`Lâmina de projeto ${lv.toFixed(2)} m`, gtype:'polygon', crs:S.workCRS,
+    const cam=addLayer({sourceLayer:'R:'+S.hidro.sourceRasterId, name:`Lâmina de projeto ${lv.toFixed(2)} m`, gtype:'polygon', crs:S.workCRS,
       features:[feat],
       fields:[{name:'COTA_M',type:'N',length:10,decimal:2},{name:'LAMINA_M',type:'N',length:10,decimal:2},
               {name:'AREA_M2',type:'N',length:14,decimal:0},{name:'AREA_HA',type:'N',length:12,decimal:3},
@@ -3320,7 +3620,7 @@ async function runLaminaChuva(latlng){
       color:'#1565c0' });
     if(cam){ cam.fill=0.35; if(cam.sym){ cam.sym.fill=0.35; } try{ drawLayer(cam); }catch(e){} }
     // a bacia contribuinte também vira camada — é o que justifica o volume
-    if(W.ring&&modoBacia==='d8') addLayer({name:`Área contribuinte D8 (${fmtArea(A)})`,gtype:'polygon',crs:S.workCRS,
+    if(W.ring&&modoBacia==='d8') addLayer({sourceLayer:'R:'+S.hidro.sourceRasterId,name:`Área contribuinte D8 (${fmtArea(A)})`,gtype:'polygon',crs:S.workCRS,
       features:[{geom:[W.ring],multi:true,props:{AREA_M2:+A.toFixed(0),AREA_HA:+(A/1e4).toFixed(3),FONTE:'D8 preenchido'}}],
       fields:[{name:'AREA_M2',type:'N',length:14,decimal:0},{name:'AREA_HA',type:'N',length:12,decimal:3},
               {name:'FONTE',type:'C',length:30,decimal:0}],color:'#7aa2f7'});

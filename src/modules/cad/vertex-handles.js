@@ -41,6 +41,14 @@ for(const type of ['pointerup','pointercancel'])window.addEventListener(type,()=
 window.addEventListener('pointermove',ev=>{
   if(ev.pointerType!=='touch'&&ev.buttons===0)finishInterrupted(activeDrag());
 },true);
+// Keep only the latest sample between paints; pointer release commits it
+// synchronously so a fast final movement cannot be lost.
+function dragFrame(apply){
+  let frame=0,pending=false,value;
+  const flush=()=>{if(frame)cancelAnimationFrame(frame);frame=0;if(!pending)return;pending=false;const v=value;value=undefined;apply(v);};
+  return {push(v){value=v;pending=true;if(!frame)frame=requestAnimationFrame(flush);},flush,
+    cancel(){if(frame)cancelAnimationFrame(frame);frame=0;pending=false;value=undefined;}};
+}
 function flushRender(){
   if(S._vtxDragging||(typeof ED!=='undefined'&&ED.drag))return;
   (S.layers||[]).forEach(L=>{if(L._vertexRenderPending)finishVertexRender(L);});
@@ -48,5 +56,5 @@ function flushRender(){
 for(const type of ['pointerup','pointercancel','mouseup','touchend','touchcancel','blur'])
   window.addEventListener(type,()=>setTimeout(flushRender,0),true);
 function toolChanged(){flushRender();if(typeof ED!=='undefined'&&ED.on&&typeof edRedraw==='function')edRedraw();}
-window.GeoMineVertexHandles={legacyActive,beginLegacy,icon,priority,toolChanged};
+window.GeoMineVertexHandles={legacyActive,beginLegacy,icon,priority,toolChanged,dragFrame};
 })();

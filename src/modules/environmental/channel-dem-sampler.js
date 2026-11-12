@@ -133,6 +133,17 @@
       // A full in-memory import is still invalid if its TIFF geometry rotated.
       assertAxisAligned(original);
     }
+    // GeoTIFF.js returns the point tie as the box corner. PixelIsPoint TIFFs
+    // need the GDAL/RFC33 half-cell shift before locating a native cell.
+    // Already corrected/generated grids must not be shifted a second time.
+    const nativeImage=image||original,keys=nativeImage?.getGeoKeys?.()||nativeImage?.geoKeys||{},
+      fd=nativeImage?.fileDirectory||nativeImage?.getFileDirectory?.()||{},
+      first=v=>ArrayBuffer.isView(v)||Array.isArray(v)?v[0]:v;
+    if(g&&Number(keys.GTRasterTypeGeoKey)===2){
+      const bb=nativeImage.getBoundingBox?.(),raw=bb&&shape({nc:g.nc,nr:g.nr,cs:(bb[2]-bb[0])/g.nc,csy:(bb[3]-bb[1])/g.nr,xll:bb[0],yll:bb[1]});
+      if(image||raw&&sameBounds(g,raw))g={...g,xll:g.xll-g.cs/2,yll:g.yll+g.csy/2};
+    }
+    const float32=image?Number(first(fd.SampleFormat))===3&&Number(first(fd.BitsPerSample))===32:grid.z instanceof Float32Array;
     if(!g)throw new Error('Grade do MDT inválida.');
     const crs=recovered?.sourceCRS||grid.crs||d.crs||r.crs||grid.srcCRS||d.srcCRS||r.srcCRS||
         (!image&&!original&&generatedInWorkCRS(r)?workCRS:null),
@@ -280,7 +291,7 @@
     }
     try{check();}catch(e){close();throw e;}
     return Object.freeze({resolution,label:String(r.name||'MDT')+' — resolução nativa',native:true,
-      sourceKey:'R:'+String(r.id??'')+':channel:'+String(++serial),sample,close,sourceCRS:crs,
+      float32,sourceKey:'R:'+String(r.id??'')+':channel:'+String(++serial),sample,close,sourceCRS:crs,
       grid:Object.freeze({...g}),locate,cells,readWindow,toRaster:proj.toRaster,toWork:proj.toWork,isCurrent:current});
     }catch(e){recovered?.close();throw e;}
   }

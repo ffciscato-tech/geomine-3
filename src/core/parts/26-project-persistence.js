@@ -1,7 +1,7 @@
 /* ============================================================================
    PROJETO — salvar/carregar (.ccmgis)
    ========================================================================== */
-function projectData(){
+function projectData(options){
   /* O projeto nunca grava atributos de área anteriores à geometria atual. */
   autoAreaSyncAll();
   /* Garante que os campos próprios da prancha ativa (selo, escala, legenda,
@@ -13,7 +13,8 @@ function projectData(){
      mapa enquanto o usuário está no Layout. O arquivo do projeto, porém,
      deve continuar guardando como estado principal o mapa 2D que existia
      antes de entrar nessa aba; cada fotografia de prancha já é persistida
-     separadamente em `plates`. */
+     separadamente em `plates`. Nomes são metadados atuais do projeto: uma
+     renomeação feita no Layout nunca é substituída pelo nome do instantâneo. */
   const mapa2D=(S._view==='layout'&&S._preLayoutMapState)?S._preLayoutMapState:null,
     mapa2DConv=mapa2D&&mapa2D.conv?mapa2D.conv:null,
     mapa2DVis=mapa2D&&mapa2D.vis?mapa2D.vis:null,
@@ -50,6 +51,7 @@ function projectData(){
     workCRS:S.workCRS,
     screen:window.GeoMineProjectScreen?.capture()||null,
     projectMeta:S.projectMeta||null,
+    environmentalLicenses:window.GeoMineLicenses?.snapshot()??{version:1,licenses:[]},
     researchRequest:S.researchRequest||null,
     civil:window.GeoMineCivil?.snapshot()||null,
     cliLogo:window.GeoMineTitleblockLogo?.safeURL(S.cliLogo)||null,
@@ -72,15 +74,15 @@ function projectData(){
       baseRevision:Number.isFinite(+S.collaboration.baseRevision)?+S.collaboration.baseRevision:0,
       lastSeq:Number.isFinite(+S.collaboration.lastSeq)?+S.collaboration.lastSeq:0
     }:null,
-    groups:S.groups.map(g=>({id:g.id,name:g.name,collapsed:!!g.collapsed,
+    groups:S.groups.map(g=>({id:g.id,name:g.name,parentId:groupParentValue(g),collapsed:!!g.collapsed,
       visibilityResume:Array.isArray(g.visibilityResume)?g.visibilityResume.filter(k=>typeof k==='string'):[],
       _collabId:g._collabId||null})),
-    layers:S.layers.map(L=>{const c=convSalva('L',L.id);return ({
+    layers:S.layers.filter(L=>!options?.layerIds||options.layerIds.includes(L.id)).map(L=>{const c=convSalva('L',L.id);return ({
       // o id é parte do formato: as chaves 'L:id' do S.stack dependem dele
       // para a ordem sobreviver à abertura do projeto
       id:L.id,
       _collabId:L._collabId||null,
-      name:c&&c.name!=null?c.name:L.name, gtype:L.gtype, crs:L.crs,
+      name:L.name, gtype:L.gtype, crs:L.crs,
       visible:visSalva('L',L.id,L.visible!==false),locked:!!L.locked,
       labelField:c&&Object.prototype.hasOwnProperty.call(c,'labelField')?(c.labelField||''):(L.labelField||''),
       labelFields:c&&Object.prototype.hasOwnProperty.call(c,'labelFields')
@@ -118,6 +120,9 @@ function projectData(){
       _cava2DesignId:L._cava2DesignId||null,_cava2Kind:L._cava2Kind||null,
       _cava2Engine:L._cava2Engine||null,_cava2CutOf:L._cava2CutOf||null,
       _cava2MdtId:L._cava2MdtId??null,
+      _cava2Role:L._cava2Role||null,_cava2CutFillOf:L._cava2CutFillOf||null,
+      _cava2CutFinalized:!!L._cava2CutFinalized,_cava2IntersectionPreview:!!L._cava2IntersectionPreview,
+      _cava2Managed:!!L._cava2Managed,
       /* Cortes `_c` são fotografias vetoriais independentes. Estes metadados
          registram origem e nível sem recolocá-los no ciclo de atualização da
          cava paramétrica. */
@@ -129,16 +134,19 @@ function projectData(){
       _containerCount:L._containerCount||null,
       /* Identificador estável do domínio geológico; o nome da camada é
          editável e não pode ser usado para reconhecer seu papel ao reabrir. */
-      _geology:L._geology?layoutClone(L._geology):null
+      _geology:L._geology?layoutClone(L._geology):null,
+      /* Blasting shares the ordinary vector model. Keep the source engine,
+         conventions and batch identity independently from editable names. */
+      _blasting:L._blasting?layoutClone(L._blasting):null
     });}),
-    layout:{title:gv('loTitle'), sub:gv('loSub'), scale:gv('loScale'),
-      grid:gv('loGrid'), paper:gv('loPaper'), sat:gc('loSat'), legend:gc('loLegend'),
+    layout:{basemap:gv('loBasemap'),title:gv('loTitle'), sub:gv('loSub'), scale:gv('loScale'),
+      grid:gv('loGrid'), paper:gv('loPaper'), sat:gc('loSat'), legend:gc('loLegend'), groupNumbers:gc('loGroupNumbers'),
       mar:gv('loMar'), pad:gv('loPad'), fitW:gc('loFitW'), scaleAuto:gc('loScaleAuto'),
       gridAuto:gc('loGridAuto'), frozen:S.loFrozen!==false,
       figFrozenVis:S._figFrozenVis?{...S._figFrozenVis}:null,
       figLegendVis:S._figLegendVis?{...S._figLegendVis}:{}, figW:gv('loFigW'),
       figH:gv('loFigH'), txt:gv('loTxt'),
-      legFS:gv('loLegFS'), barFS:gv('loBarFS'), barSc:gv('loBarSc'), sym:gv('loSym'), legSc:gv('loLegSc'), cartFS:gv('loCartFS'), titFS:gv('loTitFS'),
+      legFS:gv('loLegFS'), coordFS:gv('loCoordFS'), barFS:gv('loBarFS'), barSc:gv('loBarSc'), sym:gv('loSym'), legSc:gv('loLegSc'), cartFS:gv('loCartFS'), titFS:gv('loTitFS'),
       legColGap:gv('loLegColGap'), mapSym:gv('loMapSym'), dashDens:gv('loDash'),dashGap:gv('loDashGap'),
       coords:gc('loCoords'), coordTop:gc('loCoordTop'), coordBottom:gc('loCoordBottom'),
       coordLeft:gc('loCoordLeft'), coordRight:gc('loCoordRight'), cart:gc('loCart'),
@@ -146,9 +154,10 @@ function projectData(){
       barPasso:gv('loBarPasso'), barAuto:gc('loBarAuto')},
     stack:(mapa2D&&Array.isArray(mapa2D.stack)?mapa2D.stack:(S.stack||[])).slice(),
     wms:(S.wms||[]).map(w=>({id:w.id,name:w.name,provider:w.provider||'',url:w.url,
-      layers:w.layers,version:w.version||'1.3.0',opacity:w.opacity??0.85,
+      layers:w.layers,version:w.version||'1.3.0',opacity:w.opacity??0.85,protocol:w.protocol||'WMS',wmts:w.wmts||null,
       visible:w.visible!==false,attribution:w.attribution||'',clipLayerId:w.clipLayerId||null})),
     plates:(S.plates||[]).map(pl=>({id:pl.id, _collabId:pl._collabId||null,
+      _blastingBatchId:pl._blastingBatchId??null,
       name:pl.name, f:{...pl.f}, c:pl.c?{...pl.c}:null,
       center:pl.center?pl.center.slice():null, vis:pl.vis?{...pl.vis}:null,
       conv:pl.conv?layoutClone(pl.conv):null,stack:Array.isArray(pl.stack)?pl.stack.slice():null,
@@ -156,19 +165,22 @@ function projectData(){
       nota:pl.nota?{...pl.nota}:null,             // caixa de texto da legenda (A3)
       groups:pl.groups?pl.groups.map(g=>({...g})):null})),
     plateId:S.plateId,
-    rasters:(S.rasters||[]).map(r=>{
+    rasters:(S.rasters||[]).filter(r=>!options?.rasterIds||options.rasterIds.includes(r.id)).map(r=>{
       const c=convSalva('R',r.id),
         source=typeof projectNativeRasterGradeToSave==='function'?projectNativeRasterGradeToSave(r):r.d,
-        g=gradeParaSalvar(source);
+        // Calculated geostatistical grids have no external TIFF to recover
+        // later. Persist every authored cell at its selected resolution.
+        g=['geostatistics','cava2-clipped'].includes(r.src?.kind)?source:gradeParaSalvar(source);
       /* Se a grade Original foi editada sem alterar a prévia de tela, estas
          células precisam sobreviver mesmo quando a cópia TIFF não pode ser
          gravada. Um simples cache Original não muda a grade portátil. */
       return ({
-      name:c&&c.name!=null?c.name:r.name, visible:visSalva('R',r.id,r.visible!==false),
+      name:r.name, visible:visSalva('R',r.id,r.visible!==false),
       dispFull:!!r.dispFull, demHD:!!r.demHD,
       src:r.src||null, groupId:r.groupId??null, rid:r.id,
       _collabId:r._collabId||null,
       projectFile:r.projectFile||null, projectSavedAt:r.projectSavedAt||null,
+      originalSource:window.GeoMineOriginalSources?.forSave(r,'raster',g)||null,
       projectNativeSource:typeof projectNativeForSave==='function'
         ?projectNativeForSave(r,'raster',g):(r.projectNativeSource||null),
       projectSavePending:!!r.projectSavePending,
@@ -177,7 +189,7 @@ function projectData(){
       tinAutoClip:typeof r._tinAutoClip==='boolean'?r._tinAutoClip:null,
       exactClipRings:r._exactClipRings||null, v3:r._v3?{...r._v3}:null,
       style:(s=>({mode:s.mode, opacity:s.opacity, classes:s.classes||null,
-             solidColor:s.solidColor||null}))((c&&c.style)||r.style),
+             solidColor:s.solidColor||null,localRelief:s.localRelief?{...s.localRelief}:null}))((c&&c.style)||r.style),
       cnMeta:r.cnMeta||null, cnOrto:!!r._cnOrto,
       srcName:r.srcName||null,
       sig:(r.d && (r.d._sig || (r.src&&r.src.sig))) || (function(){ try{ return assinaturaMDT(r.d._full||r.d); }catch(e){ return null; } })(),
@@ -208,11 +220,13 @@ function projectData(){
       // Persiste somente a prévia WM. A cópia UTM temporária usada pelo Layout
       // na sessão de migração não é duplicada dentro do arquivo .ccmgis.
       llb:S.img._llbounds||null, warpWM:!!S.img._warpWM,
-      name:(convSalva('I',0)&&convSalva('I',0).name)||S.img.name||'ortofoto',
+      mask:typeof orthoMaskForSave==='function'?orthoMaskForSave(S.img):null,
+      name:S.img.name||'ortofoto',
       visible:visSalva('I',0,S.img.visible!==false), groupId:S.img.groupId??null,
       // como o MDT: onde está a cópia nativa na pasta de trabalho, e o CRS de
       // origem fixado nas propriedades (null = cantos lidos no CRS de trabalho)
       projectFile:S.img.projectFile||null, projectSavedAt:S.img.projectSavedAt||null,
+      originalSource:window.GeoMineOriginalSources?.forSave(S.img,'ortho')||null,
       projectNativeSource:typeof projectNativeForSave==='function'
         ?projectNativeForSave(S.img,'ortho'):(S.img.projectNativeSource||null),
       projectSavePending:!!S.img.projectSavePending,
@@ -222,7 +236,10 @@ function projectData(){
       idf:S.hidro.idf?{K:S.hidro.idf.K,a:S.hidro.idf.a,b:S.hidro.idf.b,c:S.hidro.idf.c,
         Ts:S.hidro.idf.Ts||[],r2:S.hidro.idf.r2??null,rows:[]}:null }
   };
-  return snapshot(data);
+  // The bounded pre-import recovery writer owns its progress overlay and
+  // checks project/generation/edit-version between chunks. It can borrow
+  // geometry rather than duplicating the whole project before a TIFF read.
+  return options?.borrowGeometry===true?data:snapshot(data);
 }
 /* ============================================================================
    SALVAMENTO CLÁSSICO — somente Salvar / Salvar Como gravam o projeto.
@@ -319,7 +336,8 @@ async function ensureRW(h, ask=false){
 
 function hasContent(){ return !!(S.layers.length || S.groups.length ||
   (S.rasters&&S.rasters.length) || (S.wms&&S.wms.length) ||
-  (S.plates&&S.plates.length) || (S.img&&S.img.url) || S.projectMeta); }
+  (S.plates&&S.plates.length) || (S.img&&S.img.url) || S.projectMeta ||
+  window.GeoMineLicenses?.hasContent()); }
 
 async function autosaveNow(silent){
   // Compatibilidade com integrações antigas: nunca dispara uma gravação.
@@ -525,8 +543,12 @@ function reparaGeom(d){
 }
 
 function loadProject(d){
+  window.GeoMineCadHatch?.cancel();
   window.GeoMineFeatureStyleEditor?.close();
   window.GeoMineFeatureStyleBrush?.cancel();
+  window.GeoMineBlasting?.projectChanged?.();
+  window.GeoMinePointCatchment?.projectChanged?.();
+  window.GeoMineBlastingPresentation?.resetProject();
   const openingScope=GeoMineProjectOpening.begin();
   try{
   window.GeoMineCivil?.reset();
@@ -585,6 +607,7 @@ function loadProject(d){
   if(S.img && S.img.overlay) map.removeLayer(S.img.overlay);
   S.layers=[]; S.wms=[]; S.selFeat=null; S.img=null; S.stack=[]; S.plates=[]; S.plateId=null;
   S.projectId=d.projectId||('gm_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10));
+  window.GeoMineLicenses?.restore(d.environmentalLicenses);
   S.geology={schemaVersion:1,sections:[],settings:{}};
   S._v3SurfOn={...((d.v3&&d.v3.surfOn)||{})};
   S._v3TexTipo=(d.v3&&d.v3.texTipo)||'hipso';
@@ -593,7 +616,7 @@ function loadProject(d){
     ?{roomId:d.collaboration.roomId||null,roomName:d.collaboration.roomName||null,
       baseRevision:+d.collaboration.baseRevision||0,lastSeq:+d.collaboration.lastSeq||0}
     :null;
-  S.groups=(d.groups||[]).map(g=>({id:g.id,name:g.name,collapsed:!!g.collapsed,
+  S.groups=(d.groups||[]).map(g=>({id:g.id,name:g.name,parentId:groupParentValue(g),collapsed:!!g.collapsed,
       visibilityResume:Array.isArray(g.visibilityResume)?g.visibilityResume.filter(k=>typeof k==='string'):[],
     _collabId:g._collabId||null}));
   gid=S.groups.reduce((m,g)=>Math.max(m,g.id+1),gid);
@@ -609,7 +632,12 @@ function loadProject(d){
     const L={id:(o.id??uid++), _collabId:o._collabId||null,
       name:o.name||'camada', gtype:o.gtype||'polygon',
       crs:(o.crs && CRS_DEFS[o.crs])?o.crs:S.workCRS,
-      visible:o.visible!==false,locked:o.locked===true, labelField:o.labelField||'',
+      visible:o.visible!==false,
+      // O cadeado salvo é uma escolha do usuário. O padrão por tipo só se
+      // aplica a projetos antigos que ainda não gravavam esse estado.
+      locked:typeof o.locked==='boolean'?o.locked:!!(o._geology&&
+        (o._geology.kind==='surpac-mesh'||o._geology.importedBoreholes===true)),
+      labelField:o.labelField||'',
       labelFields:Array.isArray(o.labelFields)?o.labelFields.slice():null,
       /* Projetos antigos herdavam unique:true e apagavam pontos com o mesmo
          texto (dois EFLUENTE, duas cotas iguais etc.). Pontos são observações
@@ -648,17 +676,17 @@ function loadProject(d){
       _cava2Engine:o._cava2Engine||null,_cava2CutOf:o._cava2CutOf||null,
       _cava2MdtId:o._cava2MdtId??null,
       _cava2CutSnapshotOf:o._cava2CutSnapshotOf||null,
+      _cava2Role:o._cava2Role||null,_cava2CutFillOf:o._cava2CutFillOf||null,
+      _cava2CutFinalized:!!o._cava2CutFinalized,_cava2IntersectionPreview:!!o._cava2IntersectionPreview,
+      _cava2Managed:!!o._cava2Managed,
       _cava2CutSnapshotId:o._cava2CutSnapshotId||null,
       _cava2CutZ:o._cava2CutZ!=null&&Number.isFinite(+o._cava2CutZ)?+o._cava2CutZ:null,
       _cava2SnapshotRole:o._cava2SnapshotRole||null,
       _baciaTopoVersion:o._baciaTopoVersion??null,
       _containerCount:o._containerCount||null,
       _geology:o._geology&&typeof o._geology==='object'?layoutClone(o._geology):null,
+      _blasting:o._blasting&&typeof o._blasting==='object'?layoutClone(o._blasting):null,
       llayer:null};
-    /* A boca importada e sua trajetória medida formam uma unidade. Mover
-       somente o ponto separaria collar/trace; a trava é derivada do tipo,
-       não uma permissão colaborativa nem um bloqueio genérico persistido. */
-    if(L._geology&&L._geology.importedBoreholes===true)L.locked=true;
     if(L.id>=uid) uid=L.id+1;         // evita colisão com futuras camadas
     /* Projetos antigos de sinalização guardavam todos os pontos com um único
        símbolo. Ao abrir, a biblioteca reconhece o campo e migra cada valor
@@ -688,15 +716,16 @@ function loadProject(d){
     if(o.sig) g._sig=o.sig;                               // assinatura de conteúdo p/ religar o TIFF pleno
     const r={id:(o.rid??rid++), _collabId:o._collabId||null,
       name:o.name||'MDE', d:g, visible:o.visible!==false, src:o.src||null,
-      dispFull:!!o.dispFull,
+      dispFull:true,
       /* Projetos antigos nao tinham esta chave. No computador, ao reencontrar
          o GeoTIFF da pasta do projeto, a visualizacao detalhada passa a ser o
          padrao; no tablet o modo leve continua sendo o padrao. */
-      demHD:o.demHD!==undefined?!!o.demHD:false,
+      demHD:true,
       _demHDLegacy:o.demHD===undefined,
       tinPuro:!!o.tinPuro,
       srcName:o.srcName||null,
       projectFile:o.projectFile||null,
+      originalSource:o.originalSource||null,
       projectSavedAt:o.projectSavedAt||null,
       projectNativeSource:o.projectNativeSource||null,
       projectSavePending:!!o.projectSavePending,
@@ -704,7 +733,8 @@ function loadProject(d){
       groupId:o.groupId??null,
       style:{mode:(o.style&&o.style.mode)||'hipso_hs', opacity:(o.style&&o.style.opacity)??0.8,
              classes:(o.style&&o.style.classes)||null,
-             solidColor:(o.style&&o.style.solidColor)||null},
+             solidColor:(o.style&&o.style.solidColor)||null,
+             localRelief:o.style?.localRelief?{...o.style.localRelief}:null},
       overlay:null, cnMeta:o.cnMeta||null, _cnOrto:!!o.cnOrto,
       _tinMethod:o.tinMethod||null,_tinSourceId:o.tinSourceId??null,
       _tinAutoClip:typeof o.tinAutoClip==='boolean'?o.tinAutoClip:undefined,
@@ -741,7 +771,12 @@ function loadProject(d){
      cava/bacia novamente. */
   const repTopo={cava:0,bacia:0,linhas:0};
   const candidatosMdt=new Map();
+  // Cava2 já grava a receita e o resultado explicitamente. O reparo legado
+  // soldava os seus vértices e alterava inclusive a versão Recortada salva.
+  const cava2Persistida=L=>!!(L._cava2DesignId||L._cava2CutOf||L._cava2CutFillOf||
+    L._cava2CutSnapshotId||L._cava2CutSnapshotOf||L._cava2Target);
   (S.layers||[]).forEach(L=>{
+    if(cava2Persistida(L))return;
     let mudou=false;
     try{
       /* A detecção do MDT precisa comparar a interseção COMO FOI SALVA.
@@ -789,6 +824,7 @@ function loadProject(d){
   /* addLayer altera S.layers; faça a compatibilidade legada numa cópia para
      não iterar novamente sobre as derivadas recém-criadas. */
   [...(S.layers||[])].forEach(L=>{
+    if(cava2Persistida(L))return;
     try{
       /* Prioridade para o recorte pela superfície real: se o projeto antigo
          conserva os anéis completos + daylight, identifica o MDT pela cota da
@@ -836,7 +872,7 @@ function loadProject(d){
                            ...S.groups.map(g=>'G:'+g.id), 'I:0']);
     const casam=st.filter(k=>validas.has(k)).length;
     const alvo=S.layers.length + S.rasters.length + (S.img?1:0);
-    if(temIds && alvo && casam >= Math.max(1, Math.floor(alvo*0.6))){
+    if(temIds && (!alvo || casam >= Math.max(1, Math.floor(alvo*0.6)))){
       S.stack=st;                                    // ids gravados: ordem preservada
     } else {
       // remonta agrupando: camadas do mesmo grupo ficam adjacentes, na ordem dos grupos
@@ -865,6 +901,9 @@ function loadProject(d){
   /* sólidos gravados (e os do projeto anterior saem, mesmo sem a chave) */
   try{ if(typeof solDoArquivo==='function')solDoArquivo(d.solidos); }catch(e){ console.warn('sólidos do projeto',e); }
   zApply();
+  { const e=document.getElementById('loGroupNumbers');if(e)e.checked=d.layout?.groupNumbers===true; }
+  layoutPresentationDefaults(d.layout);
+  layoutCoordFontRestore(d.layout);
   if(d.layout){
     const sv=(id,v)=>{const e=document.getElementById(id);if(e&&v!==undefined&&v!=='')e.value=v;};
     sv('loTitle',d.layout.title); sv('loSub',d.layout.sub); sv('loScale',d.layout.scale);
@@ -891,7 +930,7 @@ function loadProject(d){
     if(d.layout.figH!==undefined){ sv('loFigH',d.layout.figH); sv('loFigHr',d.layout.figH); }
     if(d.layout.figW!==undefined) sv('loFigWr',d.layout.figW);
     const sc=(id,v)=>{const e=document.getElementById(id);if(e)e.checked=!!v;};
-    sc('loSat',d.layout.sat); sc('loLegend',d.layout.legend);
+    if(d.layout.basemap)sc('loSat',d.layout.sat!==false); sc('loLegend',d.layout.legend);
     if(d.layout.coords!==undefined) sc('loCoords',d.layout.coords);
     if(d.layout.coordTop!==undefined) sc('loCoordTop',d.layout.coordTop);
     if(d.layout.coordBottom!==undefined) sc('loCoordBottom',d.layout.coordBottom);
@@ -931,9 +970,11 @@ function loadProject(d){
            _llbounds:(d.img.llb||null), _warpWM:!!d.img.warpWM,
            _crsFixo:d.img.srcCRS||null, _sourceCRS:crsOrto,
            projectFile:d.img.projectFile||null, projectSavedAt:d.img.projectSavedAt||null,
+           originalSource:d.img.originalSource||null,
            projectNativeSource:d.img.projectNativeSource||null,
            projectSavePending:!!d.img.projectSavePending,
            groupId:d.img.groupId??null, visible:d.img.visible!==false};
+    if(typeof orthoMaskRestore==='function')orthoMaskRestore(S.img,d.img.mask||null);
     if(S.img.visible===false) map.removeLayer(ov);
     /* Arquivo anterior à separação das grades: a URL é uma prévia no CRS de
        trabalho. Reprojeta de forma assíncrona somente a cópia do Mapa 2D; a
@@ -970,10 +1011,11 @@ function loadProject(d){
   }catch(e){console.warn('Restauração da área 2D',e);}
   try{
     if(window.GeoMineGeology&&typeof window.GeoMineGeology.restore==='function')
-      window.GeoMineGeology.restore(d.geology||null);
+      window.GeoMineGeology.restore(d.geology||null,{borrowGeometry:true});
     else if(d.geology&&typeof d.geology==='object')S.geology=layoutClone(d.geology);
   }catch(e){console.warn('Restauração da Geologia',e);}
   refreshUI();
+  if(typeof refreshProfPanel==='function')refreshProfPanel();
   window.GeoMineCivil?.restore(d.civil||null);
   if(!window.GeoMineProjectScreen?.restore(d))fitAll();
   const nR=(S.rasters||[]).length, nI=(S.img&&S.img.url)?1:0;
@@ -983,27 +1025,18 @@ function loadProject(d){
   /* A prévia vem dentro do .ccmgis; assim a abertura nunca depende da pasta.
      Quando o navegador ainda tem autorização, ela é trocada em seguida pelo
      GeoTIFF nativo de ALAGIS/rasters. */
-  /* A ortofoto volta do projeto só como prévia: sem o GeoTIFF o zoom não passa
-     dela. Em vez de deixar o usuário procurar a opção, o aviso aponta onde
-     indicar o arquivo. */
-  if(S.img && S.img.url && !(S.img._img0&&S.img._tiff)){
-    setTimeout(()=>{
-      if(!S.img||S.img._img0)return;
-      toast('A ortofoto voltou só com a prévia. Para a resolução plena, abra as propriedades da Ortofoto e use "Buscar a ortofoto original".');
-      try{ cmdLog('ortofoto sem GeoTIFF de origem — use ⚙ Ortofoto › Buscar a ortofoto original para religar','info'); }catch(e){}
-    },900);
-  }
-  if(d.img){S.orthoHD=d.img.orthoHD!==false;S.orthoDispFull=!!d.img.orthoDispFull;}
-  projectRestoreNativeRasters().then(q=>{
-    if(q.restored)toast(`✓ ${q.restored} raster(s) restaurado(s) da resolução nativa em ALAGIS/rasters`);
-    else if(q.unauthorized)projectFolderStatus('Abra/autorize a pasta do projeto para restaurar os GeoTIFFs nativos.',false);
-    /* A ortofoto segue a mesma regra dos rasters: com cópia em ALAGIS/rasters,
-       religa sozinha e o aviso de "só a prévia" acima deixa de valer. */
-    return (typeof projectRestoreNativeOrtho==='function')?projectRestoreNativeOrtho():null;
-  }).then(o=>{
+  if(d.img){S.orthoHD=true;S.orthoDispFull=true;}
+  const nativeProject=S.projectId,nativeGeneration=window.GeoMineSessionAutosave?.state?.generation;
+  const nativeCurrent=()=>S.projectId===nativeProject&&window.GeoMineSessionAutosave?.state?.generation===nativeGeneration;
+  const nativeRestoration=window.GeoMineOriginalSources?GeoMineOriginalSources.restoreAll():
+    projectRestoreNativeRasters().then(async q=>({restored:q.restored+(await projectRestoreNativeOrtho()).restored}));
+  S._originalsRestoring=nativeRestoration;
+  nativeRestoration.then(o=>{
+    if(!nativeCurrent())return;
+    window.GeoMineMissingOriginals?.request({automatic:true});
     void window.GeoMineProjectTabSession?.rememberFolder();
-    if(o&&o.restored)toast('✓ Ortofoto restaurada da resolução plena em ALAGIS/rasters');
-  }).catch(e=>console.warn('restauração dos rasters nativos:',e));
+    if(o&&o.restored)toast(`✓ ${o.restored} imagem(ns) vinculada(s) automaticamente aos originais`);
+  }).catch(e=>{console.warn('restauração dos rasters nativos:',e);if(nativeCurrent())window.GeoMineMissingOriginals?.request({automatic:true});});
   return true;
   }finally{openingScope.end();}
 }
@@ -1110,8 +1143,8 @@ async function openProjectFile(){
     const txt=opening?await opening.read(f):await readProjectFileCompat(f),obj=opening?await opening.parse(txt):JSON.parse(txt);
     if(!obj || (obj.app!=='ALAGIS'&&obj.app!=='CCMGIS'&&obj.app!=='CCMGeoCampo')) throw new Error('não é um projeto CCMGIS');
     if(S.auto?.dirty&&!confirm('Há alterações não salvas. Abrir outro projeto e descartar essas alterações?')){outcome='cancel';return;}
-    if(opening)await opening.commit(obj,()=>startAutosave(h.name,h));
-    else{loadProject(obj);startAutosave(h.name,h);}
+    if(opening)await opening.commit(obj,()=>startAutosave(h.name,h,f));
+    else{loadProject(obj);startAutosave(h.name,h,f);}
   }catch(err){ outcome=err.name==='AbortError'?'cancel':'error';if(err.name!=='AbortError') toast('Erro ao abrir projeto: '+err.message); }
   finally{ clearTimeout(dica);if(opening)opening.finish();else hideLoad(outcome);
     if(recusado&&typeof fsSeletorSimples==='function')fsSeletorSimples(()=>document.getElementById('projIn').click(),'Abrir projeto pelo seletor simples'); }
@@ -1269,7 +1302,11 @@ bindRasModal();
   document.addEventListener('click', ()=>{ setTimeout(()=>{ try{ cmdAncora(); }catch(e){} }, 60); }, true);
   if(window.ResizeObserver){
     const m=document.getElementById('map');
-    if(m) new ResizeObserver(()=>{ try{ cmdAncora(); }catch(e){} }).observe(m);
+    let quadroAncora=0;
+    if(m) new ResizeObserver(()=>{
+      if(quadroAncora)return;
+      quadroAncora=requestAnimationFrame(()=>{quadroAncora=0;try{ cmdAncora(); }catch(e){} });
+    }).observe(m);
   }
   const c=$('cmdClose'); if(c) c.onclick=()=>cmdToggle(false);
   const cl=$('cmdClear'); if(cl) cl.onclick=()=>{ CMD.linhas.length=0; cmdPinta();

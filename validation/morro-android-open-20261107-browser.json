@@ -1,0 +1,206 @@
+{
+  "physicalAndroid": false,
+  "physicalIpad": false,
+  "providerRangeLatencyMs": 20,
+  "cpuThrottleRate": 1,
+  "file": "Morro_Verde_RRR_PAE.ccmgis",
+  "driveId": "1KtCyY8u8ZTMmLdaCvY2ilfnmdCTloeZg",
+  "results": [
+    {
+      "label": "before",
+      "bytes": 209426602,
+      "characters": 209424055,
+      "sample": "123,51,48,46,51,51,48,46,50,52,48,56,49,50,52,52,57,44,57,51,51,53,51,50,57,93,44,55,54,91,113,70,76,107,67,70,121,111,50,84,90,102,65,103,111,98,69,79,51,50,117,49,110,34,53,34,93,34,108,79,52,52,112,91,46,68,44,108,103,79,55,34,34,109,118,48,51,56,51,46,79,65,65,53,102,116,56,84,122,107,69,53,78,90,69,69,69,53,52,49,43,109,122,65,68,85,78,70,78,84,80,102,102,82,119,119,119,116,86,66,66,69,69,69,65,65,65,125",
+      "times": {
+        "readMs": 6366.100000143051,
+        "parseMs": 3108.9000000953674,
+        "mountMs": 14552.599999904633
+      },
+      "counts": {
+        "rangeReads": 200,
+        "streamOpens": 0,
+        "progress": 201
+      },
+      "projectId": "gm_morro_verde_pae_91a4e87778df",
+      "layers": 104,
+      "features": 185475,
+      "view": "layout",
+      "functions": {
+        "autoAreaSyncLayer": {
+          "ms": 2.000000238418579,
+          "calls": 66
+        },
+        "buildLayerTree": {
+          "ms": 276.29999899864197,
+          "calls": 172
+        },
+        "drawLayer": {
+          "ms": 252.80000066757202,
+          "calls": 55
+        },
+        "renderRaster": {
+          "ms": 4665,
+          "calls": 4
+        },
+        "layerTotals": {
+          "ms": 43.50000047683716,
+          "calls": 46
+        },
+        "refreshUI": {
+          "ms": 584.3999998569489,
+          "calls": 2
+        }
+      },
+      "cpuTop": [
+        {
+          "frame": "(idle) @-1",
+          "ms": 4763.869
+        },
+        {
+          "frame": "cloneGeo @101076",
+          "ms": 3652.095
+        },
+        {
+          "frame": "(anonymous) @0",
+          "ms": 2726.937
+        },
+        {
+          "frame": "f32ToB64 @64911",
+          "ms": 2415.482
+        },
+        {
+          "frame": "(program) @-1",
+          "ms": 2072.246
+        },
+        {
+          "frame": "(garbage collector) @-1",
+          "ms": 1967.617
+        },
+        {
+          "frame": "hillVal @39175",
+          "ms": 1470.908
+        },
+        {
+          "frame": "(anonymous) @77984",
+          "ms": 1295.714
+        },
+        {
+          "frame": "toDataURL @-1",
+          "ms": 1173.05
+        },
+        {
+          "frame": "b64ToF32 @64964",
+          "ms": 903.056
+        },
+        {
+          "frame": "projectNativeHash @21543",
+          "ms": 830.752
+        },
+        {
+          "frame": "btoa @-1",
+          "ms": 819.262
+        }
+      ]
+    },
+    {
+      "label": "after",
+      "bytes": 209426602,
+      "characters": 209424055,
+      "sample": "123,51,48,46,51,51,48,46,50,52,48,56,49,50,52,52,57,44,57,51,51,53,51,50,57,93,44,55,54,91,113,70,76,107,67,70,121,111,50,84,90,102,65,103,111,98,69,79,51,50,117,49,110,34,53,34,93,34,108,79,52,52,112,91,46,68,44,108,103,79,55,34,34,109,118,48,51,56,51,46,79,65,65,53,102,116,56,84,122,107,69,53,78,90,69,69,69,53,52,49,43,109,122,65,68,85,78,70,78,84,80,102,102,82,119,119,119,116,86,66,66,69,69,69,65,65,65,125",
+      "times": {
+        "readMs": 3437.7000000476837,
+        "parseMs": 6071.700000047684,
+        "mountMs": 12052.900000095367
+      },
+      "counts": {
+        "rangeReads": 0,
+        "streamOpens": 1,
+        "progress": 159
+      },
+      "projectId": "gm_morro_verde_pae_91a4e87778df",
+      "layers": 104,
+      "features": 185475,
+      "view": "layout",
+      "functions": {
+        "autoAreaSyncLayer": {
+          "ms": 3.299999713897705,
+          "calls": 66
+        },
+        "buildLayerTree": {
+          "ms": 128,
+          "calls": 172
+        },
+        "drawLayer": {
+          "ms": 249.90000009536743,
+          "calls": 55
+        },
+        "renderRaster": {
+          "ms": 4895.100000143051,
+          "calls": 4
+        },
+        "layerTotals": {
+          "ms": 49.89999866485596,
+          "calls": 46
+        },
+        "refreshUI": {
+          "ms": 367.59999990463257,
+          "calls": 2
+        }
+      },
+      "cpuTop": [
+        {
+          "frame": "projectNativeHash @21543",
+          "ms": 7518.266
+        },
+        {
+          "frame": "(anonymous) @0",
+          "ms": 4965.397
+        },
+        {
+          "frame": "(program) @-1",
+          "ms": 2971.579
+        },
+        {
+          "frame": "(garbage collector) @-1",
+          "ms": 2702.942
+        },
+        {
+          "frame": "cloneGeo @101103",
+          "ms": 2523.361
+        },
+        {
+          "frame": "(anonymous) @78009",
+          "ms": 2119.058
+        },
+        {
+          "frame": "hillVal @39177",
+          "ms": 1674.947
+        },
+        {
+          "frame": "forwardStream @65159",
+          "ms": 1492.533
+        },
+        {
+          "frame": "(idle) @-1",
+          "ms": 1348.897
+        },
+        {
+          "frame": "toDataURL @-1",
+          "ms": 1016.717
+        },
+        {
+          "frame": "warpRaster @39198",
+          "ms": 553.671
+        },
+        {
+          "frame": "(anonymous) @-1",
+          "ms": 526.708
+        }
+      ]
+    }
+  ],
+  "errors": [
+    "after: Híbrido (Google): 35 de 35 tiles não carregaram. Tente novamente ou escolha outro fundo na barra do Layout."
+  ],
+  "passed": true
+}

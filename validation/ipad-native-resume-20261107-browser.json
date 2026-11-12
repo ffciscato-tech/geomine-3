@@ -1,0 +1,58 @@
+{
+  "checks": [
+    "No floating Esc window; touch menu is in existing bottom tools",
+    "Real finger hold opens existing feature context menu",
+    "Touch box selection and additive toggle operate without keyboard",
+    "Touch Enter completes line and preserves selected result for next command",
+    "Feature Actions opens existing vertex editor; finger drag changes geometry and releases editor",
+    "3D: one finger orbits; two fingers pan and zoom without orbiting",
+    "Real reload restores protected project geometry, view and unsaved state; no automatic TIFF retry",
+    "Touch controls fit 768, 1024 and 1366px widths",
+    "Real synthetic GeoTIFF: native dimensions retained, bounded iPad overview, project protected; invalid TIFF preserves existing image and vectors",
+    "Clicking TIFF name in properties opens native picker and attaches verified local copy",
+    "Ordinary reload restores project and cached original TIFF without a project handle or emergency TIFF checkpoint",
+    "Compact 27px rows; redundant layer buttons hidden; visible scrollbar thumb scrolls by touch",
+    "Right-click preserves explicitly collapsed properties panel"
+  ],
+  "errors": [],
+  "limitations": [
+    "Chromium with iPad desktop user agent and real CDP touch events; physical iPad Safari/Chrome not available."
+  ],
+  "selectedAfterBox": 1,
+  "drawBeforeFinish": {
+    "tool": "line",
+    "n": 2,
+    "l": [
+      {
+        "n": "QA",
+        "f": 1
+      }
+    ]
+  },
+  "drawAfterFinish": {
+    "n": 0,
+    "selected": true,
+    "l": [
+      {
+        "n": "QA",
+        "f": 2
+      }
+    ]
+  },
+  "ortho": {
+    "native": [
+      4096,
+      2048
+    ],
+    "preview": [
+      1365,
+      682
+    ],
+    "limit": 1536,
+    "protected": true,
+    "geometryUnchanged": true,
+    "rejected": true,
+    "invalidPreservedImage": true
+  },
+  "passed": true
+}

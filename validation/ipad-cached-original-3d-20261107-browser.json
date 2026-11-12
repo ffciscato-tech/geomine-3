@@ -1,0 +1,103 @@
+{
+  "checks": [
+    "Actual Abrir .ccmgis restores cached MDT under changed layer ID/coarse display grid and ortho under a differently encoded PNG/JPEG preview",
+    "Native TIFF dimensions and exact elevation values are retained without a source picker or resampling the saved preview",
+    "A fresh page migrates pre-index source descriptors from IndexedDB and restores both TIFFs with no file reselection",
+    "Reopened MDT and ortho paint native tiles at zoom 23 with no preview fallback",
+    "Layer tree displays native dimensions instead of preview dimensions after reconnecting",
+    "3D opens the separately cached iPad original with exact native elevations even when no original is attached to the 2D map"
+  ],
+  "errors": [],
+  "physicalIpad": false,
+  "reopen": {
+    "nativeMDT": [
+      128,
+      128
+    ],
+    "nativeOrtho": [
+      4096,
+      2048
+    ],
+    "preview": [
+      2,
+      2
+    ],
+    "values": [
+      50.209999084472656,
+      50.21099853515625,
+      50.220001220703125,
+      50.22100067138672
+    ],
+    "sourceNames": [
+      "MDT_completo.tif",
+      "Ortofoto_completa.tif"
+    ],
+    "cache": [
+      "device",
+      "device"
+    ],
+    "zoom": 17
+  },
+  "migration": {
+    "nativeMDT": [
+      128,
+      128
+    ],
+    "nativeOrtho": [
+      4096,
+      2048
+    ],
+    "preview": [
+      2,
+      2
+    ],
+    "values": [
+      50.209999084472656,
+      50.21099853515625,
+      50.220001220703125,
+      50.22100067138672
+    ],
+    "sourceNames": [
+      "MDT_completo.tif",
+      "Ortofoto_completa.tif"
+    ],
+    "cache": [
+      "device",
+      "device"
+    ],
+    "zoom": 17
+  },
+  "nativeTiles": {
+    "zoom": 23,
+    "dem": {
+      "loaded": 16,
+      "fallback": false,
+      "error": null
+    },
+    "ortho": {
+      "loaded": 16,
+      "fallback": false,
+      "error": null
+    }
+  },
+  "cached3D": {
+    "dims": [
+      128,
+      128
+    ],
+    "values": [
+      50.209999084472656,
+      50.21099853515625,
+      50.220001220703125,
+      50.22100067138672
+    ],
+    "scene": {
+      "cacheReads": 2,
+      "meshes": 1,
+      "vertices": 16384,
+      "diagnostic": "1 superfície(s), EV 1× · modo Mobile · resolução original · 32.258 faces · drape: hipsometria",
+      "sharedImageStillAbsent": true
+    }
+  },
+  "passed": true
+}

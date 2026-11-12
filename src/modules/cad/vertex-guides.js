@@ -20,7 +20,7 @@ function sync(){
 function setEnabled(value){
   on=!!value;try{localStorage.setItem(preference,String(on));}catch(_){}
   const current=context;end();
-  if(current){context=current;if(on)begin(...current);}
+  if(current){context=current;if(on){if(current.drawing)beginDrawing(current.L,current.buf);else begin(...current);}}
   sync();return on;
 }
 const TOL=()=>S.touch?16:10;
@@ -40,14 +40,33 @@ function begin(L,ring,vi,closed){
     guides.push({o:[o[0],o[1]],d,kind});};
   for(const [k,outro] of [[prev,prev>0?prev-1:(closed?n-1:-1)],[next,next<n-1&&next>=0?next+1:(closed?0:-1)]]){
     if(k<0||k===v)continue;const N=ring[k];
-    add(N,unit([V[0]-N[0],V[1]-N[1]]),'paralela');
+    const original=unit([V[0]-N[0],V[1]-N[1]]);
+    add(N,original,'paralela');
+    // Normal to the original edge, through the vertex's original position.
+    // Keep this fixed while dragging, rather than rotating it with the cursor.
+    if(original)add(V,[-original[1],original[0]],'perpendicular');
     if(outro>=0&&outro!==v&&outro!==k){const M=ring[outro],e=unit([N[0]-M[0],N[1]-M[1]]);if(e)add(N,[-e[1],e[0]],'perpendicular');}
   }
   if(!guides.length)return false;
-  g={crs:L.crs,guides,group:L2.layerGroup().addTo(map),paths:[],active:[],point:null,label:null,labelText:null};
+  return install(L.crs,guides);
+}
+function install(crs,guides){
+  g={crs,guides,group:L2.layerGroup().addTo(map),paths:[],active:[],point:null,label:null,labelText:null};
   map.on('move zoom resize',refreshLines);
   refreshLines();desenha([],null);return true;
 }
+function beginDrawing(L,buf){
+ if(!L||!buf?.length){endDrawing();return false;}
+ const key=[S.projectId,L.id,L.crs,buf.length,...buf[0],...(buf.at(-2)||[]),...buf.at(-1)].join('|');
+ if(context?.drawing&&context.key===key)return !!g;
+ end();context={drawing:true,L,buf:buf.map(p=>p.slice()),key};if(!on)return false;
+ const points=buf.map(p=>fromWGS(L.crs,p[1],p[0])),anchor=points.at(-1),guides=[];
+ const add=(o,d,kind)=>{if(d&&!guides.some(q=>igual(q.o,o)&&Math.abs(q.d[0]*d[1]-q.d[1]*d[0])<.009))guides.push({o:o.slice(),d,kind});};
+ add(anchor,[1,0],'paralela');add(anchor,[0,1],'perpendicular');
+ if(points.length>1){const p=points.at(-2),d=unit([anchor[0]-p[0],anchor[1]-p[1]]);add(anchor,d,'paralela');if(d)add(anchor,[-d[1],d[0]],'perpendicular');add(points[0],[1,0],'paralela');add(points[0],[0,1],'perpendicular');}
+ return install(L.crs,guides);
+}
+function endDrawing(){if(context?.drawing)end();}
 function ll(p){const w=toWGS(g.crs,p[0],p[1]);return L2.latLng(w[1],w[0]);}
 function px(p){return map.latLngToContainerPoint(ll(p));}
 // The guide model is fixed during a drag. Keep Leaflet paths alive; only
@@ -78,6 +97,7 @@ function desenha(ativas,ponto){
 }
 function apply(latlng){
   if(!on||!g)return {latlng,guided:false};
+  if(S.snapOn===false){desenha([],null);return {latlng,guided:false};}
   const p=fromWGS(g.crs,latlng.lng,latlng.lat),cp=map.latLngToContainerPoint(latlng),cand=[];
   if(S.snapOn!==false)g.guides.forEach((gu,i)=>{
     const t=(p[0]-gu.o[0])*gu.d[0]+(p[1]-gu.o[1])*gu.d[1],q=[gu.o[0]+gu.d[0]*t,gu.o[1]+gu.d[1]*t],qp=px(q),dist=Math.hypot(qp.x-cp.x,qp.y-cp.y);
@@ -104,7 +124,7 @@ function resolve(latlng,opts){
   const q=apply(r.latlng);return q.guided?{...r,...q,snapped:false}:r;
 }
 function end(){context=null;if(g){try{map.off('move zoom resize',refreshLines);map.removeLayer(g.group);}catch(_){}g=null;}}
-window.GeoMineVertexGuides={begin,apply,resolve,end,setEnabled,enabled:()=>on,sync,active:()=>!!g,guides:()=>g?g.guides.map(x=>({o:x.o.slice(),d:x.d.slice(),kind:x.kind})):[]};
+window.GeoMineVertexGuides={begin,beginDrawing,endDrawing,apply,resolve,end,setEnabled,enabled:()=>on,sync,active:()=>!!g,guides:()=>g?g.guides.map(x=>({o:x.o.slice(),d:x.d.slice(),kind:x.kind})):[]};
 const button=document.getElementById('btnVertexGuides'),check=document.getElementById('snVertexGuides');
 if(button)button.onclick=e=>{e.stopPropagation();setEnabled(!on);};
 if(check)check.onchange=e=>setEnabled(e.target.checked);

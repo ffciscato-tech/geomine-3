@@ -1865,12 +1865,12 @@ async function tinExtraiSolidosUI(){
           {name:'MDS_M',type:'N',length:10,decimal:3},{name:'MDT_M',type:'N',length:10,decimal:3},
           {name:'ALT_M',type:'N',length:8,decimal:3},{name:'CONFIANCA',type:'N',length:4,decimal:0},
           {name:'METODO',type:'C',length:32}];
-        camadaPontos=addLayer({name:'Contagem de contêineres — '+carimbo,gtype:'point',crs:S.workCRS,
+        camadaPontos=addLayer({sourceLayer:r,name:'Contagem de contêineres — '+carimbo,gtype:'point',crs:S.workCRS,
           features:candidatos.map((c,i)=>({geom:[[c.cx,c.cy]],zg:[c.zMDS],props:props(c,i)})),
           fields:campos.map(f=>({...f})),color:'#ef8d32',labelField:'EMPILHADOS',lbl:{unique:false,onMap:true}});
         camadaPontos._containerCount={...marca,papel:'pontos',resumo:{posicoes:candidatos.length,total:unidades,
           c20:conta['20′'],c40:conta['40′'],porTipo:{...conta},niveis:{...niveis}}};
-        camadaPegadas=addLayer({name:'Contêineres reconhecidos — '+carimbo,gtype:'polygon',crs:S.workCRS,
+        camadaPegadas=addLayer({sourceLayer:r,name:'Contêineres reconhecidos — '+carimbo,gtype:'polygon',crs:S.workCRS,
           features:candidatos.map((c,i)=>{
             const anel=[[-1,-1],[1,-1],[1,1],[-1,1],[-1,-1]].map(q=>[
               c.cx+q[0]*c.comprimento*.5*c.ux+q[1]*c.largura*.5*c.vx,
@@ -2660,12 +2660,12 @@ function propPainelSync(){
 }
 
 /* campos do selo/planta que pertencem a cada prancha */
-const PLATE_FIELDS = ['loTitle','loSub','loScale','loGrid','loPaper','loSeloPaper',
+const PLATE_FIELDS = ['loBasemap','loTitle','loSub','loScale','loGrid','loPaper','loSeloPaper',
   'loArea','loCli','loLoc','loRT','loDes','loExec','loNum','loCont','loRevN','loFolha','loFS',
-  'loLegSc','loLegFS','loBarFS','loBarSc','loSym','loLegColGap','loMapSym','loDash','loDashGap','loTxt','loCartFS','loTitFS','loLegPos','loBarPasso'];
+  'loLegSc','loLegFS','loCoordFS','loBarFS','loBarSc','loSym','loLegColGap','loMapSym','loDash','loDashGap','loTxt','loCartFS','loTitFS','loLegPos','loBarPasso'];
 const PLATE_CHECKS = ['loScaleAuto','loGridAuto','loFitW','loCoords',
   'loCoordTop','loCoordBottom','loCoordLeft','loCoordRight',
-  'loCart','loSat','loLegend','loLegOut','loBarAuto'];
+  'loCart','loSat','loLegend','loGroupNumbers','loLegOut','loBarAuto'];
 
 /* ===========================================================================
    CAIXA DE TEXTO DA LEGENDA (prancha A3)
@@ -2745,8 +2745,20 @@ function layoutClone(v){
 function layoutStateEqual(a,b){
   try{return JSON.stringify(a)==JSON.stringify(b);}catch(e){return a===b;}
 }
+/* O nome identifica a camada no projeto, não uma convenção da prancha.
+   Instantâneos antigos ainda podem contê-lo: ignore-o também na comparação
+   para não criar rascunhos nem redesenhar camadas apenas por uma renomeação. */
+function layoutConventionStyle(c){
+  if(!c)return c;
+  const {name,...style}=c;return style;
+}
+function layoutConventionEqual(a,b){
+  const styles=conv=>conv&&Object.fromEntries(Object.entries(conv)
+    .map(([key,c])=>[key,layoutConventionStyle(c)]));
+  return layoutStateEqual(styles(a),styles(b));
+}
 function layoutVectorConvention(L){
-  return {name:L.name,color:L.color,weight:L.weight,fill:L.fill,
+  return {color:L.color,weight:L.weight,fill:L.fill,
     sym:layoutClone(L.sym||null),labelField:L.labelField||'',
     labelFields:Array.isArray(L.labelFields)?L.labelFields.slice():null,
     lbl:layoutClone(L.lbl||null),attrFilter:layoutClone(L.attrFilter||null),
@@ -2757,8 +2769,8 @@ function layoutVectorConvention(L){
 function layoutConventionSnapshot(){
   const out={};
   (S.layers||[]).forEach(L=>{out['L:'+L.id]=layoutVectorConvention(L);});
-  (S.rasters||[]).forEach(r=>{out['R:'+r.id]={name:r.name,style:layoutClone(r.style||null)};});
-  if(S.img&&S.img.url)out['I:0']={name:S.img.name||'ortofoto',
+  (S.rasters||[]).forEach(r=>{out['R:'+r.id]={style:layoutClone(r.style||null)};});
+  if(S.img&&S.img.url)out['I:0']={
     opacity:(S.img.overlay&&S.img.overlay.options)?S.img.overlay.options.opacity:null};
   return out;
 }
@@ -2767,9 +2779,9 @@ function layoutConventionApply(conv){
   S._loRestoringConv=true;
   try{
     (S.layers||[]).forEach(L=>{
-      const c=conv['L:'+L.id];if(!c)return;
+      const c=layoutConventionStyle(conv['L:'+L.id]);if(!c)return;
       const atual=layoutVectorConvention(L);if(layoutStateEqual(atual,c))return;
-      L.name=c.name??L.name;L.color=c.color;L.weight=c.weight;L.fill=c.fill;
+      L.color=c.color;L.weight=c.weight;L.fill=c.fill;
       if(Object.prototype.hasOwnProperty.call(c,'sym'))L.sym=layoutClone(c.sym);
       L.labelField=c.labelField||'';
       L.labelFields=Array.isArray(c.labelFields)?c.labelFields.slice():null;
@@ -2778,14 +2790,14 @@ function layoutConventionApply(conv){
       drawLayer(L);
     });
     (S.rasters||[]).forEach(r=>{
-      const c=conv['R:'+r.id];if(!c)return;
-      const atual={name:r.name,style:layoutClone(r.style||null)};
+      const c=layoutConventionStyle(conv['R:'+r.id]);if(!c)return;
+      const atual={style:layoutClone(r.style||null)};
       if(layoutStateEqual(atual,c))return;
-      r.name=c.name??r.name;if(c.style)r.style=layoutClone(c.style);
+      if(c.style)r.style=layoutClone(c.style);
       if(typeof renderRaster==='function')renderRaster(r);
     });
     const ic=conv['I:0'];
-    if(ic&&S.img){S.img.name=ic.name||S.img.name;
+    if(ic&&S.img){
       if(ic.opacity!=null&&S.img.overlay&&S.img.overlay.setOpacity)S.img.overlay.setOpacity(ic.opacity);}
     try{zApply();}catch(e){}
     try{refreshUI();}catch(e){}
@@ -2793,44 +2805,16 @@ function layoutConventionApply(conv){
 }
 function layoutStackApply(stack){
   if(!Array.isArray(stack))return;
-  const nodes=allNodes(),by=new Map(),groups=new Map();
-  nodes.forEach(n=>by.set(nodeKey(n.t,n.id),n));
-  (S.groups||[]).forEach(g=>groups.set(g.id,g));
-
-  /* A prancha salva uma ordem plana. Projetos antigos podem ter nessa ordem
-     membros de grupos intercalados; ao restaurá-la, a árvore então desenhava
-     o cabeçalho somente no primeiro membro e as demais camadas pareciam ter
-     saído do grupo. Normalizamos o instantâneo sem tocar em groupId: cada
-     grupo vira novamente um bloco, conservando a ordem relativa dos membros. */
-  const hasDirectMember=new Set();
-  nodes.forEach(n=>{if(groups.has(n.o.groupId))hasDirectMember.add(n.o.groupId);});
-  const validEmptyGroupKey=k=>{
-    if(typeof k!=='string'||!k.startsWith('G:'))return false;
-    const id=+k.slice(2);
-    return groups.has(id)&&!hasDirectMember.has(id);
-  };
-  const valid=k=>by.has(k)||validEmptyGroupKey(k);
-  const order=[],seen=new Set();
-  const append=k=>{if(valid(k)&&!seen.has(k)){seen.add(k);order.push(k);}};
-  stack.forEach(append);                 // ordem própria da prancha
-  (S.stack||[]).forEach(append);        // camadas/grupos criados depois dela
-  nodes.forEach(n=>append(nodeKey(n.t,n.id)));
-  (S.groups||[]).forEach(g=>append('G:'+g.id));
-
-  const normalized=[],emittedGroups=new Set();
-  order.forEach(k=>{
-    if(validEmptyGroupKey(k)){normalized.push(k);return;}
-    const n=by.get(k);if(!n)return;
-    const gid=n.o.groupId;
-    if(!groups.has(gid)){normalized.push(k);return;}
-    if(emittedGroups.has(gid))return;
-    emittedGroups.add(gid);
-    order.forEach(memberKey=>{
-      const member=by.get(memberKey);
-      if(member&&member.o.groupId===gid)normalized.push(memberKey);
-    });
-  });
-  S.stack=normalized;
+  const nodes=allNodes(),by=new Map(nodes.map(n=>[nodeKey(n.t,n.id),n]));
+  const groups=new Map((S.groups||[]).map(g=>['G:'+g.id,g])),covered=new Set();
+  for(const key of stack){
+    const n=by.get(key),g=groups.get(key),id=g?g.id:n?.o.groupId;
+    groupPath(id).forEach(parent=>covered.add('G:'+parent.id));
+  }
+  // Instantâneos antigos não tinham cabeçalhos para grupos com conteúdo.
+  // Neles, deixe a posição derivar do primeiro descendente salvo na prancha.
+  const extra=(S.stack||[]).filter(key=>!groups.has(key)||!covered.has(key));
+  S.stack=stack.concat(extra);stackSync();
   try{zApply();}catch(e){}
 }
 function layoutFrozenDirty(on){
@@ -2871,7 +2855,7 @@ function plateCapture(op){                     // UI -> prancha ativa
       const visMudou=pl.vis&&!layoutStateEqual(visAtual,pl.vis),
         preMesclada=pre&&pre.vis?{...visAtual,...pre.vis}:visAtual;
       vis={...(S._loDraftVis||(visMudou?visAtual:preMesclada))};
-      const convMudou=pl.conv&&!layoutStateEqual(convAtual,pl.conv);
+      const convMudou=pl.conv&&!layoutConventionEqual(convAtual,pl.conv);
       conv=layoutClone(S._loDraftConv||(convMudou?convAtual:(pre&&pre.conv?pre.conv:convAtual)));
       const stackMudou=Array.isArray(pl.stack)&&!layoutStateEqual(stackAtual,pl.stack);
       stack=(S._loDraftStack||(stackMudou?stackAtual:(pre&&pre.stack?pre.stack:stackAtual))).slice();
@@ -2885,16 +2869,21 @@ function plateCapture(op){                     // UI -> prancha ativa
     pl.groups = S.groups.map(g=>({id:g.id, collapsed:!!g.collapsed}));
 }
 function plateApply(pl, semState, deferRefresh){ // prancha -> UI
+  layoutPresentationDefaults({basemap:pl.f?.loBasemap,sat:pl.c?.loSat});
   PLATE_FIELDS.forEach(id=>{
     const e=document.getElementById(id);
-    if(e && pl.f && pl.f[id]!=null) e.value=pl.f[id];
+    if(e && id==='loFolha') e.value=pl.f?.loFolha??'';
+    else if(e && pl.f && pl.f[id]!=null) e.value=pl.f[id];
   });
+  layoutCoordFontRestore({coordFS:pl.f?.loCoordFS,legFS:pl.f?.loLegFS,legSc:pl.f?.loLegSc});
   PLATE_CHECKS.forEach(id=>{
     const e=document.getElementById(id);
     if(!e) return;
+    if(id==='loSat'&&!pl.f?.loBasemap)return;
     if(pl.c && pl.c[id]!=null) e.checked=!!pl.c[id];
     else if(id==='loCoordBottom') e.checked=false; // compatibilidade com pranchas antigas
     else if(['loCoordTop','loCoordLeft','loCoordRight'].includes(id)) e.checked=true;
+    else if(id==='loGroupNumbers')e.checked=false;
   });
   /* O formato pertence à prancha, não à sessão do Layout. Sem esta
      sincronização uma cópia A3 podia abrir usando as dimensões A4 da aba
@@ -2928,6 +2917,7 @@ function plateApply(pl, semState, deferRefresh){ // prancha -> UI
   if(!semState){S._loAppliedPlateId=pl.id;S._loDraftVis=null;S._loDraftConv=null;S._loDraftStack=null;layoutFrozenDirty(false);}
   // Na abertura, loadProject já atualiza a árvore após restaurar todos os
   // controles. Evita medir cada camada duas vezes no mesmo turno.
+  layoutViewControlsSync();
   if(!deferRefresh)refreshUI();
 }
 function plateNew(name, copyFrom){
@@ -2950,6 +2940,7 @@ function plateNew(name, copyFrom){
     pl.vis = {}; allNodes().forEach(n=>{ pl.vis[nodeKey(n.t,n.id)]=n.o.visible!==false; });
     pl.conv=layoutConventionSnapshot();pl.stack=(S.stack||[]).slice();
   }
+  if(!copyFrom) pl.f.loFolha='';
   if(name) pl.f.loArea = name.toUpperCase();
   S.plates.push(pl);
   return pl;
@@ -3000,26 +2991,8 @@ function plateDefineFormato(pl,fmt){
   pl.f=pl.f||{};
   pl.f.loSeloPaper=fmt==='a3'?'a3l':'a4p';
 }
-function plateRenumerarFolhas(fmt){
-  fmt=fmt==='a3'?'a3':'a4';
-  const lista=(S.plates||[]).filter(pl=>plateFormato(pl)===fmt),total=lista.length,
-    casas=Math.max(2,String(Math.max(1,total)).length);
-  lista.forEach((pl,i)=>{
-    pl.f=pl.f||{};
-    pl.f.loFolha=String(i+1).padStart(casas,'0')+'/'+String(total).padStart(casas,'0');
-  });
-  const atual=lista.find(pl=>pl.id===S.plateId),e=document.getElementById('loFolha');
-  if(atual&&e)e.value=atual.f.loFolha;
-  return lista;
-}
-function plateRenumerarTodas(){
-  plateRenumerarFolhas('a4');plateRenumerarFolhas('a3');
-}
 function renderPlateTabs(){
   const box=document.getElementById('plateTabs'); if(!box) return;
-  /* O número da folha é estrutural, não texto livre. Inserir, duplicar ou
-     remover uma prancha atualiza imediatamente índice e total do formato. */
-  plateRenumerarTodas();
   box.innerHTML='';
   const fmt=(S.loMode==='a4')?(S.loPranchaFormato||'a4'):null,
     lista=fmt?S.plates.filter(pl=>plateFormato(pl)===fmt):S.plates;
@@ -3098,7 +3071,7 @@ function layoutFrozenApply(){
          precisam aparecer na prévia e jamais podem ser revertidos. Mantemos
          essa convenção como rascunho; trocar explicitamente de prancha ainda
          chama plateApply() e restaura a convenção própria daquela prancha. */
-      if(entrando&&convEntrada&&!layoutStateEqual(convEntrada,pl.conv)){
+      if(entrando&&convEntrada&&!layoutConventionEqual(convEntrada,pl.conv)){
         S._loDraftConv=layoutClone(convEntrada);
         if(typeof layoutFrozenDirty==='function')layoutFrozenDirty(true);
       }
@@ -3108,7 +3081,7 @@ function layoutFrozenApply(){
       if(S._loAppliedPlateId===pl.id&&!S._loRestoringConv){
         const vv=layoutVisSnapshot(),cc=layoutConventionSnapshot(),ss=(S.stack||[]).slice();
         if(!layoutStateEqual(vv,pl.vis))S._loDraftVis={...vv};
-        if(!layoutStateEqual(cc,pl.conv))S._loDraftConv=layoutClone(cc);
+        if(!layoutConventionEqual(cc,pl.conv))S._loDraftConv=layoutClone(cc);
         if(!layoutStateEqual(ss,pl.stack))S._loDraftStack=ss;
       }
       layoutConventionApply(S._loDraftConv||pl.conv);
@@ -3238,7 +3211,8 @@ function layoutSideMenuSync(){
       ['loCartFS','cart','Fonte da cartela',v=>(+v).toFixed(2).replace(/0$/,'').replace('.',',')+'×'],
       ['loTitFS','title','Título da cartela',v=>(+v).toFixed(2).replace(/0$/,'').replace('.',',')+'×'],
       ['loLegSc','legend','Tamanho da legenda',v=>(+v).toFixed(2).replace(/0$/,'').replace('.',',')+'×'],
-      ['loLegFS','font','Texto da legenda e coordenadas',v=>(+v).toFixed(1).replace('.',',')+'×'],
+      ['loLegFS','font','Texto da legenda',v=>(+v).toFixed(1).replace('.',',')+'×'],
+      ['loCoordFS','grid','Fonte da quadrícula',layoutCoordFontLabel],
       ['loBarFS','scale','Texto da escala gráfica',v=>(+v).toFixed(1).replace('.',',')+'×'],
       ['loBarSc','scale','Comprimento da escala gráfica',v=>(+v).toFixed(2).replace(/0$/,'').replace('.',',')+'×'],
       ['loSym','symbol','Símbolos da legenda',v=>(+v).toFixed(1).replace('.',',')+'×'],
@@ -3248,9 +3222,10 @@ function layoutSideMenuSync(){
       ['loDashGap','dashgap','Espaçamento entre os traços',v=>(+v).toFixed(2).replace('.',',')+'×']
     ].filter(d=>document.getElementById(d[0]));
     host.innerHTML='<div class="layout-slider-list">'+defs.map(d=>{
-      const el=document.getElementById(d[0]);return '<div class="layout-slider-row no-auto" title="'+d[2]+'">'+
+      const el=document.getElementById(d[0]),fixedSize=['loFigWr','loFigHr'].includes(d[0])&&S.loMode!=='fig';
+      return '<div class="layout-slider-row no-auto" title="'+d[2]+(fixedSize?' — disponível no modo Figura':'')+'"'+(fixedSize?' style="opacity:.45"':'')+'>'+
         '<span class="layout-slider-icon" aria-hidden="true">'+sliderIcon(d[1])+'</span>'+
-        '<input type="range" data-adjust="'+d[0]+'" aria-label="'+d[2]+'" min="'+el.min+'" max="'+el.max+'" step="'+el.step+'" value="'+el.value+'">'+
+        '<input type="range" data-adjust="'+d[0]+'" aria-label="'+d[2]+'" min="'+el.min+'" max="'+el.max+'" step="'+el.step+'" value="'+el.value+'"'+(fixedSize?' disabled':'')+'>'+
         '<output class="layout-slider-value">'+d[3](el.value)+'</output></div>';}).join('')+'</div>';
     host.classList.add('open');
     host.querySelectorAll('[data-adjust]').forEach((rg,i)=>{const d=defs[i],real=document.getElementById(d[0]),out=rg.parentNode.querySelector('output');
@@ -3301,27 +3276,34 @@ function layoutSideMenuSync(){
       const rows=(typeof legendControlRows==='function')?legendControlRows():[];
       const state=(typeof legendVisibilityState==='function')?legendVisibilityState():{};
       const master=document.getElementById('loLegend'),legendOn=!master||master.checked;
+      const numbering=document.getElementById('loGroupNumbers'),numbered=!!numbering?.checked;
       const rawOn=key=>(typeof legendVisibilityOn==='function')?legendVisibilityOn(key,state):state[key]!==false;
-      const disabled=row=>!legendOn||(row.groupKey&&!rawOn(row.groupKey))||(row.parentKey&&!rawOn(row.parentKey));
+      const disabled=row=>!legendOn||(row.groupKeys||[]).some(key=>!rawOn(key))||(row.parentKey&&!rawOn(row.parentKey));
       const descendants=row=>row.kind==='group'
-        ? rows.filter(x=>x.groupKey===row.key)
+        ? rows.filter(x=>(x.groupKeys||[]).includes(row.key))
         : row.kind==='layer'?rows.filter(x=>x.parentKey===row.key):[];
-      const effective=r=>r.on&&(!r.groupKey||rawOn(r.groupKey))&&(!r.parentKey||rawOn(r.parentKey));
+      const effective=r=>r.on&&!(r.groupKeys||[]).some(key=>!rawOn(key))&&(!r.parentKey||rawOn(r.parentKey));
       const selected=legendOn?rows.filter(effective).length:0;
       host.innerHTML='<div class="layout-legend-head"><strong>Itens da legenda</strong>'+ 
         '<span class="layout-legend-count">'+selected+' de '+rows.length+'</span></div>'+ 
         '<label class="layout-legend-row kind-group" style="border:1px solid var(--line);border-radius:8px">'+
           '<input type="checkbox" id="loLegendQuick" '+(legendOn?'checked':'')+'><span>Exibir legenda na prancha</span></label>'+ 
+        '<label class="layout-legend-row kind-group"><input type="checkbox" id="loGroupNumbersQuick" '+(numbered?'checked':'')+(legendOn?'':' disabled')+'><span>Plotar números dos grupos</span></label>'+
         '<div class="hint" style="margin-top:7px">A lista contém somente as camadas e categorias visíveis no mapa. Desmarcar aqui remove apenas a linha da legenda.</div>'+ 
         '<div class="layout-legend-actions"><button type="button" class="tbtn" id="loLegendShowAll">✓ Mostrar todos</button>'+ 
           '<button type="button" class="tbtn" id="loLegendHideAll">Ocultar todos</button></div>'+ 
         '<div class="layout-legend-list">'+(rows.length?rows.map(r=>{
           const off=disabled(r),klass='layout-legend-row kind-'+r.kind+(r.groupKey?' in-group':'')+(off?' is-disabled':'');
-          return '<label class="'+klass+'"><input type="checkbox" data-legend-key="'+encodeURIComponent(r.key)+'" '+(r.on?'checked':'')+(off?' disabled':'')+'><span>'+html(r.label)+'</span></label>';
+          return '<label class="'+klass+'" style="padding-left:'+((r.depth||0)*14+8)+'px"><input type="checkbox" data-legend-key="'+encodeURIComponent(r.key)+'" '+(r.on?'checked':'')+(off?' disabled':'')+'><span>'+html(r.label)+'</span></label>';
         }).join(''):'<div class="layout-legend-empty">Nenhuma camada visível para incluir na legenda.</div>')+'</div>';
       const masterQuick=host.querySelector('#loLegendQuick');
       if(masterQuick)masterQuick.onchange=()=>{
         if(master)master.checked=masterQuick.checked;
+        buildLayout();paint();layoutSideMenuSync();
+      };
+      const numberingQuick=host.querySelector('#loGroupNumbersQuick');
+      if(numberingQuick)numberingQuick.onchange=()=>{
+        if(numbering)numbering.checked=numberingQuick.checked;
         buildLayout();paint();layoutSideMenuSync();
       };
       host.querySelectorAll('[data-legend-key]').forEach(input=>{
@@ -3411,6 +3393,7 @@ document.getElementById('btnPlateDup').onclick=()=>{
 };
 
 function syncLoBtns(){
+  layoutViewControlsSync();
   const fig = S.loMode!=='a4';
   const dupTop=document.getElementById('btnPlateDupTop');
   if(dupTop)dupTop.style.display=fig?'none':'inline-flex';
@@ -3500,8 +3483,9 @@ document.getElementById('btnSeloCfg2').onclick=openSeloCfg;
       ['loCoordLeft','↳ Lateral esquerda', cb('loCoordLeft')],
       ['loCoordRight','↳ Lateral direita', cb('loCoordRight')],
       ['loLegend','Legenda das camadas', cb('loLegend')],
+      ['loGroupNumbers','Plotar números dos grupos', cb('loGroupNumbers')],
       ['loCart','Cartela / título', cb('loCart')],
-      ['loSat','Ortofoto de fundo', cb('loSat')],
+      ['loSat','Mapa-base do Layout', cb('loSat')],
     ];
     const r=btn.getBoundingClientRect();
     menu=document.createElement('div'); menu.className='a3-float-menu';
@@ -3538,6 +3522,13 @@ document.getElementById('seloClose').onclick=()=>document.getElementById('seloMo
 document.getElementById('seloApply').onclick=()=>{document.getElementById('seloModal').classList.remove('on');
   S.loMode='a4'; syncLoBtns(); plateCapture(); buildLayout();};
 document.getElementById('seloModal').addEventListener('click',e=>{if(e.target.id==='seloModal')e.target.classList.remove('on');});
+// Fundo independente da prancha; a escolha do Mapa 2D permanece intacta.
+document.querySelectorAll('[data-lo-basemap]').forEach(b=>b.addEventListener('click',()=>{
+  document.getElementById('loBasemap').value=b.dataset.loBasemap;
+  document.getElementById('loSat').checked=b.dataset.loBasemap!=='Sem fundo';
+  layoutPresentationChange();
+}));
+document.getElementById('loSat')?.addEventListener('change',layoutViewControlsSync);
 document.getElementById('btnModeFig').onclick=()=>{S.loMode='fig';syncLoBtns();buildLayout();};
 { const b=document.getElementById('btnModeProp');
   if(b) b.onclick=()=>{ S.loMode='prop'; syncLoBtns(); buildLayout(); }; }

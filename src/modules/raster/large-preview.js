@@ -3,7 +3,9 @@
    first frame. Use the bounded tile sampler; smaller DEMs keep block means. */
 (function(){
 'use strict';
-const THRESHOLD=150e6,MAX_CELLS=1e6;
+const nav=window.navigator||{},mobile=/Android|iPad|iPhone|iPod/i.test(nav.userAgent||'')||
+  /Mac/i.test((nav.platform||'')+' '+(nav.userAgent||''))&&Number(nav.maxTouchPoints)>1;
+const THRESHOLD=mobile?4e6:150e6,MAX_CELLS=1e6;
 function cellBudget(width,height,normal){
   return width*height>THRESHOLD?Math.min(normal,MAX_CELLS):normal;
 }

@@ -3,7 +3,6 @@
 # Requisito único: o segredo FIREBASE_SERVICE_ACCOUNT_GEOMINE_3 no repositório
 # (Settings → Secrets and variables → Actions), contendo o JSON de uma conta de
 # serviço do projeto geomine-3 com o papel "Firebase Hosting Admin".
-# Gere com: firebase init hosting:github  (ou no console do Google Cloud, IAM → Contas de serviço).
 #
 # - push na branch main: deploy no canal live (https://geomine-3.web.app)
 # - pull request: deploy num canal de prévia temporário, com o link comentado no PR
@@ -32,20 +31,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
       - name: Montar dist/GeoMine.html
-        run: python3 tools/build.py
+        run: python3 -I -X utf8 tools/build.py
 
-      - name: Gerar public/ (versão web autenticada)
-        run: python3 tools/publicar_web.py --config web/firebase-config.json
+      - name: Gerar public/index.html (com portão de login)
+        run: python3 -I -X utf8 tools/preparar_hosting.py
 
-      - name: Validar contratos de colaboração
-        run: |
-          node tools/validate_collaboration_core.mjs
-          node tools/validate_collaboration_firebase_contract.mjs
+      - name: Registrar os SHA-256 gerados
+        run: sha256sum dist/GeoMine.html public/index.html | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Deploy (prévia em PR, live em push/manual)
         uses: FirebaseExtended/action-hosting-deploy@v0

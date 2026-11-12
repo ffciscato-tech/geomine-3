@@ -131,14 +131,20 @@ function snapshot(){
   if(data.section&&typeof data.section==='object')delete data.section.result;
   return data;
 }
-function restore(data){
-  const clean=data&&typeof data==='object'?(cloneGeo(data)||{}):{};
+function restore(data,options={}){
+  // loadProject adopts parsed feature geometry already. Its geological mesh
+  // geometry can use the same ownership rule, without a second large JSON copy.
+  // Standalone callers retain the historical isolated-copy behavior.
+  const clean=data&&typeof data==='object'?(options.borrowGeometry===true?data:(cloneGeo(data)||{})):{};
   S.geology=Object.assign({schemaVersion:SCHEMA_VERSION,sections:[],settings:{}},clean);
   S.geology.schemaVersion=SCHEMA_VERSION;
   if(!Array.isArray(S.geology.sections))S.geology.sections=[];
   if(!S.geology.settings||typeof S.geology.settings!=='object')S.geology.settings={};
   (S.layers||[]).forEach(layer=>{
-    if(layer?._geology?.kind==='surpac-mesh'||layer?._geology?.importedBoreholes===true)layer.locked=true;
+    // A restauração do domínio geológico não pode recongelar uma camada
+    // que o usuário já descongelou e salvou.
+    if(typeof layer?.locked!=='boolean'&&
+       (layer?._geology?.kind==='surpac-mesh'||layer?._geology?.importedBoreholes===true))layer.locked=true;
     const def=layer&&layer._geology&&GEOLOGY_TOOL_DEFS[layer._geology.kind];
     if(def)prepareNewGeologyFeatures(layer,def);
   });

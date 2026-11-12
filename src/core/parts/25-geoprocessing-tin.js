@@ -419,7 +419,7 @@ function tinArestaSegura(xs,ys,tri,maxEdge,forcar){
      • arestas continuam retas;
      • não existe arredondamento bilinear;
      • corte, anel e concavidade terminam exatamente na linha analítica. */
-async function tinMalhaExata(xs,ys,zs,tri,maxEdge,aneis,inverter){
+async function tinMalhaExata(xs,ys,zs,tri,maxEdge,aneis,inverter,strict=false){
   if(!tri||tri.length<3)return null;
   const n=xs.length,base=new Float64Array(n*3);
   for(let i=0;i<n;i++){base[3*i]=xs[i];base[3*i+1]=ys[i];base[3*i+2]=zs[i];}
@@ -479,13 +479,15 @@ async function tinMalhaExata(xs,ys,zs,tri,maxEdge,aneis,inverter){
     if(e1>me2||e2>me2||e3>me2){descartados++;continue;}
     if(!mask){pushI(a,b,c);continue;}
     const ia=dentro(xs[a],ys[a]),ib=dentro(xs[b],ys[b]),ic=dentro(xs[c],ys[c]);
-    if(!inverter&&ia&&ib&&ic){pushI(a,b,c);continue;}
-    if(inverter&&ia&&ib&&ic){descartados++;continue;}
     const xmin=Math.min(xs[a],xs[b],xs[c]),xmax=Math.max(xs[a],xs[b],xs[c]),
-      ymin=Math.min(ys[a],ys[b],ys[c]),ymax=Math.max(ys[a],ys[b],ys[c]);
+      ymin=Math.min(ys[a],ys[b],ys[c]),ymax=Math.max(ys[a],ys[b],ys[c]),
+      cruza=cruzaLimite(xmin,ymin,xmax,ymax);
+    // Três cantos internos não garantem um triângulo interno: um furo ou
+    // reentrância pode atravessar seu interior sem conter nenhum vértice.
+    if(ia&&ib&&ic&&!cruza){if(inverter)descartados++;else pushI(a,b,c);continue;}
     if(!(ia||ib||ic) &&
        !dentro((xs[a]+xs[b]+xs[c])/3,(ys[a]+ys[b]+ys[c])/3) &&
-       !cruzaLimite(xmin,ymin,xmax,ymax)){
+       !cruza){
       if(inverter)pushI(a,b,c);else descartados++;
       continue;
     }
@@ -493,7 +495,7 @@ async function tinMalhaExata(xs,ys,zs,tri,maxEdge,aneis,inverter){
     try{
       const tr=[[[[xs[a],ys[a]],[xs[b],ys[b]],[xs[c],ys[c]],[xs[a],ys[a]]]]];
       inter=inverter?polygonClipping.difference(tr,mask):polygonClipping.intersection(tr,mask);
-    }catch(_){inter=null;}
+    }catch(error){if(strict)throw new Error("Falha no recorte exato de uma face: "+error.message);inter=null;}
     if(!inter||!inter.length){descartados++;continue;}
     cortados++;
     for(const poly of inter){
@@ -501,7 +503,8 @@ async function tinMalhaExata(xs,ys,zs,tri,maxEdge,aneis,inverter){
       if(cont.length<3)continue;
       const cv=cont.map(p=>new THREE.Vector2(p[0],p[1])),
         hv=holes.map(h=>h.map(p=>new THREE.Vector2(p[0],p[1])));
-      let faces;try{faces=THREE.ShapeUtils.triangulateShape(cv,hv);}catch(_){faces=[];}
+      let faces;try{faces=THREE.ShapeUtils.triangulateShape(cv,hv);}catch(error){if(strict)throw error;faces=[];}
+      if(strict&&!faces.length)throw new Error("Não foi possível triangular uma face recortada.");
       const flat=cont.concat(...holes),off=n+extra.length/3;
       flat.forEach(p=>extra.push(p[0],p[1],bary(p[0],p[1],a,b,c)));
       faces.forEach(f=>pushI(off+f[0],off+f[1],off+f[2]));
@@ -941,7 +944,7 @@ function gtDensify(opcoes){
     });
   }catch(e){toast('Densificação cancelada: '+e.message);return;}
   const criterio=modo==='distancia'?step+' m':(modo==='intervalos'?step+' intervalos':step+' vértices/segmento');
-  const nova=addLayer({name:L.name+' — densif. '+criterio, gtype:L.gtype, crs:S.workCRS,
+  const nova=addLayer({sourceLayer:L,name:L.name+' — densif. '+criterio, gtype:L.gtype, crs:S.workCRS,
     features:feats, fields:(L.fields||[]).map(f=>({...f})), color:'#7aa2f7'});
   if(nova&&L.sym){nova.sym=JSON.parse(JSON.stringify(L.sym));drawLayer(nova);}
   document.getElementById('gtOut').innerHTML=
@@ -989,7 +992,7 @@ async function gtExtractVertices(){
     {name:'VTX',type:'N',length:8,decimal:0},{name:'X',type:'N',length:14,decimal:3},
     {name:'Y',type:'N',length:14,decimal:3}];
   if(wantZ) fields.push({name:'Z',type:'N',length:10,decimal:2});
-  addLayer({name:L.name+' — vértices'+(wantZ?' +Z':''), gtype:'point', crs:S.workCRS,
+  addLayer({sourceLayer:L,name:L.name+' — vértices'+(wantZ?' +Z':''), gtype:'point', crs:S.workCRS,
     features:feats, fields, color:'#e0af68'});
   const zsrc=wantZ? (src==='geom'?'Z da geometria (3D)':'superfície "'+esc(R.name)+'"') : '';
   document.getElementById('gtOut').innerHTML=
@@ -1025,7 +1028,7 @@ async function gtExtractZ(){
   });
   const fields=(L.fields||[]).map(f=>({...f}));
   if(!fields.some(f=>f.name==='Z')) fields.push({name:'Z',type:'N',length:10,decimal:2});
-  addLayer({name:L.name+' — com Z', gtype:'point', crs:S.workCRS,
+  addLayer({sourceLayer:L,name:L.name+' — com Z', gtype:'point', crs:S.workCRS,
     features:feats, fields, color:'#9ece6a'});
   const zsrc=(src==='geom')?'Z da geometria (3D)':'superfície "'+esc(R.name)+'"';
   document.getElementById('gtOut').innerHTML=
@@ -1191,7 +1194,7 @@ async function runClip(){
     style:{mode:r.style.mode, opacity:r.style.opacity}, visible:true, overlay:null,
     _exactClipRings:rings.map(a=>a.map(p=>[p[0],p[1]])),
     _v3:{papel:'projeto',cor:(L.sym&&L.sym.color)||L.color||'#4f8b3a',limId:L.id}};
-  S.rasters.push(nr2); renderRaster(nr2); refreshUI();
+  S.rasters.push(nr2);placeProductAbove(nr2,r); renderRaster(nr2); refreshUI();
   projectAutoSaveRaster(nr2);
   const b=nr2.overlay&&nr2.overlay.getBounds?nr2.overlay.getBounds():null;
   if(b) safeFit(b);
@@ -1305,16 +1308,16 @@ async function runContour(){
   const setStyle=(L,w,lbl)=>{ L.weight=w; L.sym.weight=w;
     if(lbl){ L.labelField=lbl; } drawLayer(L); };
   if(split && mst>0 && nM){
-    const Lc=addLayer({name:r.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
+    const Lc=addLayer({sourceLayer:r,name:r.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
       features:feats.filter(f=>f.props.MESTRA===0), fields:fields.map(f=>({...f})),
       color:'#37c0aa'});
     setStyle(Lc, 1, null);
-    const Lm=addLayer({name:r.name+' — mestras '+mst+' m', gtype:'line', crs:S.workCRS,
+    const Lm=addLayer({sourceLayer:r,name:r.name+' — mestras '+mst+' m', gtype:'line', crs:S.workCRS,
       features:feats.filter(f=>f.props.MESTRA===1), fields:fields.map(f=>({...f})),
       color:'#e0af68'});
     setStyle(Lm, 2.2, 'COTA');
   } else {
-    const L1=addLayer({name:r.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
+    const L1=addLayer({sourceLayer:r,name:r.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
       features:feats, fields, color:'#37c0aa'});
     setStyle(L1, 1.2, null);
   }
@@ -1443,7 +1446,7 @@ async function runSymDiff(){
     const fields=[{name:'FID',type:'N',length:9,decimal:0},
       {name:'AREA_M2',type:'N',length:16,decimal:2},{name:'AREA_HA',type:'N',length:12,decimal:4},
       {name:'PERIM_M',type:'N',length:12,decimal:2}];
-    addLayer({name:`DifSim ${A.name} △ ${B.name}`.slice(0,60), gtype:'polygon', crs:S.workCRS,
+    addLayer({sourceLayer:A,name:`DifSim ${A.name} △ ${B.name}`.slice(0,60), gtype:'polygon', crs:S.workCRS,
       features:feats, fields});
     hideLoad();
     const aT=feats.reduce((s,f)=>s+f.props.AREA_M2,0);
@@ -1489,7 +1492,7 @@ function runMerge(){
       if(zparts){ ft.zg=ft.multi?zparts:zparts[0]; nz++; }
       feats.push(ft);
     }));
-    addLayer({name:'Mescla ('+Ls.length+' camadas)', gtype:gt, crs:S.workCRS, features:feats, fields});
+    addLayer({sourceLayer:Ls[0],name:'Mescla ('+Ls.length+' camadas)', gtype:gt, crs:S.workCRS, features:feats, fields});
     hideLoad();
     document.getElementById('mgOut').innerHTML=
       `<b>${feats.length}</b> feições de <b>${Ls.length}</b> camadas · ${fields.length} campos (campo ORIGEM adicionado)`+
@@ -1579,7 +1582,7 @@ function runIntersect(){
       return {geom:ln.map(p=>[p[0],p[1]]), multi:true, zg,
         props:{FID:i, TIPO:'interseção', A:A.name.slice(0,30), B:B.name.slice(0,30)}};
     });
-    addLayer({name:`Interseção: ${A.name} × ${B.name}`.slice(0,60), gtype:'line', crs:S.workCRS,
+    addLayer({sourceLayer:A,name:`Interseção: ${A.name} × ${B.name}`.slice(0,60), gtype:'line', crs:S.workCRS,
       features:feats, fields:[{name:'FID',type:'N',length:9,decimal:0},
         {name:'TIPO',type:'C',length:12,decimal:0},{name:'A',type:'C',length:30,decimal:0},
         {name:'B',type:'C',length:30,decimal:0}]});
@@ -2149,7 +2152,7 @@ function runCutByLimit(){
     const base=L.name.replace(/_c$/,'');
     const fields=[...(L.fields||[]).filter(f=>f.name!=='FID'),
       {name:'FID',type:'N',length:9,decimal:0},{name:'ORIG',type:'C',length:8,decimal:0}];
-    const cLayer=addLayer({name:(base+'_c').slice(0,60), gtype:'line', crs:L.crs, features:kept, fields});
+    const cLayer=addLayer({sourceLayer:L,name:(base+'_c').slice(0,60), gtype:'line', crs:L.crs, features:kept, fields});
     const nLim=unir?Lim.features.reduce((s,f)=>s+((f.multi&&Array.isArray(f.geom[0][0]))?f.geom.length:1),0):0;
     let msg=`<b>${kept.length-nLim}</b> trecho(s) da cava (${keepIn?'dentro':'fora'})`+
       (unir?` + <b>${nLim}</b> do limite`:'')+
@@ -2289,7 +2292,7 @@ async function runMosaic(){
   const r={id:rid++, name:'Topografia final — MDT fundido ('+Rs.length+')', d:nd,
     src:{file:'topografia_final_mdt_fundido', at:new Date().toISOString()},
     style:{mode:'hipso_hs', opacity:0.85}, visible:true, overlay:null};
-  S.rasters.push(r); renderRaster(r); refreshUI(); hideLoad();
+  S.rasters.push(r);placeProductAbove(r,gradeRaster); renderRaster(r); refreshUI(); hideLoad();
   projectAutoSaveRaster(r);
   if(r.overlay&&r.overlay.getBounds) safeFit(r.overlay.getBounds());
   document.getElementById('moOut').innerHTML=
@@ -2524,7 +2527,7 @@ function runPolygonizeRaster(){
     if(fld!=='DN')res.features.forEach(f=>{f.props[fld]=f.props.DN;delete f.props.DN;});
     const dissolveNome=dissolveMode==='all'?' · dissolvido':dissolveMode==='class'?' · dissolvido por CLASSE':
       dissolveMode==='value'?' · dissolvido por '+fld:'';
-    const L=addLayer({name:r.name+' — poligonizado'+dissolveNome,gtype:'polygon',crs:S.workCRS,features:res.features,
+    const L=addLayer({sourceLayer:r,name:r.name+' — poligonizado'+dissolveNome,gtype:'polygon',crs:S.workCRS,features:res.features,
       fields:[{name:'FID',type:'N',length:9,decimal:0},{name:fld,type:'N',length:18,decimal:6},
         {name:'CLASSE',type:'C',length:80,decimal:0},{name:'VAL_MIN',type:'N',length:18,decimal:6},
         {name:'VAL_MAX',type:'N',length:18,decimal:6},{name:'VAL_MED',type:'N',length:18,decimal:6},
@@ -2562,16 +2565,68 @@ function pgResultadoAbrir(filtro){
 }
 
 /* Fechamento de linhas é uma operação CAD distinta de Poligonizar raster. */
+let pzBusy=false;
+function pzScopeState(stamp=true){
+  const helper=window.GeoMineCommandSelection;
+  if(!helper)throw Error('A seleção ainda está sendo preparada. Tente novamente.');
+  const selection=helper.capture({gtype:'line',stamp});
+  if(selection.explicit&&selection.layers.length!==1)
+    throw Error('Poligonize linhas de uma camada por vez. A seleção foi mantida.');
+  const L=selection.explicit?selection.layers[0]:
+    S.layers.find(l=>String(l.id)===document.getElementById('pzLayer')?.value);
+  if(!L||L.gtype!=='line')throw Error('Selecione uma linha ou uma camada de LINHAS');
+  if(!selection.explicit)return {selection,L,features:L.features};
+  // A seleção pode indicar apenas uma parte de uma linha multipartes.
+  // Nunca acrescente as outras partes nem as outras feições da camada.
+  const selected=new Map();
+  for(const {f,partIdx} of selection.items){
+    const parts=Array.isArray(f.geom?.[0]?.[0])?f.geom:[f.geom];
+    let entry=selected.get(f);
+    if(!entry){entry={parts,indices:new Set()};selected.set(f,entry);}
+    if(partIdx==null)parts.forEach((_,i)=>entry.indices.add(i));
+    else if(partIdx>=0&&partIdx<parts.length)entry.indices.add(partIdx);
+    else throw Error('A parte selecionada não existe mais. Selecione a linha novamente.');
+  }
+  const features=[];
+  for(const {parts,indices} of selected.values())
+    for(const i of [...indices].sort((a,b)=>a-b))features.push({geom:parts[i],multi:false});
+  return {selection,L,features};
+}
+function pzScopeSync(){
+  const label=document.getElementById('pzScope'),select=document.getElementById('pzLayer'),button=document.getElementById('btnPz');
+  let state=null,error=null;
+  try{state=pzScopeState(false);}catch(e){error=e;}
+  if(state?.selection.explicit&&select)select.value=String(state.L.id);
+  if(select)select.disabled=pzBusy||!!state?.selection.explicit;
+  if(button)button.disabled=pzBusy||!!error||!state?.features.length;
+  if(label)label.textContent=error?error.message:state.selection.explicit?
+    'Somente '+state.features.length+' linha(s) selecionada(s) — '+state.L.name:
+    'Toda a camada — '+state.features.length+' feição(ões) de linha';
+  return state;
+}
 function runPolygonize(){
-  const L=S.layers.find(l=>String(l.id)===document.getElementById('pzLayer').value);
-  if(!L||L.gtype!=='line'){ toast('Selecione uma camada de LINHAS'); return; }
+  if(pzBusy)return;
+  let scope;
+  try{scope=pzScopeState();}catch(e){toast(e.message);pzScopeSync();return;}
+  const {L,selection,features}=scope,helper=window.GeoMineCommandSelection;
+  if(!features.length){toast('Nenhuma linha disponível para poligonizar');pzScopeSync();return;}
+  const crs=L.crs,sourceStamp=selection.explicit?null:JSON.stringify(L.features);
+  const assertSource=()=>{
+    helper.assertCurrent(selection);
+    if(!S.layers.includes(L)||L.gtype!=='line'||L.crs!==crs||
+       !selection.explicit&&JSON.stringify(L.features)!==sourceStamp)
+      throw Error('A origem mudou durante o cálculo. Execute novamente.');
+  };
   const tol=Math.max(0.001, parseFloat(String(document.getElementById('pzTol').value).replace(',','.'))||0.5);
+  const origin=selection.explicit?'somente '+features.length+' linha(s) selecionada(s)':features.length+' feição(ões) da camada inteira';
+  pzBusy=true;pzScopeSync();
   showLoad('Poligonizando…');
   setTimeout(()=>{
-    const {rings,fechadas,descartadas}=polygonizeLines(L,tol);
-    hideLoad();
+    try{
+    assertSource();
+    const {rings,descartadas}=polygonizeLines({crs,features},tol);
     if(!rings.length){
-      document.getElementById('pzOut').innerHTML='Nenhum anel fechado encontrado — aumente a tolerância?';
+      document.getElementById('pzOut').textContent='Nenhum anel fechado encontrado — origem: '+origin+'. Verifique se as linhas escolhidas fecham um contorno ou ajuste a tolerância.';
       toast('Nenhum polígono formado'); return;
     }
     const feats=rings.map((r,i)=>{
@@ -2581,13 +2636,16 @@ function runPolygonize(){
       return {geom:[r.map(p=>[p[0],p[1]])], multi:true,
         props:{FID:i, AREA_M2:+a.toFixed(2), AREA_HA:+(a/1e4).toFixed(4), PERIM_M:+per.toFixed(2)}};
     });
-    addLayer({name:L.name+' — polígonos', gtype:'polygon', crs:S.workCRS, features:feats,
+    assertSource();
+    addLayer({sourceLayer:L,name:L.name+' — polígonos'+(selection.explicit?' da seleção':''), gtype:'polygon', crs:S.workCRS, features:feats,
       fields:[{name:'FID',type:'N',length:9,decimal:0},{name:'AREA_M2',type:'N',length:16,decimal:2},
         {name:'AREA_HA',type:'N',length:12,decimal:4},{name:'PERIM_M',type:'N',length:12,decimal:2}]});
     document.getElementById('pzOut').innerHTML=
       `<b>${rings.length}</b> polígono(s) — rede dividida em nós e interseções`+
-      (descartadas?`, <b>${descartadas}</b> cadeia(s) ainda aberta(s)`:'')+`.`;
+      (descartadas?`, <b>${descartadas}</b> cadeia(s) ainda aberta(s)`:'')+` · origem: ${origin}.`;
     refreshOverlayPanel(); refreshGtPanel(); if(typeof refreshTinPanel==='function') refreshTinPanel();
+    }catch(e){document.getElementById('pzOut').textContent='Falha: '+e.message;toast('Poligonizar: '+e.message);}
+    finally{hideLoad();pzBusy=false;pzScopeSync();}
   },30);
 }
 
@@ -2714,7 +2772,7 @@ async function runDissolve(){
     if(fld) fields.push({name:fld.slice(0,10),type:'C',length:40,decimal:0});
     if(!feats.length)throw Error('Nenhum polígono resultante. As feições de origem foram preservadas.');
     assertSource();
-    addLayer({name:L.name+' — dissolvido'+(fld?' por '+fld:''), gtype:'polygon', crs:S.workCRS,
+    addLayer({sourceLayer:L,name:L.name+' — dissolvido'+(fld?' por '+fld:''), gtype:'polygon', crs:S.workCRS,
       features:feats, fields});
     hideLoad();
     document.getElementById('dsOut').innerHTML=
@@ -2775,7 +2833,7 @@ async function runExtractBoundary(){
     }
     if(!rings.length)throw new Error('não foi possível formar um contorno externo');
     const feats=rings.map((r,i)=>({geom:[r],multi:true,props:{FID:i+1,AREA_M2:+xlArea(r).toFixed(2),ORIGEM:L.name}}));
-    const out=addLayer({name:L.name+' — limite',gtype:'polygon',crs:S.workCRS,features:feats,
+    const out=addLayer({sourceLayer:L,name:L.name+' — limite',gtype:'polygon',crs:S.workCRS,features:feats,
       fields:[{name:'FID',type:'N',length:9,decimal:0},{name:'AREA_M2',type:'N',length:18,decimal:2},{name:'ORIGEM',type:'C',length:80,decimal:0}]});
     hideLoad();document.getElementById('xlOut').innerHTML=`<b>${feats.length}</b> limite(s) externo(s) · ${fmtArea(feats.reduce((s,f)=>s+f.props.AREA_M2,0))}.`;
     refreshUI();if(out)fitLayer(out);toast('Limite externo criado');
@@ -2791,7 +2849,10 @@ function refreshVecOpsPanel(){
     const ls=S.layers.filter(l=>l.gtype==='line');
     pz.innerHTML=ls.length? ls.map(l=>`<option value="${l.id}">${esc(l.name)} (${l.features.length})</option>`).join('')
       : '<option value="">— sem camadas de linha —</option>';
-    if(ls.some(l=>String(l.id)===cur)) pz.value=cur; }
+    const a=(typeof processingLayer==='function'?processingLayer():activeLayer());
+    if(a&&ls.includes(a))pz.value=String(a.id);
+    else if(ls.some(l=>String(l.id)===cur)) pz.value=cur;
+    pzScopeSync(); }
   const ds=document.getElementById('dsLayer');
   if(ds){ const cur=ds.value;
     const ps=S.layers.filter(l=>l.gtype==='polygon');
@@ -2819,6 +2880,7 @@ function dsFields(){
 function bindVecOpsPanel(){
   const b1=document.getElementById('btnMosaic'); if(b1) b1.onclick=runMosaic;
   const b2=document.getElementById('btnPz');     if(b2) b2.onclick=runPolygonize;
+  const pz=document.getElementById('pzLayer');   if(pz) pz.onchange=pzScopeSync;
   const b3=document.getElementById('btnDs');     if(b3) b3.onclick=runDissolve;
   const b4=document.getElementById('btnPgRaster');if(b4)b4.onclick=runPolygonizeRaster;
   const bt=document.getElementById('btnPgTabela');if(bt)bt.onclick=()=>pgResultadoAbrir(false);
@@ -3111,7 +3173,7 @@ async function buildTINFromLayer(L, cs, maxEdge, opts){
       _tinSourceId:L.id,_tinMethod:'cava-breaklines',
       _v3:{papel:'projeto',cor:(L.sym&&L.sym.color)||L.color||'#9b5a2c',limId:L.id}};
     tinDesligaAnteriores(L);
-    S.rasters.push(r);renderRaster(r);projectAutoSaveRaster(r);
+    S.rasters.push(r);placeProductAbove(r,L);renderRaster(r);projectAutoSaveRaster(r);
     let zmn=Infinity,zmx=-Infinity,nCells=0;
     for(const v of g.z)if(!isNaN(v)){nCells++;if(v<zmn)zmn=v;if(v>zmx)zmx=v;}
     return {raster:r,nc:g.nc,nr:g.nr,nCells,zmn,zmx,nVert:0,nCort:g.nc*g.nr-nCells,conditioned:true};
@@ -3160,7 +3222,7 @@ async function buildTINFromLayer(L, cs, maxEdge, opts){
     ((clipRings&&clipRings.length)?L.id:'');
   if(lim3d)
     r._v3={papel:'projeto',cor:(L.sym&&L.sym.color)||L.color||'#4f8b3a',limId:lim3d};
-  tinDesligaAnteriores(L);S.rasters.push(r); renderRaster(r);
+  tinDesligaAnteriores(L);S.rasters.push(r);placeProductAbove(r,L); renderRaster(r);
   projectAutoSaveRaster(r);
   let nCells=0,zmn=Infinity,zmx=-Infinity;
   for(const v of g.z) if(!isNaN(v)){ nCells++; if(v<zmn)zmn=v; if(v>zmx)zmx=v; }
@@ -3624,7 +3686,7 @@ async function runTinInterMdt(){
     const R=await tinIntersecaoLinhasMDT(L,g.d,g.name);
     if(!R.feats.length){hideLoad();
       toast('Nenhum cruzamento: as linhas não furam esse MDT (confira o CRS e as cotas)');return;}
-    const nova=addLayer({name:`${L.name} × ${g.name} — interseção`,gtype:'line',
+    const nova=addLayer({sourceLayer:L,name:`${L.name} × ${g.name} — interseção`,gtype:'line',
       crs:S.workCRS,features:R.feats,
       fields:[{name:'ORDEM',type:'N'},{name:'MDT',type:'C'},{name:'LINHAS',type:'C'},
         {name:'PONTOS',type:'N'},{name:'METODO',type:'C'}],color:'#d81b60'});
@@ -3880,11 +3942,7 @@ async function runTIN(){
   else if(recortePorTerreno)
     r._v3={papel:'projeto',cor:(L.sym&&L.sym.color)||L.color||'#4f8b3a',limId:''};
   tinDesligaAnteriores(L);S.rasters.push(r);
-  // Resultado novo no topo: o fallback de stackSync adiciona rasters ao
-  // fundo, onde o MDT/ortofoto e polígonos existentes esconderiam o cálculo.
-  // Só inserimos esta chave; não reordenamos nem desagrupamos os outros nós.
-  const resultadoKey=nodeKey('R',r.id);
-  S.stack=[resultadoKey,...(S.stack||[]).filter(k=>k!==resultadoKey)];
+  placeProductAbove(r,L);
   renderRaster(r);
   projectAutoSaveRaster(r);
   // FEEDBACK IMPOSSÍVEL DE PERDER: zoom na grade nova + toast.
@@ -3938,7 +3996,7 @@ async function runTIN(){
     await new Promise(rs=>setTimeout(rs,10));
     const lines=contourGrid(r.d, iv);
     if(lines.length){
-      addLayer({name:L.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
+      addLayer({sourceLayer:r,name:L.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
         features:lines.map(ln=>({geom:ln.pts, multi:false, props:{COTA:+ln.z.toFixed(2)}})),
         fields:[{name:'COTA',type:'N',length:12,decimal:2}], color:'#37c0aa'});
       out+=`Curvas geradas: <b>${lines.length}</b> polilinhas a cada ${iv} m\n`;
@@ -4227,7 +4285,7 @@ function estGerar(){
   if(comDecl){ fields.push({name:'DECL_PC',type:'N',length:10,decimal:2});
     fields.push({name:'DECL_GR',type:'N',length:10,decimal:2}); }
   const rotular=((document.getElementById('estRot')||{}).value||'sim')!=='nao',
-    nova=addLayer({name:`Progressiva ${inter} m — ${L.name}`.slice(0,60), gtype:'point',
+    nova=addLayer({sourceLayer:L,name:`Progressiva ${inter} m — ${L.name}`.slice(0,60), gtype:'point',
     crs:S.workCRS, features:feats, fields, color:'#37c0aa',
     labelField:rotular?'ESTACA':null,
     lbl:rotular?{size:8, halo:'#ffffff', haloW:1.4, place:'offset', dx:8, dy:-8}:null});
@@ -4505,7 +4563,8 @@ function cotLayer(){
   if(!S.cot.pts.length){ toast('Colete ao menos um ponto'); return; }
   const dec=+((document.getElementById('cotDec')||{}).value ?? 2);
   const pref=((document.getElementById('cotPref')||{}).value||'P').trim()||'P';
-  const surf=(S.rasters.find(r=>String(r.id)===document.getElementById('cotSurf').value)||{}).name||'MDT';
+  const source=S.rasters.find(r=>String(r.id)===document.getElementById('cotSurf').value);
+  const surf=source?.name||'MDT';
   const feats=S.cot.pts.map((p,i)=>{
     // formato do app: geom = array de coordenadas, zg = array de cotas
     const f={ geom:[[p.E,p.N]], multi:false,
@@ -4515,7 +4574,7 @@ function cotLayer(){
     if(!isNaN(p.z)) f.zg=[+p.z.toFixed(dec)];
     return f;
   });
-  addLayer({
+  addLayer({sourceLayer:source,
     name:`Pontos cotados — ${surf}`.slice(0,60),
     gtype:'point', crs:S.workCRS, features:feats,
     fields:[{name:'ID',type:'C',length:12},
@@ -4766,8 +4825,8 @@ function abreCristaPe(){
         const nomes=new Set(['Cristas — '+r.name,'Pés — '+r.name]);
         S.layers.filter(L=>nomes.has(L.name)).forEach(L=>{try{if(L.llayer)map.removeLayer(L.llayer);}catch(e){}});
         S.layers=S.layers.filter(L=>!nomes.has(L.name));
-        if(res.Crista.length){const L=addLayer({name:'Cristas — '+r.name,gtype:'line',crs:S.workCRS,features:res.Crista,fields,color:'#e76f51'});L.weight=3;L.groupId=r.groupId||null;}
-        if(res.Pé.length){const L=addLayer({name:'Pés — '+r.name,gtype:'line',crs:S.workCRS,features:res.Pé,fields,color:'#277da1'});L.weight=3;L.groupId=r.groupId||null;}
+        if(res.Crista.length){const L=addLayer({sourceLayer:r,name:'Cristas — '+r.name,gtype:'line',crs:S.workCRS,features:res.Crista,fields,color:'#e76f51'});L.weight=3;L.groupId=r.groupId||null;}
+        if(res.Pé.length){const L=addLayer({sourceLayer:r,name:'Pés — '+r.name,gtype:'line',crs:S.workCRS,features:res.Pé,fields,color:'#277da1'});L.weight=3;L.groupId=r.groupId||null;}
         refreshUI();zApply();outEl.innerHTML='<b>'+res.Crista.length+'</b> crista(s) e <b>'+res.Pé.length+'</b> pé(s) gerados em 3D.';
         toast('Crista e pé extraídos — linhas prontas para a triangulação');
       }catch(e){console.error(e);outEl.textContent='Falha: '+e.message;toast('Falha na extração de crista e pé');}finally{bt.disabled=false;}},40);
@@ -5088,13 +5147,58 @@ function drawProfChart(prof, VE){
   ctx.fillText('EV '+veEff.toFixed(1)+'× · cota (m) × distância', W-mR2, H-6);
   return veEff;
 }
+// Profile choices refer only to sources in the current project. Do not keep
+// deleted IDs as synthetic layers or silently replace them with another one.
+function profReconcileSources(){
+  if(!S.prof)return false;
+  const rasters=new Set((S.rasters||[]).filter(r=>r&&r.d).map(r=>String(r.id))),
+    lines=new Set((S.layers||[]).filter(L=>L?.gtype==='line'&&profLinhaTemZ(L)).map(L=>String(L.id)));
+  let changed=false;
+  for(const [key,valid] of [['sourceRasterIds',rasters],['sourceLineIds',lines]]){
+    const before=Array.isArray(S.prof[key])?S.prof[key]:[];
+    if(before.some(id=>!valid.has(String(id))))changed=true;
+    S.prof[key]=[...new Set(before.map(String))].filter(id=>valid.has(id));
+  }
+  for(const [key,id,valid] of [['rasterPick','prRasterSel',rasters],['vectorPick','prVectorSel',lines]]){
+    const select=document.getElementById(id),value=S.prof[key]??select?.value;
+    if(value&&!valid.has(String(value))){S.prof[key]='';if(select)select.value='';changed=true;}
+  }
+  const axisValid=(layer,idx,partIdx,feature)=>{
+    if(!(S.layers||[]).includes(layer)||layer?.gtype!=='line'||!Number.isInteger(idx)||!Number.isInteger(partIdx))return false;
+    const f=layer.features?.[idx];if(!f||feature&&f!==feature||!Array.isArray(f.geom))return false;
+    const parts=Array.isArray(f.geom[0]?.[0])?f.geom:[f.geom];return parts[partIdx]?.length>=2;
+  };
+  const axis=S.prof.axisSelection;
+  if(axis&&!axisValid(axis.layer,axis.idx,axis.partIdx,axis.feature)){
+    S.prof.axisSelection=null;S.prof.buf=[];S.prof.line=null;changed=true;
+    if(S.tool==='profile')redrawProfPreview();
+  }
+  const select=document.getElementById('prAxisVectorSel'),pick=S.prof.axisPick??select?.value;
+  if(pick){
+    const key=String(pick).split(':'),partIdx=Number(key.pop()),idx=Number(key.pop()),layer=(S.layers||[]).find(L=>String(L.id)===key.join(':'));
+    if(!axisValid(layer,idx,partIdx)){S.prof.axisPick='';if(select)select.value='';changed=true;}
+  }
+  if(changed)profInvalidateResult();return changed;
+}
+function profSyncSources(){
+  const changed=profReconcileSources();
+  const panel=document.getElementById('sidePerfis');
+  if(!panel||panel.style.display==='none')return;
+  // A tree refresh need not rebuild the same profile lists on every style
+  // or map update. Revisions capture edited geometries and elevation fields.
+  const key=JSON.stringify([S.projectId,(S.rasters||[]).map(r=>[r.id,r.name,!!r.d]),
+    (S.layers||[]).map(L=>[L.id,L.name,L.gtype,L._rev,L.features?.length])]);
+  if(changed||S.prof._catalogKey!==key){refreshProfPanel();S.prof._catalogKey=key;}
+}
 function profSelectedRasters(){
+  profReconcileSources();
   if(profSourceMode()==='vector')return [];
   const ids=new Set((S.prof.sourceRasterIds||[]).map(String)),picked=document.getElementById('prRasterSel')?.value;
   if(picked)ids.add(String(picked));
   return [...ids].map(id=>S.rasters.find(r=>String(r.id)===id)).filter(Boolean);
 }
 function profSelectedLines(){
+  profReconcileSources();
   if(profSourceMode()==='raster')return [];
   const ids=new Set((S.prof.sourceLineIds||[]).map(String));
   const picked=document.getElementById('prVectorSel')?.value;
@@ -5137,7 +5241,30 @@ function profVectorParts(f){
   });
 }
 function profLinhaTemZ(L){
-  return !!(L?.gtype==='line'&&L.features?.some(f=>profVectorParts(f).some(p=>p.z.some(Number.isFinite))));
+  if(L?.gtype!=='line'||!Array.isArray(L.features))return false;
+  // Eligibility needs only one usable Z, not copies of every XY/Z vertex.
+  for(const f of L.features){
+    if(!f||!Array.isArray(f.geom))continue;
+    const nested=Array.isArray(f.geom[0]?.[0]);let constant,readConstant=false;
+    for(let partIdx=0;partIdx<(nested?f.geom.length:1);partIdx++){
+      if(nested&&!(partIdx in f.geom))continue;
+      const xy=nested?f.geom[partIdx]:f.geom,zg=nested?f.zg?.[partIdx]:f.zg,
+        hasZg=Array.isArray(zg)||ArrayBuffer.isView(zg);
+      if(!Array.isArray(xy))continue;
+      for(let i=0;i<xy.length;i++){
+        if(!(i in xy))continue; // Match map/some behavior for sparse arrays.
+        if(hasZg&&Number.isFinite(profZNumber(zg[i])))return true;
+        const p=xy[i];
+        if(p==null)continue;
+        if(p.length>2){if(Number.isFinite(profZNumber(p[2])))return true;}
+        else if(!hasZg){
+          if(!readConstant){constant=profLinhaZConst(f);readConstant=true;}
+          if(Number.isFinite(constant))return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 function profSegInter(a,b,c,d){
   const rx=b[0]-a[0],ry=b[1]-a[1],sx=d[0]-c[0],sy=d[1]-c[1],den=rx*sy-ry*sx;
@@ -5231,20 +5358,22 @@ function sampleProfileLines(ptsCRS,layers,step,axisSelection){
   return{dist,total,series,source:'linhas'};
 }
 function profRenderVectorSources(){
+  profReconcileSources();
   const box=document.getElementById('prVectorChosen');if(!box)return;
   const ids=new Set((S.prof.sourceLineIds||[]).map(String));
   S.prof.sourceLineIds=[...ids];
   box.innerHTML=S.prof.sourceLineIds.length?S.prof.sourceLineIds.map((id,i)=>{
     const L=S.layers.find(q=>String(q.id)===String(id));
-    return `<span class="tag" style="display:inline-flex;align-items:center;gap:5px;max-width:100%"><span style="overflow:hidden;text-overflow:ellipsis">${i+1}. ${esc(L?.name||id)}${!L||!profLinhaTemZ(L)?' · indisponível':''}</span><button type="button" class="prSrcRemove" data-id="${esc(String(id))}" title="Remover esta fonte" style="border:0;background:none;color:inherit;cursor:pointer;padding:0">×</button></span>`;
+    return `<span class="tag" style="display:inline-flex;align-items:center;gap:5px;max-width:100%"><span style="overflow:hidden;text-overflow:ellipsis">${i+1}. ${esc(L.name)}</span><button type="button" class="prSrcRemove" data-id="${esc(String(id))}" title="Remover esta fonte" style="border:0;background:none;color:inherit;cursor:pointer;padding:0">×</button></span>`;
   }).join(''):'<span class="hint">Sem fontes adicionais para comparação.</span>';
 }
 function profRenderRasterSources(){
+  profReconcileSources();
   const box=document.getElementById('prRasterChosen');if(!box)return;
   S.prof.sourceRasterIds=[...new Set((S.prof.sourceRasterIds||[]).map(String))];
   box.innerHTML=S.prof.sourceRasterIds.length?S.prof.sourceRasterIds.map((id,i)=>{
     const r=S.rasters.find(r=>String(r.id)===id);
-    return `<span class="tag" style="display:inline-flex;align-items:center;gap:5px;max-width:100%"><span style="overflow:hidden;text-overflow:ellipsis">${i+1}. ${esc(r?.name||id)}${r?'':' · indisponível'}</span><button type="button" class="prRasterRemove" data-id="${esc(id)}" title="Remover este MDT" style="border:0;background:none;color:inherit;cursor:pointer;padding:0">×</button></span>`;
+    return `<span class="tag" style="display:inline-flex;align-items:center;gap:5px;max-width:100%"><span style="overflow:hidden;text-overflow:ellipsis">${i+1}. ${esc(r.name)}</span><button type="button" class="prRasterRemove" data-id="${esc(id)}" title="Remover este MDT" style="border:0;background:none;color:inherit;cursor:pointer;padding:0">×</button></span>`;
   }).join(''):'<span class="hint">A superfície escolhida será utilizada. Use “Comparar” para manter mais de uma.</span>';
 }
 function profAxisOptions(){
@@ -5270,11 +5399,11 @@ function profAxisOptions(){
   return out;
 }
 function profRenderAxisChoices(){
+  profReconcileSources();
   const select=document.getElementById('prAxisVectorSel');if(!select)return;
   const old=S.prof.axisPick??select.value,options=profAxisOptions();
   select.innerHTML='<option value="">— traçar no mapa ou usar a linha selecionada —</option>'+options.map(o=>'<option value="'+esc(o.key)+'">'+esc(o.name)+'</option>').join('');
-  if(old&&!options.some(o=>o.key===old))select.insertAdjacentHTML('beforeend','<option value="'+esc(old)+'">Eixo indisponível — escolha outra linha</option>');
-  select.value=old||'';
+  select.value=options.some(o=>o.key===old)?old:'';
 }
 function profDefaultVectorAxis(layer){
   if(S.prof.axisPick||S.prof.buf.length||S.selFeat||!layer||layer.features.length!==1)return;
@@ -5304,7 +5433,7 @@ function profVectorAxisSelection(layers){
   const choice=document.getElementById('prAxisVectorSel')?.value;
   if(choice)return profAxisOptions().find(option=>option.key===choice)||null;
   const sel=S.selFeat;
-  if(sel?.layer?.gtype==='line'){
+  if(sel?.layer?.gtype==='line'&&(S.layers||[]).includes(sel.layer)){
     const parts=profVectorParts(sel.layer.features[sel.idx]);
     const part=Number.isInteger(sel.partIdx)?parts.find(p=>p.partIdx===sel.partIdx):parts.length===1?parts[0]:null;
     if(part?.xy.length>=2)return {...sel,partIdx:part.partIdx};
@@ -5321,19 +5450,19 @@ function profUseVectorAxis(){
   if(!axis){toast('Escolha o eixo na lista ou selecione no mapa a linha/parte desejada');return;}
   const part=profVectorParts(axis.layer.features[axis.idx]).find(p=>p.partIdx===axis.partIdx);
   const key=String(axis.layer.id)+':'+axis.idx+':'+axis.partIdx;
-  resetProfile(false);S.prof.axisSelection=axis;S.prof.axisPick=key;profRenderAxisChoices();
+  resetProfile(false);S.prof.axisSelection={...axis,feature:axis.layer.features[axis.idx]};S.prof.axisPick=key;profRenderAxisChoices();
   S.prof.buf=part.xy.map(p=>{const w=toWGS(axis.layer.crs,p[0],p[1]);return [w[1],w[0]];});
   redrawProfPreview();toast('Eixo comum preparado — clique em Gerar perfil');
 }
 function refreshProfPanel(){
+  profReconcileSources();
   const rs=document.getElementById('prRasterSel'),ls=document.getElementById('prVectorSel');
   if(!rs||!ls)return;
   const oldR=S.prof.rasterPick??rs.value,oldPick=S.prof.vectorPick??ls.value;
-  rs.innerHTML='<option value="">— nenhuma —</option>'+S.rasters.map(r=>
+  rs.innerHTML='<option value="">— nenhuma —</option>'+S.rasters.filter(r=>r&&r.d).map(r=>
     `<option value="${esc(String(r.id))}">${esc(r.name)}${S.rasters.filter(x=>x.name===r.name).length>1?' · #'+esc(String(r.id)):''}</option>`).join('');
   if(oldR){
-    if(![...rs.options].some(o=>String(o.value)===String(oldR)))rs.insertAdjacentHTML('beforeend','<option value="'+esc(oldR)+'">MDT '+esc(oldR)+' · indisponível</option>');
-    rs.value=oldR;
+    rs.value=[...rs.options].some(o=>String(o.value)===String(oldR))?oldR:'';
   }else if(S.prof.rasterPick==null&&!(S.prof.sourceRasterIds||[]).length){
     const topo=S.rasters.find(r=>String(r.id)===String(S.topoRasterId))||S.rasters.find(r=>r===S.selRaster);
     rs.value=topo?String(topo.id):'';
@@ -5342,8 +5471,7 @@ function refreshProfPanel(){
   ls.innerHTML='<option value="">— escolha uma camada —</option>'+linhas.map(L=>
     `<option value="${esc(String(L.id))}">${esc(L.name)}${linhas.filter(x=>x.name===L.name).length>1?' · #'+esc(String(L.id)):''}</option>`).join('');
   if(oldPick){
-    if(![...ls.options].some(o=>String(o.value)===String(oldPick)))ls.insertAdjacentHTML('beforeend','<option value="'+esc(oldPick)+'">Vetor '+esc(oldPick)+' · indisponível</option>');
-    ls.value=oldPick;
+    ls.value=[...ls.options].some(o=>String(o.value)===String(oldPick))?oldPick:'';
   }else ls.value='';
   ls.disabled=!linhas.length;
   if(S.prof.vectorPick==null&&!ls.value&&!(S.prof.sourceLineIds||[]).length){
@@ -5391,16 +5519,18 @@ function profResetProject(){
   // IDs e eixo são locais ao arquivo: não reutilizar uma seleção do anterior.
   try{resetProfile(false);}catch(e){}
   S.prof={buf:[],line:null,result:null,hist:[]};
-  for(const id of ['prRasterSel','prVectorSel','prAxisVectorSel']){const el=document.getElementById(id);if(el)el.value='';}
+  for(const id of ['prRasterSel','prVectorSel','prAxisVectorSel']){const el=document.getElementById(id);if(el){el.innerHTML='<option value="">— escolha uma fonte do projeto —</option>';el.value='';}}
   const name=document.getElementById('prName');if(name)name.value='A';
   profRenderRasterSources();profRenderVectorSources();
 }
 async function runProfile(){
-  profInvalidateResult();
-  const profileState=S.prof,revision=S.prof.revision;
-  // Capture também escolhas feitas por atalhos (ex.: perfil da progressiva).
+  // Shortcuts such as the progressive line choose the DOM source directly.
+  // Capture that choice before a panel refresh can restore the older pick.
   S.prof.rasterPick=document.getElementById('prRasterSel')?.value||'';
   S.prof.vectorPick=document.getElementById('prVectorSel')?.value||'';
+  refreshProfPanel();
+  profInvalidateResult();
+  const profileState=S.prof,revision=S.prof.revision;
   const rs=profSelectedRasters(),ls=profSelectedLines();
   const missingR=profSourceMode()!=='vector'?(S.prof.sourceRasterIds||[]).concat(document.getElementById('prRasterSel')?.value||[]).filter(id=>!S.rasters.some(r=>String(r.id)===String(id))):[];
   const missingL=profSourceMode()!=='raster'?(S.prof.sourceLineIds||[]).concat(document.getElementById('prVectorSel')?.value||[]).filter(id=>!S.layers.some(L=>String(L.id)===String(id)&&profLinhaTemZ(L))):[];
@@ -5428,7 +5558,7 @@ async function runProfile(){
       let g;
       try{g=await gridBruto(r, 'traçar o perfil', [ptsCRS]);}
       catch(e){toast('Não foi possível ler “'+r.name+'”: '+(e?.message||'erro na fonte raster'));return;}
-      if(S.prof!==profileState||S.prof.revision!==revision){toast('Fontes ou projeto alterados durante a leitura; gere novamente o perfil.');return;}
+      if(S.prof!==profileState||S.prof.revision!==revision||rs.some(source=>!(S.rasters||[]).includes(source))||ls.some(source=>!(S.layers||[]).includes(source))){toast('Fontes ou projeto alterados durante a leitura; gere novamente o perfil.');return;}
       if(!g){ toast('Perfil cancelado — sem a grade bruta de “'+r.name+'”'); return; }
       G.push(g);
     } else {
@@ -5524,7 +5654,12 @@ function profSalvaLinha(prof, ptsCRS){
     {name:'Z_MIN',type:'N',length:12,decimal:2},{name:'Z_MAX',type:'N',length:12,decimal:2}];
   const feat={geom:ptsCRS.map(p=>[p[0],p[1]]), multi:false, props};
   const ja=S.layers.find(l=>l.name===nome && l.gtype==='line');
-  if(ja){ ja.features=[feat]; ja.fields=fields; drawLayer(ja); refreshUI();
+  if(ja){
+    // Regenerating a profile may legitimately update its own saved axis.
+    // Keep that reference current before reconciling the source lists.
+    const axis=S.prof.axisSelection;
+    if(axis?.layer===ja&&axis.idx===0&&axis.partIdx===0)axis.feature=feat;
+    ja.features=[feat]; ja.fields=fields; drawLayer(ja); refreshUI();
     toast(`Alinhamento atualizado em “${nome}”`); return ja; }
   const L=addLayer({name:nome, gtype:'line', crs:S.workCRS, features:[feat], fields, color:'#ff5252'});
   if(L){ L.labelField='PERFIL'; try{ drawLayer(L); }catch(e){} }
@@ -5847,6 +5982,7 @@ function escolheResolucaoSalvar(noCel){
 }
 function f32ToB64(a){
   const u=new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
+  if(typeof u.toBase64==='function')return u.toBase64();
   let bin=''; for(let i=0;i<u.length;i+=8192) bin+=String.fromCharCode.apply(null,u.subarray(i,i+8192));
   return btoa(bin);
 }
@@ -5899,12 +6035,18 @@ function reduceGridFactor(g, f){
   return {nc,nr,cs:g.cs*f, csy:(g.csy?g.csy*f:undefined), xll:g.xll,yll:g.yll,z};
 }
 function b64ToF32(b64){
+  if(typeof Uint8Array.fromBase64==='function'){
+    const u=Uint8Array.fromBase64(b64);if(u.byteLength%4)throw new RangeError('Grade Float32 incompleta.');return new Float32Array(u.buffer,u.byteOffset,u.byteLength/4);
+  }
   const bin=atob(b64); const u=new Uint8Array(bin.length);
   for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
   return new Float32Array(u.buffer);
 }
 
 function b64ToU32(b64){
+  if(typeof Uint8Array.fromBase64==='function'){
+    const u=Uint8Array.fromBase64(b64);if(u.byteLength%4)throw new RangeError('Índices Uint32 incompletos.');return new Uint32Array(u.buffer,u.byteOffset,u.byteLength/4);
+  }
   const bin=atob(b64), u=new Uint8Array(bin.length);
   for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
   return new Uint32Array(u.buffer);

@@ -1,0 +1,15 @@
+/* Parameters share the existing native 3D viewport, alongside the layers tree. */
+#v3d.gm-blasting-workspace{--gm-blasting-dock-width:min(340px,42%)}
+#gmBlastingDock{position:absolute;inset:0 auto 0 0;width:var(--gm-blasting-dock-width);box-sizing:border-box;overflow:auto;overscroll-behavior:contain;background:var(--panel,#f5f8fc);color:var(--ink,#15283d);border-right:1px solid var(--line,#bdcbdc);z-index:4;padding:0 12px 14px}
+#gmBlastingDock[hidden],#gmBlastingDockToggle[hidden]{display:none!important}
+.gm-blasting-dock-heading{position:sticky;top:0;background:inherit;z-index:1;padding:13px 22px 12px 0;font-weight:700;border-bottom:1px solid var(--line,#bdcbdc);margin-bottom:10px}
+#gmBlastingDock #secBlasting{margin:0;padding:0;border:0;background:none;box-shadow:none}
+#gmBlastingDock #secBlasting>div{width:auto!important;max-width:none!important}
+#gmBlastingDock input:not([type=checkbox]),#gmBlastingDock select{box-sizing:border-box;min-width:0;width:100%}
+#gmBlastingDock .tbtn{min-width:0;padding:7px 8px;font-size:11px;white-space:normal}
+#gmBlastingDock .field{font-size:11px;margin-top:10px}
+#gmBlastingDock .hint{font-size:10px;line-height:1.4;margin:5px 0 9px}
+#gmBlastingDockToggle{position:absolute;top:9px;left:calc(var(--gm-blasting-dock-width) - 1px);z-index:5;width:25px;height:32px;border:1px solid var(--line,#bdcbdc);border-radius:0 6px 6px 0;background:var(--panel,#f5f8fc);color:var(--ink,#15283d);font-size:23px;line-height:1;cursor:pointer}
+#v3d.gm-blasting-workspace:not(.gm-blasting-collapsed) #v3dCanvasWrap{left:var(--gm-blasting-dock-width)!important}
+#v3d.gm-blasting-workspace.gm-blasting-collapsed #gmBlastingDockToggle{left:0}
+#gmBlasting3DNotice{top:72px!important;max-width:calc(100% - 24px)!important;box-sizing:border-box}

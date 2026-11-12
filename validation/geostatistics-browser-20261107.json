@@ -1,0 +1,14 @@
+{
+  "checks": [
+    "Mineração ribbon replaces Planejamento with six live Geoestatística commands",
+    "All four methods run in real workers, render map surfaces and register parameters; kriging also creates variance raster",
+    "Descriptive statistics, histogram and experimental variogram/table display real sample values",
+    "Actual project serialization/restoration preserves every grid cell and interpolation parameter",
+    "Generated interpolation grid also opens in existing 3D view",
+    "Cancel terminates computation without adding incomplete surfaces",
+    "Conflicting duplicate samples stop explicitly and preserve all existing layers"
+  ],
+  "errors": [],
+  "physicalIpad": false,
+  "passed": true
+}

@@ -1,0 +1,76 @@
+{
+  "verifiedAt": "2026-11-08T02:54:14.819838+00:00",
+  "unitTestsPassed": 6,
+  "editorScenariosPassed": 11,
+  "realProject": "Morro_Verde_RRR_PAE.ccmgis",
+  "originalProjectModified": false,
+  "projectSaveReload": {
+    "geometryPreserved": true,
+    "H": 30,
+    "layers": 3
+  },
+  "parentHeightAfterMigrationM": 30,
+  "continuationHeightM": 40,
+  "nativeTiff": {
+    "original": "G:/Drives compartilhados/Massari/CCM_179_25_Morro_Verde/TOPOGRAFIA/MorroVerde_18mai26/SIRGAS2000/MDT_MorroVerde_18Maio26.tif",
+    "size": 405974626,
+    "crs": 31983,
+    "resolution": [
+      0.2728524007112512,
+      -0.27285240071129535,
+      1
+    ],
+    "window": [
+      1602,
+      1485,
+      4267,
+      3925
+    ],
+    "nc": 2665,
+    "nr": 2440,
+    "valid": 6502600,
+    "bytesRead": 117472883,
+    "reads": 2450,
+    "resampled": false
+  },
+  "nativeContactComponents": [
+    {
+      "vertices": 22127,
+      "closed": false,
+      "maxElevationResidualM": 9.41491066441813e-07
+    },
+    {
+      "vertices": 316,
+      "closed": true,
+      "maxElevationResidualM": 1.1034398994524963e-07
+    },
+    {
+      "vertices": 19,
+      "closed": true,
+      "maxElevationResidualM": 9.72495399764739e-08
+    },
+    {
+      "vertices": 1953,
+      "closed": true,
+      "maxElevationResidualM": 1.0717968734752503e-06
+    }
+  ],
+  "residualMeaning": "Numerical agreement with the sampled terrain and triangulated design at output vertices; this is not survey accuracy.",
+  "browserErrors": [],
+  "visualReview": "Native MDT, reopened project and toolbar screenshots inspected. No artificial circular closure or duplicate parent floor; edited continuation and upper berms preserved.",
+  "toolbarWidthsChecked": [
+    1366,
+    1024,
+    768
+  ],
+  "physicalIpadTested": false,
+  "fullAppCaptureHarnessWarning": "Geometry assertions and project save/reload passed. Playwright locator dispatch for fit-to-view timed out during screenshot preparation; a fallback CDP screenshot was captured and visually inspected. Standalone toolbar and touch interaction tests passed.",
+  "nativeTestScope": "Unresampled crop of the original TIFF injected as the active terrain grid. This change does not add a new native-file reconnect mechanism.",
+  "liveSha256": "0fe97d0b2a36283d2be342025ba76b2aa651443b301c98f279926962a58552ee",
+  "publicSha256": "0fe97d0b2a36283d2be342025ba76b2aa651443b301c98f279926962a58552ee",
+  "liveMatchesPreparedPackage": true,
+  "report": "validation/cava-terrain-continuation-20261107.json",
+  "pending": [
+    "Physical iPad validation"
+  ]
+}

@@ -37,7 +37,7 @@
     color:#64778a;font-size:11.5px;display:flex;justify-content:space-between;align-items:center;gap:8px}
   #gmPortao .conta b{color:#16222e}
   #gmPortao .rodape{margin-top:12px;color:#8496a6;font-size:10.5px;line-height:1.6;margin-bottom:0}
-  #gmSessao{position:fixed;right:8px;top:6px;z-index:13500;display:none;align-items:center;gap:7px;
+  #gmSessao{display:none!important;position:fixed;right:8px;top:6px;z-index:13500;display:none;align-items:center;gap:7px;
     font:11px/1 system-ui,sans-serif;color:#8fa3b3;background:#0d1620cc;border:1px solid #2c4050;
     border-radius:5px;padding:4px 8px;cursor:pointer}
   #gmSessao img{width:16px;height:16px;border-radius:50%}
@@ -92,7 +92,7 @@
   </div>
 </div>
 
-<div id="gmSessao" title="Sair da conta"><img id="gmFoto" alt=""><span id="gmNome"></span></div>
+<div id="gmSessao" hidden aria-hidden="true" title="Sair da conta"><img id="gmFoto" alt=""><span id="gmNome"></span></div>
 
 <script type="module">
 /* Portão de sessão da versão publicada — mesmo endereço do aplicativo.
@@ -110,7 +110,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult,
          signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail,
-         onAuthStateChanged, signOut }
+         onAuthStateChanged, signOut, reauthenticateWithPopup }
   from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js';
 import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, setDoc,
          updateDoc, deleteDoc, query, where, orderBy, limit, onSnapshot,
@@ -261,11 +261,31 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
     return formato === 'text' ? texto : JSON.parse(texto);
   }
 
+  let driveSession=null;
   const api = {
     kind:'firebase', version:1, ready:true,
     capabilities:{ rooms:true, invitations:true, roles:['owner','editor','viewer'], presence:true, leases:true,
       snapshots:true, operations:['layer.replace'], maxUploadBytes:MAX_ARQUIVO },
     get user(){ return perfil(); },
+    get drivePickerConfig(){return {appId:firebaseConfig.messagingSenderId,key:firebaseConfig.pickerBrowserKey};},
+    clearDriveAccess(){driveSession=null;try{sessionStorage.removeItem('geomine.drive.access.v1');}catch(_){}},
+    async driveAccess(interactive){
+      const user=usuario(),storageKey='geomine.drive.access.v1';
+      let saved=driveSession;
+      try{saved=saved||JSON.parse(sessionStorage.getItem(storageKey)||'null');}catch(_){}
+      if(saved?.owner===user.uid&&saved.until>Date.now()&&saved.token)return saved.token;
+      if(!interactive)throw Error('Toque em ↻ ao lado do nome do projeto para reconectar ao Drive.');
+      const provider=new GoogleAuthProvider();
+      provider.addScope('https://www.googleapis.com/auth/drive.file');
+      provider.setCustomParameters({login_hint:user.email});
+      const result=await reauthenticateWithPopup(user,provider);
+      if(auth.currentUser?.uid!==user.uid||result.user.uid!==user.uid)throw Error('A conta do projeto mudou.');
+      const token=GoogleAuthProvider.credentialFromResult(result)?.accessToken;
+      if(!token)throw Error('A conta Google não autorizou a leitura do arquivo.');
+      driveSession={owner:user.uid,until:Date.now()+50*60000,token};
+      try{sessionStorage.setItem(storageKey,JSON.stringify(driveSession));}catch(_){}
+      return token;
+    },
 
     async createRoom(opcoes={}){
       const u = perfil();
@@ -636,7 +656,7 @@ try{
     el('gmCarregando').style.display = 'none';
     el('gmEntrada').style.display = u ? 'none' : '';
     el('gmPortao').style.display  = u ? 'none' : 'grid';
-    el('gmSessao').style.display  = u ? 'flex' : 'none';
+    el('gmSessao').style.display  = 'none';
     el('gmConta').textContent = u ? (u.email || u.displayName || '—') : '—';
     if(u){
       if(!provedorNuvem || !provedorNuvem.user || provedorNuvem.user.uid !== u.uid){
@@ -656,6 +676,7 @@ try{
     }else if(provedorNuvem){
       provedorNuvem.dispose();
       provedorNuvem = null;
+      window.GeoMineCloudProvider?.clearDriveAccess();
       window.GeoMineCloudProvider = null;
       window.dispatchEvent(new CustomEvent('geomine:cloud-disconnected'));
     }

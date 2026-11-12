@@ -549,7 +549,7 @@ function civDesenhaSaia(precomputed=null){
   let L=(S.layers||[]).find(q=>String(q.id)===String(C.slopesId)&&q._civilDesignId===C.id);
   if(L){L.features=feats;L.fields=fields;drawLayer(L);}
   else{
-    L=addLayer({name:C.name+' — taludes (saia)',gtype:'line',crs:S.workCRS,
+    L=addLayer({sourceLayer:'L:'+C.alignmentId,name:C.name+' — taludes (saia)',gtype:'line',crs:S.workCRS,
       features:feats,fields,color:'#8a5a2b'});
     L._civSaia=true;
   }

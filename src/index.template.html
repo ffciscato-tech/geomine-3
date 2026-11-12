@@ -259,9 +259,9 @@
           </div>
 
           <div style="border-top:1px dashed var(--line);margin-top:8px;padding-top:8px">
-            <label class="field">Hachura CAD recortada pelo polígono</label>
+            <label class="field">Hachura CAD em áreas fechadas</label>
             <button class="mini" id="btnCadHatch">▨ Configurar e criar hachura…</button>
-            <div class="hint">Use o polígono selecionado ou clique dentro dele. A hachura pode virar uma nova camada de linhas ou permanecer vinculada à própria feição.</div>
+            <div class="hint">Selecione um polígono ou uma polilinha fechada, ou clique dentro de uma área delimitada por linhas. Ajuste padrão, ângulo e espaçamento. Ctrl+Z desfaz.</div>
           </div>
 
           <div style="border-top:1px dashed var(--line);margin-top:8px;padding-top:8px">
@@ -475,6 +475,9 @@
               <label class="snap-opt"><input type="checkbox" id="loCoordRight" checked><span>Lateral direita</span></label>
             </div>
             <div class="hint" style="font-size:11px;margin-top:6px">Marque somente os lados em que os valores de coordenadas devem aparecer.</div>
+            <label class="field" for="loCoordFS" style="margin-top:8px">Fonte da quadrícula <span id="loCoordFSv" class="tag">0,7×</span></label>
+            <input type="range" id="loCoordFS" min="0.35" max="9" step="0.005" value="0.7" style="width:100%;accent-color:var(--amber)">
+            <div class="hint" style="font-size:11px">Tamanho dos números das coordenadas nas bordas do mapa.</div>
           </div>
           <div id="loA4Paper"><label class="field">Papel da prancha</label>
             <select id="loSeloPaper">
@@ -521,17 +524,19 @@
             <input type="checkbox" id="loCart" checked style="width:auto;accent-color:var(--amber)"> Cartela de título — logo CCM + título (rodapé)</label>
           <div class="hint" style="font-size:11px;margin-top:-2px">Desmarque para exibir <b>só o mapa</b> no modo Figura — some a faixa do rodapé (logo, título, subtítulo e escala) e o mapa cresce para ocupar o espaço. Não afeta o modo Prancha · selo.</div>
           <label class="field" style="display:flex;align-items:center;gap:8px;cursor:pointer">
-            <input type="checkbox" id="loSat" checked style="width:auto;accent-color:var(--amber)"> Fundo de satélite (captura do mapa)</label>
+            <input type="checkbox" id="loSat" checked style="width:auto;accent-color:var(--amber)"> Mapa-base do Layout</label>
           <label class="field" style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="loLegend" checked style="width:auto;accent-color:var(--amber)"> Legenda das camadas</label>
+          <label class="field" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="loGroupNumbers" style="width:auto;accent-color:var(--amber)"> Plotar números dos grupos</label>
 
           <h4 style="margin:12px 0 4px">Legenda e símbolos</h4>
           <label class="field">Tamanho da legenda <span id="loLegScv" class="tag">0,7×</span></label>
           <input type="range" id="loLegSc" min="0.5" max="3" step="0.05" value="0.7" style="width:100%;accent-color:var(--amber)">
           <div class="hint">Escala geral da caixa de legenda — cresce a fonte, os símbolos e a caixa juntos. Os dois controles abaixo afinam cada parte.</div>
-          <label class="field">Texto da legenda e coordenadas <span id="loLegFSv" class="tag">1,0×</span></label>
+          <label class="field">Texto da legenda <span id="loLegFSv" class="tag">1,0×</span></label>
           <input type="range" id="loLegFS" min="0.7" max="3" step="0.1" value="1" style="width:100%;accent-color:var(--amber)">
-          <div class="hint" style="font-size:11px">Ajusta somente a legenda e as coordenadas da grade.</div>
+          <div class="hint" style="font-size:11px">Ajusta o texto da legenda.</div>
           <label class="field">Texto da escala gráfica <span id="loBarFSv" class="tag">1,0×</span></label>
           <input type="range" id="loBarFS" min="0.5" max="3" step="0.1" value="1" style="width:100%;accent-color:var(--amber)">
           <div class="hint" style="font-size:11px">Ajusta somente os números, a unidade e o denominador da escala gráfica.</div>
@@ -1322,11 +1327,12 @@
         </div>
         <div class="hsec" id="secWMS">
           <h2>Serviços WMS / OGC <span class="tag">mapas oficiais</span></h2>
-          <div class="hint">Pesquise pelo órgão ou serviço. Se ele não estiver no catálogo, informe a URL WMS manualmente.</div>
+          <div class="hint">Pesquise pelo órgão, serviço ou país. Filtre por país e tema; se o serviço não estiver no catálogo, informe a URL WMS manualmente.</div>
           <div style="display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:7px">
-            <input id="wmsSearch" type="search" placeholder="Ex.: IBGE, ANM, geologia, hidrografia">
+            <input id="wmsSearch" type="search" placeholder="Ex.: IBGE, ANM, geologia, Argentina, cadastro mineiro">
             <button class="tbtn" id="btnWmsSearch" type="button">⌕ Buscar</button>
           </div>
+          <div id="wmsFiltros" class="wmsFiltros"></div>
           <div id="wmsCatalogResults" class="wmsCatalog"></div>
           <label class="field" style="margin-top:8px">Endereço do serviço WMS</label>
           <input id="wmsUrl" type="url" spellcheck="false" placeholder="https://servidor/.../ows ou .../WMSServer">
@@ -1445,13 +1451,15 @@
           <div id="opCloseLines" style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
             <label class="field">Poligonizar linhas <span class="tag">QGIS · rede vetorial</span></label>
             <select id="pzLayer"></select>
+            <div class="hint" id="pzScope" role="status">Selecione uma linha ou uma camada de linhas.</div>
             <div class="row2" style="margin-top:4px">
               <input type="number" id="pzTol" value="0.5" step="0.1" min="0.001" title="tolerância de fechamento (m)">
               <button class="tbtn" id="btnPz" style="justify-content:center">Poligonizar</button>
             </div>
             <div class="hint">Transforma uma rede de linhas em polígonos como o Poligonizar do QGIS:
               divide nos cruzamentos e encontros em T, ajusta extremidades dentro da tolerância e cria
-              uma feição para cada face fechada. Não utiliza raster.</div>
+              uma feição para cada face fechada. Com linhas selecionadas, usa somente a seleção.
+              Para usar toda a camada, limpe a seleção. Não utiliza raster.</div>
             <div class="hout" id="pzOut">Nenhuma poligonização executada.</div>
           </div>
 
@@ -1661,11 +1669,7 @@
             <label class="field" style="margin-top:6px">Ocupação mín. (%)</label><input id="tinContOcup" type="number" value="55" min="20" max="100" step="5">
             <div class="hint" style="margin-top:8px"><b>Referência: MDS.</b> A direção e os limites vêm da superfície; o MDT determina a altura acima do terreno. A ortofoto serve apenas para conferência visual. Comprimentos fora dos padrões de 20/40 pés são indicados como <b>Medido</b> e devem ser conferidos.</div>
           </div>
-          <label class="field" style="display:flex;align-items:center;gap:7px;cursor:pointer;margin-top:8px">
-            <input type="checkbox" id="tinExtrFechaMdt" checked style="width:auto;accent-color:var(--amber)">
-            Fechar vazios lineares no MDT para a Visão 3D
-          </label>
-          <div class="hint">Interpola somente lacunas curtas entre cotas vizinhas na malha de exibição. As superfícies e os cálculos originais não são modificados.</div>
+          <div class="hint" style="margin-top:8px">A Visão 3D preserva a resolução original e as faces planas. Células sem cota permanecem vazias.</div>
           <button class="tbtn" id="btnTinExtrai" style="width:100%;justify-content:center;margin-top:7px;background:var(--amber);color:#1a1206;font-weight:600">🧊 Extrair sólidos individuais</button>
           <div class="hint" id="tinExtrInfo" style="margin-top:4px">Escolha as superfícies para iniciar a extração.</div>
         </div>
@@ -2948,11 +2952,11 @@ Pode usar a mesma linha ou linhas diferentes.</div>
         <div id="v3dViewControls" class="v3-iconbar">
           <button type="button" id="btnV3SurfaceMenu" class="tbtn" aria-label="Superfície e limite de recorte"
                   title="Escolher qual superfície será cortada, qual limite usar e se o resultado representa terreno, cava, estrada ou DCE">
-            <span class="v3-ic"><svg viewBox="0 0 24 24"><path d="M3 19h18"/><path d="M4 19l6-9 3.5 4.5L17 9l3 10"/><path d="M13 4h7v7" stroke-dasharray="2.5 2"/><path d="M20 4l-6 6"/></svg></span>
+            <span class="v3-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 14 5-8 5 6 4-5 4 7-9 5Z" fill="currentColor" fill-opacity=".15"/><path d="m3 18 9 5 9-5M3 14l9 5 9-5"/><path d="m4 3 4 3 5 6"/></svg></span>
           </button>
           <button type="button" id="btnV3RenderTop" class="tbtn" aria-label="Atualizar cena 3D"
                   title="Atualizar agora superfícies, recortes e vetores da cena 3D">
-            <span class="v3-ic"><svg viewBox="0 0 24 24"><path d="M19.5 9A8 8 0 105 8.5"/><path d="M20 4v5h-5"/><path d="M4.5 15A8 8 0 0019 15.5"/><path d="M4 20v-5h5"/></svg></span>
+            <span class="v3-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 8a8.5 8.5 0 0 0-14-3L3 8m0-5v5h5M4 16a8.5 8.5 0 0 0 14 3l3-3m0 5v-5h-5"/></svg></span>
           </button>
           <button type="button" id="btnV3MeasureTop" class="tbtn" aria-label="Medir no modelo 3D"
                   title="Medir distância 3D, desnível, declividade e azimute">
@@ -2971,17 +2975,17 @@ Pode usar a mesma linha ou linhas diferentes.</div>
           <button type="button" id="btnV3TopView" class="tbtn"
                   title="Voltar à vista em planta, olhando verticalmente para o modelo"
                   aria-label="Vista em planta">
-            <span class="v3-ic"><svg viewBox="0 0 24 24"><path d="M12 2.5 21 7l-9 4.5L3 7z"/><path d="M12 14.5v7M9 19l3 3 3-3"/></svg></span>
+            <span class="v3-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="1" fill="currentColor" fill-opacity=".12"/><path d="M12 2v6m-3-3 3 3 3-3M4 16h16M12 11v10"/></svg></span>
           </button>
           <button type="button" id="btnV3SideL" class="tbtn"
                   title="Vista lateral esquerda — olhando de oeste para leste, no horizonte"
                   aria-label="Vista lateral esquerda">
-            <span class="v3-ic"><svg viewBox="0 0 24 24"><path d="M3 18h18"/><path d="M5 18V9l4-3 5 3v9"/><path d="M14 18v-5l5-2v7"/><path d="M2.5 12.5 5 10v5z" fill="currentColor" stroke="none"/></svg></span>
+            <span class="v3-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 7 6-3 6 3v10l-6 3-6-3Z"/><path d="m10 7 6 3v10m0-10 6-3"/><path d="m10 7 6 3v10l-6-3Z" fill="currentColor" fill-opacity=".22"/><path d="M1 12h6m-3-3 3 3-3 3"/></svg></span>
           </button>
           <button type="button" id="btnV3SideR" class="tbtn"
                   title="Vista lateral direita — olhando de leste para oeste, no horizonte"
                   aria-label="Vista lateral direita">
-            <span class="v3-ic"><svg viewBox="0 0 24 24"><path d="M3 18h18"/><path d="M19 18V9l-4-3-5 3v9"/><path d="M10 18v-5l-5-2v7"/><path d="M21.5 12.5 19 10v5z" fill="currentColor" stroke="none"/></svg></span>
+            <span class="v3-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m2 7 6-3 6 3v10l-6 3-6-3Z"/><path d="m2 7 6 3v10m0-10 6-3"/><path d="m14 7-6 3v10l6-3Z" fill="currentColor" fill-opacity=".22"/><path d="M23 12h-6m3-3-3 3 3 3"/></svg></span>
           </button>
         </div>
         <div id="v3SurfaceMenu" role="dialog" aria-label="Superfície e limite de recorte">
@@ -3054,8 +3058,21 @@ Pode usar a mesma linha ou linhas diferentes.</div>
             <button class="tbtn lo-strip-pdf" id="btnPlatesPDF" title="Exportar somente a página atual em PDF">PDF</button>
           </div>
         </div>
+          <select id="loBasemap" hidden aria-label="Mapa-base do Layout"><option value="">Usar fundo inicial do 2D</option><option>Satélite (Google)</option><option>Híbrido (Google)</option><option>Satélite (Esri)</option><option>Ruas (OSM)</option><option>Topográfico (OpenTopo)</option><option>Sem fundo</option></select>
         <div class="layout-quick" id="layoutQuickPanel" aria-live="polite"></div>
-        <div id="sheetWrap"></div>
+        <div class="layout-stage">
+          <div id="sheetWrap"></div>
+          <div id="layoutBasemapControl" role="toolbar" aria-label="Fundo independente do Layout" aria-orientation="vertical">
+            <span>Fundo do Layout</span>
+            <span id="loBaseStatus" role="status" aria-live="polite"></span>
+            <button type="button" class="tbtn" data-lo-basemap="Satélite (Google)" aria-label="Satélite Google no Layout" title="Satélite Google">Satélite</button>
+            <button type="button" class="tbtn" data-lo-basemap="Híbrido (Google)" aria-label="Satélite com nomes no Layout" title="Satélite com nomes e vias">Híbrido</button>
+            <button type="button" class="tbtn" data-lo-basemap="Satélite (Esri)" aria-label="Satélite Esri no Layout" title="Satélite Esri">Esri</button>
+            <button type="button" class="tbtn" data-lo-basemap="Ruas (OSM)" aria-label="OpenStreetMap no Layout" title="Ruas do OpenStreetMap">OSM</button>
+            <button type="button" class="tbtn" data-lo-basemap="Topográfico (OpenTopo)" aria-label="Mapa topográfico no Layout" title="Mapa topográfico">Topo</button>
+            <button type="button" class="tbtn" data-lo-basemap="Sem fundo" aria-label="Sem mapa-base no Layout" title="Sem mapa-base">Sem fundo</button>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -3184,7 +3201,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
         <div><label class="field">Preto ≤</label><input type="number" id="imModB" value="4" min="0" max="60" step="1"></div>
       </div>
       <button class="tbtn" id="imModApply" style="width:100%;justify-content:center;margin-top:8px;background:var(--amber);color:#1a1206;font-weight:600">Aplicar</button>
-      <div class="hint" style="margin-top:6px">O recorte reprocessa o pixel original em memória — só funciona na ortofoto carregada nesta sessão (ou religada ao .tif). Os tiles do arquivo original usam a <b>mesma</b> regra de sem-dado da prévia.</div>
+      <div class="hint" style="margin-top:6px">A transparência pode ser ajustada na prévia salva e no TIFF original.</div>
 
       <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
         <label class="field">Resolução</label>
@@ -3321,6 +3338,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
         <option value="cn">CN por cobertura (temático)</option>
         <option value="classes">Classificado por faixas</option>
         <option value="hipso_hs">Hipsométrico + sombreado</option>
+        <option value="relevo_local">TPI — Índice de Posição Topográfica</option>
         <option value="hipso">Hipsométrico (sem sombra)</option>
         <option value="hs">Relevo sombreado</option>
         <option value="gray">Tons de cinza</option>
@@ -3393,7 +3411,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
       <div id="rasClassList" style="margin-top:5px"></div>
       <div id="rasClassMsg" class="ras-class-msg" style="display:none"></div>
       <label class="field">Opacidade</label>
-      <input type="number" id="rasOp" value="0.8" min="0.1" max="1" step="0.05">
+      <input type="number" id="rasOp" value="0.8" min="0" max="1" step="0.05">
       <button class="tbtn" id="rasApply" style="width:100%;justify-content:center;margin-top:8px;background:var(--amber);color:#1a1206;font-weight:600">Aplicar estilo</button>
 
       <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
@@ -3559,7 +3577,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
       <label class="field">Conteúdo</label><input type="text" id="loCont" value="" placeholder="deixe vazio para usar o subtítulo do layout">
       <label class="field">Revisor</label><input type="text" id="loRevN" value="">
       <div class="row2">
-        <div><label class="field">Folha (automática)</label><input type="text" id="loFolha" value="01/01" readonly title="Atualizada automaticamente conforme as pranchas do mesmo formato"></div>
+        <div><label class="field" for="loFolha">Folha</label><input type="text" id="loFolha" placeholder="Ex.: 01/4"></div>
         <div><label class="field">Tamanho da fonte (×)</label>
           <input type="number" id="loFS" value="1" min="0.7" max="1.5" step="0.05"></div>
       </div>
@@ -4140,5 +4158,13 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
 <!-- CCMGIS_MODULE:asset-135 -->
 <!-- CCMGIS_MODULE:asset-136 -->
 <!-- CCMGIS_MODULE:asset-137 -->
+<!-- CCMGIS_MODULE:asset-138 -->
+<!-- CCMGIS_MODULE:asset-139 -->
+<!-- CCMGIS_MODULE:asset-140 -->
+<!-- CCMGIS_MODULE:asset-141 -->
+<!-- CCMGIS_MODULE:asset-142 -->
+<!-- CCMGIS_MODULE:asset-143 -->
+<!-- CCMGIS_MODULE:asset-144 -->
+<!-- CCMGIS_MODULE:asset-145 -->
 </body>
 </html>

@@ -176,7 +176,7 @@ function commit(){
       .filter(op=>op.idx>=0).map(op=>({...op,whole:!op.after}))})):[];
     let created=false,before=null;
     if(T){before=T.fields;T.fields=fields;T.features.push(...feats);}
-    else{T=addLayer({name,gtype:pending.gtype,crs,fields,features:feats});created=true;}
+    else{T=addLayer({sourceLayer:pending.items[0]?.L,name,gtype:pending.gtype,crs,fields,features:feats});created=true;}
     if(move){
       if(typeof ED!=='undefined'&&ED.on&&from.includes(ED.sel?.L)&&typeof edLigar==='function')edLigar(false);
       // Do maior índice para o menor: as posições das demais feições não mudam.

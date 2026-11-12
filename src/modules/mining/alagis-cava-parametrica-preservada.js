@@ -1169,7 +1169,7 @@ function cavaReparaCamadaLegada(L){
   let C=(S.layers||[]).find(x=>String(x._cavaLegacyCutOf||'')===String(L.id));
   const features=cavaFeatsSemDuplicar(r.feats),ativa=S.activeId;
   if(C){C.features=features;C.fields=(L.fields||[]).map(x=>({...x}));C.visible=true;}
-  else C=addLayer({name:'Cava cortada pela interseção',gtype:'line',crs:L.crs||S.workCRS,
+  else C=addLayer({sourceLayer:L,name:'Cava cortada pela interseção',gtype:'line',crs:L.crs||S.workCRS,
     features,fields:(L.fields||[]).map(x=>({...x})),color:L.color||'#111111'});
   C._cavaLegacyCutOf=L.id;C._cavaCutMode='daylight';C.groupId=L.groupId||null;
   C.sym=JSON.parse(JSON.stringify(L.sym||defSym(L.color||'#111111')));
@@ -1218,7 +1218,7 @@ function cavaRecalculaCamadaPeloMdt(L,R,opt={}){
   const ativa=S.activeId;
   if(C){C.features=q.feats;C.fields=(L.fields||[]).map(x=>({...x}));C.visible=true;drawLayer(C);}
   else{
-    C=addLayer({name:(L.name||'Cava').replace(/\s*[+—-]*\s*interseção.*$/i,'')+
+    C=addLayer({sourceLayer:L,name:(L.name||'Cava').replace(/\s*[+—-]*\s*interseção.*$/i,'')+
       ' — anéis cortados pelo MDT',gtype:'line',crs:L.crs||S.workCRS,
       features:q.feats,fields:(L.fields||[]).map(x=>({...x})),color:L.color||'#111111'});
     C._cavaMdtCutOf=L.id;
@@ -2279,7 +2279,7 @@ function cavaRampaAtualizaPoligono(cavaL,rampaPlano){
     props:{TIPO:'Pista da rampa',TRECHO:i+1,ORIGEM:cavaL.name}}));
   if(!RP){
     const ativa=S.activeId;
-    RP=addLayer({name:'Rampa da cava — pista',gtype:'polygon',crs:cavaL.crs,
+    RP=addLayer({sourceLayer:cavaL,name:'Rampa da cava — pista',gtype:'polygon',crs:cavaL.crs,
       features:feats,fields:[{name:'TIPO',type:'C',length:30},{name:'TRECHO',type:'N',length:6},
         {name:'ORIGEM',type:'C',length:80}],
       color:'#7b3fd4'});
@@ -2456,7 +2456,7 @@ function cavaCongelarAplicar(projeto,ringIndex){
     TIPO:'Limite congelado',BANCO:ref.bench,COTA:+ref.z}};
   if(F){F.features=[feat];F.visible=true;}
   else{
-    F=addLayer({name:`Congelamento — ${ref.kind==='toe'?'pé':'crista'} ${ref.bench}`,
+    F=addLayer({sourceLayer:projeto,name:`Congelamento — ${ref.kind==='toe'?'pé':'crista'} ${ref.bench}`,
       gtype:'line',crs:projeto.crs,features:[feat],fields:[
         {name:'TIPO',type:'C',length:30},{name:'BANCO',type:'N',length:6},{name:'COTA',type:'N',length:14,decimal:3}],color:'#22b8cf'});
     F._cavaFreezeOf=projeto.id;
@@ -2516,7 +2516,7 @@ function cavaEditarLinhaControladora(){
       props:{TIPO:'Linha controladora',BANCO:D.rings[ix].bench,COTA:z}};
   let C=(S.layers||[]).find(x=>x._cavaControl&&String(x._cavaControl.projectId)===String(projeto.id));
   if(C){C.features=[feat];C.visible=true;C.name=`Controle dinâmico — ${D.rings[ix].kind==='crest'?'crista':'pé'} ${D.rings[ix].bench}`;}
-  else C=addLayer({name:`Controle dinâmico — ${D.rings[ix].kind==='crest'?'crista':'pé'} ${D.rings[ix].bench}`,
+  else C=addLayer({sourceLayer:projeto,name:`Controle dinâmico — ${D.rings[ix].kind==='crest'?'crista':'pé'} ${D.rings[ix].bench}`,
     gtype:'line',crs:projeto.crs,features:[feat],
     fields:[{name:'TIPO',type:'C',length:30},{name:'BANCO',type:'N',length:6},{name:'COTA',type:'N',length:14,decimal:3}],
     color:'#23a6d5'});
@@ -4646,7 +4646,7 @@ function cavaGerar(cfg={}){
        +q.cavaDesign.sourceFeature===+item.i)))||null;
   }
   if(L){L.features=feats;L.fields=fields;drawLayer(L);}
-  else L=addLayer({name:'Cava bruta + interseção com o MDT',gtype:'line',crs:S.workCRS,features:feats,fields,color:'#c35d18'});
+  else L=addLayer({sourceLayer:item.L,name:'Cava bruta + interseção com o MDT',gtype:'line',crs:S.workCRS,features:feats,fields,color:'#c35d18'});
   /* Mantém as linhas analíticas COMPLETAS como cava bruta. Elas funcionam
      como breaklines; somente o comando final interpola e apara a superfície
      no encontro exato com o MDT. */
@@ -5009,7 +5009,7 @@ async function cavaCortarMDT(){
     }else{
       rc={id:rid++,name,d:dTela,style:{...(R.style||{mode:'hipso_hs',opacity:.8})},
         visible:true,overlay:null,_cavaCutSource:R.id,_cavaCutLayer:L.id};
-      S.rasters.push(rc);
+      S.rasters.push(rc);placeProductAbove(rc,R);
     }
     if(salvo.saved){
       R.projectFile='ALAGIS/rasters/'+salvo.nome0;R.projectSavedAt=new Date().toISOString();
@@ -5093,7 +5093,7 @@ function cavaCortarLinhas(){
     C.features=feats;C.fields=(L.fields||[]).map(x=>({...x}));C.visible=true;
   }else{
     const ativa=S.activeId;
-    C=addLayer({name:'Cava cortada pela interseção',gtype:'line',crs:L.crs||S.workCRS,
+    C=addLayer({sourceLayer:L,name:'Cava cortada pela interseção',gtype:'line',crs:L.crs||S.workCRS,
       features:feats,fields:(L.fields||[]).map(x=>({...x})),color:'#111111'});
     C._cavaCutVectorOf=L.id;C.groupId=L.groupId||null;S.activeId=ativa;
   }
@@ -5118,7 +5118,7 @@ function cavaCortarLinhas(){
       if(RC){RC.features=rampRec;RC.visible=true;}
       else{
         const ativa=S.activeId;
-        RC=addLayer({name:'Rampa cortada pela interseção',gtype:'polygon',
+        RC=addLayer({sourceLayer:RP,name:'Rampa cortada pela interseção',gtype:'polygon',
           crs:RP.crs||L.crs||S.workCRS,features:rampRec,
           fields:(RP.fields||[]).map(x=>({...x})),color:'#7b3fd4'});
         RC._cavaCutRampOf=L.id;RC.groupId=L.groupId||RP.groupId||null;S.activeId=ativa;

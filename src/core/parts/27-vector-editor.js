@@ -223,22 +223,24 @@ function edRedraw(){
     ED.lay=L2.layerGroup().addTo(map);
   }
   if(ED.rend?._container)ED.rend._container.style.setProperty('pointer-events','none','important');
-  ED.lay.clearLayers(); ED.pts=[]; ED.mids=[];
+  ED.lay.clearLayers(); ED.pts=[]; ED.mids=[]; ED._glyphs=null;
   if(GeoMineVertexHandles.legacyActive())return;
   if(!ED.on || !ED.sel) return;
   const {L,f}=ED.sel; if(!collabCanEditLayer(L,false))return;
   const rings=edRings(L,f); if(!rings.length) return;
   const fechado=edFechado(L);
   const nv=rings.reduce((s,r)=>s+r.length,0);
+  const glyphs=ED._glyphs={L,f,points:rings.map(()=>[]),mids:rings.map(()=>[])};
   rings.forEach((r,ri)=>{
     r.forEach((pt,vi)=>{
       const w=toWGS(L.crs,pt[0],pt[1]);
       if(!Number.isFinite(w[0])||!Number.isFinite(w[1])) return;   // vértice ilegível: não derruba a edição
       const sel=(ri===ED.ring && vi===ED.vi);
-      L2.circleMarker([w[1],w[0]],{renderer:ED.rend, interactive:false,
+      const marker=L2.circleMarker([w[1],w[0]],{renderer:ED.rend, interactive:false,
         radius: sel? 6:4, color: sel? '#f5a524':'#37c0aa', weight: sel?2.5:1.6,
         fillColor: sel? '#f5a524':'#0d1117', fillOpacity: sel?1:0.9}).addTo(ED.lay);
-      ED.pts.push({ri,vi,lat:w[1],lng:w[0]});
+      const glyph={ri,vi,lat:w[1],lng:w[0],marker};
+      glyphs.points[ri][vi]=glyph;ED.pts.push(glyph);
     });
     /* ○ do meio (INSERIR VÉRTICE). Dois ajustes: (a) o disco era cinza
        #8b949e de raio 3 com miolo quase preto — sobre ortofoto e sombreado
@@ -253,25 +255,64 @@ function edRedraw(){
         const a=r[i], b=r[(i+1)%r.length];
         const m=[(a[0]+b[0])/2,(a[1]+b[1])/2];
         const w=toWGS(L.crs,m[0],m[1]);
-        L2.circleMarker([w[1],w[0]],{renderer:ED.rend, interactive:false,
+        const marker=L2.circleMarker([w[1],w[0]],{renderer:ED.rend, interactive:false,
           radius:4.5, color:'#1a1206', weight:2, fillColor:'#ffffff', fillOpacity:1}).addTo(ED.lay);
         /* o disco branco é ONDE SE INSERE vértice: desenha um "+" dentro
            (par de traços em pixels convertidos, redesenhados no zoom) */
+        const cross=[];
         try{
           const cp=map.latLngToContainerPoint([w[1],w[0]]),
             ph=map.containerPointToLatLng([cp.x-2.6,cp.y]),
             ph2=map.containerPointToLatLng([cp.x+2.6,cp.y]),
             pv=map.containerPointToLatLng([cp.x,cp.y-2.6]),
             pv2=map.containerPointToLatLng([cp.x,cp.y+2.6]);
-          L2.polyline([[ph.lat,ph.lng],[ph2.lat,ph2.lng]],{renderer:ED.rend,
-            interactive:false,color:'#1a1206',weight:1.6}).addTo(ED.lay);
-          L2.polyline([[pv.lat,pv.lng],[pv2.lat,pv2.lng]],{renderer:ED.rend,
-            interactive:false,color:'#1a1206',weight:1.6}).addTo(ED.lay);
+          cross.push(L2.polyline([[ph.lat,ph.lng],[ph2.lat,ph2.lng]],{renderer:ED.rend,
+            interactive:false,color:'#1a1206',weight:1.6}).addTo(ED.lay));
+          cross.push(L2.polyline([[pv.lat,pv.lng],[pv2.lat,pv2.lng]],{renderer:ED.rend,
+            interactive:false,color:'#1a1206',weight:1.6}).addTo(ED.lay));
         }catch(e){}
-        ED.mids.push({ri,i,lat:w[1],lng:w[0]});
+        const glyph={ri,i,lat:w[1],lng:w[0],marker,cross};
+        glyphs.mids[ri][i]=glyph;ED.mids.push(glyph);
       }
     }
   });
+}
+/* A pointer move changes only one vertex and its neighbouring segments.
+   Reuse their canvas paths; rebuilding every glyph of a long drainage line
+   here made even an otherwise local geometry update stall the gesture. */
+function edUpdateDragGlyphs(L,f,ri,indices){
+  const glyphs=ED._glyphs,r=edRings(L,f)[ri];
+  if(!glyphs||glyphs.L!==L||glyphs.f!==f||!r)return false;
+  const mids=new Set();
+  for(const vi of indices){
+    const glyph=glyphs.points[ri]?.[vi],pt=r[vi];
+    if(!glyph||!pt)return false;
+    const w=toWGS(L.crs,pt[0],pt[1]);
+    if(!Number.isFinite(w[0])||!Number.isFinite(w[1]))return false;
+    glyph.lat=w[1];glyph.lng=w[0];glyph.marker.setLatLng([w[1],w[0]]);
+    mids.add(vi);mids.add((vi-1+r.length)%r.length);
+  }
+  for(const i of mids){
+    const glyph=glyphs.mids[ri]?.[i];if(!glyph)continue;
+    const a=r[i],b=r[(i+1)%r.length],w=toWGS(L.crs,(a[0]+b[0])/2,(a[1]+b[1])/2);
+    if(!Number.isFinite(w[0])||!Number.isFinite(w[1]))return false;
+    glyph.lat=w[1];glyph.lng=w[0];glyph.marker.setLatLng([w[1],w[0]]);
+    if(glyph.cross.length===2){
+      const cp=map.latLngToContainerPoint([w[1],w[0]]),
+        ll=(x,y)=>{const p=map.containerPointToLatLng([x,y]);return [p.lat,p.lng];};
+      glyph.cross[0].setLatLngs([ll(cp.x-2.6,cp.y),ll(cp.x+2.6,cp.y)]);
+      glyph.cross[1].setLatLngs([ll(cp.x,cp.y-2.6),ll(cp.x,cp.y+2.6)]);
+    }
+  }
+  return true;
+}
+// Closed lines and polygon rings may store the first vertex twice. Keep the
+// duplicate XY linked while retaining both original Z values.
+function edLinkedVertex(L,ring,vi){
+  if(!['line','polygon'].includes(L.gtype)||ring.length<4)return null;
+  const last=ring.length-1,a=ring[0],b=ring[last];
+  if(Math.hypot(a[0]-b[0],a[1]-b[1])>=1e-7)return null;
+  return vi===0?last:vi===last?0:null;
 }
 /* o "+" dos pontos médios é traçado em pixels do zoom corrente — ao mudar
    o zoom, redesenha para o tamanho certo */
@@ -329,7 +370,8 @@ function edBindPointer(){
       const agora=Date.now();
       if(agora-tLast<330 && ED.vi===v.vi && ED.ring===v.ri){ tLast=0; edApagarVertice(); return; }
       tLast=agora;
-      ED.ring=v.ri; ED.vi=v.vi; ED.drag={ri:v.ri, vi:v.vi, moveu:false,origin:L2.latLng(v.lat,v.lng)};
+      const ring=edRings(ED.sel.L,ED.sel.f)[v.ri];
+      ED.ring=v.ri; ED.vi=v.vi; ED.drag={ri:v.ri, vi:v.vi, moveu:false,linked:edLinkedVertex(ED.sel.L,ring,v.vi),origin:L2.latLng(v.lat,v.lng)};
       // guias paralela/perpendicular a partir dos vizinhos do vértice
       try{ window.GeoMineVertexGuides?.begin(ED.sel.L, edRings(ED.sel.L,ED.sel.f)[v.ri], v.vi, edFechado(ED.sel.L)); }catch(e){}
       try{ map.dragging.disable(); }catch(e){}
@@ -359,13 +401,11 @@ function edBindPointer(){
     const alvo=edPickAt(ll);
     if(alvo) { edSelecionar(alvo); }
   });
-  cont.addEventListener('pointermove',ev=>{
-    if(ED.drag&&ev.pointerType!=='touch'&&ev.buttons===0){fim(ev);return;}
-    if(!ED.on || !ED.drag || !ED.sel) return;
-    if(GeoMineVertexHandles.legacyActive()){ED.drag=null;return;}
-    if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(ED.sel.L,false)){
-      ED.drag=null;mapaPanPadrao();collabCanEditLayer(ED.sel.L,true);return;
-    }
+  let moveFrame=null; // The handles module is installed after the core script.
+  const applyDragPoint=ev=>{
+    if(!ED.on||!ED.drag||!ED.sel||ED.drag!==ev.drag||ED.sel!==ev.sel)return;
+    if(GeoMineVertexHandles.legacyActive())return;
+    if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(ED.sel.L,false))return;
     const r=cont.getBoundingClientRect();
     let ll=map.containerPointToLatLng([ev.clientX-r.left, ev.clientY-r.top]);
     const Led=(ED.sel&&ED.sel.L)||null;
@@ -376,9 +416,26 @@ function edBindPointer(){
     const c=fromWGS(L.crs, ll.lng, ll.lat);
     const alvo=rings[ED.drag.ri][ED.drag.vi];
     alvo[0]=c[0]; alvo[1]=c[1];
-    edSetRings(L,f,rings); drawVertexFeature(L,f); edRedraw();
+    const indices=[ED.drag.vi],linked=ED.drag.linked;
+    if(Number.isInteger(linked)&&rings[ED.drag.ri][linked]){
+      const duplicate=rings[ED.drag.ri][linked];duplicate[0]=c[0];duplicate[1]=c[1];indices.push(linked);
+    }
+    edSetRings(L,f,rings);
+    drawVertexFeature(L,f,{ring:rings[ED.drag.ri],indices});
+    if(!edUpdateDragGlyphs(L,f,ED.drag.ri,indices))edRedraw();
+  };
+  cont.addEventListener('pointermove',ev=>{
+    if(ED.drag&&ev.pointerType!=='touch'&&ev.buttons===0){fim(ev);return;}
+    if(!ED.on || !ED.drag || !ED.sel) return;
+    if(GeoMineVertexHandles.legacyActive()){moveFrame?.cancel();ED.drag=null;return;}
+    if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(ED.sel.L,false)){
+      moveFrame?.cancel();ED.drag=null;mapaPanPadrao();collabCanEditLayer(ED.sel.L,true);return;
+    }
+    if(!moveFrame)moveFrame=GeoMineVertexHandles.dragFrame(applyDragPoint);
+    moveFrame.push({clientX:ev.clientX,clientY:ev.clientY,drag:ED.drag,sel:ED.sel});
   });
   const fim=(ev)=>{
+    moveFrame?.flush();
     if(!ED.drag) return;
     engole={t:Date.now(),x:ev&&ev.clientX,y:ev&&ev.clientY};
     const moveu=ED.drag.moveu; ED.drag=null;
@@ -478,9 +535,11 @@ function edAbreEscala(){
     ok:n=>{document.getElementById('edPfat').value=n;edTransform('escalar');}});
 }
 function edAbreSimplificar(){
+  if(S._view==='cava2')return window.CCMGISCava2?.editGeometry('simplif');
   return window.GeoMineSimplify.open();
 }
 function edAbreSuavizar(){
+  if(S._view==='cava2')return window.CCMGISCava2?.editGeometry('suaviz');
   return window.GeoMineSmooth.open();
 }
 
@@ -516,7 +575,6 @@ function edCotaTerreno(){
 function edApagarFeicao(){
   if(!edPrecisa()) return;
   const {L,idx,f}=ED.sel;
-  if(!confirm('Apagar esta feição de "'+L.name+'"?')) return;
   undoPush({t:'featdel', L:L, feat:f, idx:idx});
   L.features.splice(idx,1);
   ED.sel=null; S.selFeat=null;
@@ -548,7 +606,7 @@ function edAbrir(){
   const {L,f}=ED.sel;
   if(L.gtype!=='polygon'){ toast('Só para polígonos'); return; }
   const rings=edRings(L,f);
-  const dest=addLayer({name:L.name+' (aberto)', gtype:'line', crs:L.crs,
+  const dest=addLayer({sourceLayer:L,name:L.name+' (aberto)', gtype:'line', crs:L.crs,
     features:[], fields:(L.fields||[]).slice(), color:L.color});
   const nf={geom:rings.length>1?rings:rings[0], multi:rings.length>1,
             props:Object.assign({},f.props||{}), _origemPol:L.id};
@@ -1126,7 +1184,7 @@ function rasterLimite(){
     });
     if(!feats.length){ toast('Não foi possível traçar o contorno'); return; }
     const nome = feats.length===1? ('Limite · '+String(feats[0].props.FONTE).slice(0,44)) : 'Limites dos rasters';
-    const L=addLayer({name:nome.slice(0,60), gtype:'polygon', crs:S.workCRS, features:feats, fields, color:'#e05252'});
+    const L=addLayer({sourceLayer:lista[0]?.r||lista[0]?.img,name:nome.slice(0,60), gtype:'polygon', crs:S.workCRS, features:feats, fields, color:'#e05252'});
     if(L){ L.fill=0; L.weight=2; if(L.sym){ L.sym.fill=0; L.sym.weight=2; } drawLayer(L); }
     refreshUI();
     feats.forEach(f=>cmdLog('Limite '+f.props.FONTE+': '+f.props.AREA_HA+' ha · perím '+f.props.PERIM_M+' m · célula '+f.props.CS_X+'×'+f.props.CS_Y+' m','ok'));
@@ -1461,7 +1519,7 @@ function gisBoolean(op){
         if(!fields.some(c=>String(c.name).toUpperCase()==='FID'))fields.unshift({name:'FID',type:'N',length:9,decimal:0});
         if(ehConstrutiva&&!fields.some(c=>String(c.name).toUpperCase()==='CLASSE'))
           fields.push({name:'CLASSE',type:'C',length:24,decimal:0});
-        const C=addLayer({name:('Clip · '+A.name).slice(0,60),gtype:'line',crs:S.workCRS,
+        const C=addLayer({sourceLayer:A,name:('Clip · '+A.name).slice(0,60),gtype:'line',crs:S.workCRS,
           features:feats,fields,color:A.color||'#111111'});
         if(A._cavaV02Conv)C._cavaV02Conv=A._cavaV02Conv;
         if(ehConstrutiva&&typeof cavaV02AplicaLinhas==='function')cavaV02AplicaLinhas(C,'CLASSE');
@@ -1572,7 +1630,7 @@ function gisBoolean(op){
       const fields=[{name:'FID',type:'N',length:9,decimal:0},
         {name:'AREA_M2',type:'N',length:16,decimal:2},{name:'AREA_HA',type:'N',length:12,decimal:4},
         {name:'PERIM_M',type:'N',length:12,decimal:2}];
-      addLayer({name:((ehClip?'Clip':rot)+' · '+A.name).slice(0,60), gtype:'polygon',
+      addLayer({sourceLayer:A,name:((ehClip?'Clip':rot)+' · '+A.name).slice(0,60), gtype:'polygon',
         crs:S.workCRS, features:feats, fields:fields.concat(camposExtra), color:'#bb9af7'});
       hideLoad();
       const aT=feats.reduce((s,f)=>s+f.props.AREA_M2,0);
@@ -1612,7 +1670,7 @@ function gisConverter(){
 function convExec(L, op){
   const nova=(gtype,feats,suf,fields)=>{
     if(!feats.length){ toast('Nada convertido'); return; }
-    addLayer({name:(L.name+' · '+suf).slice(0,60), gtype, crs:L.crs,
+    addLayer({sourceLayer:L,name:(L.name+' · '+suf).slice(0,60), gtype, crs:L.crs,
       features:feats, fields:fields||[{name:'FID',type:'N',length:9,decimal:0}], color:L.color});
     toast(feats.length+' feição(ões) — '+suf);
   };
@@ -1984,6 +2042,7 @@ function edDensificarAplicar(){
   document.getElementById('densModal').classList.remove('on');
 }
 function edDensificarComando(){
+  if(S._view==='cava2')return window.CCMGISCava2?.editGeometry('densif');
   const ativa=activeLayer();
   if((!ED.sel||ED.sel.L!==ativa)&&S.selFeat&&S.selFeat.layer===ativa){
     const L=S.selFeat.layer,f=L.features&&L.features[S.selFeat.idx];
@@ -2406,10 +2465,16 @@ document.addEventListener('keydown',e=>{
     if(typeof CATS!=='undefined' && !CATS.some(c=>c.id==='editor')){
       const pos=CATS.findIndex(c=>c.id==='gis');
       CATS.splice(pos>=0?pos+1:1, 0, {id:'editor', nome:'EDITOR DE VETORES', view:'map',
-        grupos: ED_CMDS.map(G=>({label:G.g, it:G.it.map(c=>({
+        get grupos(){
+          const cava=S._view==='cava2',supported=new Set(['sel','vadd','vdel','vmove','simplif','densif','suaviz']);
+          return ED_CMDS.map(G=>({label:G.g,it:G.it.filter(c=>!cava||supported.has(c.k)).map(c=>({
           ic:ED_PNG_ICONS[c.ic]||'selecionar', nome:c.n,
-          act:()=>{ if(!ED.on) edLigar(true, true); try{ c.run(); }catch(e){ toast('Falha: '+(e&&e.message||e)); } }
-        }))}))
+          act:()=>{try{
+            if(S._view==='cava2')return window.CCMGISCava2?.vectorCommand(c.k);
+            if(!ED.on)edLigar(true,true);c.run();
+          }catch(e){toast('Falha: '+(e&&e.message||e));}}
+        }))})).filter(G=>G.it.length);
+        }
       });
       if(typeof ribbonBuild==='function') ribbonBuild();
     }

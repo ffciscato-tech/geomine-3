@@ -22,14 +22,10 @@ def write_exact(path: Path, value: str) -> None:
         stream.write(value)
 
 
-def audit_command_catalog(project_root: Path, template: str, manifest: dict) -> None:
+def audit_command_catalog(project_root: Path, template: str) -> None:
     """Impede que comandos ou controles estáticos sejam declarados duas vezes."""
-    # Segue o manifesto: a auditoria continua cobrindo os bindings depois
-    # que catálogo, renderização e ícones saem do antigo arquivo monolítico.
-    core = next(asset for asset in manifest["assets"]
-                if "core/parts/10-ribbon-ui-preferences.js" in asset.get("parts", []))
-    ribbon = "".join((project_root / "src" / relative).read_text(encoding="utf-8")
-                     for relative in core["parts"])
+    ribbon_path = project_root / "src" / "core" / "parts" / "10-ribbon-ui-preferences.js"
+    ribbon = ribbon_path.read_text(encoding="utf-8")
     bindings = re.findall(r"comando\('([^']+)'\s*,\s*'([^']+)'", ribbon)
     repeated_bindings = sorted(key for key, count in Counter(bindings).items() if count > 1)
     if repeated_bindings:
@@ -46,7 +42,7 @@ def build(project_root: Path, verify_reference: bool) -> Path:
     manifest_path = project_root / "src" / "module-order.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     template = (project_root / manifest["template"]).read_text(encoding="utf-8")
-    audit_command_catalog(project_root, template, manifest)
+    audit_command_catalog(project_root, template)
 
     expected_order = list(range(1, len(manifest["assets"]) + 1))
     actual_order = [asset["order"] for asset in manifest["assets"]]

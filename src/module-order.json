@@ -84,7 +84,11 @@
       "open_tag": "<script id=\"geomine-polygon-clipping\">",
       "close_tag": "</script>",
       "sha256": "646eccc751f861626f4faa85cb978d05a3870a526adb88b4a96610148c326bbd",
-      "lines": 27
+      "lines": 27,
+      "parts": [
+        "vendor/polygon-clipping.min.js",
+        "vendor/clipper.js"
+      ]
     },
     {
       "order": 9,
@@ -123,8 +127,8 @@
       "path": "styles/modules/wms-catalog.css",
       "open_tag": "<style>",
       "close_tag": "</style>",
-      "sha256": "dd5112a3156728717671446d0d98cad13ea04d105bc1615504453373d8406ce7",
-      "lines": 10
+      "sha256": "fea9ad3c94aab7bf445ccc39950d0e08fa26adcd390441f09202ed1aab85bf23",
+      "lines": 22
     },
     {
       "order": 13,
@@ -155,9 +159,6 @@
       "sha256": "344e39f1fbc79f0092c2f6060d9c19f399a383995e31378f19d2083e5961cfdf",
       "lines": 57159,
       "parts": [
-        "core/project-state.js",
-        "core/layer-store.js",
-        "modules/ui/ribbon-registry.js",
         "core/parts/01-bootstrap-crs-state-command.js",
         "core/parts/02-shapefile-dbf.js",
         "modules/ui/loading-progress.js",
@@ -174,13 +175,6 @@
         "core/parts/09-measurement-properties-cad.js",
         "modules/cad/ruler-elevation.js",
         "core/parts/10-ribbon-ui-preferences.js",
-        "modules/ui/ribbon-catalog.js",
-        "modules/ui/ribbon-svg-icons.js",
-        "modules/ui/preferences.js",
-        "modules/ui/ribbon-png-icons.js",
-        "modules/ui/ribbon-renderer.js",
-        "modules/ui/layer-properties.js",
-        "modules/analysis/geometry-cleanup.js",
         "core/parts/11-geotiff-project-workspace.js",
         "modules/persistence/native-source-reuse.js",
         "modules/persistence/save-verification.js",
@@ -205,6 +199,7 @@
         "modules/raster/large-preview.js",
         "modules/raster/orthophoto-first-frame.js",
         "core/parts/20-raster-dem.js",
+        "modules/raster/original-sources.js",
         "core/parts/21-profiles-and-3d.js",
         "core/parts/22-mine-pit-design.js",
         "modules/civil/road-curves.js",
@@ -215,6 +210,7 @@
         "core/parts/23-block-model-and-volumes.js",
         "core/parts/24-slope-stability.js",
         "core/parts/25-geoprocessing-tin.js",
+        "modules/cad/hatch-boundaries.js",
         "modules/persistence/project-reader.js",
         "modules/persistence/project-open-progress.js",
         "modules/persistence/project-opening.js",
@@ -235,10 +231,16 @@
       "slot": "asset-016",
       "kind": "script",
       "path": "modules/data-sources/wms-ogc.js",
+      "parts": [
+        "modules/data-sources/wms-ogc.js",
+        "modules/data-sources/official-geology-styles.js",
+        "modules/data-sources/automatic-layer-labels.js",
+        "modules/data-sources/latin-america-ogc.js"
+      ],
       "open_tag": "<script>",
       "close_tag": "</script>",
-      "sha256": "ea3525113af8779c6a71f64ad4dc5aa162aa118c98b50dbd45b5f13c341ded5f",
-      "lines": 410
+      "sha256": "3d22450f8912924f251a1c0c5d6cc20e42fb77427b6658fe0a6c84f174f5f890",
+      "lines": 634
     },
     {
       "order": 17,
@@ -267,8 +269,8 @@
       "path": "modules/environmental/alagis-favorabilidade-fluxo.js",
       "open_tag": "<script id=\"alagis-favorabilidade-fluxo\">",
       "close_tag": "</script>",
-      "sha256": "40244a8da3497e8869d4939b58aa4f62814c62206e871474e4ec9c52a24abbc6",
-      "lines": 168
+      "sha256": "b171af817dd5519cd3487787f742bbc443e8f7f9c2cef8598b1ad59368c93c46",
+      "lines": 170
     },
     {
       "order": 20,
@@ -881,6 +883,10 @@
       "slot": "asset-074",
       "kind": "script",
       "path": "modules/mining/cava2-workspace.js",
+      "parts": [
+        "modules/mining/cava2-terrain-contact.js",
+        "modules/mining/cava2-workspace.js"
+      ],
       "open_tag": "<script id=\"cava2-workspace-module\">",
       "close_tag": "</script>",
       "sha256": "b6c5fe432d6d58d0595bacf1302017cfad9c7a25fe951284aa953b7617036f8e",
@@ -1266,6 +1272,7 @@
       "slot": "asset-116",
       "kind": "script",
       "path": "modules/persistence/project-tab-session.js",
+      "parts": ["modules/persistence/drive-project-source.js", "modules/persistence/project-tab-session.js"],
       "open_tag": "<script id=\"geomine-project-tab-session\">",
       "close_tag": "</script>"
     },
@@ -1393,9 +1400,22 @@
       "order": 132,
       "slot": "asset-132",
       "kind": "script",
-      "path": "modules/hydrology/native-flood-destination.js",
       "open_tag": "<script id=\"geomine-native-flood-destination\">",
-      "close_tag": "</script>"
+      "close_tag": "</script>",
+      "parts": [
+        "modules/hydrology/native-flood-destination.js",
+        "modules/hydrology/local-relief-engine.js",
+        "modules/hydrology/local-relief-export.js",
+        "modules/hydrology/local-relief-runtime.js",
+        "modules/hydrology/local-relief-panel.js",
+        "modules/hydrology/point-catchment-engine.js",
+        "modules/hydrology/continuous-catchment-engine.js",
+        "modules/hydrology/point-catchment-snap.js",
+        "modules/hydrology/point-catchment.js",
+        "modules/raster/missing-originals.js",
+        "modules/cad/dynamic-segment-geometry.js",
+        "modules/cad/dynamic-segment.js"
+      ]
     },
     {
       "order": 133,
@@ -1425,16 +1445,121 @@
       "order": 136,
       "slot": "asset-136",
       "kind": "script",
-      "path": "vendor/meshopt-simplifier.js",
-      "open_tag": "<script id=\"geomine-meshoptimizer-simplifier-module\">",
+      "parts": [
+        "modules/blasting/blastpal-original-engine.js",
+        "modules/blasting/drilling-geometry.js",
+        "modules/blasting/native-collars.js",
+        "modules/blasting/presentation.js",
+        "modules/blasting/blasting.js"
+      ],
+      "open_tag": "<script id=\"geomine-blasting\">",
       "close_tag": "</script>"
     },
     {
       "order": 137,
       "slot": "asset-137",
+      "kind": "style",
+      "path": "styles/modules/blasting-workspace.css",
+      "open_tag": "<style id=\"geomine-blasting-workspace\">",
+      "close_tag": "</style>"
+    },
+    {
+      "order": 138,
+      "slot": "asset-138",
+      "kind": "style",
+      "path": "styles/modules/licenses.css",
+      "open_tag": "<style id=\"geomine-licenses-style\">",
+      "close_tag": "</style>"
+    },
+    {
+      "order": 139,
+      "slot": "asset-139",
+      "kind": "script",
+      "parts": [
+        "modules/environmental/licenses-model.js",
+        "modules/environmental/licenses-pdf.js",
+        "modules/environmental/licenses.js"
+      ],
+      "embed_files": {
+        "__GEOMINE_LICENSE_PDF_API__": "vendor/pdfjs/pdf.min.mjs",
+        "__GEOMINE_LICENSE_PDF_WORKER__": "vendor/pdfjs/pdf.worker.min.mjs"
+      },
+      "open_tag": "<script id=\"geomine-licenses\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 140,
+      "slot": "asset-140",
+      "kind": "script",
+      "path": "vendor/meshopt-simplifier.js",
+      "open_tag": "<script id=\"geomine-meshoptimizer-simplifier-module\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 141,
+      "slot": "asset-141",
       "kind": "script",
       "path": "modules/geology/mesh-simplification.js",
       "open_tag": "<script id=\"geomine-mesh-simplification-module\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 142,
+      "slot": "asset-142",
+      "kind": "style",
+      "path": "styles/modules/tpi-refinement.css",
+      "open_tag": "<style id=\"geomine-tpi-refinement-style\">",
+      "close_tag": "</style>"
+    },
+    {
+      "order": 143,
+      "slot": "asset-143",
+      "kind": "script",
+      "parts": [
+        "modules/environmental/tpi-refinement/geometry.js",
+        "modules/environmental/tpi-refinement/raster.js",
+        "modules/environmental/tpi-refinement/engine.js",
+        "modules/environmental/tpi-refinement/transaction.js",
+        "modules/environmental/tpi-refinement/ortho.js",
+        "modules/environmental/tpi-refinement/worker.js",
+        "modules/environmental/tpi-refinement/native.js",
+        "modules/environmental/tpi-refinement/runtime.js",
+        "modules/environmental/tpi-refinement/evidence.js",
+        "modules/environmental/tpi-refinement/panel.js"
+      ],
+      "embed_files": {
+        "__GEOMINE_TPI_CLIPPING__": "vendor/polygon-clipping.min.js",
+        "__GEOMINE_TPI_PROJ4__": "vendor/proj4.min.js"
+      },
+      "open_tag": "<script id=\"geomine-tpi-refinement\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 144,
+      "slot": "asset-144",
+      "kind": "style",
+      "parts": [
+        "styles/modules/touch-workspace.css",
+        "styles/modules/compact-workspace.css",
+        "styles/modules/geostatistics.css"
+      ],
+      "open_tag": "<style id=\"geomine-touch-style\">",
+      "close_tag": "</style>"
+    },
+    {
+      "order": 145,
+      "slot": "asset-145",
+      "kind": "script",
+      "parts": [
+        "modules/ui/touch-workspace.js",
+        "modules/persistence/import-recovery.js",
+        "modules/raster/source-properties.js",
+        "modules/persistence/workspace-resume.js",
+        "modules/ui/compact-workspace.js",
+        "modules/mining/geostatistics-engine.js",
+        "modules/mining/geostatistics-panel.js"
+      ],
+      "open_tag": "<script id=\"geomine-touch-workspace\">",
       "close_tag": "</script>"
     }
   ]

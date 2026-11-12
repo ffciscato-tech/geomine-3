@@ -1,0 +1,56 @@
+#gmLicensesWorkspace{position:absolute;inset:30px 0 0;z-index:400;background:var(--bg);color:var(--ink);flex-direction:column;min-width:0;overflow:hidden}
+#gmLicensesWorkspace[hidden],#gmLicensesWorkspace [hidden]{display:none!important}
+body.gm-licenses-view #attrPanel{visibility:hidden!important;pointer-events:none!important}
+#gmLicensesWorkspace button,#gmLicensesWorkspace input,#gmLicensesWorkspace select,#gmLicensesWorkspace textarea{font:inherit;box-sizing:border-box}
+#gmLicensesWorkspace button{cursor:pointer}
+#gmLicensesWorkspace .tbtn{padding:7px 11px;white-space:normal;min-width:0}
+.gm-lic-toolbar{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel);flex-shrink:0}
+.gm-lic-toolbar>div{margin-right:auto;display:flex;gap:12px;align-items:baseline}
+.gm-lic-toolbar strong{font-size:15px}.gm-lic-toolbar span{font-size:11px;color:var(--ink-dim)}
+.gm-lic-body{display:flex;min-height:0;flex:1;overflow:hidden}
+.gm-lic-list{width:225px;flex-shrink:0;overflow:auto;padding:10px;border-right:1px solid var(--line);background:var(--panel)}
+.gm-lic-list-item{display:flex;flex-direction:column;text-align:left;gap:5px;background:transparent;border:1px solid transparent;color:var(--ink);width:100%;padding:12px 10px;border-radius:7px;margin-bottom:6px;overflow-wrap:anywhere}
+.gm-lic-list-item.active{background:var(--bg);border-color:#d69c25;box-shadow:inset 3px 0 #d69c25}
+.gm-lic-list-item strong{font-size:12px}.gm-lic-list-item span,.gm-lic-list-item small{font-size:10px;color:var(--ink-dim)}
+.gm-lic-content{padding:18px;min-width:0;overflow:auto;flex:1}
+.gm-lic-welcome{max-width:530px;margin:65px auto;text-align:center}
+.gm-lic-welcome h2{font-size:21px;margin:15px 0 8px}.gm-lic-welcome p{color:var(--ink-dim);margin-bottom:24px}.gm-lic-welcome .tbtn{margin:4px}
+.gm-lic-welcome-icon{margin:auto;width:58px;height:58px;border-radius:15px;background:#d69c2520;color:#d69c25;font-size:35px;display:grid;place-items:center}
+.gm-lic-license-header{display:flex;align-items:center;gap:12px;margin-bottom:15px}.gm-lic-license-header h2{margin:0 0 5px;font-size:18px}.gm-lic-license-header span{font-size:11px;color:var(--ink-dim)}
+.gm-lic-license-actions{display:flex;gap:6px;margin-left:auto}
+.gm-lic-metadata{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px;padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.gm-lic-field{display:flex;flex-direction:column;gap:5px;color:var(--ink-dim);font-size:10px;min-width:0}
+.gm-lic-field input,.gm-lic-field select,.gm-lic-field textarea,#gmLicenseSearch{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:5px;padding:7px 8px;min-width:0;width:100%;font-size:12px}
+.gm-lic-attachment{display:block;padding:8px 0;color:var(--ink);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-lic-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:14px 0}
+.gm-lic-stat{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:7px;display:flex;align-items:center;gap:12px;text-align:left;padding:12px}
+.gm-lic-stat b{font-size:23px;line-height:1}.gm-lic-stat span{font-size:11px;min-width:0;overflow-wrap:anywhere}.gm-lic-stat.active{border-color:#d69c25}.gm-lic-stat.overdue b{color:#e66464}.gm-lic-stat.soon b{color:#d69c25}
+.gm-lic-license-data{font-size:11px;margin-bottom:12px}.gm-lic-license-data>summary{cursor:pointer;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink-dim)}.gm-lic-license-data[open]>summary{margin-bottom:8px}
+.gm-lic-table-toolbar{display:flex;align-items:center;gap:6px;margin-bottom:9px;flex-wrap:wrap}.gm-lic-table-toolbar #gmLicenseSearch{flex:1;min-width:180px}.gm-lic-table-toolbar select{max-width:175px;font-size:11px}
+.gm-lic-bulk{display:flex;align-items:center;gap:12px;font-size:10px;min-height:30px;color:var(--ink-dim)}.gm-lic-bulk button{background:none;border:0;color:var(--ink);font-size:10px;text-decoration:underline}.gm-lic-bulk #gmLicenseRowCount{margin-left:auto}
+.gm-lic-table-wrap{border:1px solid var(--line);border-radius:7px;overflow:auto;max-height:calc(100vh - 490px);min-height:190px;background:var(--panel)}
+.gm-lic-table{border-collapse:separate;border-spacing:0;width:100%;min-width:830px;font-size:11px}
+.gm-lic-table th{position:sticky;top:0;z-index:2;background:var(--panel);color:var(--ink-dim);font-weight:600;text-align:left;padding:10px 9px;border-bottom:1px solid var(--line);box-shadow:0 1px var(--line)}
+.gm-lic-table td{vertical-align:top;padding:11px 9px;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}.gm-lic-table th:not(:last-child){border-right:1px solid var(--line)}
+.gm-lic-table tr:last-child td{border-bottom:0}.gm-lic-table tr.overdue td:first-child{box-shadow:inset 3px 0 #df5d60}
+.gm-lic-table .gm-lic-code{width:40px;font-weight:600}.gm-lic-obligation{min-width:245px;width:40%}
+.gm-lic-obligation>button:first-child{background:transparent;border:0;padding:0;text-align:left;color:var(--ink);line-height:1.5;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}
+.gm-lic-source{display:block;background:none;border:0;padding:5px 0 0;color:#4c9bda;font-size:10px!important}
+.gm-lic-due{min-width:115px}.gm-lic-due strong{display:block;white-space:nowrap}.gm-lic-due small{display:block;color:var(--ink-dim);font-size:10px;line-height:1.4;margin-top:4px}
+.gm-lic-table input:not([type=checkbox]),.gm-lic-table select{max-width:150px;min-width:85px;width:100%;font-size:10px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:6px}
+.gm-lic-table select{display:block;margin-top:6px}.gm-lic-badge{display:inline-block;font-size:10px;padding:3px 6px;border-radius:4px;background:#7c98b020;color:var(--ink);white-space:nowrap}
+.gm-lic-badge.overdue{background:#e15a5a20;color:#e35c5c}.gm-lic-badge.completed{background:#3ba36b20;color:#409b68}.gm-lic-badge.due_soon,.gm-lic-badge.due_today{background:#d69c2520;color:#c99220}
+.gm-lic-review,.gm-lic-icon-button{background:none;border:1px solid var(--line);border-radius:4px;padding:5px 7px;color:var(--ink);font-size:10px!important}.gm-lic-review.pending{border-color:#bd8c344c;color:#cc993d}
+.gm-lic-notice{padding:9px 16px;font-size:11px;border-bottom:1px solid var(--line);background:var(--panel);color:var(--ink-dim)}.gm-lic-notice.error{color:#e66b6b}
+.gm-lic-warning,.gm-lic-expiry{font-size:11px;padding:9px 11px;background:#d69c2515;border:1px solid #d69c2530;border-radius:5px;color:var(--ink)}
+.gm-lic-empty-small,.gm-lic-table-empty{padding:20px;font-size:11px;color:var(--ink-dim);text-align:center}
+.gm-lic-text-import{font-size:11px;color:var(--ink-dim);margin-top:14px}.gm-lic-text-import summary{cursor:pointer}.gm-lic-text-import textarea{display:block;width:100%;box-sizing:border-box;margin:8px 0;background:var(--panel);border:1px solid var(--line);color:var(--ink);padding:9px}
+#gmLicenseConditionDialog{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;width:min(720px,90vw);max-height:86vh;padding:0;box-shadow:0 12px 60px #0006}
+#gmLicenseConditionDialog::backdrop{background:#0006}#gmLicenseConditionForm{padding:18px}
+#gmLicenseConditionForm header{display:flex;align-items:center;margin-bottom:16px}#gmLicenseConditionForm h3{margin:0;font-size:17px}#gmLicenseConditionForm header button{margin-left:auto;border:0;background:none;color:var(--ink);font-size:24px}
+.gm-lic-dialog-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}.gm-lic-span{grid-column:1/-1}.gm-lic-relative{display:grid;grid-template-columns:80px 1fr 1.5fr;gap:10px}
+#gmLicenseDuePreview{display:block;padding:10px 0;font-size:12px;color:#d69c25}.gm-lic-source-text{margin:6px 0;font-size:11px}.gm-lic-source-text pre{white-space:pre-wrap;max-height:150px;overflow:auto;font:11px/1.5 inherit;padding:10px;background:var(--bg);border:1px solid var(--line)}
+.gm-lic-confirm{display:flex;gap:6px;align-items:center;font-size:11px;margin:15px 0}#gmLicenseConditionForm footer{display:flex;justify-content:flex-end;gap:7px;padding-top:12px;border-top:1px solid var(--line)}#gmLicenseConditionForm footer .gm-lic-danger{margin-right:auto;color:#e66464}
+.gm-lic-dragover{outline:3px solid #d69c25;outline-offset:-4px}
+@media(max-width:1100px){.gm-lic-list{width:180px}.gm-lic-metadata{grid-template-columns:repeat(2,minmax(0,1fr))}.gm-lic-toolbar>div span{display:none}.gm-lic-content{padding:12px}.gm-lic-license-header{flex-wrap:wrap}.gm-lic-license-actions{margin-left:0}}
+@media(max-width:760px){.gm-lic-body{flex-direction:column}.gm-lic-list{width:auto;max-height:110px;border-right:0;border-bottom:1px solid var(--line);display:flex;gap:7px}.gm-lic-list-item{min-width:170px;margin:0}.gm-lic-toolbar{padding:9px;gap:5px;flex-wrap:wrap}.gm-lic-summary{grid-template-columns:repeat(2,1fr)}.gm-lic-metadata{grid-template-columns:1fr 1fr}.gm-lic-dialog-fields{grid-template-columns:1fr}.gm-lic-relative{grid-template-columns:1fr 1fr}.gm-lic-relative label:last-child{grid-column:1/-1}.gm-lic-table-wrap{max-height:55vh}}

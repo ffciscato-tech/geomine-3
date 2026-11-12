@@ -1,0 +1,26 @@
+{
+  "checks": [
+    "Lock is after the layer name; freeze/unfreeze still works",
+    "Cold navigation without sessionStorage restores exact geometry, latest view, unsaved state and cached native TIFF",
+    "IndexedDB fallback restores project and native TIFF when both transient pointer stores were lost"
+  ],
+  "errors": [],
+  "physicalIpad": false,
+  "view": {
+    "before": {
+      "zoom": 21,
+      "center": {
+        "lat": -28.255,
+        "lng": -49.18
+      }
+    },
+    "after": {
+      "center": {
+        "lat": -28.255000033459254,
+        "lng": -49.180000126361854
+      },
+      "zoom": 21
+    }
+  },
+  "passed": true
+}

@@ -1,0 +1,66 @@
+{
+  "checks": [
+    {
+      "migration": {
+        "H": 30,
+        "childUnchanged": true,
+        "childMin": -70,
+        "parentMin": -30,
+        "errors": []
+      }
+    },
+    {
+      "split": {
+        "H": 30,
+        "remaining": 40,
+        "childZ": -30,
+        "upperUnchanged": true
+      }
+    },
+    "undo/redo restores parent depth and removes/recreates continuation",
+    {
+      "nested": {
+        "root": 30,
+        "parent": 20,
+        "child": 20,
+        "z": -50
+      }
+    },
+    {
+      "resplit": {
+        "order": [
+          "cava",
+          "cava#2",
+          "cava#1"
+        ],
+        "parent": "cava#2",
+        "unchanged": true,
+        "root": 20,
+        "newH": 10
+      }
+    },
+    "save/reopen chain preserves state",
+    {
+      "pointerDrag": {
+        "childMoved": true,
+        "parentUnchanged": true
+      }
+    },
+    "touch hold labels action without executing it",
+    {
+      "toolbarWidth": 1366,
+      "buttons": 17
+    },
+    {
+      "toolbarWidth": 1024,
+      "buttons": 17
+    },
+    {
+      "toolbarWidth": 768,
+      "buttons": 17
+    }
+  ],
+  "physicalIpad": false,
+  "passed": true,
+  "errors": []
+}

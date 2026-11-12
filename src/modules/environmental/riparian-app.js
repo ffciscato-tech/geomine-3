@@ -452,7 +452,7 @@ async function generate(){
     specs.push({name:'APP — '+L.name+((automatic||L.gtype==='line')?' (estimativa)':''),gtype:'polygon',crs,features,fields:fieldsFor(features),color:'#29945a'});
     const created=[],oldLayers=S.layers.slice(),oldStack=S.stack?.slice(),oldActive=S.activeId;
     try{
-      for(const spec of specs){const out=addLayer(spec);created.push(out);if(spec.gtype==='polygon'){out.fill=.3;out.sym.fill=.3;}drawLayer(out);}
+      for(const spec of specs){const out=addLayer({...spec,sourceLayer:L});created.push(out);if(spec.gtype==='polygon'){out.fill=.3;out.sym.fill=.3;}drawLayer(out);}
       refreshUI();zApply();
     }catch(e){
       // addLayer pode lançar depois de inserir a camada. Incluí-la no rollback

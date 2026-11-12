@@ -1,0 +1,23 @@
+{
+  "errors": [],
+  "scope": "Header-only native relink of the real TIFF, then wait for actual native tiles. Transparent saved preview is a placeholder, not a replacement image.",
+  "physicalIpad": false,
+  "native": {
+    "dimensions": [
+      62992,
+      46709
+    ],
+    "pixelSize": 0.039499999999996434,
+    "position": [
+      684372.5903357918,
+      6868733.030465752
+    ],
+    "nativeSelected": true
+  },
+  "tiles": {
+    "loaded": 16,
+    "fallback": false,
+    "error": null
+  },
+  "passed": true
+}

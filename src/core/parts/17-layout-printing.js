@@ -40,8 +40,8 @@ function tile2lonlat(x,y,z){ const n=Math.pow(2,z);
   const lon=x/n*360-180;
   const lat=Math.atan(Math.sinh(Math.PI*(1-2*y/n)))*180/Math.PI;
   return [lon,lat]; }
-async function captureBasemap(x0,y0,x1,y1,crs,targetPx){
-  const base=S._base||'Satélite (Google)';
+async function captureBasemap(x0,y0,x1,y1,crs,targetPx,base=layoutBasemap()){
+  // A escolha da prancha nunca altera S._base, usado pelo Mapa 2D.
   const urlFn=TILE_URLS[base]; if(!urlFn) return null; // 'Sem fundo'
   // cache: evita rebaixar tiles a cada ajuste de legenda/símbolo com a mesma extensão
   const ck=[base,crs,x0.toFixed(1),y0.toFixed(1),x1.toFixed(1),y1.toFixed(1),Math.round(targetPx/64)].join('|');
@@ -67,19 +67,32 @@ async function captureBasemap(x0,y0,x1,y1,crs,targetPx){
     nX=tX1-tX0+1; nY=tY1-tY0+1;
     if(nX*nY<=MAXTILES) break;
   }
-  if(!(nX*nY<=MAXTILES)){ toast('Área grande demais para o fundo de satélite'); return null; }
+  if(!(nX*nY<=MAXTILES))throw new Error('Área grande demais para o mapa-base do Layout.');
   if(z<zIdeal-1) toast(`Fundo de satélite em zoom ${z} (área extensa) — resolução menor`);
   const cv=document.createElement('canvas'); cv.width=nX*256; cv.height=nY*256;
   const ctx=cv.getContext('2d'); ctx.fillStyle='#e8e8e8'; ctx.fillRect(0,0,cv.width,cv.height);
-  const jobs=[];
-  for(let tx=tX0;tx<=tX1;tx++) for(let ty=tY0;ty<=tY1;ty++){
-    const url=urlFn(z).replace('{x}',tx).replace('{y}',ty);
-    jobs.push(new Promise(res=>{ const im=new Image(); im.crossOrigin='anonymous';
-      im.onload=()=>{ ctx.drawImage(im,(tx-tX0)*256,(ty-tY0)*256); res(1); };
-      im.onerror=()=>res(0); im.src=url; }));
-  }
-  showLoad(`Capturando satélite (${jobs.length} tiles, z${z})…`);
-  await Promise.all(jobs); hideLoad();
+  const tiles=[];
+  for(let tx=tX0;tx<=tX1;tx++)for(let ty=tY0;ty<=tY1;ty++)tiles.push({tx,ty});
+  const deadline=Date.now()+25000;let cursor=0,failed=0;
+  const loadTile=({tx,ty})=>new Promise(resolve=>{
+    const paint=im=>{try{ctx.drawImage(im,(tx-tX0)*256,(ty-tY0)*256);resolve(true);}catch(e){resolve(false);}};
+    // Aproveita tiles já carregados no 2D, somente do mesmo provedor/zoom.
+    const cached=typeof baseLayers!=='undefined'?baseLayers[base]?._tiles?.[tx+':'+ty+':'+z]?.el:null;
+    if(cached?.complete&&cached.naturalWidth){paint(cached);return;}
+    const remaining=Math.min(10000,deadline-Date.now());if(remaining<=0){resolve(false);return;}
+    const im=new Image();im.crossOrigin='anonymous';let done=false;
+    const finish=ok=>{if(done)return;done=true;clearTimeout(timer);im.onload=im.onerror=null;if(ok)paint(im);else resolve(false);};
+    const timer=setTimeout(()=>finish(false),remaining);
+    im.onload=()=>finish(true);im.onerror=()=>finish(false);
+    im.src=urlFn(z).replace('{x}',tx).replace('{y}',ty);
+  });
+  showLoad(`Capturando ${base} (${tiles.length} tiles, z${z})…`);
+  try{
+    await Promise.all(Array.from({length:Math.min(8,tiles.length)},async()=>{
+      while(cursor<tiles.length){const tile=tiles[cursor++];if(!await loadTile(tile))failed++;}
+    }));
+  }finally{hideLoad();}
+  if(failed)throw new Error(`${base}: ${failed} de ${tiles.length} tiles não carregaram. Tente novamente ou escolha outro fundo na barra do Layout.`);
   // recortar exatamente para a extensão WGS pedida
   const [px0,py0]=lonlat2tile(W,N,z), [px1,py1]=lonlat2tile(E,Sl,z);
   const cx=(px0-tX0)*256, cy=(py0-tY0)*256, cw=(px1-px0)*256, ch=(py1-py0)*256;
@@ -87,12 +100,266 @@ async function captureBasemap(x0,y0,x1,y1,crs,targetPx){
   out.getContext('2d').drawImage(cv,cx,cy,cw,ch,0,0,out.width,out.height);
   let dataURL;
   try{ dataURL=out.toDataURL('image/jpeg',0.85); }
-  catch(e){ toast('Provedor bloqueou a captura (CORS) — tente Esri ou OSM'); return null; }
+  catch(e){throw new Error('O provedor bloqueou a captura do fundo. Escolha Esri ou OSM na barra do Layout.');}
   // bounds em WGS -> CRS de trabalho (usa retângulo; aproximação adequada em escala de planta)
   const sw=fromWGS(crs,W,Sl), ne=fromWGS(crs,E,N);
   const outObj={dataURL, b:[sw[0],sw[1],ne[0],ne[1]]};
   S._capCache={k:ck, v:outObj};
   return outObj;
+}
+/* Mapa-base próprio da prancha, independente do Mapa 2D. */
+function layoutBasemap(){
+  const input=document.getElementById('loBasemap');
+  let name=input?.value;
+  if(!name)name=S._base||'Satélite (Google)';
+  return name==='Sem fundo'||TILE_URLS[name]?name:'Satélite (Google)';
+}
+function layoutPresentationSignature(){
+  return JSON.stringify([layoutBasemap(),document.getElementById('loSat')?.checked!==false,
+    layoutCoordFontFactor(document.getElementById('loCoordFS')?.value)]);
+}
+function layoutPresentationDefaults(saved){
+  const base=document.getElementById('loBasemap'),sat=document.getElementById('loSat');
+  if(base)base.value=saved?.basemap||'';
+  // Projetos anteriores ao seletor herdam o fundo do 2D uma única vez.
+  if(sat)sat.checked=saved?.basemap?(saved.sat!==false&&saved.basemap!=='Sem fundo'):layoutBasemap()!=='Sem fundo';
+  S._loPlotCatalog=null;
+  layoutViewControlsSync();
+}
+/* Projetos antigos usavam o produto dos dois fatores da legenda também na
+   quadrícula. Migra esse tamanho uma vez; os controles passam a ser livres. */
+function layoutCoordFontFactor(value,legFS=1,legSc=0.7){
+  const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+  if(value!=null&&value!==''&&Number.isFinite(+value)&&+value>0)return clamp(+value,0.35,9);
+  const legacy=(v,d,a,b)=>clamp(v!=null&&v!==''&&Number.isFinite(+v)?+v:d,a,b);
+  return legacy(legFS,1,0.7,3)*legacy(legSc,0.7,0.5,3);
+}
+function layoutCoordFontLabel(value){return (+value).toLocaleString('pt-BR',{maximumFractionDigits:3})+'×';}
+function layoutCoordFontRestore(saved){
+  const el=document.getElementById('loCoordFS');if(!el)return;
+  el.value=layoutCoordFontFactor(saved?.coordFS,saved?.legFS,saved?.legSc);
+  const out=document.getElementById('loCoordFSv');if(out)out.textContent=layoutCoordFontLabel(el.value);
+}
+/* Atualiza somente o SVG da quadrícula; nunca relê TIFF nem move o mapa. */
+function layoutGridSVG(g,factor){
+  if(!g||g.isGeo||!(g.gridM>0))return '';
+  const {gridM,x0,x1,y0,y1,mL,mT,mapW,mapH,PW,PH}=g;
+  const sides=['Top','Bottom','Left','Right'].filter(k=>g.showCoords&&g['coord'+k]);
+  const room={Top:mT,Bottom:g.marginBottom,Left:mL,Right:g.marginRight};
+  // A fonte cresce até caber na faixa disponível; nunca invade a folha/mapa.
+  const maxFont=Math.max(.5,Math.min(...sides.map(k=>room[k]-1.5),20));
+  const font=Math.min(2.2*layoutCoordFontFactor(factor),maxFont);
+  const f=n=>n.toFixed(2),sx=e=>mL+(e-x0)/(x1-x0)*mapW,sy=n=>mT+(y1-n)/(y1-y0)*mapH;
+  let svg=`<g data-layout-role="grid" stroke="#0a0a0a" stroke-width="0.12" opacity="0.6" font-family="Signika, sans-serif" font-size="${f(font)}" fill="#111">`;
+  let lastX=-Infinity,lastY=Infinity;
+  for(let e=Math.ceil(x0/gridM)*gridM;e<=x1;e+=gridM){
+    const X=sx(e),text=String(Math.round(e)),half=text.length*font*.34;
+    svg+=`<line x1="${f(X)}" y1="${f(mT)}" x2="${f(X)}" y2="${f(mT+mapH)}"/>`;
+    if(X-half<.5||X+half>PW-.5||X-half<lastX+1)continue;
+    lastX=X+half;
+    if(sides.includes('Top'))svg+=`<text stroke="none" x="${f(X)}" y="${f(mT-1)}" text-anchor="middle">${text}</text>`;
+    if(sides.includes('Bottom'))svg+=`<text stroke="none" x="${f(X)}" y="${f(mT+mapH+font+.5)}" text-anchor="middle">${text}</text>`;
+  }
+  for(let n=Math.ceil(y0/gridM)*gridM;n<=y1;n+=gridM){
+    const Y=sy(n),text=String(Math.round(n)),half=text.length*font*.34;
+    svg+=`<line x1="${f(mL)}" y1="${f(Y)}" x2="${f(mL+mapW)}" y2="${f(Y)}"/>`;
+    if(Y-half<mT+1||Y+half>mT+mapH-1||Y+half>lastY-1)continue;
+    lastY=Y-half;
+    if(sides.includes('Left')){const X=mL-1;svg+=`<text stroke="none" x="${f(X)}" y="${f(Y)}" text-anchor="middle" transform="rotate(-90 ${f(X)} ${f(Y)})">${text}</text>`;}
+    if(sides.includes('Right')){const X=mL+mapW+font+.5;svg+=`<text stroke="none" x="${f(X)}" y="${f(Y)}" text-anchor="middle" transform="rotate(-90 ${f(X)} ${f(Y)})">${text}</text>`;}
+  }
+  return svg+'</g>';
+}
+function layoutGridInputsSignature(){
+  return JSON.stringify([S.projectId,S.loMode,S.loCenter,S.loFrozen,S.plateId,
+    Array.from(document.querySelectorAll('input[id],select[id],textarea[id]'))
+      .filter(e=>/^(lo|img)/.test(e.id)&&!['loCoordFS','loZoom'].includes(e.id))
+      .map(e=>[e.id,e.value,e.checked])]);
+}
+function layoutUpdateGridFont(){
+  const g=S._loGridGeometry,host=document.getElementById('sheetWrap');
+  if(!g||!S._lastSVG||!host||g.projectId!==S.projectId||S._loGridInputs!==layoutGridInputsSignature())return false;
+  // Só reutiliza a figura da mesma fonte e configuração de fundo.
+  let signature;
+  try{signature=JSON.parse(S._lastLayoutSignature);}catch(_){return false;}
+  const old=JSON.parse(signature[3]),now=JSON.parse(layoutPresentationSignature());
+  if(S._lastLayoutSource!==S.img||S._lastLayoutSourceImage!==(S.img&&S.img._img0)||
+     S._lastLayoutURL!==(S.img&&S.img.url)||signature[0]!==!!S.orthoDispFull||
+     signature[1]!==S.workCRS||signature[2]!==(S._loRenderEpoch||0)||old[0]!==now[0]||old[1]!==now[1])return false;
+  const element=host.querySelector('[data-layout-role="grid"]');
+  if(!element)return false;
+  const factor=layoutCoordFontFactor(document.getElementById('loCoordFS')?.value);
+  const grid=layoutGridSVG(g,factor),pattern=/<g\b[^>]*data-layout-role="grid"[^>]*>[\s\S]*?<\/g>/;
+  if(!pattern.test(S._lastSVG))return false;
+  S._loRenderId=(S._loRenderId||0)+1; // descarta desenhos antigos ainda em leitura
+  element.outerHTML=grid;
+  S._lastSVG=S._lastSVG.replace(pattern,()=>grid);
+  S._lastLayoutSignature=JSON.stringify([!!S.orthoDispFull,S.workCRS,S._loRenderEpoch||0,layoutPresentationSignature()]);
+  S._lastSVGRevision=(S._lastSVGRevision||0)+1;
+  if(S._loPlotCatalog)S._loPlotCatalog.revision=S._lastSVGRevision;
+  if(typeof loBlobInvalida==='function')loBlobInvalida();
+  if(S.loMode==='a4'&&typeof plateCapture==='function')plateCapture();
+  const status=document.getElementById('loBaseStatus');
+  if(status)status.textContent=+grid.match(/font-size="([^"]+)"/)[1]+.01<2.2*factor?'Fonte limitada às margens; reduza o tamanho para exibir mais coordenadas.':'';
+  return true;
+}
+function layoutViewControlsSync(){
+  const base=document.getElementById('loSat')?.checked===false?'Sem fundo':layoutBasemap();
+  document.querySelectorAll('[data-lo-basemap]').forEach(b=>{
+    const on=b.dataset.loBasemap===base;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));
+  });
+  const background=document.getElementById('layoutBasemapControl');if(background)background.hidden=S.loMode==='prop';
+}
+async function layoutPresentationChange(){
+  layoutViewControlsSync();
+  const status=document.getElementById('loBaseStatus');if(status)status.textContent='Atualizando figura…';
+  try{
+    const ok=await buildLayout();if(ok===false)return;
+    if(S.loMode==='a4'&&typeof plateCapture==='function')plateCapture();
+    if(status)status.textContent='';
+  }catch(error){
+    if(error?.name==='AbortError')return;
+    const text='Figura não atualizada: '+(error?.message||error);
+    if(status)status.textContent=text;if(!error.layoutReported)toast(text);console.warn('Layout',error);
+  }
+}
+function layoutRectIntersects(a,b){return a&&b&&a[0]<=b[2]&&a[2]>=b[0]&&a[1]<=b[3]&&a[3]>=b[1];}
+function layoutPointInRect(p,b){return p[0]>=b[0]&&p[0]<=b[2]&&p[1]>=b[1]&&p[1]<=b[3];}
+function layoutSegmentInRect(a,c,b){
+  let lo=0,hi=1;const dx=c[0]-a[0],dy=c[1]-a[1],p=[-dx,dx,-dy,dy],q=[a[0]-b[0],b[2]-a[0],a[1]-b[1],b[3]-a[1]];
+  for(let i=0;i<4;i++){
+    if(!p[i]){if(q[i]<0)return false;continue;}
+    const t=q[i]/p[i];if(p[i]<0)lo=Math.max(lo,t);else hi=Math.min(hi,t);if(lo>hi)return false;
+  }
+  return true;
+}
+function layoutGeometryPaths(geom,crs){
+  const paths=[],point=p=>Array.isArray(p)&&p.length>=2&&Number.isFinite(+p[0])&&Number.isFinite(+p[1]);
+  const convert=p=>reproj(crs||S.workCRS,S.workCRS,+p[0],+p[1]);
+  const walk=g=>{
+    if(point(g)){paths.push([convert(g)]);return;}
+    if(!Array.isArray(g))return;
+    if(g.length&&g.every(point)){paths.push(g.map(convert));return;}g.forEach(walk);
+  };walk(geom);return paths.filter(p=>p.length&&p.every(q=>q&&q.every(Number.isFinite)));
+}
+function layoutPathsIntersect(paths,kind,b,filled){
+  for(const path of paths){
+    if(path.some(p=>layoutPointInRect(p,b)))return true;
+    if(kind!=='point'){
+      for(let i=1;i<path.length;i++)if(layoutSegmentInRect(path[i-1],path[i],b))return true;
+      if(kind==='polygon'&&path.length>2&&layoutSegmentInRect(path[path.length-1],path[0],b))return true;
+    }
+  }
+  if(kind==='polygon'&&filled){
+    // Even-odd: uma folha totalmente dentro de um furo não contém polígono.
+    let inside=false;const x=(b[0]+b[2])/2,y=(b[1]+b[3])/2;
+    for(const path of paths)for(let i=0,j=path.length-1;i<path.length;j=i++){
+      const a=path[i],c=path[j];if((a[1]>y)!==(c[1]>y)&&x<(c[0]-a[0])*(y-a[1])/(c[1]-a[1])+a[0])inside=!inside;
+    }
+    return inside;
+  }
+  return false;
+}
+function layoutCadHatchSVG(L,f,st,project,mapSym=1){
+  if(!['line','polygon'].includes(L.gtype)||!Array.isArray(f.cadHatches))return '';
+  let svg='';
+  for(const h of f.cadHatches){
+    const style=cadHatchRenderStyle(h,st);if(style.weight<=0||style.opacity<=0)continue;
+    const paths=cadHatchProjectSegments(h,project);if(!paths.length)continue;
+    const d=paths.map(path=>path.map((p,i)=>(i?'L':'M')+p[0].toFixed(2)+' '+p[1].toFixed(2)).join(' ')).join(' ');
+    svg+=`<path class="gm-cad-hatch" d="${d}" fill="none" stroke="${esc(style.color)}" stroke-width="${Math.max(.04,style.weight*.3*mapSym)}" stroke-opacity="${style.opacity}"/>`;
+  }
+  return svg;
+}
+function layoutFeaturePlotted(L,f,b){
+  if(!f?.geom||!featureVisible(L,f))return false;
+  const st=featureStyle(L,f)||{},opacity=Number(st.opacity??1);
+  if(opacity<=0)return false;
+  const stroke=Number(st.weight??2)>0,filled=L.gtype==='polygon'&&st.hatch!=='none'&&((st.hatch&&st.hatch!=='solid')||Number(st.fill??.35)>0);
+  const labels=typeof labelAtivo==='function'&&labelAtivo(L);
+  // A linked hatch can be the only visible part of a transparent polygon or
+  // closed polyline. Its actual segments must qualify it for the Layout too.
+  const mapSym=Number(document.getElementById('loMapSym')?.value)||1;
+  const hatchVisible=['line','polygon'].includes(L.gtype)&&Array.isArray(f.cadHatches)&&f.cadHatches.some(h=>{
+    const hs=cadHatchRenderStyle(h,st);if(hs.weight<=0||hs.opacity<=0)return false;
+    const hm=S._loT?.mmPerM>0?Math.max(.04,hs.weight*.3*mapSym)/2/S._loT.mmPerM:0;
+    const hp=cadHatchProjectSegments(h,(x,y)=>reproj(L.crs,S.workCRS,x,y));
+    return layoutPathsIntersect(hp,'line',[b[0]-hm,b[1]-hm,b[2]+hm,b[3]+hm],false);
+  });
+  if(L.gtype!=='point'&&!stroke&&!filled&&!labels)return !!hatchVisible;
+  const paths=layoutGeometryPaths(f.geom,L.crs);
+  let margin=0;
+  if(S._loT?.mmPerM>0){
+    if(L.gtype==='point'&&typeof ptStyleOf==='function')margin=((ptStyleOf(L,f,st).size||14)/14)*3.4*mapSym/2/S._loT.mmPerM;
+    else if(stroke)margin=Math.max(.04,Number(st.weight)*.3*mapSym)/2/S._loT.mmPerM;
+  }
+  return layoutPathsIntersect(paths,L.gtype,[b[0]-margin,b[1]-margin,b[2]+margin,b[3]+margin],filled)||!!hatchVisible;
+}
+function layoutPlotCandidates(bounds){
+  const catalog={keys:new Set(),classKeys:new Set(),features:new Map(),bounds:bounds.slice()};
+  for(const n of stackSync()){
+    if(n.o.visible===false)continue;const o=n.o,key=nodeKey(n.t,n.id);
+    if(n.t==='L'){
+      if(window.GeoMineGeology?.meshViews?.isLayer(o)){
+        const m=window.GeoMineGeology.meshes?.getWorkMesh(o._geology.meshId),s=o.sym||{};
+        if(Number(s.opacity??1)<=0||o._geology.meshRole!=='vectors'&&Number(s.fill??o.fill??1)<=0)continue;
+        if(o._geology.meshRole==='vectors'&&Number(s.weight??o.weight??1)<=0)continue;
+        if(m?.faces?.some(face=>layoutPathsIntersect([face.map(i=>m.vertices[i])],'polygon',bounds,o._geology.meshRole!=='vectors')))catalog.keys.add(key);
+        continue;
+      }
+      const features=new Set();catalog.features.set(o.id,features);
+      for(const f of o.features||[]){
+        if(!layoutFeaturePlotted(o,f,bounds))continue;features.add(f);catalog.keys.add(key);
+        const s=o.sym||{},mode=s.mode,classes=mode==='cat'?s.cats:s.classes;
+        if((mode==='cat'||mode==='grad')&&classes?.length){
+          const item=classOf(o,f),i=classes.indexOf(item);if(i>=0)catalog.classKeys.add(legendClassKey(n,mode,item,i));
+        }
+      }
+    }else{
+      const b=n.t==='I'?layoutOrthoBoundsWork(o,S.workCRS):rasterBounds(o);
+      if(!layoutRectIntersects(b,bounds))continue;
+      const rings=n.t==='R'?rasterClipRings(o):null;
+      if(rings?.length&&!layoutPathsIntersect(rings,'polygon',bounds,true))continue;
+      const opacity=n.t==='I'?(typeof orthoOpacidade==='function'?orthoOpacidade():1):o.style?.opacity??1;
+      if(Number(opacity)<=0)continue;
+      if(n.t==='I'){if(o.url)catalog.keys.add(key);continue;}
+      const d=o.d,s=o.style||{},classes=s.classes||[];
+      if(!d?.z?.length){catalog.keys.add(key);continue;}
+      const col0=Math.max(0,Math.floor((bounds[0]-b[0])/(b[2]-b[0])*d.nc)),col1=Math.min(d.nc-1,Math.floor((bounds[2]-b[0])/(b[2]-b[0])*d.nc));
+      const row0=Math.max(0,Math.floor((b[3]-bounds[3])/(b[3]-b[1])*d.nr)),row1=Math.min(d.nr-1,Math.floor((b[3]-bounds[1])/(b[3]-b[1])*d.nr));
+      const classified=classes.length&&['cn','slopeclass','classes'].includes(s.mode);
+      const nodata=[d.noData,d.nodata,d._nd,o.noData].filter(v=>v!=null).map(Number);
+      let found=false;
+      cells:for(let row=row0;row<=row1;row++)for(let col=col0;col<=col1;col++){
+        const z=d.z[row*d.nc+col];if(!Number.isFinite(z)||nodata.includes(z))continue;
+        if(rings?.length){
+          const cell=[d.xll+col*d.cs,d.yll+(d.nr-row-1)*(d.csy||d.cs),d.xll+(col+1)*d.cs,d.yll+(d.nr-row)*(d.csy||d.cs)];
+          const visibleCell=[Math.max(cell[0],bounds[0]),Math.max(cell[1],bounds[1]),Math.min(cell[2],bounds[2]),Math.min(cell[3],bounds[3])];
+          if(!layoutPathsIntersect(rings,'polygon',visibleCell,true))continue;
+        }
+        if(!classified){found=true;break cells;}
+        let i;
+        if(s.mode==='cn'){i=0;for(let j=1;j<classes.length;j++)if(Math.abs(z-classes[j].value)<Math.abs(z-classes[i].value))i=j;}
+        else if(s.mode==='slopeclass'){i=classes.findIndex(c=>c.value===Math.round(z));if(i<0)i=0;}
+        else i=rasterClassRangeFind(classes,z)?.index??-1;
+        if(i>=0&&classes[i].vis!==false){found=true;catalog.classKeys.add(legendClassKey(n,'class',classes[i],i));}
+      }
+      if(found)catalog.keys.add(key);
+    }
+  }
+  for(const w of S.wms||[]){
+    if(w.protocol==='WMTS')continue; // WMTS é exibido no mapa 2D; Layout requer WMS.
+    if(w.visible===false||!w.url||!w.layers||Number(w.opacity??.85)<=0)continue;
+    const mask=w.clipLayerId!=null?S.layers.find(l=>String(l.id)===String(w.clipLayerId)):null;
+    if(mask&&!(mask.features||[]).some(f=>layoutPathsIntersect(layoutGeometryPaths(f.geom,mask.crs),'polygon',bounds,true)))continue;
+    catalog.keys.add('W:'+w.id);
+  }
+  return catalog;
+}
+function layoutLegendCatalog(){
+  const T=S._loT;if(!T||!T.mmPerM)return null;
+  if(S._loPlotCatalog&&S._loPlotCatalog.revision===S._lastSVGRevision&&layoutSourceCurrent())return S._loPlotCatalog;
+  return layoutPlotCandidates([T.x0,T.y1-T.mapH/T.mmPerM,T.x0+T.mapW/T.mmPerM,T.y1]);
 }
 /* A seleção da legenda pertence ao Layout, não à visibilidade do mapa. Cada
    prancha guarda seu próprio dicionário; no modo Figura há um dicionário
@@ -130,39 +397,39 @@ function legendClassKey(n,mode,c,i){
 }
 /* null = símbolo único/contínuo; array = classes que estão realmente ligadas
    no mapa. A lista de seleção jamais oferece uma classe com o olho apagado. */
-function legendNodeParts(n){
+function legendNodeParts(n,catalog=null){
   const o=n&&n.o;if(!o)return null;
   if(n.t==='L'){
     if(typeof containerCountLayerRole==='function'&&containerCountLayerRole(o))return null;
     const s=o.sym||{};
     if(s.mode==='grad'&&s.classes&&s.classes.length)return s.classes.map((c,i)=>({
       key:legendClassKey(n,'grad',c,i),label:`${fmt(c.min)} – ${fmt(c.max)}`,c,i
-    })).filter(x=>x.c.vis!==false);
+    })).filter(x=>x.c.vis!==false&&(!catalog?.classKeys||catalog.classKeys.has(x.key)));
     if(s.mode==='cat'&&s.cats&&s.cats.length)return s.cats.map((c,i)=>({
       key:legendClassKey(n,'cat',c,i),label:String(c.value),c,i
-    })).filter(x=>x.c.vis!==false);
+    })).filter(x=>x.c.vis!==false&&(!catalog?.classKeys||catalog.classKeys.has(x.key)));
   }
   if(n.t==='R'){
     const s=o.style||{},m=s.mode,classes=s.classes||[];
     if(classes.length&&(m==='cn'||m==='slopeclass'||m==='classes'))return classes.map((c,i)=>({
       key:legendClassKey(n,'class',c,i),
       label:c.label||(c.value!=null?String(c.value):`${fmt(c.min)} – ${fmt(c.max)}`),c,i
-    })).filter(x=>x.c.vis!==false);
+    })).filter(x=>x.c.vis!==false&&(!catalog?.classKeys||catalog.classKeys.has(x.key)));
   }
   return null;
 }
-function legendNodeMapVisible(n){
-  if(!n||!n.o||n.o.visible===false)return false;
+function legendNodeMapVisible(n,catalog=null){
+  if(!n||!n.o||n.o.visible===false||catalog&&!catalog.keys.has(legendLayerKey(n)))return false;
   /* cotas CAD são anotação do desenho, não tema do mapa: ficam fora da legenda */
   if(n.t==='L'&&globalThis.GeoMineDimensions?.isLayer?.(n.o))return false;
-  const parts=legendNodeParts(n);
+  const parts=legendNodeParts(n,catalog);
   return parts===null||parts.length>0;
 }
-function legendNodeIncluded(n,state){
-  if(!legendNodeMapVisible(n))return false;
-  if(n.o.groupId!=null&&!legendVisibilityOn(legendGroupKey(n.o.groupId),state))return false;
+function legendNodeIncluded(n,state,catalog=null){
+  if(!legendNodeMapVisible(n,catalog))return false;
+  if(groupPath(n.o.groupId).some(g=>!legendVisibilityOn(legendGroupKey(g.id),state)))return false;
   if(!legendVisibilityOn(legendLayerKey(n),state))return false;
-  const parts=legendNodeParts(n);
+  const parts=legendNodeParts(n,catalog);
   return parts===null||parts.some(p=>legendVisibilityOn(p.key,state));
 }
 function legendLayerLabel(n){
@@ -176,39 +443,41 @@ function legendLayerLabel(n){
 }
 /* Fonte única do checklist do Layout. Contém inclusive os itens desmarcados
    na legenda, mas nunca camadas/classes apagadas no mapa. */
-function legendControlRows(){
-  const rows=[],state=legendVisibilityState();
-  displayList().forEach(it=>{
+function legendControlRows(catalog=layoutLegendCatalog()){
+  const rows=[],state=legendVisibilityState(),tree=displayList();
+  tree.forEach(it=>{
     if(it.kind==='group'){
-      const members=groupMembers(it.g.id).filter(legendNodeMapVisible);
-      if(members.length)rows.push({kind:'group',key:legendGroupKey(it.g.id),label:it.g.name});
+      const members=groupMembers(it.g.id).filter(n=>legendNodeMapVisible(n,catalog));
+      if(members.length)rows.push({kind:'group',key:legendGroupKey(it.g.id),label:it.g.name,depth:it.depth,groupKeys:it.ancestors.map(legendGroupKey)});
       return;
     }
-    const n=it.n;if(!legendNodeMapVisible(n))return;
-    const key=legendLayerKey(n),groupKey=n.o.groupId!=null?legendGroupKey(n.o.groupId):null;
-    rows.push({kind:'layer',key,label:legendLayerLabel(n),groupKey});
-    const parts=legendNodeParts(n);
-    if(parts)parts.forEach(p=>rows.push({kind:'item',key:p.key,label:p.label,parentKey:key,groupKey}));
+    const n=it.n;if(!legendNodeMapVisible(n,catalog))return;
+    const key=legendLayerKey(n),groupKey=n.o.groupId!=null?legendGroupKey(n.o.groupId):null,groupKeys=it.ancestors.map(legendGroupKey);
+    rows.push({kind:'layer',key,label:legendLayerLabel(n),groupKey,groupKeys,depth:it.depth});
+    const parts=legendNodeParts(n,catalog);
+    if(parts)parts.forEach(p=>rows.push({kind:'item',key:p.key,label:p.label,parentKey:key,groupKey,groupKeys,depth:it.depth+1}));
   });
-  (S.wms||[]).forEach(w=>{if(w&&w.visible!==false)rows.push({kind:'layer',key:'W:'+w.id,label:w.name||w.layers||'Camada WMS',groupKey:null});});
+  (S.wms||[]).forEach(w=>{if(w&&w.visible!==false&&(!catalog||catalog.keys.has('W:'+w.id)))rows.push({kind:'layer',key:'W:'+w.id,label:w.name||w.layers||'Camada WMS',groupKey:null});});
   return rows.map(r=>({...r,on:legendVisibilityOn(r.key,state)}));
 }
 /* Monta a lista hierárquica de itens da legenda (grupo → camada → classes visíveis) */
-function legendItems(){
-  const items=[],legendState=legendVisibilityState();let containerResumoAdicionado=false;
-  displayList().forEach(it=>{
+function legendItems(catalog=layoutLegendCatalog()){
+  const items=[],legendState=legendVisibilityState(),tree=displayList(),numbers=groupNumbering(tree);
+  const numbered=document.getElementById('loGroupNumbers')?.checked===true;
+  let containerResumoAdicionado=false;
+  tree.forEach(it=>{
     if(it.kind==='group'){
-      const mem=groupMembers(it.g.id).filter(n=>legendNodeIncluded(n,legendState));
-      if(mem.length&&legendVisibilityOn(legendGroupKey(it.g.id),legendState)) items.push({label:it.g.name, grp:true, indent:0});
+      const mem=groupMembers(it.g.id).filter(n=>legendNodeIncluded(n,legendState,catalog));
+      if(mem.length&&legendVisibilityOn(legendGroupKey(it.g.id),legendState)) items.push({label:groupDisplayName(it.g,numbers,numbered), grp:true, indent:it.depth});
       return;
     }
     const n=it.n,o=n.o;
-    if(!legendNodeIncluded(n,legendState)) return;
-    const ind=o.groupId!=null?1:0;
+    if(!legendNodeIncluded(n,legendState,catalog)) return;
+    const ind=it.depth;
     if(it.kind==='raster'){
       const rc=o.style&&o.style.classes;
       if(rc&&rc.length&&(o.style.mode==='cn'||o.style.mode==='slopeclass'||o.style.mode==='classes')){
-        const visParts=(legendNodeParts(n)||[]).filter(p=>legendVisibilityOn(p.key,legendState));
+        const visParts=(legendNodeParts(n,catalog)||[]).filter(p=>legendVisibilityOn(p.key,legendState));
         if(!visParts.length)return;
         items.push({label:o.name||'Raster classificado',header:true,indent:ind});
         visParts.forEach(p=>{const c=p.c;items.push({
@@ -270,7 +539,7 @@ function legendItems(){
     }
     const classed=(sy.mode==='grad'&&sy.classes.length)||(sy.mode==='cat'&&sy.cats.length);
     if(classed){
-      const visParts=(legendNodeParts(n)||[]).filter(p=>legendVisibilityOn(p.key,legendState));
+      const visParts=(legendNodeParts(n,catalog)||[]).filter(p=>legendVisibilityOn(p.key,legendState));
       if(!visParts.length)return;
       items.push({label:L.name+' · '+sy.field, header:true, indent:ind});
       visParts.forEach(p=>{const c=p.c;
@@ -289,7 +558,7 @@ function legendItems(){
   /* WMS não faz parte da pilha vetorial/raster local, mas é uma camada
      cartográfica real e precisa constar na legenda da prancha. */
   (S.wms||[]).forEach(w=>{
-    if(!w || w.visible===false || !legendVisibilityOn('W:'+w.id,legendState)) return;
+    if(!w || w.protocol==='WMTS' || w.visible===false || catalog&&!catalog.keys.has('W:'+w.id) || !legendVisibilityOn('W:'+w.id,legendState)) return;
     items.push({label:w.name||w.layers||'Camada WMS',kind:'wms',indent:0,
       provider:w.provider||w.attribution||'WMS'});
   });
@@ -383,14 +652,15 @@ function layoutDpiTarget(exporting=false,dpi=300){
 function layoutSourceCurrent(){
   return S._lastLayoutSource===S.img&&S._lastLayoutSourceImage===(S.img&&S.img._img0)&&
     S._lastLayoutURL===(S.img&&S.img.url)&&
-    S._lastLayoutSignature===JSON.stringify([!!S.orthoDispFull,S.workCRS,S._loRenderEpoch||0]);
+    S._lastLayoutSignature===JSON.stringify([!!S.orthoDispFull,S.workCRS,S._loRenderEpoch||0,layoutPresentationSignature()]);
 }
 async function buildLayout(options){
   options=options||{};
+  const baseInput=document.getElementById('loBasemap');if(baseInput&&!baseInput.value)baseInput.value=layoutBasemap();
   const renderId=S._loRenderId=(S._loRenderId||0)+1,epoch=S._loRenderEpoch||0,
-    projectId=S.projectId,source=S.img,sourceImage=source&&source._img0,sourceURL=source&&source.url,
+    presentation=layoutPresentationSignature(),projectId=S.projectId,source=S.img,sourceImage=source&&source._img0,sourceURL=source&&source.url,
     exporting=options.exporting===true||!!S._exporting;
-  const current=()=>S._loRenderId===renderId&&(S._loRenderEpoch||0)===epoch&&S.projectId===projectId&&
+  const current=()=>S._loRenderId===renderId&&(S._loRenderEpoch||0)===epoch&&S.projectId===projectId&&layoutPresentationSignature()===presentation&&
     S.img===source&&(!source||(source._img0===sourceImage&&source.url===sourceURL));
   let orthoDpi=0,orthoRequestDpi=0,orthoNative=false,orthoPx=null;
   if(typeof loBlobInvalida==='function') loBlobInvalida();
@@ -426,6 +696,7 @@ async function buildLayout(options){
   const gridAuto=gcb('loGridAuto',true);
   const title=document.getElementById('loTitle').value;
   const sub=document.getElementById('loSub').value;
+  layoutViewControlsSync();
   const crs=S.workCRS; const isGeo=/4326|4674|4618/.test(crs);
   const wrap=document.getElementById('sheetWrap');
 
@@ -435,8 +706,8 @@ async function buildLayout(options){
   const symFS =clamp(gvn('loSym',1),0.7,4)*legSc;     // símbolos da legenda
   const legColGap=clamp(gvn('loLegColGap',4),0,20);   // vão entre colunas (mm)
   const mapSym=clamp(gvn('loMapSym',1),0.7,4);  // pontos e linhas no mapa
-  /* Legenda e coordenadas permanecem vinculadas. A escala gráfica possui um
-     multiplicador próprio para mudar apenas números, unidade e denominador. */
+  /* A quadrícula tem tamanho próprio, independente da caixa/texto da legenda. */
+  const coordFS=layoutCoordFontFactor(document.getElementById('loCoordFS')?.value,gvn('loLegFS',1),legSc);
   const txtFS=legFS;
   const barTextFS=clamp(gvn('loBarFS',1),0.5,3);
   const barLengthScale=clamp(gvn('loBarSc',0.7),0.3,1.5); // comprimento desejado da régua
@@ -491,7 +762,7 @@ async function buildLayout(options){
   let mmPerM=1000/scale;                    // mm de papel por metro de terreno
 
   // ---- legenda: itens e caixa (dimensionados ANTES do papel) ----
-  const legIt = wantLeg ? legendItems() : [];
+  const legIt = wantLeg ? legendItems(null) : [];
   const LG={
     pad:3.0*Math.max(1,legFS*0.85),
     row:Math.max(6.2*legFS, 4.0*symFS+2.0),
@@ -561,8 +832,8 @@ async function buildLayout(options){
   // A4·selo: margens de impressão — direita 25 mm (encadernação), demais 7 mm
   // Figura: margem definida pelo usuário (0 = sem borda branca) + espaço p/ coordenadas
   const marU=(mode==='a4'?0:clamp(gvn('loMar',0),0,25));
-  const lblX=(showCoords && !isGeo)? 6.0*txtFS : 0;   // reserva lateral
-  const lblY=(showCoords && !isGeo)? 4.5*txtFS : 0;   // reserva horizontal
+  const lblX=(showCoords && !isGeo)? 8 : 0;   // reserva lateral
+  const lblY=(showCoords && !isGeo)? 8 : 0;   // reserva horizontal
   const mL=(mode==='a4'? 25 : marU+(coordLeft?lblX:0));
   const mR=(mode==='a4'? 7  : marU+(coordRight?lblX:0));
   const mT=(mode==='a4'? 7+(coordTop?lblY:0) : marU+(coordTop?lblY:0));
@@ -640,6 +911,8 @@ async function buildLayout(options){
   const x0=cE-spanE_max/2, x1=cE+spanE_max/2, y0=cN-spanN_max/2, y1=cN+spanN_max/2;
   const sx=e=>mL+(e-x0)*mmPerM, sy=n=>mT+(y1-n)*mmPerM; // y invertido
   S._loT={x0,y1,mmPerM,mL,mT,mapW,mapH,PW,PH}; // p/ o modo 🎯 centro
+  const candidates=layoutPlotCandidates([x0,y0,x1,y1]);
+  let plotCatalog={keys:new Set(),classKeys:candidates.classKeys,bounds:candidates.bounds};
   const dimEl=document.getElementById('loDims');
   const paperLabel={a4p:'A4 retrato',a4l:'A4 paisagem',a3p:'A3 retrato',a3l:'A3 paisagem'}[paper]||paper.toUpperCase();
   let dim = mode==='a4'
@@ -657,26 +930,30 @@ async function buildLayout(options){
   const NS='http://www.w3.org/2000/svg';
   const fontCSS=await signikaCSS();
   if(!current())return false;
-  let svg=`<svg xmlns="${NS}" width="${PW}mm" height="${PH}mm" viewBox="0 0 ${PW} ${PH}" style="background:#fff">`;
-  svg+=`<style>${fontCSS} text{font-family:'Signika',sans-serif}</style>`;
+  /* A fonte padrão é herdada do SVG. Uma regra em todos os <text> teria
+     prioridade sobre font-family de cada rótulo, ocultando a fonte colada. */
+  let svg=`<svg xmlns="${NS}" width="${PW}mm" height="${PH}mm" viewBox="0 0 ${PW} ${PH}" style="background:#fff;font-family:'Signika',sans-serif">`;
+  svg+=`<style>${fontCSS}</style>`;
   svg+=`<rect x="0" y="0" width="${PW}" height="${PH}" fill="#fff"/>`;
   // clip do mapa
   svg+=`<defs><clipPath id="mapclip"><rect x="${mL}" y="${mT}" width="${mapW}" height="${mapH}"/></clipPath></defs>`;
   svg+=`<g clip-path="url(#mapclip)">`;
 
-  // fundo de satélite (captura de tiles) se marcado e houver basemap ativo
-  const wantSat=document.getElementById('loSat').checked && (S._base && S._base!=='Sem fundo');
+  // Mapa-base próprio da prancha; não depende da visibilidade do painel 2D.
+  const wantSat=document.getElementById('loSat').checked&&layoutBasemap()!=='Sem fundo';
+  let baseCapture=null;
   if(wantSat){
-    try{
-      const cap=await captureBasemap(x0,y0,x1,y1,crs, Math.round(mapW*8)); // ~200dpi
+    try{baseCapture=await captureBasemap(x0,y0,x1,y1,crs,Math.round(mapW/25.4*layoutDpiTarget(exporting,options.dpi)));}
+    catch(error){
       if(!current())return false;
-      if(cap){ const b=cap.b;
-        const ix=sx(b[0]), iy=sy(b[3]), iw=(b[2]-b[0])*mmPerM, ih=(b[3]-b[1])*mmPerM;
-        svg+=`<image href="${cap.dataURL}" x="${ix.toFixed(2)}" y="${iy.toFixed(2)}" width="${iw.toFixed(2)}" height="${ih.toFixed(2)}" preserveAspectRatio="none"/>`;
-      }
-    }catch(e){ console.error(e); toast('Não foi possível capturar o satélite: '+e.message); }
+      const status=document.getElementById('loBaseStatus');if(status)status.textContent=error.message;
+      toast('Fundo do Layout: '+error.message);error.layoutReported=true;throw error;
+    }
+    if(!current())return false;
+    if(baseCapture){const b=baseCapture.b;
+      svg+=`<image data-layout-basemap="${esc(layoutBasemap())}" href="${baseCapture.dataURL}" x="${sx(b[0]).toFixed(2)}" y="${sy(b[3]).toFixed(2)}" width="${((b[2]-b[0])*mmPerM).toFixed(2)}" height="${((b[3]-b[1])*mmPerM).toFixed(2)}" preserveAspectRatio="none"/>`;
+    }
   }
-
   // Mantém no Layout/exportação a mesma máscara poligonal escolhida no mapa.
   // O WMS continua sendo uma imagem, mas o SVG limita sua pintura exatamente
   // aos anéis da camada poligonal, inclusive respeitando eventuais furos.
@@ -700,10 +977,10 @@ async function buildLayout(options){
   }
 
   // camadas WMS visíveis — sobre o fundo e sob os dados locais
-  (S.wms||[]).filter(w=>w&&w.visible!==false&&w.layers&&w.url).forEach(w=>{
+  (S.wms||[]).filter(w=>w&&w.protocol!=='WMTS'&&candidates.keys.has('W:'+w.id)).forEach(w=>{
     try{
       const wu=layoutWmsUrl(w,x0,y0,x1,y1,crs,mapW*8,mapH*8);
-      const clipId=layoutWmsClip(w);
+      const clipId=layoutWmsClip(w);plotCatalog.keys.add('W:'+w.id);
       svg+=`<image href="${esc(wu)}" x="${mL}" y="${mT}" width="${mapW}" height="${mapH}" `+
         `${clipId?'clip-path="url(#'+clipId+')" ':''}opacity="${Math.max(0,Math.min(1,Number(w.opacity??0.85)))}" preserveAspectRatio="none"/>`;
     }catch(e){ console.warn('WMS no layout:',w.name||w.layers,e.message); }
@@ -747,7 +1024,7 @@ async function buildLayout(options){
       dpi:exporting?layoutDpiTarget(true,options.dpi||300):layoutDpiTarget(false)
     });
     let s='';
-    L.features.forEach(f=>{ if(!f.geom || !featureVisible(L,f))return;
+    L.features.forEach(f=>{ if(!candidates.features.get(L.id)?.has(f))return;
       const st=featureStyle(L,f);
       const col=st.color;
       const scol=st.stroke||st.color;
@@ -775,20 +1052,23 @@ async function buildLayout(options){
              espessura zero desaparecerem somente na prancha. */
           s+=ptPlotSVG(ps, col||'#ffffff', scol||col||'#111111', st.weight, px, py, mm);
         }); }
-      else { const rings=(f.multi&&Array.isArray(f.geom[0][0]))?f.geom:[f.geom];
-        rings.forEach(r=>{ const d=r.map((pt,i)=>{const c=reproj(L.crs,crs,pt[0],pt[1]);return (i?'L':'M')+sx(c[0]).toFixed(2)+' '+sy(c[1]).toFixed(2);}).join(' ')+(L.gtype==='polygon'?' Z':'');
-          let fill='none', fo=0;
-          if(L.gtype==='polygon'){
-            if(st.hatch==='none'){ fill='none'; }
-            else { const hid=layoutHatch(st.hatch,col,st.hatchScale); fill=hid?`url(#${hid})`:col; fo=hid?1:st.fill; }
-          }
-          s+=`<path d="${d}" fill="${fill}" fill-opacity="${fo}" stroke="${w>0?scol:'none'}" stroke-width="${w}" ${w>0&&st.dash?`stroke-dasharray="${escalaDash(st.dash,w)}"`:''}/>`;
+      else { const rings=layoutGeometryPaths(f.geom,L.crs);
+        const paths=L.gtype==='polygon'?[rings]:rings.map(r=>[r]);
+        paths.forEach(group=>{
+          const d=group.map(r=>r.map((c,i)=>(i?'L':'M')+sx(c[0]).toFixed(2)+' '+sy(c[1]).toFixed(2)).join(' ')+(L.gtype==='polygon'?' Z':'')).join(' ');
+          let fill='none',fo=0;
+          if(L.gtype==='polygon'&&st.hatch!=='none'){const hid=layoutHatch(st.hatch,col,st.hatchScale);fill=hid?`url(#${hid})`:col;fo=hid?1:st.fill;}
+          s+=`<path d="${d}" fill="${fill}" fill-rule="evenodd" fill-opacity="${fo}" stroke="${w>0?scol:'none'}" stroke-width="${w}" ${w>0&&st.dash?`stroke-dasharray="${escalaDash(st.dash,w)}"`:''}/>`;
+          const r=group[0];
           if(L.gtype==='line'&&window.GeoMineLineArrows){
             const t=GeoMineLineArrows.terminal(r);
-            if(t){const a=reproj(L.crs,crs,t.a[0],t.a[1]),b=reproj(L.crs,crs,t.b[0],t.b[1]);
+            if(t){const a=t.a,b=t.b;
               s+=GeoMineLineArrows.svg([sx(a[0]),sy(a[1])],[sx(b[0]),sy(b[1])],st,scol,w,mapSym,[mL,mT,mL+mapW,mT+mapH]);}
           }
         }); }
+      s+=layoutCadHatchSVG(L,f,st,(x,y)=>{
+        const p=reproj(L.crs,crs,x,y);return p?[sx(p[0]),sy(p[1])]:null;
+      },mapSym);
     });
     return s;
   }
@@ -818,14 +1098,14 @@ async function buildLayout(options){
       const y0=Y-(linhas.length-1)*passo/2;
       const corpo=linhas.map((ln,i)=>
         `<tspan x="${X}" y="${(y0+i*passo).toFixed(2)}">${esc(ln)}</tspan>`).join('');
-      const base=`x="${X}" y="${Y}" text-anchor="${anchor}" font-family="${c.font}" `+
+      const base=`x="${X}" y="${Y}" text-anchor="${anchor}" font-family="${esc(c.font)}" `+
                  `font-size="${fs.toFixed(2)}" font-style="${it}" font-weight="${bd}"${tr}`;
       // halo primeiro (traço grosso por baixo), texto por cima
       if(hw>0) out+=`<text ${base} fill="none" stroke="${c.halo}" stroke-width="${(hw*0.25).toFixed(2)}" stroke-linejoin="round">${corpo}</text>`;
       out+=`<text ${base} fill="${c.color}">${corpo}</text>`;
     };
     L.features.forEach(f=>{
-      if(!f.geom || !featureVisible(L,f)) return;
+      if(!candidates.features.get(L.id)?.has(f))return;
       if(labelUnicas&&!labelUnicas.has(f))return;
       const txt=labelText(L,f,undefined,0);
       if(aoLongo){
@@ -866,19 +1146,14 @@ async function buildLayout(options){
   const stk=stackSync();
   for(let si=stk.length-1; si>=0; si--){
     const nd=stk[si], ob=nd.o;
-    if(ob.visible===false) continue;
+    if(!candidates.keys.has(nodeKey(nd.t,nd.id)))continue;
 
     if(nd.t==='L'){
       /* Em pontos, o símbolo fica sobre o próprio halo/rótulo para continuar
          visível quando a posição manual é central. O par inteiro permanece na
          posição da camada e ainda é encoberto por qualquer raster superior. */
-      if(ob.gtype==='point'){
-        svg+=svgRotulosDaCamada(ob);
-        svg+=svgDaCamada(ob,true);
-      }else{
-        svg+=svgDaCamada(ob,false);
-        svg+=svgRotulosDaCamada(ob);
-      }
+      const fragment=ob.gtype==='point'?svgRotulosDaCamada(ob)+svgDaCamada(ob,true):svgDaCamada(ob,false)+svgRotulosDaCamada(ob);
+      if(fragment){svg+=fragment;plotCatalog.keys.add(nodeKey(nd.t,nd.id));}
       continue;
     }
 
@@ -939,6 +1214,8 @@ async function buildLayout(options){
          tela; misturar as duas deslocava o MDT em relação ao limite da cava. */
       bb=ob._urlPlotBounds||rasterBounds(ob); op=(ob.style.opacity??0.8);
     } else continue;
+    if(!url||!bb||op<=0)continue;
+    plotCatalog.keys.add(nodeKey(nd.t,nd.id));
     if(orthoWarp){
       const nw=[sx(orthoWarp.nw[0]),sy(orthoWarp.nw[1])];
       const ne=[sx(orthoWarp.ne[0]),sy(orthoWarp.ne[1])];
@@ -955,30 +1232,10 @@ async function buildLayout(options){
 
   svg+=`</g>`;
 
-  // grade UTM (linhas + rótulos) se projetado — gridM=0 desliga a grade
-  if(!isGeo && gridM>0){
-    const gs=Math.ceil(x0/gridM)*gridM;
-    svg+=`<g stroke="#0a0a0a" stroke-width="0.12" opacity="0.6" font-family="Signika, sans-serif" font-size="${(2.2*txtFS).toFixed(2)}" fill="#111">`;
-    for(let e=gs; e<=x1; e+=gridM){ const X=sx(e);
-      svg+=`<line x1="${X.toFixed(2)}" y1="${mT}" x2="${X.toFixed(2)}" y2="${mT+mapH}"/>`;
-      if(coordTop) svg+=`<text x="${X.toFixed(2)}" y="${(mT-1).toFixed(2)}" text-anchor="middle">${Math.round(e)}</text>`;
-      if(coordBottom) svg+=`<text x="${X.toFixed(2)}" y="${(mT+mapH+3.2*txtFS).toFixed(2)}" text-anchor="middle">${Math.round(e)}</text>`;
-    }
-    const gn=Math.ceil(y0/gridM)*gridM;
-    for(let n=gn; n<=y1; n+=gridM){ const Y=sy(n);
-      svg+=`<line x1="${mL}" y1="${Y.toFixed(2)}" x2="${mL+mapW}" y2="${Y.toFixed(2)}"/>`;
-      if(showCoords && (mT+mapH-Y)>6 && (Y-mT)>4){ // sem coordenada na linha junto ao selo/topo
-        if(coordLeft){
-          svg+=`<text x="${(mL-1.2).toFixed(2)}" y="${(Y+0.7).toFixed(2)}" text-anchor="end" transform="rotate(-90 ${(mL-1.2).toFixed(2)} ${Y.toFixed(2)})">${Math.round(n)}</text>`;
-        }
-        if(coordRight){
-          const XR=mL+mapW+1.2;
-          svg+=`<text x="${XR.toFixed(2)}" y="${(Y+0.7).toFixed(2)}" text-anchor="start" transform="rotate(-90 ${XR.toFixed(2)} ${Y.toFixed(2)})">${Math.round(n)}</text>`;
-        }
-      }
-    }
-    svg+=`</g>`;
-  }
+  // A geometria da grade é independente do tamanho de seus rótulos.
+  const gridGeometry={isGeo,gridM,x0,x1,y0,y1,mL,mT,mapW,mapH,PW,PH,
+    coordTop,coordBottom,coordLeft,coordRight,showCoords,marginBottom:marB,marginRight:mR,projectId:S.projectId};
+  svg+=layoutGridSVG(gridGeometry,coordFS);
   // moldura
   svg+=`<rect x="${mL}" y="${mT}" width="${mapW}" height="${mapH}" fill="none" stroke="#111" stroke-width="0.4"/>`;
 
@@ -1059,6 +1316,10 @@ async function buildLayout(options){
   svg+=`<text x="${bx.toFixed(2)}" y="${(by-1.35).toFixed(2)}" font-size="${(3.15*barFS).toFixed(2)}" font-weight="700">${scaleLabel}</text>`;
   svg+=`</g>`;
 
+  // A caixa final recebe apenas camadas/classes que chegaram ao desenho.
+  legIt.splice(0,legIt.length,...(wantLeg?legendItems(plotCatalog):[]));
+  LG.w=Math.max(24,LG.pad*2+Math.max(15,legTitleW(),...legIt.map(legItemW))+0.8);
+  LG.h=LG.pad*2+LG.tit+legIt.length*LG.row;
   // legenda das camadas visíveis (dentro do mapa, ou em faixa lateral fora dele)
   let bandItems=null; // legenda da faixa do selo (modo A4)
   if(wantLeg){
@@ -1198,7 +1459,7 @@ async function buildLayout(options){
     const V={proj:title, area:gv('loArea')||'—', cli:gv('loCli')||'—', end:gv('loLoc')||'—',
       prjt:gv('loRT')||'—', des:gv('loDes')||'—', exec:gv('loExec')||'—',
       num:gv('loNum')||'—', cont1:(gv('loCont')||sub||'—'), cont2:(CRS_LABELS[crs]||crs),
-      esc:'1:'+scale, folha:gv('loFolha')||'01/01', revN:gv('loRevN')||'—',
+      esc:'1:'+scale, folha:gv('loFolha'), revN:gv('loRevN')||'—',
       data:new Date().toLocaleDateString('pt-BR')};
     const titleblock=window.GeoMineTitleblockLogo.geometry(paper);
     const SW=titleblock.width, SH=seloH;
@@ -1211,7 +1472,10 @@ async function buildLayout(options){
     const fit=(t,maxW,base)=>Math.min(base*FS, (maxW-1)/(0.58*Math.max(1,String(t).length)));
     const LN=(x1,y1,x2,y2,w)=>`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="#111" stroke-width="${w||0.3}"/>`;
     const LB=(x,y,t)=>`<text x="${(x+1.1).toFixed(2)}" y="${(y+2.0).toFixed(2)}" font-size="${(1.45*FS).toFixed(2)}" fill="#333">${t}</text>`;
-    const VL=(x,y,t,fs,anchor,xa)=>`<text x="${(xa!==undefined?xa:x+2.5).toFixed(2)}" y="${y.toFixed(2)}" font-size="${fs||2.5}" font-weight="700" fill="#111" ${anchor?`text-anchor="${anchor}"`:''}>${esc(t)}</text>`;
+    const valueText=(left,right,y,text,size,padding=4)=>{
+      const center=X((left+right)/2),fontSize=fit(text,(right-left)*SW-padding,size);
+      return `<text x="${center.toFixed(2)}" y="${y.toFixed(2)}" text-anchor="middle" font-size="${fontSize}" font-weight="700" fill="#111">${esc(text)}</text>`;
+    };
     svg+=`<g font-family="Signika, sans-serif">`;
     // moldura externa
     svg+=`<rect x="${SX}" y="${SY}" width="${SW}" height="${SH}" fill="#fff" stroke="#111" stroke-width="0.5"/>`;
@@ -1243,30 +1507,24 @@ async function buildLayout(options){
         svg+=`<image href="${S.cliLogo}" x="${(X(1)-cw2-pad).toFixed(2)}" y="${(Y(0)+pad).toFixed(2)}" width="${cw2.toFixed(2)}" height="${ch2.toFixed(2)}" preserveAspectRatio="xMidYMid meet"/>`;
       }
     }
-    // PROJETO / TÍTULO
-    svg+=LB(X(fLogo),Y(0),loT('PROJETO'))+VL(0,Y(fSub*0.78),V.proj,fit(V.proj,(1-fLogo)*SW-4,3.0),'middle',X(fLogo+(1-fLogo)/2));
-    svg+=LB(X(fLogo),Y(fSub),loT('TÍTULO'))+VL(0,Y(fR1*0.84),V.area,fit(V.area,(1-fLogo)*SW-4,3.0),'middle',X(fLogo+(1-fLogo)/2));
-    // CLIENTE / ENDEREÇO
-    svg+=LB(X(0),Y(fR1),loT('CLIENTE'))+VL(X(0),Y(fR2)-1.2,V.cli,fit(V.cli,fLogo*SW-4,2.6),null);
-    svg+=LB(X(fLogo),Y(fR1),loT('ENDEREÇO DA OBRA'))+VL(X(fLogo),Y(fR2)-1.2,V.end,fit(V.end,(1-fLogo)*SW-4,2.6),null);
-    // PROJETISTA / DESENHISTA
-    svg+=LB(X(0),Y(fR2),loT('PROJETISTA'))+VL(X(0),Y(fR3)-1.2,V.prjt,fit(V.prjt,fCol*SW-4,2.6),null);
-    svg+=LB(X(fCol),Y(fR2),loT('DESENHISTA'))+VL(X(fCol),Y(fR3)-1.1,V.des,fit(V.des,(1-fCol)*SW-3,2.3),null);
-    // EXECUÇÃO / DATA
-    svg+=LB(X(0),Y(fR3),loT('EXECUÇÃO'))+VL(X(0),Y(fR4)-1.2,V.exec,fit(V.exec,fCol*SW-4,2.6),null);
-    svg+=LB(X(fCol),Y(fR3),loT('DATA'))+VL(X(fCol),Y(fR4)-1.1,V.data,fit(V.data,(1-fCol)*SW-3,2.3),null);
-    // ANM / CONTEÚDO / ESCALAS
-    svg+=LB(X(0),Y(fR4),loT('ANM'))+VL(X(0),Y(fR5)-0.9,V.num,fit(V.num,fNum*SW-4,2.1),null);
+    // Each value is centered within its own cell. The printed labels use the upper left corner.
+    const titleRight=S.cliLogo&&!titleblock.a3 ? 1-(1-fLogo)*0.22-Math.min(fLogo*SW,fR1*SH)*0.16/SW : 1;
+    svg+=LB(X(fLogo),Y(0),loT('PROJETO'))+valueText(fLogo,titleRight,Y(fSub*0.78),V.proj,3.0);
+    svg+=LB(X(fLogo),Y(fSub),loT('TÍTULO'))+valueText(fLogo,titleRight,Y(fR1*0.84),V.area,3.0);
+    svg+=LB(X(0),Y(fR1),loT('CLIENTE'))+valueText(0,fLogo,Y(fR2)-1.2,V.cli,2.6);
+    svg+=LB(X(fLogo),Y(fR1),loT('ENDEREÇO DA OBRA'))+valueText(fLogo,1,Y(fR2)-1.2,V.end,2.6);
+    svg+=LB(X(0),Y(fR2),loT('PROJETISTA'))+valueText(0,fCol,Y(fR3)-1.2,V.prjt,2.6);
+    svg+=LB(X(fCol),Y(fR2),loT('DESENHISTA'))+valueText(fCol,1,Y(fR3)-1.1,V.des,2.3,3);
+    svg+=LB(X(0),Y(fR3),loT('EXECUÇÃO'))+valueText(0,fCol,Y(fR4)-1.2,V.exec,2.6);
+    svg+=LB(X(fCol),Y(fR3),loT('DATA'))+valueText(fCol,1,Y(fR4)-1.1,V.data,2.3,3);
+    svg+=LB(X(0),Y(fR4),loT('ANM'))+valueText(0,fNum,Y(fR5)-0.9,V.num,2.1);
     svg+=LB(X(fNum),Y(fR4),loT('CONTEÚDO'));
-    svg+=VL(0,Y(fR4+(1-fR4)*0.48),V.cont1,fit(V.cont1,(fCol-fNum)*SW-3,2.5),'middle',X(fNum+(fCol-fNum)/2));
-    svg+=VL(0,Y(fR4+(1-fR4)*0.80),V.cont2,fit(V.cont2,(fCol-fNum)*SW-3,1.9),'middle',X(fNum+(fCol-fNum)/2));
-    svg+=LB(X(fCol),Y(fR4),loT('ESCALAS'))+VL(X(fCol),Y(fR5)-0.9,V.esc,fit(V.esc,(1-fCol)*SW-3,2.1),null);
-    // REVISÃO / REVISOR
-    svg+=LB(X(0),Y(fR5),loT('REVISÃO'))+VL(X(0),Y(1)-1.0,V.data,fit(V.data,fRev*SW-3,2.0),null);
-    svg+=LB(X(fRev),Y(fR5),loT('REVISOR'))+VL(X(fRev),Y(1)-1.0,V.revN,fit(V.revN,(fNum-fRev)*SW-3,2.0),null);
-    // FOLHA (borda grossa, como no modelo)
-    svg+=LB(X(fCol),Y(fR5),loT('FOLHA'));
-    svg+=VL(0,Y(1)-1.3,V.folha,fit(V.folha,(1-fCol)*SW-6,3.0),'middle',X(fCol+(1-fCol)/2));
+    svg+=valueText(fNum,fCol,Y(fR4+(1-fR4)*0.48),V.cont1,2.5,3);
+    svg+=valueText(fNum,fCol,Y(fR4+(1-fR4)*0.80),V.cont2,1.9,3);
+    svg+=LB(X(fCol),Y(fR4),loT('ESCALAS'))+valueText(fCol,1,Y(fR5)-0.9,V.esc,2.1,3);
+    svg+=LB(X(0),Y(fR5),loT('REVISÃO'))+valueText(0,fRev,Y(1)-1.0,V.data,2.0,3);
+    svg+=LB(X(fRev),Y(fR5),loT('REVISOR'))+valueText(fRev,fNum,Y(1)-1.0,V.revN,2.0,3);
+    svg+=LB(X(fCol),Y(fR5),loT('FOLHA'))+valueText(fCol,1,Y(1)-1.3,V.folha,3.0,6);
     svg+=`<rect x="${X(fCol).toFixed(2)}" y="${Y(fR5).toFixed(2)}" width="${((1-fCol)*SW).toFixed(2)}" height="${((1-fR5)*SH).toFixed(2)}" fill="none" stroke="#111" stroke-width="0.3"/>`;
     svg+=`</g>`;
 
@@ -1442,10 +1700,13 @@ async function buildLayout(options){
   wrap.innerHTML=`<div class="sheet" style="width:${(PW*3*Z).toFixed(1)}px;height:${(PH*3*Z).toFixed(1)}px">${svg}</div>`;
   const s=wrap.querySelector('svg'); s.setAttribute('width','100%'); s.setAttribute('height','100%');
   S._lastSVG=svg;
+  S._loGridGeometry=gridGeometry;S._loGridInputs=layoutGridInputsSignature();
   S._lastOrthoDpi=orthoDpi;S._lastOrthoRequestDpi=orthoRequestDpi;S._lastLayoutNative=orthoNative;S._orthoPx=orthoPx;
   S._lastLayoutSource=source;S._lastLayoutSourceImage=sourceImage;
-  S._lastLayoutURL=sourceURL;S._lastLayoutSignature=JSON.stringify([!!S.orthoDispFull,S.workCRS,epoch]);
+  S._lastLayoutURL=sourceURL;S._lastLayoutSignature=JSON.stringify([!!S.orthoDispFull,S.workCRS,epoch,presentation]);
   S._lastSVGRevision=(S._lastSVGRevision||0)+1;
+  plotCatalog.revision=S._lastSVGRevision;S._loPlotCatalog=plotCatalog;
+  const viewStatus=document.getElementById('loBaseStatus');if(viewStatus)viewStatus.textContent='';
   syncZoomUI();
   return true;
 }
@@ -1502,11 +1763,42 @@ function setLoZoom(z, ev){
   wrap.scrollTop  += (r1.top  + fy*r1.height) - ay;
   syncZoomUI();
 }
+/* Reserve the docked command area for the Layout's actual scroll viewport.
+   Moving only the paper or adding padding leaves the seal behind the dock. */
+function layoutViewportSync(){
+  const layout=document.getElementById('layout'),host=document.getElementById('main');
+  if(!layout||!host)return;
+  const box=host.getBoundingClientRect();let overlap=0;
+  for(const element of [document.getElementById('cmdBox'),document.querySelector('.readout')]){
+    if(!element||getComputedStyle(element).display==='none')continue;
+    if(element.id==='cmdBox'&&CMD.modo==='flut')continue;
+    const r=element.getBoundingClientRect();
+    if(r.width>0&&r.height>0&&r.right>box.left&&r.left<box.right&&r.bottom>box.top&&r.top<box.bottom)
+      overlap=Math.max(overlap,Math.ceil(box.bottom-r.top+1));
+  }
+  const bottom=overlap+'px';if(layout.style.bottom!==bottom)layout.style.bottom=bottom;
+}
+(function(){
+  let frame=0;
+  const schedule=()=>{if(!frame)frame=requestAnimationFrame(()=>{frame=0;layoutViewportSync();});};
+  // Observe the containers, not the sheet being resized, to avoid resize loops.
+  if(window.ResizeObserver){const observer=new ResizeObserver(schedule);
+    for(const element of [document.getElementById('main'),document.getElementById('cmdBox'),document.querySelector('.readout')])
+      if(element)observer.observe(element);
+  }
+  const commands=document.getElementById('cmdBox');
+  if(commands&&window.MutationObserver)new MutationObserver(schedule).observe(commands,{attributes:true,attributeFilter:['style','class']});
+  window.addEventListener('resize',schedule);window.visualViewport?.addEventListener('resize',schedule);schedule();
+})();
 function fitLoZoom(){
   const wrap=document.getElementById('sheetWrap');
   if(!wrap || !S._loPaper) return;
-  const {PW,PH}=S._loPaper;
-  const z=Math.min((wrap.clientWidth-40)/(PW*3), (wrap.clientHeight-40)/(PH*3));
+  layoutViewportSync();
+  const {PW,PH}=S._loPaper,style=getComputedStyle(wrap);
+  // The basemap buttons occupy padding outside the printable sheet.
+  const px=(parseFloat(style.paddingLeft)||0)+(parseFloat(style.paddingRight)||0),
+    py=(parseFloat(style.paddingTop)||0)+(parseFloat(style.paddingBottom)||0);
+  const z=Math.min((wrap.clientWidth-px-40)/(PW*3), (wrap.clientHeight-py-40)/(PH*3));
   setLoZoom(isFinite(z)&&z>0? z : 1, null);
   wrap.scrollLeft=(wrap.scrollWidth-wrap.clientWidth)/2;
   wrap.scrollTop =0;
@@ -1546,6 +1838,7 @@ function esc(s){return String(s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&'
 
 async function ensureLayoutForExport(dpi=300){
   clearTimeout(S._loOrthoTimer);S._loOrthoTimer=null;
+  if(document.fonts&&document.fonts.ready)await document.fonts.ready;
   const ok=await buildLayout({exporting:true,dpi});
   if(ok===false||!S._lastSVG||!layoutSourceCurrent())throw new Error('O projeto mudou durante a geração. Tente exportar novamente.');
   if(S.img&&S.img.visible!==false&&!S._lastLayoutNative)
@@ -1556,12 +1849,14 @@ async function exportLayoutSVG(){
   try{const svg=await ensureLayoutForExport(300);return await download(new Blob([svg],{type:'image/svg+xml'}),'layout.svg');}
   catch(e){toast('Falha ao exportar: '+(e.message||e));return false;}
 }
-async function rasterizeLayout(dpi){ // Promise<canvas>
-  const svg=await ensureLayoutForExport(Math.max(300,+dpi||200)),revision=S._lastSVGRevision,epoch=S._loRenderEpoch||0;
+async function rasterizeLayout(dpi=300){ // Promise<canvas>
+  // Copiar e PNG usam a mesma resolução do desenho preparado, nunca a prévia de 200 dpi.
+  dpi=Number.isFinite(+dpi)&&+dpi>0?Math.max(300,+dpi):300;
+  const svg=await ensureLayoutForExport(dpi),revision=S._lastSVGRevision,epoch=S._loRenderEpoch||0;
   return new Promise((res,rej)=>{
     // papel EFETIVO do último render (no modo A4·selo o seletor pode dizer outra coisa)
     const P=S._loPaper||(()=>{const [a,b]=PAPER[document.getElementById('loPaper').value]||PAPER.a4l;return {PW:a,PH:b};})();
-    const scaleFactor=(dpi||200)/25.4;  // px por mm
+    const scaleFactor=dpi/25.4;  // px por mm
     const img=new Image(); const svgBlob=new Blob([svg],{type:'image/svg+xml;charset=utf-8'});
     const url=URL.createObjectURL(svgBlob);
     img.onload=()=>{
@@ -1727,8 +2022,32 @@ async function exportLayoutPDF(){
     toast(`PDF ${rot} · ${P.PW}×${P.PH} mm · 300 dpi`+(P.mode==='a4'?' · margens 7/7/7/25 mm':''));
   }catch(e){ hideLoad(); toast('Falha ao gerar PDF: '+e.message); }
 }
+/* PNG sem recompressão: declara 300 dpi no chunk pHYs e preserva IDAT. */
+async function layoutPNG300(cv){
+  const blob=await new Promise((resolve,reject)=>cv.toBlob(b=>b?resolve(b):reject(new Error('Falha ao gerar PNG')),'image/png'));
+  const bytes=new Uint8Array(await blob.arrayBuffer());
+  const view=new DataView(bytes.buffer),parts=[bytes.slice(0,8)];
+  const chunk=new Uint8Array(21),dv=new DataView(chunk.buffer);
+  dv.setUint32(0,9);chunk.set([112,72,89,115],4);
+  dv.setUint32(8,Math.round(300/0.0254));dv.setUint32(12,Math.round(300/0.0254));chunk[16]=1;
+  let crc=0xffffffff;
+  for(let i=4;i<17;i++){crc^=chunk[i];for(let j=0;j<8;j++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}
+  dv.setUint32(17,(crc^0xffffffff)>>>0);
+  let inserted=false;
+  for(let pos=8;pos<bytes.length;){
+    if(pos+12>bytes.length)throw new Error('PNG incompleto');
+    const size=view.getUint32(pos),end=pos+12+size;
+    if(end>bytes.length)throw new Error('PNG incompleto');
+    const type=String.fromCharCode(...bytes.slice(pos+4,pos+8));
+    if(type!=='pHYs')parts.push(bytes.slice(pos,end));
+    if(type==='IHDR'){parts.push(chunk);inserted=true;}
+    pos=end;
+  }
+  if(!inserted)throw new Error('PNG sem cabeçalho');
+  return new Blob(parts,{type:'image/png'});
+}
 async function exportLayoutPNG(){
-  try{ const cv=await rasterizeLayout(); cv.toBlob(b=>download(b,'layout.png'),'image/png'); }
+  try{ const cv=await rasterizeLayout(300); await download(await layoutPNG300(cv),'layout.png'); }
   catch(e){ toast(e.message+' — use SVG'); }
 }
 /* Entrega de imagem em cascata:
@@ -1767,37 +2086,57 @@ async function entregarImagem(blob, nome){
    rasterizar uma planta grande demora mais que isso. Com o blob pronto em
    mãos, a escrita é imediata — e escrever um blob PRONTO, e não uma promessa,
    é o que o Google Docs consegue colar.                                     */
-let _loBlob=null, _loBlobKey=null;
+/* HTML conserva o tamanho de impressão quando o editor ignora pHYs.
+   O PNG embutido é o mesmo, sem redimensionar nem recomprimir pixels. */
+async function layoutClipboardHTML(blob,width,height){
+  const bytes=new Uint8Array(await blob.arrayBuffer());
+  let binary='';
+  for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
+  const w=width*96/300,h=height*96/300;
+  return new Blob([`<html><body><!--StartFragment--><img src="data:image/png;base64,${btoa(binary)}" width="${w.toFixed(3)}" height="${h.toFixed(3)}" style="width:${(width/300*25.4).toFixed(3)}mm;height:${(height/300*25.4).toFixed(3)}mm" alt="Figura GeoMine — 300 dpi"><!--EndFragment--></body></html>`],{type:'text/html'});
+}
+async function writeLayoutClipboard(blob,html){
+  if(html){
+    try{
+      await navigator.clipboard.write([new ClipboardItem({'image/png':blob,'text/html':html})]);
+      return;
+    }catch(e){ /* Editores/navegadores sem HTML continuam recebendo PNG integral. */ }
+  }
+  await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
+}
+let _loBlob=null, _loBlobKey=null, _loHTML=null, _loPixels='';
 function loBlobKey(){
   const P=S._loPaper||{};
-  return [S.projectId,S._lastSVGRevision||0,S._loRenderEpoch||0,P.PW||0,P.PH||0,S._lastOrthoDpi||0,!!S.orthoDispFull].join('|');
+  return ['png-300dpi-physical-v3',S.projectId,S._lastSVGRevision||0,S._loRenderEpoch||0,P.PW||0,P.PH||0,S._lastOrthoDpi||0,!!S.orthoDispFull].join('|');
 }
-function loBlobInvalida(){ _loBlob=null; _loBlobKey=null; }
+function loBlobInvalida(){ _loBlob=null; _loBlobKey=null; _loHTML=null; _loPixels=''; }
 
 async function copyLayoutIMG(){
   const chave=loBlobKey();
   // 1) cache válido: escreve o blob pronto, dentro da ativação do clique
   if(_loBlob && _loBlobKey===chave && layoutSourceCurrent()){
     try{
-      await navigator.clipboard.write([new ClipboardItem({'image/png':_loBlob})]);
-      toast('Imagem copiada — cole no documento (Ctrl+V)'); return;
+      await writeLayoutClipboard(_loBlob,_loHTML);
+      toast(`Layout copiado · 300 dpi · ${_loPixels} — cole no documento (Ctrl+V)`); return;
     }catch(e){ await entregarImagem(_loBlob,'layout'); return; }
   }
   // 2) primeira vez: rasteriza, guarda e tenta copiar
-  let blob=null,renderKey=null;
+  let blob=null,html=null,pixels='',renderKey=null;
   try{
     showLoad('Gerando imagem…');
-    const cv=await rasterizeLayout();
+    const cv=await rasterizeLayout(300);
     renderKey=loBlobKey();
-    blob=await new Promise(r=>cv.toBlob(r,'image/png'));
+    blob=await layoutPNG300(cv);
+    html=await layoutClipboardHTML(blob,cv.width,cv.height);
+    pixels=`${cv.width}×${cv.height} px`;
     if(renderKey!==loBlobKey()||!layoutSourceCurrent())throw new Error('A fonte mudou; gere a imagem novamente.');
   }catch(e){ hideLoad(); toast('Falha: '+(e&&e.message||e)); return; }
   finally{ hideLoad(); }
   if(!blob){ toast('Não foi possível gerar a imagem'); return; }
-  _loBlob=blob; _loBlobKey=renderKey;
+  _loBlob=blob; _loBlobKey=renderKey; _loHTML=html; _loPixels=pixels;
   try{
-    await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
-    toast('Imagem copiada — cole no documento (Ctrl+V)');
+    await writeLayoutClipboard(blob,html);
+    toast(`Layout copiado · 300 dpi · ${_loPixels} — cole no documento (Ctrl+V)`);
   }catch(e){
     // a rasterização consumiu a ativação; o próximo toque copia do cache
     toast('Imagem pronta — toque em Copiar novamente para colar');
@@ -2291,8 +2630,8 @@ function openImgProps(){
   g('imModName').textContent=S.img.name||'ortofoto';
   g('imModName2').value=S.img.name||'';
   g('imModMeta').textContent=S.img._w? `${S.img._w}×${S.img._h} px` : 'imagem';
-  const ndTxt = S.img._id ? (S.img._ndPct!=null? ` · sem-dado: <b>${S.img._ndPct.toFixed(1)}%</b>` : '')
-                          : ' · <i>pixel original indisponível (projeto salvo)</i>';
+  const ndTxt = S.img._ndPct!=null ? ` · sem-dado: <b>${S.img._ndPct.toFixed(1)}%</b>`
+                          : S.img._img0 ? ' · original vinculado' : ' · prévia salva';
   let cogTxt='';
   if(S.img._cog){
     const c=S.img._cog;
@@ -2312,15 +2651,12 @@ function openImgProps(){
   g('imModND').checked=g('imgND').checked;
   g('imModW').value=g('imgNDw').value; g('imModB').value=g('imgNDb').value;
   const op=+g('imgOp').value||1; g('imModOp').value=op; g('imModOpv').textContent=Math.round(op*100)+'%';
-  // habilita/desabilita o recorte conforme exista o pixel original
-  /* O "Aplicar" fica CLICÁVEL mesmo sem o pixel original: um botão inerte não
-     diz nada a quem clica. Sem o arquivo ele explica o que falta e abre o
-     seletor da ortofoto; os campos do recorte é que ficam desabilitados. */
-  ['imModND','imModW','imModB'].forEach(id=>g(id).disabled=!S.img._id);
+  // O filtro é visual: a prévia salva também tem pixels para tratar.
+  ['imModND','imModW','imModB'].forEach(id=>g(id).disabled=!S.img.url);
   { const ap=g('imModApply');
     if(ap){ ap.disabled=false;
-      ap.textContent=S.img._id?'Aplicar':'Aplicar — precisa da ortofoto original';
-      ap.title=S.img._id?'':'Sem o GeoTIFF de origem não há pixel para reprocessar'; } }
+      ap.textContent='Aplicar';
+      ap.title='Aplicar transparência à imagem'; } }
   const hdb=g('imModHD');
   /* Sem o TIFF de origem (caso típico de projeto reaberto) não há de onde
      reler pixel: a opção fica desabilitada e o painel diz o porquê e o que
@@ -2437,22 +2773,21 @@ function imgModalSyncExtras(){
       tLay2=setTimeout(()=>{ try{ layoutSeVisivel(); }catch(e){} },250);
     });
   }
-  g('imModApply').onclick=()=>{
-    if(!S.img){ toast('Nenhuma ortofoto carregada'); return; }
-    if(!S.img._id){
-      toast('Este projeto trouxe só a prévia da ortofoto — indique o .tif original para reprocessar e aumentar a resolução');
-      const fi=document.getElementById('ortoReligarFile');
-      if(fi) abrirSeletorGeoTIFF(fi);
-      return;
-    }
+  g('imModApply').onclick=async()=>{
+    const image=S.img;
+    if(!image?.url){ toast('Nenhuma ortofoto carregada'); return; }
     // joga os valores para os controles do painel (fonte única de verdade) e reprocessa
     g('imgND').checked=g('imModND').checked;
     g('imgNDw').value=g('imModW').value; g('imgNDb').value=g('imModB').value;
-    showLoad('Reprocessando ortofoto…');
-    setTimeout(()=>{
-      const r=applyImgNoData(); S.img._ndPct=r.pct;
-      hideLoad(); openImgProps(); toast(`Sem-dado descartado: ${r.pct.toFixed(1)}% das células`);
-    },20);
+    g('imModApply').disabled=true;showLoad('Aplicando transparência…');
+    try{
+      const r=await applyOrthoMask(image);
+      if(S.img!==image)return;
+      image._ndPct=r.pct;
+      if(g('imgModal').classList.contains('on'))openImgProps();
+      toast(`Sem-dado descartado: ${r.pct.toFixed(1)}% das células`);
+    }catch(e){if(S.img===image&&e.name!=='AbortError')toast('Não foi possível aplicar: '+(e.message||e));}
+    finally{if(S.img===image){hideLoad();g('imModApply').disabled=false;}}
   };
   g('imModMove').onclick=()=>{
     if(!S.img) return;
@@ -2651,10 +2986,11 @@ document.getElementById('imgRename').addEventListener('keydown',e=>{
 /* ---- recorte de células sem dado + opacidade da ortofoto ---- */
 (function(){
   let t=null;
-  const redo=()=>{ clearTimeout(t); t=setTimeout(()=>{
-    if(!S.img || !S.img._id){ toast('Recarregue a ortofoto (.tif) para aplicar o recorte'); return; }
-    const r=applyImgNoData();
-    toast(`Sem-dado descartado: ${r.pct.toFixed(1)}% das células`);
+  const redo=()=>{ clearTimeout(t); t=setTimeout(async()=>{
+    const image=S.img;if(!image?.url)return;
+    try{const r=await applyOrthoMask(image);if(S.img!==image)return;
+      image._ndPct=r.pct;toast(`Sem-dado descartado: ${r.pct.toFixed(1)}% das células`);
+    }catch(e){if(S.img===image&&e.name!=='AbortError')toast('Não foi possível aplicar: '+(e.message||e));}
   },200); };
   const op=document.getElementById('imgOp'), opv=document.getElementById('imgOpv');
   if(op){
@@ -2835,7 +3171,7 @@ function map_dblclick_hook(){ setTimeout(()=>{ if(map) map.on('dblclick',e=>{
     if(e.key==='Escape' && S.meas.buf.length) clearMeas();
     /* Enter encerra o traçado — no tablet o duplo clique costuma deslocar o
        último vértice, e num desenho longo isso obriga a refazer o final.     */
-    if(e.key==='Enter' && ['line','poly'].includes(S.tool) && S.drawBuf.length){
+    if(S._view!=='licenses' && e.key==='Enter' && ['line','poly'].includes(S.tool) && S.drawBuf.length){
       const tag=(e.target&&e.target.tagName)||'';
       if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
       e.preventDefault();
@@ -3094,6 +3430,9 @@ function switchView(v){
   document.querySelector('.readout').style.display=showRO?'flex':'none';
   document.getElementById('layout').style.display=v==='layout'?'flex':'none';
   document.getElementById('v3d').style.display=(v==='v3d'||v==='mina'||v==='cub')?'block':'none';
+  const licenses=document.getElementById('gmLicensesWorkspace');
+  document.body.classList.toggle('gm-licenses-view',v==='licenses');
+  if(licenses){licenses.hidden=v!=='licenses';licenses.style.display=v==='licenses'?'flex':'none';}
   const cava2=document.getElementById('cava2Workspace');
   if(cava2)cava2.classList.toggle('on',cava2Visible);
   let visibilidadeRestaurada=false;
@@ -3131,7 +3470,9 @@ function switchView(v){
          a solicitada; a exceção antiga só conhecia Topografia e Geotecnia e
          fazia Barragens exibir todos os comandos de Topografia. */
       else if(!cur || cur.view!==v){
-        const nova=CATS.find(c=>c.view===v); if(nova) RIB_CAT_ATUAL=nova.id;
+        /* An explicit Blasting category opens its dock; generic 3D entry
+           must not select it merely because it shares the native view. */
+        const nova=CATS.find(c=>c.view===v&&c.id!=='blasting'); if(nova) RIB_CAT_ATUAL=nova.id;
       }
     }
   } }catch(e){}
@@ -3197,14 +3538,14 @@ document.querySelectorAll('#tabBar .tbtn').forEach(b=>{
          bidimensional, mas é aberto pela faixa Mineração e usa as mesmas
          camadas globais; clicar em 2D sempre volta ao conjunto completo. */
       const grupo3=(v==='v3d'||v==='mina'||v==='cub')?'v3d':
-        (v==='layout'?'layout':(v==='cava2'?'cava2':'map'));
+        (v==='layout'?'layout':(v==='cava2'?'cava2':(v==='licenses'?'licenses':'map')));
       a3.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('on',b.dataset.view===grupo3));
     }
     const vs=document.getElementById('viewSwitch');
     if(vs){
       // No Layout, a barra própria já ocupa o topo. Ocultar este seletor evita
       // que 2D / 3D / Layout fique por cima dos comandos da prancha.
-      vs.style.display = (v==='layout'||v==='cava2') ? 'none' : 'flex';
+      vs.style.display = (v==='layout'||v==='cava2'||v==='licenses') ? 'none' : 'flex';
       // 2D reúne todas as vistas que mostram o mapa; 3D cobre v3d e cubagem
       const grupo = (v==='v3d'||v==='mina'||v==='cub') ? 'v3d' : (v==='layout' ? 'layout' : 'map');
       vs.querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.vw===grupo));
@@ -3220,6 +3561,7 @@ document.querySelectorAll('#tabBar .tbtn').forEach(b=>{
     const v=b.dataset.view;
     if(v==='v3d') RIB_CAT_ATUAL='visualizacao';
     if(v==='mina'||v==='cava2') RIB_CAT_ATUAL='mineracao';
+    if(v==='licenses') RIB_CAT_ATUAL='ambiente';
     switchView(v);
   }));
   const plus=document.getElementById('a3ViewPlus');
@@ -3280,6 +3622,14 @@ document.querySelectorAll('#tabBar .tbtn').forEach(b=>{
       if(vistos.has(chave))return;
       vistos.add(chave);a.push({cat:c,grp:g,cmd});
     })));
+    const session=window.GeoMineProjectTabSession;
+    if(session && window.GeoMineCloudProvider?.drivePickerConfig?.key){
+      const cat={nome:'Início'},grp={label:'Projeto'};
+      a.push({cat,grp,cmd:{nome:'Abrir do Google Drive'},run:session.openDrive});
+      if(window.GeoMineDriveProject?.isSource(session.state().record?.source)){
+        a.push({cat,grp,cmd:{nome:'Atualizar do Google Drive'},run:()=>session.reopen()});
+      }
+    }
     return a;
   }
   function closeSearch(){if(out){out.classList.remove('on');out.innerHTML=''}rows=[]}
@@ -3298,6 +3648,9 @@ document.querySelectorAll('#tabBar .tbtn').forEach(b=>{
   }
   function execute(i){
     const x=rows[i];if(!x)return;
+    if(x.run){
+      closeSearch();q.value='';x.run();return;
+    }
     RIB_CAT_ATUAL=x.cat.id;
     if(x.cat.view) switchView(x.cat.view); else ribbonBuild();
     closeSearch();q.value='';
@@ -3543,15 +3896,22 @@ document.getElementById('btnFigTxt').onclick=()=>{
   // não autoriza montar uma prancha oculta nem pedir TIFFs no mapa 2D.
   const redraw=()=>{ clearTimeout(t); t=setTimeout(()=>{if(S._view==='layout')buildLayout();},180); };
   const nf=v=>Number(v).toFixed(1).replace('.',',')+'×';
-  const bindSlider=(id,outId)=>{
+  const bindSlider=(id,outId,format=nf)=>{
     const el=document.getElementById(id), out=document.getElementById(outId);
     if(!el) return;
-    const sync=()=>{ if(out) out.textContent=nf(el.value); };
+    const sync=()=>{ if(out) out.textContent=format(el.value); };
     sync();
     el.addEventListener('input',()=>{ sync(); redraw(); });
   };
   bindSlider('loLegSc','loLegScv');
   bindSlider('loLegFS','loLegFSv');
+  {
+    const el=document.getElementById('loCoordFS'),out=document.getElementById('loCoordFSv');
+    if(el)el.addEventListener('input',()=>{
+      if(out)out.textContent=layoutCoordFontLabel(el.value);
+      if(S._view==='layout'&&!layoutUpdateGridFont())redraw();
+    });
+  }
   bindSlider('loBarFS','loBarFSv');
   bindSlider('loBarSc','loBarScv');
   bindSlider('loSym','loSymv');
@@ -3574,14 +3934,22 @@ document.getElementById('btnFigTxt').onclick=()=>{
     const n=document.getElementById(numId), r=document.getElementById(rngId), t=document.getElementById(tagId);
     if(!n||!r) return;
     const sync=v=>{ if(t) t.textContent=fmt(+v); };
+    const useDimensions=e=>{
+      // Fixed paper presets ignore figure dimensions. A direct edit (or the
+      // compact panel's forwarded input) requests a custom-sized figure.
+      // Non-bubbling restore events only synchronize the saved controls.
+      if(S.loMode==='fig'&&(e.isTrusted||e.bubbles)){
+        const paper=document.getElementById('loPaper');if(paper)paper.value='auto';
+      }
+    };
     sync(n.value); r.value=n.value;
-    r.addEventListener('input',()=>{ n.value=r.value; sync(r.value); redraw(); });
-    n.addEventListener('input',()=>{ r.value=n.value; sync(n.value); redraw(); });
+    r.addEventListener('input',e=>{ useDimensions(e); n.value=r.value; sync(r.value); redraw(); });
+    n.addEventListener('input',e=>{ useDimensions(e); r.value=n.value; sync(n.value); redraw(); });
   };
   mirror('loFigW','loFigWr','loFigWv', v=>v+' mm');
   mirror('loFigH','loFigHr','loFigHv', v=>v>0? v+' mm' : 'auto');
   ['loPaper','loMar','loPad','loCoords','loCoordTop','loCoordBottom','loCoordLeft','loCoordRight',
-    'loCart','loLegOut','loLegPos','loLegend','loSat']
+    'loCart','loLegOut','loLegPos','loLegend','loGroupNumbers','loSat']
     .forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('change',redraw); });
   /* O controle geral não apaga as escolhas por lado: apenas as suspende. Ao
      religá-lo, a combinação anterior volta exatamente como estava. */

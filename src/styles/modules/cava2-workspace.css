@@ -37,23 +37,41 @@
   margin-left:auto;max-width:360px;overflow:hidden;text-overflow:ellipsis;
   font:11px var(--font);color:var(--ink-dim);
 }
-.cava2-design-tabs{
-  min-height:34px;display:flex;align-items:end;gap:3px;padding:4px 8px 0;
-  flex:0 0 auto;overflow-x:auto;overflow-y:hidden;background:var(--bg);
-  border-bottom:1px solid var(--line);white-space:nowrap;
+.cava2-design-nav{
+  display:flex;align-items:center;gap:3px;padding:2px 4px 0;min-width:0;
+  flex:0 0 auto;background:var(--bg);border-bottom:1px solid var(--line);
 }
+.cava2-design-nav>button,.cava2-design-nav>select{
+  flex:0 0 auto;box-sizing:border-box;height:32px;border:1px solid var(--line);
+  border-radius:5px;background:var(--panel2);color:var(--ink);cursor:pointer;
+  font:700 11px var(--font);padding:2px 4px;min-width:0;
+}
+.cava2-design-nav>button{width:27px;font-size:22px}
+.cava2-design-nav>button:disabled{opacity:.35;cursor:default}
+#cava2NewDesign{width:80px}
+#cava2DesignList{width:30px;appearance:none;text-align:center;font-size:18px}
+.cava2-design-tabs{
+  min-height:34px;min-width:0;display:flex;align-items:end;gap:3px;padding:2px 0 0;
+  flex:1 1 0;overflow-x:auto;overflow-y:hidden;white-space:nowrap;
+  scrollbar-width:none;overscroll-behavior-x:contain;
+}
+.cava2-design-tabs::-webkit-scrollbar{display:none}
+.cava2-tabs-empty{align-self:center;overflow:hidden;text-overflow:ellipsis;color:var(--ink-dim);font:11px var(--font)}
 .cava2-design-tab{
-  height:29px;display:inline-flex;align-items:center;gap:7px;padding:4px 11px;
+  height:29px;flex:0 0 auto;max-width:min(280px,100%);box-sizing:border-box;
+  display:inline-flex;align-items:center;gap:7px;padding:4px 9px;
   border:1px solid var(--line);border-bottom:0;border-radius:7px 7px 0 0;
   background:var(--panel2);color:var(--ink-dim);font:700 11px var(--font);cursor:pointer;
 }
 .cava2-design-tab:hover{color:var(--ink-bright);border-color:var(--blue)}
 .cava2-design-tab.on{height:31px;background:#fff;color:#172a3a;border-color:var(--blue)}
+.cava2-tab-name{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.cava2-design-nav :focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
 .cava2-tab-kind{
   display:inline-grid;place-items:center;min-width:28px;height:18px;padding:0 5px;
   border-radius:5px;background:var(--amber);color:#1d2831;font:800 9px var(--font);
 }
-#cava2Frame{display:block;width:100%;height:100%;min-height:0;flex:1 1 auto;border:0;background:#fff;color-scheme:light}
+#cava2Frame{display:block;width:100%;height:0;min-height:0;flex:1 1 0;border:0;background:#fff;color-scheme:light}
 body.cava2-view #a3Compass,
 body.cava2-view #a3MapNav,
 body.cava2-view #viewSwitch{display:none!important}
@@ -63,6 +81,9 @@ body.cava2-view #viewSwitch{display:none!important}
 body.light #cava2Workspace,
 body.light .cava2-bridgebar,
 body.light .cava2-design-tabs,
+body.light .cava2-design-nav,
+body.light .cava2-design-nav>button,
+body.light .cava2-design-nav>select,
 body.light .cava2-design-tab,
 body.light .cava2-bridgebar select,
 body.light .cava2-bridgebar input,
@@ -71,4 +92,10 @@ body.light .cava2-bridgebar button{background:#fff;color:#1d3343}
 @media(max-width:900px){
   .cava2-bridge-status{display:none}
   .cava2-bridge-title{position:sticky;left:0;background:var(--panel);z-index:2}
+}
+@media(pointer:coarse){
+  .cava2-design-nav>button,.cava2-design-nav>select{height:40px}
+  .cava2-design-nav>button,#cava2DesignList{width:36px}
+  .cava2-design-tabs{min-height:42px}
+  .cava2-design-tab,.cava2-design-tab.on{height:40px}
 }

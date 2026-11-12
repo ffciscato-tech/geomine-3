@@ -255,7 +255,7 @@ function fvAplicaRaster(res){
   R.style.classes=[{min:-0.5,max:0.5,color:'#c92a2a'},   // 0 desfavorável
                    {min:0.5, max:1.5,color:'#f2b705'},   // 1 favorável
                    {min:1.5, max:2.5,color:'#2e9e4f'}];  // 2 muito favorável
-  if(!antigo) S.rasters.push(R);
+  if(!antigo){S.rasters.push(R);placeProductAbove(R,'L:'+res.areaLayerId);}
   try{ renderRaster(R); }catch(e){}
   refreshUI();
   return R;
@@ -437,7 +437,7 @@ function fvPoligonosDasClasses(res){
     const feats=aneis.filter(a=>a&&a.length>2).map(a=>({geom:[a],multi:true,zg:null,
       props:{CLASSE:cl, ROTULO:rot[cl], SUBST:res.subst||'', CELULA_M:res.cs}}));
     if(!feats.length) return;
-    addLayer({name:'Favorabilidade '+cl+' — '+rot[cl], gtype:'polygon', crs:S.workCRS,
+    addLayer({sourceLayer:(S.rasters||[]).find(r=>r.d===res.d)||'L:'+res.areaLayerId,name:'Favorabilidade '+cl+' — '+rot[cl], gtype:'polygon', crs:S.workCRS,
       features:feats, fields:[{name:'CLASSE',type:'N',length:3,decimal:0},
         {name:'ROTULO',type:'C',length:24},{name:'SUBST',type:'C',length:30},
         {name:'CELULA_M',type:'N',length:8,decimal:1}], color:cores[cl]});

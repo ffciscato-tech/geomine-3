@@ -1,0 +1,71 @@
+{
+  "errors": [],
+  "checks": [
+    "MDT import via actual file input adds visible raster to the real BN project",
+    "Orthophoto import via actual file input replaces the image and displays its tree row in the real BN project"
+  ],
+  "physicalIpad": false,
+  "before": {
+    "project": "gm_5b830f99222142c7",
+    "rasters": 1,
+    "image": "Ortofoto — 15 cm",
+    "crs": "EPSG:31982"
+  },
+  "mdt": {
+    "result": {
+      "ok": true,
+      "canceled": false,
+      "failures": [],
+      "ignored": [],
+      "rastersAdded": 1
+    },
+    "controller": false,
+    "rasters": [
+      {
+        "name": "MDT — 15 cm",
+        "visible": false,
+        "overlay": true,
+        "native": false
+      },
+      {
+        "name": "QA_MDT",
+        "visible": true,
+        "overlay": true,
+        "native": true
+      }
+    ]
+  },
+  "ortho": {
+    "name": "ipad-qa-orto",
+    "visible": true,
+    "url": true,
+    "native": true,
+    "tree": [
+      "Refino da calha pelo DEM - 20/10/2026",
+      "Pendencias do refino pelo DEM - 20/10/2026",
+      "Ajustes da calha pelo DEM - 20/10/2026",
+      "Refino dos quadrantes - 18/10/2026",
+      "Pendencias de evidencia - 18/10/2026",
+      "Alteracoes realizadas - 18/10/2026",
+      "desenho_ponto",
+      "Seções — Hidro_FINAL",
+      "desenho_polígono",
+      "Conferência — entrega de 15/10",
+      "Verificação — alterações desde entrega 15/10",
+      "Quadrantes 250 × 250 m",
+      "QA_MDT",
+      "ipad-qa-orto",
+      "MDT — 15 cm",
+      "Revisão dos pontos — pé do talude — 16/10/2026",
+      "Conferência dos pontos de melhorias — 16/10/2026",
+      "Hidro _FINAL_Linhas",
+      "Hidro_FINAL",
+      "Massa de Água",
+      "Revisão C",
+      "Bases — MDT, ortofoto e edificações",
+      "Hidrografia municipal — referência",
+      "Edificações"
+    ]
+  },
+  "passed": true
+}

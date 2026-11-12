@@ -133,11 +133,13 @@ function initMap(){
       }
     }
   };
-  map.on('mousemove',e=>{
-    hoverSafe('coordenadas',()=>updateReadout(e.latlng));
-    if(typeof atualizaCursorSnap==='function') hoverSafe('snap',()=>atualizaCursorSnap(e.latlng));
-    if(S.tool==='forma' && FORMA.tipo && FORMA.dim){ try{ formaPreview(e.latlng); }catch(err){} } });
-  map.on('mouseout',()=>{ try{ map.getContainer().classList.remove('cursor-snap'); limpaCursorSnap(); GeoMineOrtho.clearPreview(); }catch(e){} });
+  let hoverFrame=0,hoverPoint=null;
+  map.on('mousemove',e=>{hoverPoint=e.latlng;if(hoverFrame)return;hoverFrame=requestAnimationFrame(()=>{hoverFrame=0;const ll=hoverPoint;
+    hoverSafe('coordenadas',()=>updateReadout(ll));
+    if(typeof atualizaCursorSnap==='function')hoverSafe('snap',()=>atualizaCursorSnap(ll));
+    if(S.tool==='forma'&&FORMA.tipo&&FORMA.dim)hoverSafe('forma',()=>formaPreview(ll));
+  });});
+  map.on('mouseout',()=>{if(hoverFrame){cancelAnimationFrame(hoverFrame);hoverFrame=0;} try{ map.getContainer().classList.remove('cursor-snap'); limpaCursorSnap(); GeoMineOrtho.clearPreview(); }catch(e){} });
   map.on('zoomend moveend',()=>{updateReadout(map.getCenter());updateScale();
     clearTimeout(S._hdT); S._hdT=setTimeout(()=>{ try{orthoHDRefresh();}catch(e){} }, 220);});
   map.on('click',onMapClick);
@@ -206,13 +208,14 @@ function camadasNaOrdemDeSelecao(){
 /* Consulta no interior de um polígono, longe da borda. Par-ímpar sobre os anéis
    (furos e multipartes inclusos). A camada opcional evita varrer a pilha de
    novo quando a consulta unificada já está percorrendo cada nível. */
-function poligonoSobPonto(ll,camada){
+function poligonoSobPonto(ll,camada,{includeTransparent=false}={}){
   const ordem=camada?[camada]:camadasNaOrdemDeSelecao();
   for(const L of ordem){
     if(L.gtype!=='polygon'||L.visible===false||!L.features||!L.features.length)continue;
     let p;try{p=fromWGS(L.crs,ll.lng,ll.lat);}catch(e){continue;}
     for(let i=L.features.length-1;i>=0;i--){
       const f=L.features[i];if(!f||!f.geom||!featureVisible(L,f))continue;
+      if(!includeTransparent&&!polygonFillVisible(featureStyle(L,f)))continue;
       const aneis=[];(function junta(g){if(!Array.isArray(g)||!g.length)return;if(Array.isArray(g[0])&&typeof g[0][0]==='number'){aneis.push(g);return;}g.forEach(junta);})(f.geom);
       let dentro=false;
       for(const a of aneis)for(let j=0,k=a.length-1;j<a.length;k=j++){
@@ -230,8 +233,15 @@ function poligonoSobPonto(ll,camada){
    uma borda de quadrante inferior ganhar de uma drenagem na camada superior. */
 function feicaoSobPonto(ll,tolerancia){
   if(!map||!ll)return null;
-  for(const L of camadasNaOrdemDeSelecao()){
+  const ativa=activeLayer();
+  const editaVertices=S.tool==='vertex';
+  // A edição nunca atravessa a camada ativa, mesmo sob polígonos preenchidos.
+  // Na seleção normal, tenta a ativa antes de consultar a ordem visual.
+  const ordem=editaVertices?(ativa?[ativa]:[]):
+    (S.tool==='select'&&ativa?[ativa,...camadasNaOrdemDeSelecao().filter(L=>L!==ativa)]:camadasNaOrdemDeSelecao());
+  for(const L of ordem){
     if(!L||L.visible===false||!L.features?.length)continue;
+    if(editaVertices&&(L.locked||(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false))))continue;
     const traco=feicaoMaisProximaPx(ll,tolerancia,false,[L]);
     if(traco)return traco;
     if(L.gtype==='polygon'){
@@ -246,55 +256,67 @@ function feicaoSobPonto(ll,tolerancia){
 function bindRightSelect(){
   if(typeof map==='undefined'||!map||!map.getContainer)return false;
   const el=map.getContainer();if(el._alagisRightSelect)return true;el._alagisRightSelect=true;
-  let st=null;
+  let st=null,last=null;
+  const now=()=>typeof performance==='object'&&typeof performance.now==='function'?performance.now():Date.now();
+  const repeated=(x,y)=>!!last&&now()-last.at<700&&Math.hypot(x-last.x,y-last.y)<=12;
+  const mark=(x,y)=>{last={x,y,at:now()};};
+  /* Chrome/Safari no iPad com mouse ou trackpad podem emitir apenas
+     contextmenu (button 0) e omitir o pointerup secundário. Centralizar a
+     ação aqui dá ao iPad exatamente o mesmo resultado do botão direito no
+     Windows: selecionar a feição e revelar Propriedades. */
+  const secondaryAt=e=>{
+    const x=Number(e.clientX)||0,y=Number(e.clientY)||0;
+    if(repeated(x,y))return true;
+    // No mapa, o clique direito confirma o comando sem inserir outro ponto.
+    if(['line','poly'].includes(S.tool)){
+      mark(x,y);prepareDrawingCommand();return true;
+    }
+    // Snapshot before Enter: a command may finish by switching to select.
+    // That same gesture must never also open a feature's properties.
+    const commandActive=!['select','pan'].includes(S.tool)||
+      (typeof cmdEmAndamento==='function'&&cmdEmAndamento())||
+      typeof S._pickPonto==='function'||typeof S._pickLimite==='function'||typeof S._pickCadHatch==='function'||typeof S._pickCavaFreeze==='function'||
+      (typeof ED!=='undefined'&&(ED.pend||ED.drag));
+    const confirmed=!el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true,cancelable:true}));
+    if(confirmed||commandActive){mark(x,y);return true;}
+    const r=el.getBoundingClientRect(),ll=map.containerPointToLatLng([x-r.left,y-r.top]);
+    const hit=feicaoSobPonto(ll,S.touch?Math.round(SNAP_PX*1.6):SNAP_PX);
+    if(hit){
+      S.selRaster=null;
+      if(typeof ED!=='undefined'&&ED.on&&typeof edSelecionar==='function')
+        edSelecionar({L:hit.L,idx:hit.idx,f:hit.f||hit.L.features[hit.idx]},true);
+      pickFeature(hit.L,hit.idx,ll,{partIdx:hit.ringIndex,properties:true,originalEvent:e});
+    }else toast('Nenhuma feição no alcance da seleção');
+    mark(x,y);return true;
+  };
   el.addEventListener('pointerdown',e=>{
     if(e.button!==2)return;
     st={id:e.pointerId,x:e.clientX,y:e.clientY};
     e.preventDefault();e.stopPropagation();
   },true);
   el.addEventListener('pointerup',e=>{
-    if(!st||e.pointerId!==st.id||e.button!==2)return;
+    if(!st||e.pointerId!==st.id)return;
     const q=st;st=null;
-    if(Math.hypot(e.clientX-q.x,e.clientY-q.y)<=8){
-      // No mapa, o clique direito confirma o comando sem inserir outro ponto.
-      if(['line','poly'].includes(S.tool)){
-        e.preventDefault();e.stopPropagation();prepareDrawingCommand();return;
-      }
-      // Snapshot before Enter: a command may finish by switching to select.
-      // That same gesture must never also open a feature's properties.
-      const commandActive=!['select','pan'].includes(S.tool)||
-        (typeof cmdEmAndamento==='function'&&cmdEmAndamento())||
-        typeof S._pickPonto==='function'||typeof S._pickLimite==='function'||typeof S._pickCadHatch==='function'||typeof S._pickCavaFreeze==='function'||
-        (typeof ED!=='undefined'&&(ED.pend||ED.drag));
-      const confirmed=!el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true,cancelable:true}));
-      if(confirmed||commandActive){
-        e.preventDefault();e.stopPropagation();return;
-      }
-      const r=el.getBoundingClientRect(),ll=map.containerPointToLatLng([e.clientX-r.left,e.clientY-r.top]);
-      const hit=feicaoSobPonto(ll,S.touch?Math.round(SNAP_PX*1.6):SNAP_PX);
-      if(hit){
-        S.selRaster=null;
-        if(typeof ED!=='undefined'&&ED.on&&typeof edSelecionar==='function')edSelecionar({L:hit.L,idx:hit.idx,f:hit.f||hit.L.features[hit.idx]},true);
-        pickFeature(hit.L,hit.idx,ll,{partIdx:hit.ringIndex,properties:true});
-      }else toast('Nenhuma feição no alcance da seleção');
-    }
+    if(Math.hypot(e.clientX-q.x,e.clientY-q.y)<=8)secondaryAt(e);
     e.preventDefault();e.stopPropagation();
   },true);
   el.addEventListener('pointercancel',()=>{st=null;},true);
   el.addEventListener('contextmenu',e=>{
     e.preventDefault();e.stopPropagation();
-    /* Mac: Ctrl+clique é o "clique secundário" do sistema — o navegador não
-       gera click, só contextmenu (botão 0 com ctrlKey). Aqui ele vale como no
-       Windows: soma a feição à seleção (ou a retira, se já estava), para mover
-       várias juntas. O botão direito de verdade (botão 2) segue acima. */
+    /* Mac: Ctrl+clique continua sendo a seleção aditiva existente. Um
+       contextmenu comum — inclusive button 0 do WebKit/iPad — abre as
+       propriedades, como o botão direito do Windows. */
     if(e.button===0&&e.ctrlKey&&S.tool==='select'&&!(S.drawBuf&&S.drawBuf.length)){
       const r=el.getBoundingClientRect(),ll=map.containerPointToLatLng([e.clientX-r.left,e.clientY-r.top]);
       const hit=feicaoSobPonto(ll,S.touch?Math.round(SNAP_PX*1.6):SNAP_PX);
       if(hit&&typeof pickFeature==='function')pickFeature(hit.L,hit.idx,ll,{partIdx:hit.ringIndex,originalEvent:e});
+      return;
     }
+    secondaryAt(e);
   },true);
   return true;
 }
+
 /* Z DO CURSOR
    Antes lia a célula da grade de tela — média de blocos de 15 × 15 m no
    mosaico de 1 m de Braço do Norte, com metros de diferença para o arquivo.
@@ -376,7 +398,7 @@ function updateScale(){
 /* Hidrologia, Geologia e Perfis também usam o mapa 2D. A categoria da faixa
    não deve bloquear seleção ou edição enquanto esse mapa está visível. */
 function mapaVista2D(v=S._view){
-  return !['layout','v3d','mina','cub','cava2'].includes(v);
+  return !['layout','v3d','mina','cub','cava2','licenses'].includes(v);
 }
 /* Pan do mapa pela regra de setTool. Quem desliga o arraste durante um gesto
    (vértice, aresta) volta por aqui: ligá-lo direto deixava o botão esquerdo
@@ -385,6 +407,7 @@ function mapaPanPadrao(){
   try{ if(S.tool==='selpoly' || !S.touch) map.dragging.disable(); else map.dragging.enable(); }catch(e){}
 }
 function setTool(t){
+  if(t!=='cad-hatch')window.GeoMineCadHatch?.cancel();
   if(t!=='feature-style-brush')window.GeoMineFeatureStyleBrush?.cancel(false);
   window.GeoMineMouseRotation?.cancel();
   window.GeoMineDragMove?.cancel();
@@ -461,7 +484,7 @@ function setTool(t){
     const bs=document.querySelector('[data-tool="select"]'), ba=document.querySelector('[data-tool="attr"]');
     if(bs) bs.classList.add('on'); if(ba) ba.classList.remove('on');
   }
-  if(t==='vertex' && S.selFeat) showVertices();
+  if(t==='vertex' && S.selFeat && String(S.selFeat.layerId)===String(S.activeId)) showVertices();
   window.GeoMineVertexHandles?.toolChanged();
   // instrução de USO na barra de comandos (estilo linha de comando do CAD)
   if(typeof TOOL_INSTR!=='undefined' && TOOL_INSTR[t]) cmdLog('▸ '+TOOL_INSTR[t], 'cmd');
@@ -496,20 +519,30 @@ S.snapOn=true;
 // portanto o snap ao traço já nasce ativo; vértices continuam tendo precedência.
 S.snapVtxOn=true; S.snapMidOn=false; S.snapEndOn=false; S.snapNearOn=true; S.snapCenterOn=true; S.snapEscopo='todas';
 const SNAP_PX=15;
+/* Same legacy shape policy as featToLatLngs: a nested non-multipart
+   geometry draws only its largest ring. Never mutate source arrays or Z. */
+function snapRingPartsOf(L,f){
+  const g=f?.geom;if(!Array.isArray(g)||!g.length)return [];
+  if(L.gtype==='point')return [{ring:typeof pointGeomCoords==='function'?pointGeomCoords(g):g,sourceRingIndex:0}];
+  if(f.multi&&Array.isArray(g[0]?.[0]))return g.map((ring,sourceRingIndex)=>({ring,sourceRingIndex}));
+  if(Array.isArray(g[0]?.[0])){
+    let index=0;for(let i=1;i<g.length;i++)if(Array.isArray(g[i])&&g[i].length>g[index].length)index=i;
+    return [{ring:g[index],sourceRingIndex:index}];
+  }
+  return [{ring:g,sourceRingIndex:0}];
+}
+function snapRingsOf(L,f){return snapRingPartsOf(L,f).map(p=>p.ring);}
+function snapWGSPoint(L,p){
+  if(!Array.isArray(p)||!Number.isFinite(p[0])||!Number.isFinite(p[1]))return null;
+  const w=toWGS(L.crs,p[0],p[1]);
+  return Array.isArray(w)&&Number.isFinite(w[0])&&Number.isFinite(w[1])?w:null;
+}
 function endpointsOf(L){
-  // só as PONTAS (1º e último vértice) de cada linha/polígono — cache leve
-  if(L._endCache) return L._endCache;
+  if(L._endCache)return L._endCache;
   const out=[];
-  if(L.gtype!=='point'){
-    for(const f of L.features){
-      if(!f.geom) continue;
-      const rings=(f.multi&&Array.isArray(f.geom[0][0]))?f.geom:[f.geom];
-      for(const r of rings){ if(!r||!r.length) continue;
-        const a=r[0], b=r[r.length-1];
-        const wa=toWGS(L.crs,a[0],a[1]); out.push(wa[1],wa[0]);
-        const wb=toWGS(L.crs,b[0],b[1]); out.push(wb[1],wb[0]);
-      }
-    }
+  if(L.gtype!=='point')for(const f of L.features||[])for(const ring of snapRingsOf(L,f)){
+    if(!Array.isArray(ring)||!ring.length)continue;
+    for(const p of [ring[0],ring.at(-1)]){const w=snapWGSPoint(L,p);if(w)out.push(w[1],w[0]);}
   }
   return (L._endCache=out);
 }
@@ -519,12 +552,12 @@ function endpointsOf(L){
    mover de centro a centro. */
 function snapCentroFeicao(L,f){
   const g=f&&f.geom; if(!Array.isArray(g)||!g.length) return [];
-  const fin=p=>Array.isArray(p)&&Number.isFinite(+p[0])&&Number.isFinite(+p[1]);
+  const fin=p=>Array.isArray(p)&&Number.isFinite(p[0])&&Number.isFinite(p[1]);
   if(L.gtype==='point'){
     const pts=(Array.isArray(g[0])&&Array.isArray(g[0][0]))?g.flat():(Array.isArray(g[0])?g:[g]);
     return pts.filter(fin).map(p=>[+p[0],+p[1]]);
   }
-  const rings=((f.multi&&Array.isArray(g[0][0]))?g:[g]).filter(r=>Array.isArray(r)&&r.length);
+  const rings=snapRingsOf(L,f).filter(r=>Array.isArray(r)&&r.length&&r.every(fin));
   if(!rings.length) return [];
   if(L.gtype==='line'){
     const out=[];
@@ -570,43 +603,47 @@ function snapCacheOf(L){
   for(let fi=0;fi<(L.features||[]).length;fi++){
     const f=L.features[fi];
     if(!f.geom) continue;
-    /* ponto: [[x,y]] (padrão), [x,y] (legado) ou com nível extra — sempre a
-       lista de pares; antes um formato diferente gerava coordenada vazia e o
-       snap derrubava o arrasto de vértice */
-    const rings=(L.gtype==='point')?[typeof pointGeomCoords==='function'?pointGeomCoords(f.geom):f.geom]:((f.multi&&Array.isArray(f.geom[0][0]))?f.geom:[f.geom]);
+    const parts=snapRingPartsOf(L,f),rings=parts.map(p=>p.ring);
     for(let ri=0;ri<rings.length;ri++){
       const r=rings[ri];
       if(!r||!r.length) continue;
-      const ll=new Float64Array(r.length*2);
+      const pointStart=pts.length,midStart=mids.length,segmentStart=segs.length;
+      const ll=new Float64Array(r.length*2);ll.fill(NaN);let valid=0;
       let minLat=Infinity,minLng=Infinity,maxLat=-Infinity,maxLng=-Infinity;
       for(let i=0;i<r.length;i++){
-        const pt=r[i];
-        const w=toWGS(L.crs,pt[0],pt[1]),la=w[1],lo=w[0];
-        ll[2*i]=la;ll[2*i+1]=lo;pts.push(la,lo);   // lat,lng
+        const pt=r[i],w=snapWGSPoint(L,pt);if(!w)continue;
+        const la=w[1],lo=w[0];ll[2*i]=la;ll[2*i+1]=lo;pts.push(la,lo);valid++;
         if(la<minLat)minLat=la;if(la>maxLat)maxLat=la;
         if(lo<minLng)minLng=lo;if(lo>maxLng)maxLng=lo;
-        if(L.gtype!=='point' && i<r.length-1){
-          const q=r[i+1];
-          const w2=toWGS(L.crs,(pt[0]+q[0])/2,(pt[1]+q[1])/2);
-          if(S.snapMidOn) mids.push(w2[1],w2[0]);
-          const wq=toWGS(L.crs,q[0],q[1]);
-          segs.push(w[1],w[0],wq[1],wq[0]);
+        if(L.gtype!=='point'&&i<r.length-1){
+          const q=r[i+1],wq=snapWGSPoint(L,q);
+          if(wq){
+            const wm=snapWGSPoint(L,[(pt[0]+q[0])/2,(pt[1]+q[1])/2]);if(wm)mids.push(wm[1],wm[0]);
+            segs.push(la,lo,wq[1],wq[0]);
+          }
         }
         n++;
       }
-      refs.push({idx:fi,f,ringIndex:ri,ll,minLat,minLng,maxLat,maxLng,polygon:L.gtype==='polygon'});
+      if(!valid)continue;
       // Alguns arquivos trazem anéis de polígono sem repetir o primeiro
       // vértice no final. Inclui também essa face de fechamento no snap.
-      if(L.gtype==='polygon' && r.length>2){
-        const a=r[0], b=r[r.length-1];
-        if(a[0]!==b[0] || a[1]!==b[1]){
-          const wa=toWGS(L.crs,a[0],a[1]), wb=toWGS(L.crs,b[0],b[1]);
+      if(L.gtype==='polygon'&&r.length>2){
+        const a=r[0],b=r.at(-1),wa=snapWGSPoint(L,a),wb=snapWGSPoint(L,b);
+        if(wa&&wb&&(a[0]!==b[0]||a[1]!==b[1])){
           segs.push(wb[1],wb[0],wa[1],wa[0]);
-          if(S.snapMidOn){
-            const wm=toWGS(L.crs,(a[0]+b[0])/2,(a[1]+b[1])/2); mids.push(wm[1],wm[0]);
-          }
+          const wm=snapWGSPoint(L,[(a[0]+b[0])/2,(a[1]+b[1])/2]);if(wm)mids.push(wm[1],wm[0]);
         }
       }
+      // Ranges share the existing flat caches: queries can skip distant rings
+      // without allocating or rebuilding their midpoints/segments on each drag.
+      // A native-CRS midpoint is not necessarily the mean of WGS endpoints.
+      for(let i=midStart;i<mids.length;i+=2){
+        const la=mids[i],lo=mids[i+1];
+        if(la<minLat)minLat=la;if(la>maxLat)maxLat=la;
+        if(lo<minLng)minLng=lo;if(lo>maxLng)maxLng=lo;
+      }
+      refs.push({idx:fi,f,ringIndex:ri,sourceRing:r,sourceRingIndex:parts[ri].sourceRingIndex,ll,minLat,minLng,maxLat,maxLng,polygon:L.gtype==='polygon',
+        pointStart,pointEnd:pts.length,midStart,midEnd:mids.length,segmentStart,segmentEnd:segs.length});
     }
   }
   if(S.snapCenterOn){
@@ -616,7 +653,70 @@ function snapCacheOf(L){
         if(Number.isFinite(w[0])&&Number.isFinite(w[1])){ cens.push(w[1],w[0]); censF.push(f); } }
     }
   }
-  return (L._snapCache={pts,mids,segs,refs,cens,censF,partial:false,count:n});
+  return (L._snapCache={pts,mids,segs,refs,cens,censF,refRanges:true,partial:false,count:n,
+    sourceFeatures:L.features,featureRefs:(L.features||[]).slice(),
+    geometryRefs:(L.features||[]).map(f=>f.geom),multiFlags:(L.features||[]).map(f=>f.multi),
+    sourceCRS:L.crs,sourceGtype:L.gtype,centerMode:!!S.snapCenterOn});
+}
+/* Refresh only the excluded feature when its gesture ends. This is a
+   private gesture snapshot: drawLayer or an edit of another feature must
+   invalidate it. Topology/range uncertainty falls back to a normal rebuild.
+   Validate the entire write plan before touching any shared cache array. */
+function snapRefreshFeatureCache(L,c,f){
+  if(!L||!c||!f||L._vertexSnapCache!==c||L._vertexEditedFeature!==f||
+     c.refRanges!==true||c.sourceFeatures!==L.features||c.sourceCRS!==L.crs||
+     c.sourceGtype!==L.gtype||c.centerMode!==!!S.snapCenterOn)return null;
+  const features=L.features,arrays=['pts','mids','segs','refs','cens','censF','featureRefs','geometryRefs','multiFlags'];
+  if(!Array.isArray(features)||arrays.some(k=>!Array.isArray(c[k])))return null;
+  if(c.featureRefs.length!==features.length||c.geometryRefs.length!==features.length||c.multiFlags.length!==features.length||
+     c.pts.length%2||c.mids.length%2||c.segs.length%4||c.cens.length!==c.censF.length*2)return null;
+  let featureIndex=-1;
+  for(let i=0;i<features.length;i++){
+    const source=features[i];if(c.featureRefs[i]!==source)return null;
+    if(source===f){if(featureIndex!==-1)return null;featureIndex=i;}
+    else if(c.geometryRefs[i]!==source.geom||c.multiFlags[i]!==source.multi)return null;
+  }
+  if(featureIndex<0||c.multiFlags[featureIndex]!==f.multi)return null;
+  const oldRefs=[];let pointEnd=0,midEnd=0,segmentEnd=0;
+  for(let i=0;i<c.refs.length;i++){
+    const r=c.refs[i];
+    if(!r||!r.f||!Number.isInteger(r.idx)||r.idx<0||features[r.idx]!==r.f||!r.ll||!Number.isInteger(r.ll.length)||r.ll.length%2||
+       !Number.isInteger(r.ringIndex)||r.ringIndex<0||!Number.isInteger(r.sourceRingIndex)||r.sourceRingIndex<0||
+       r.pointStart!==pointEnd||r.midStart!==midEnd||r.segmentStart!==segmentEnd)return null;
+    for(const [end,start,len,stride] of [[r.pointEnd,r.pointStart,c.pts.length,2],[r.midEnd,r.midStart,c.mids.length,2],[r.segmentEnd,r.segmentStart,c.segs.length,4]])
+      if(!Number.isInteger(end)||end<start||end>len||(end-start)%stride)return null;
+    pointEnd=r.pointEnd;midEnd=r.midEnd;segmentEnd=r.segmentEnd;
+    if(r.f===f)oldRefs.push(r);
+  }
+  if(pointEnd!==c.pts.length||midEnd!==c.mids.length||segmentEnd!==c.segs.length)return null;
+  const oldCenters=[],knownFeatures=new Set(c.featureRefs);
+  for(let i=0;i<c.censF.length;i++){
+    if(!knownFeatures.has(c.censF[i]))return null;
+    if(c.censF[i]===f)oldCenters.push(i);
+  }
+  let fresh;
+  try{fresh=snapCacheOf({crs:L.crs,gtype:L.gtype,features:[f],_snapCache:null});}catch(_){return null;}
+  if(fresh.refs.length!==oldRefs.length||fresh.censF.length!==oldCenters.length)return null;
+  const writes=[];
+  for(let i=0;i<oldRefs.length;i++){
+    const old=oldRefs[i],next=fresh.refs[i];
+    if(old.ringIndex!==next.ringIndex||old.sourceRingIndex!==next.sourceRingIndex||old.ll.length!==next.ll.length||old.polygon!==next.polygon)return null;
+    for(const [array,start,end] of [['pts','pointStart','pointEnd'],['mids','midStart','midEnd'],['segs','segmentStart','segmentEnd']]){
+      if(old[end]-old[start]!==next[end]-next[start])return null;
+      writes.push({array,to:old[start],from:next[start],end:next[end]});
+    }
+  }
+  // All checks passed. The arrays and refs of every other feature stay intact.
+  for(const write of writes)for(let from=write.from,to=write.to;from<write.end;from++,to++)c[write.array][to]=fresh[write.array][from];
+  for(let i=0;i<oldRefs.length;i++){
+    const old=oldRefs[i],next=fresh.refs[i];
+    for(const key of ['ll','sourceRing','minLat','minLng','maxLat','maxLng'])old[key]=next[key];
+  }
+  for(let i=0;i<oldCenters.length;i++){
+    c.cens[oldCenters[i]*2]=fresh.cens[i*2];c.cens[oldCenters[i]*2+1]=fresh.cens[i*2+1];
+  }
+  c.geometryRefs[featureIndex]=f.geom;c.multiFlags[featureIndex]=f.multi;
+  return c;
 }
 function snapLatLng(latlng, ignoraL, op){
   if(!S.snapOn&&!op?.force) return {latlng, snapped:false};
@@ -625,9 +725,10 @@ function snapLatLng(latlng, ignoraL, op){
   // margem geográfica p/ filtro grosso (evita projetar tudo p/ pixel)
   const p1=map.containerPointToLatLng([p0.x+SNAP_PX, p0.y+SNAP_PX]);
   const dLat=Math.abs(p1.lat-latlng.lat)*1.6, dLng=Math.abs(p1.lng-latlng.lng)*1.6;
-  const scan=(pts,kind)=>{
-    for(let i=0;i<pts.length;i+=2){
+  const scan=(pts,kind,start=0,end=pts.length)=>{
+    for(let i=start;i<end;i+=2){
       const la=pts[i], lo=pts[i+1];
+      if(!Number.isFinite(la)||!Number.isFinite(lo))continue;
       if(Math.abs(la-latlng.lat)>dLat || Math.abs(lo-latlng.lng)>dLng) continue;
       if(op?.accept&&!op.accept([la,lo]))continue;
       const pp=map.latLngToContainerPoint([la,lo]);
@@ -638,15 +739,17 @@ function snapLatLng(latlng, ignoraL, op){
   // Projeta o cursor perpendicularmente sobre cada segmento e usa o pé da
   // perpendicular como alvo. A tolerância continua em pixels, portanto o
   // comportamento é estável em qualquer escala/zoom do mapa.
-  const scanSegments=(segs,kind)=>{
-    for(let i=0;i<segs.length;i+=4){
+  let near=null,nearKind='',nearDistance=SNAP_PX*SNAP_PX;
+  const scanSegments=(segs,kind,start=0,end=segs.length)=>{
+    for(let i=start;i<end;i+=4){
       const la1=segs[i], lo1=segs[i+1], la2=segs[i+2], lo2=segs[i+3];
+      if(!Number.isFinite(la1)||!Number.isFinite(lo1)||!Number.isFinite(la2)||!Number.isFinite(lo2))continue;
       if(Math.max(la1,la2)<latlng.lat-dLat || Math.min(la1,la2)>latlng.lat+dLat ||
          Math.max(lo1,lo2)<latlng.lng-dLng || Math.min(lo1,lo2)>latlng.lng+dLng) continue;
       if(op?.segmentPoint){
-        const hit=op.segmentPoint(la1,lo1,la2,lo2);if(!hit)continue;
+        const hit=op.segmentPoint(la1,lo1,la2,lo2);if(!Array.isArray(hit)||!Number.isFinite(hit[0])||!Number.isFinite(hit[1]))continue;
         const pp=map.latLngToContainerPoint(hit),d=(pp.x-p0.x)**2+(pp.y-p0.y)**2;
-        if(d<bd){bd=d;best=hit;bestKind=kind;}
+        if(d<nearDistance){nearDistance=d;near=hit;nearKind=kind;}
         continue;
       }
       const a=map.latLngToContainerPoint([la1,lo1]);
@@ -656,13 +759,30 @@ function snapLatLng(latlng, ignoraL, op){
       t=Math.max(0,Math.min(1,t));
       const qx=a.x+t*dx, qy=a.y+t*dy;
       const d=(qx-p0.x)**2+(qy-p0.y)**2;
-      if(d<bd){ bd=d; best=[la1+t*(la2-la1),lo1+t*(lo2-lo1)]; bestKind=kind; }
+      if(d<nearDistance){ nearDistance=d; near=[la1+t*(la2-la1),lo1+t*(lo2-lo1)]; nearKind=kind; }
     }
   };
-  /* op.exclude (Set de feições): o que está sendo movido não atrai o próprio
-     destino. Nas camadas com feição excluída, varre anel a anel (refs) e pula
-     as excluídas; nas demais, o caminho rápido de sempre. */
+  /* Every layer uses ring bounds, including layers other than the edited one.
+     Keep target-kind order unchanged: all vertices, then midpoints/endpoints,
+     with segment projections used only when no discrete target wins. */
   const exc=(op&&op.exclude instanceof Set&&op.exclude.size)?op.exclude:null;
+  const scanRangeRefs=(L,c)=>{
+    const nearby=[];
+    for(const r of c.refs){
+      if(exc?.has(r.f))continue;
+      if(r.maxLat<latlng.lat-dLat||r.minLat>latlng.lat+dLat||r.maxLng<latlng.lng-dLng||r.minLng>latlng.lng+dLng)continue;
+      nearby.push(r);
+    }
+    if(op?.verticesOnly||S.snapVtxOn!==false)for(const r of nearby)scan(c.pts,'vértice',r.pointStart,r.pointEnd);
+    if(op?.verticesOnly||L.gtype==='point')return;
+    if(S.snapMidOn)for(const r of nearby)scan(c.mids,'ponto médio',r.midStart,r.midEnd);
+    if(S.snapEndOn&&L.gtype==='line')for(const r of nearby){
+      scan(r.ll,'extremidade',0,2);
+      if(r.ll.length>2)scan(r.ll,'extremidade',r.ll.length-2,r.ll.length);
+    }
+    if(S.snapNearOn)for(const r of nearby)scanSegments(c.segs,'linha',r.segmentStart,r.segmentEnd);
+  };
+  // Accept caches made by older code too; validation and finite guards remain.
   const scanRefs=(L,c)=>{
     const vtx=op?.verticesOnly||S.snapVtxOn!==false, so=!!op?.verticesOnly;
     for(const r of c.refs){
@@ -695,8 +815,12 @@ function snapLatLng(latlng, ignoraL, op){
     // exclusão total quando uma chamada pedir isso explicitamente.
     if(op&&op.ignoreLayer&&ignoraL&&L===ignoraL) return;
     if(ativa && L!==ativa) return;                    // escopo "só camada ativa"
-    const c=snapCacheOf(L);
+    // While this feature is excluded, its old coordinates cannot attract the
+    // pointer. Reuse the gesture's snapshot for every other unchanged feature
+    // rather than rebuilding the entire layer after the first pointer move.
+    const c=L._vertexSnapCache&&exc?.has(L._vertexEditedFeature)?L._vertexSnapCache:snapCacheOf(L);
     if(!op?.verticesOnly && S.snapCenterOn) scanCentros(c);
+    if(c.refRanges){scanRangeRefs(L,c);return;}
     if(exc && c.refs.some(r=>exc.has(r.f))){ scanRefs(L,c); return; }
     if(op?.verticesOnly||S.snapVtxOn!==false) scan(c.pts,'vértice');
     if(!op?.verticesOnly && S.snapMidOn && c.mids) scan(c.mids,'ponto médio');
@@ -704,6 +828,7 @@ function snapLatLng(latlng, ignoraL, op){
     if(!op?.verticesOnly && S.snapNearOn && c.segs) scanSegments(c.segs,'linha'); }); // qualquer ponto do segmento
   // vértices do próprio traçado em andamento (fechar polígono no 1º ponto)
   if(S.drawBuf&&S.drawBuf.length) scan(S.drawBuf.flatMap(q=>[q[0],q[1]]),'vértice do desenho');
+  if(!best&&near){best=near;bestKind=nearKind;}
   if(best){
     // indicador visual momentâneo
     if(!op || op.flash!==false){
@@ -731,19 +856,21 @@ function feicaoMaisProximaPx(latlng, tolerancia, soLinha, camadas){
      sempre a feição da camada ativa (ex.: o limite DCE) e nada mais era
      selecionável. A seleção enxerga todas as camadas visíveis. */
   const ativa=null;
-  const testaPonto=(q,L,idx,f)=>{
+  const testaPonto=(q,L,idx,f,ringIndex,vertexIndex,sourceRing,sourceRingIndex)=>{
+    if(!Number.isFinite(q[0])||!Number.isFinite(q[1]))return;
     const p=map.latLngToContainerPoint(q);
     const d=(p.x-p0.x)**2+(p.y-p0.y)**2;
     if(d<=dMelhor){ dMelhor=d; melhor={d:Math.sqrt(d),L,idx,f,
-      latlng:L2.latLng(q),snapped:true,kind:'vértice'}; }
+      ringIndex,vertexIndex,sourceRing,sourceRingIndex,latlng:L2.latLng(q),snapped:true,kind:'vértice'}; }
   };
-  const testaSegmento=(aLL,bLL,L,idx,f,ringIndex,segIndex)=>{
+  const testaSegmento=(aLL,bLL,L,idx,f,ringIndex,segIndex,sourceRing,sourceRingIndex)=>{
+    if(![...aLL,...bLL].every(Number.isFinite))return;
     const a=map.latLngToContainerPoint(aLL), b=map.latLngToContainerPoint(bLL);
     const dx=b.x-a.x,dy=b.y-a.y,den=dx*dx+dy*dy;
     let t=den?((p0.x-a.x)*dx+(p0.y-a.y)*dy)/den:0;
     t=Math.max(0,Math.min(1,t));
     const qx=a.x+t*dx,qy=a.y+t*dy,d=(qx-p0.x)**2+(qy-p0.y)**2;
-    if(d<=dMelhor){ dMelhor=d; melhor={d:Math.sqrt(d),L,idx,f,ringIndex,segIndex,t,
+    if(d<=dMelhor){ dMelhor=d; melhor={d:Math.sqrt(d),L,idx,f,ringIndex,segIndex,sourceRing,sourceRingIndex,t,
       latlng:map.containerPointToLatLng([qx,qy]),snapped:true,kind:'feição'}; }
   };
   for(const L of (camadas||S.layers)){
@@ -759,13 +886,13 @@ function feicaoMaisProximaPx(latlng, tolerancia, soLinha, camadas){
       if(e.maxLat<latlng.lat-dLat||e.minLat>latlng.lat+dLat||
          e.maxLng<latlng.lng-dLng||e.minLng>latlng.lng+dLng) continue;
       if(L.gtype==='point'){
-        for(let i=0;i<ll.length;i+=2)testaPonto([ll[i],ll[i+1]],L,idx,f);
+        for(let i=0;i<ll.length;i+=2)testaPonto([ll[i],ll[i+1]],L,idx,f,ringIndex,i/2,e.sourceRing,e.sourceRingIndex);
         continue;
       }
       for(let i=0;i<ll.length-2;i+=2)
-        testaSegmento([ll[i],ll[i+1]],[ll[i+2],ll[i+3]],L,idx,f,ringIndex,i/2);
+        testaSegmento([ll[i],ll[i+1]],[ll[i+2],ll[i+3]],L,idx,f,ringIndex,i/2,e.sourceRing,e.sourceRingIndex);
       if(L.gtype==='polygon'&&ll.length>4)
-        testaSegmento([ll[ll.length-2],ll[ll.length-1]],[ll[0],ll[1]],L,idx,f,ringIndex,ll.length/2-1);
+        testaSegmento([ll[ll.length-2],ll[ll.length-1]],[ll[0],ll[1]],L,idx,f,ringIndex,ll.length/2-1,e.sourceRing,e.sourceRingIndex);
     }
   }
   return melhor;
@@ -806,11 +933,16 @@ function mostraCursorSnap(hit){
 function atualizaCursorSnap(latlng){
   const el=map&&map.getContainer?map.getContainer():null;
   if(!el) return;
-  if(S.orthoOn&&['line','poly'].includes(S.tool)&&S.drawBuf?.length){
+  // The active vertex gesture already resolves its own snap with the edited
+  // feature excluded. Hover must not repeat that query or rebuild its cache.
+  if(S._vtxDragging||(typeof ED!=='undefined'&&ED.drag)){
+    el.classList.remove('cursor-snap');S._cursorSnapHit=null;limpaCursorSnap();return;
+  }
+  if(['line','poly'].includes(S.tool)&&S.drawBuf?.length){
     const now=typeof performance!=='undefined'?performance.now():Date.now();
-    if(now-_cursorSnapTempo<45)return;_cursorSnapTempo=now;
+    _cursorSnapTempo=now;
     const hit=GeoMineOrtho.drawing(latlng);GeoMineOrtho.preview(hit);
-    S._cursorSnapHit=hit;mostraCursorSnap({...hit,snapped:true});return;
+    S._cursorSnapHit=hit;if(hit.snapped||hit.orthogonal||hit.guided)mostraCursorSnap({...hit,snapped:true});else limpaCursorSnap();return;
   }
   GeoMineOrtho.clearPreview();
   if(S.tool==='measure'&&measMode()==='points'&&window.GeoMineRuler){

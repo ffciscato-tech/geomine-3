@@ -39,8 +39,12 @@ function resolve(ll,{anchor=null,crs=S.workCRS,ignore=null,snap=true,flash=false
 }
 function drawing(ll,flash=false){
  const p=['line','poly'].includes(S.tool)&&S.drawBuf?.at(-1),L=GeoMineDrawingSession.layer();
- return resolve(ll,{anchor:p?L2.latLng(p):null,crs:L?.crs||S.workCRS,flash});
+ let hit;
+ if(p&&window.GeoMineVertexGuides){GeoMineVertexGuides.beginDrawing(L,S.drawBuf);hit=GeoMineVertexGuides.resolve(ll,{anchor:L2.latLng(p),crs:L?.crs||S.workCRS,flash});}
+ else hit=resolve(ll,{anchor:p?L2.latLng(p):null,crs:L?.crs||S.workCRS,flash});
+ return p&&window.GeoMineDynamicSegment?GeoMineDynamicSegment.resolve(ll,hit):hit;
 }
+
 function editorInput(ll,flash=false){
  const ed=typeof ED==='object'?ED:null,L=ed?.sel?.L,P=ed?.pend;
  const p=P&&['mover','copiar'].includes(P.cmd)&&P.pts?.[0];
@@ -52,10 +56,10 @@ function closeCorner(ring){
  if(Math.abs(a[0]-b[0])<1e-7||Math.abs(a[1]-b[1])<1e-7)return;
  ring.push(axis(previous,b)===0?[b[0],a[1]]:[a[0],b[1]]);
 }
-function clearPreview(){if(guide){try{map.removeLayer(guide);}catch(_){}guide=null;}}
+function clearPreview(){window.GeoMineVertexGuides?.endDrawing();if(guide){try{map.removeLayer(guide);}catch(_){}guide=null;}}
 function preview(hit){
  const last=S.drawBuf?.at(-1);
- if(!S.orthoOn||!last||!['line','poly'].includes(S.tool)){clearPreview();return;}
+ if(!last||!['line','poly'].includes(S.tool)){clearPreview();return;}
  if(!guide)guide=L2.polyline([last,hit.latlng],{pane:'alagis_desenho',interactive:false,color:'#f5a524',weight:2,dashArray:'6 4'}).addTo(map);
  else guide.setLatLngs([last,hit.latlng]);
 }

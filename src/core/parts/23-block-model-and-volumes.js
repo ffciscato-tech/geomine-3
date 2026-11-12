@@ -933,6 +933,13 @@ async function cubSolidoLiso(rules, res, zCorteMax, zCorteMin){
 
 /* Qual superfície é o "topo"? Regra: o campo topo de um "Entre", ou o alvo de
    um "Abaixo da superfície". É essa que recebe a textura da ortofoto.       */
+function cubProductSource(C){
+  for(const rule of C?.rules||[]){
+    const r=(S.rasters||[]).find(r=>String(r.id)===String(rule.a));
+    if(r)return r;
+  }
+  return null;
+}
 function cubIdTopo(){
   for(const R of (S._cubRest||[])){
     if(R.tipo==='entre' && R.a) return R.a;
@@ -978,7 +985,7 @@ function cubProjecao2D(C){
   const total=C.totalBlocks!=null?C.totalBlocks:(C.nPai!=null?C.nPai:B.length),props={
     BLOCOS:total,VOLUME_M3:+(C.vol||0),Z_MIN:C.zmn,Z_MAX:C.zmx,FONTE:C.sourceName||'CCMGIS'};
   let L=(S.layers||[]).find(l=>l._cubProjection===true);
-  if(!L){L=addLayer({name:(C.sourceName?C.sourceName.replace(/\.[^.]+$/,''):'Modelo de blocos')+' — projeção 2D',gtype:'polygon',crs:S.workCRS,
+  if(!L){L=addLayer({sourceLayer:cubProductSource(C),name:(C.sourceName?C.sourceName.replace(/\.[^.]+$/,''):'Modelo de blocos')+' — projeção 2D',gtype:'polygon',crs:S.workCRS,
     features:[{geom:[ring],multi:true,props}],fields:[{name:'BLOCOS',type:'N',length:14,decimal:0},{name:'VOLUME_M3',type:'N',length:18,decimal:2},
       {name:'Z_MIN',type:'N',length:12,decimal:2},{name:'Z_MAX',type:'N',length:12,decimal:2},{name:'FONTE',type:'C',length:80}],color:'#c07a3e'});L._cubProjection=true;}
   else{
@@ -1391,7 +1398,7 @@ function cubToPoints(){
     {name:'DX',type:'F'},{name:'DY',type:'F'},{name:'DZ',type:'F'},
     {name:'TIPO',type:'C'},{name:'VOL_M3',type:'F'}];
   if(C.dens) fields.push({name:'TON',type:'F'});
-  addLayer({name:`Blocos ${C.bx}×${C.by}×${C.bz} m`.slice(0,60), gtype:'point',
+  addLayer({sourceLayer:cubProductSource(C),name:`Blocos ${C.bx}×${C.by}×${C.bz} m`.slice(0,60), gtype:'point',
     crs:S.workCRS, features:feats, fields});
   refreshUI(); toast(`✅ ${feats.length.toLocaleString('pt-BR')} centroides`);
 }
@@ -1413,7 +1420,7 @@ function cubToIso(){
   const r={id:rid++, name:`Espessura do modelo (${cs.toFixed(1)} m)`,
     d:{nc:nx,nr:ny,cs,xll:C.dom.x0,yll:C.dom.y0,z},
     style:{mode:'hipso',opacity:0.85}, visible:true, overlay:null, groupId:null};
-  S.rasters.push(r); renderRaster(r); refreshUI();
+  S.rasters.push(r);placeProductAbove(r,cubProductSource(C)); renderRaster(r); refreshUI();
   projectAutoSaveRaster(r);
   try{ if(r.overlay&&r.overlay.getBounds) safeFit(r.overlay.getBounds()); }catch(e){}
   toast('✅ Raster de espessura gerado');

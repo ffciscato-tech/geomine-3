@@ -55,18 +55,41 @@ async function read(file,options={}){
   details.push({method,name:e?.name||'Error',message:e?.message||String(e)});
  };
  async function pause(ms){let id;await bounded(()=>new Promise(r=>{id=setTimeout(r,ms);}),()=>clearTimeout(id));}
+ async function forwardStream(){
+  let reader,finished=false,stopped=false;
+  const stop=()=>{if(stopped||!reader)return;stopped=true;try{void reader.cancel().catch(()=>{});}catch(_){}};
+  try{
+   check();notify(0,'read');reader=file.stream().getReader();
+   const decoder=new TextDecoder('utf-8',{fatal:true}),parts=[];let loaded=0,reported=0,reportedAt=Date.now();
+   while(true){
+    const item=await bounded(()=>reader.read(),stop);
+    if(item.done)break;
+    if(item.value?.byteLength){receivedBytes=true;loaded+=item.value.byteLength;if(loaded>total)throw incomplete();parts.push(decoder.decode(item.value,{stream:true}));if(loaded===total||loaded-reported>=CHUNK||Date.now()-reportedAt>=200){notify(loaded,'read');reported=loaded;reportedAt=Date.now();}}
+   }
+   if(loaded!==total)throw incomplete();parts.push(decoder.decode());check();finished=true;return parts.join('');
+  }finally{if(reader){if(!finished)stop();try{reader.releaseLock();}catch(_){}}}
+ }
+ const android=typeof navigator!=='undefined'&&/Android/i.test((navigator.userAgent||'')+' '+(navigator.userAgentData?.platform||'')),
+  preferSequential=options.preferStream===true||(options.preferStream!==false&&android&&total>WHOLE_LIMIT);
+ let streamTried=false;
  try{
   check();notify(0,'read');
   // Arquivos modestos não precisam de uma nova chamada ao provedor Android
   // por MiB. Uma leitura sequencial limitada evita essa latência; arquivos
   // grandes e provedores incompatíveis conservam o caminho por faixas.
-  if(options.wholeFile!==false&&total<=WHOLE_LIMIT&&typeof FileReader!=='undefined'&&typeof TextDecoder!=='undefined'){
+  if(!preferSequential&&options.wholeFile!==false&&total<=WHOLE_LIMIT&&typeof FileReader!=='undefined'&&typeof TextDecoder!=='undefined'){
    try{
     const bytes=await fileReader(file,false,true);
     if(Object.prototype.toString.call(bytes)!=='[object ArrayBuffer]'||bytes.byteLength!==total)throw incomplete();
     const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);
     check();notify(total,'read');return text;
    }catch(e){record('whole',e);}
+  }
+  // Android document providers may reopen/seek their remote document for
+  // every Blob.slice. A 200 MB project used to cause ~200 separate provider
+  // requests. Consume one forward stream first; retain ranges as fallback.
+  if(preferSequential&&typeof file.stream==='function'&&typeof TextDecoder!=='undefined'){
+   streamTried=true;try{return await forwardStream();}catch(e){record('stream-first',e);}
   }
   if(typeof file.slice==='function'&&typeof TextDecoder!=='undefined'){
    try{
@@ -94,19 +117,8 @@ async function read(file,options={}){
   }
   // Some providers expose only a forward stream. Restart with a fresh decoder
   // and byte count; never combine content from independent read strategies.
-  if(typeof file.stream==='function'&&typeof TextDecoder!=='undefined'){
-   let reader,finished=false;
-   try{
-    check();notify(0,'fallback');reader=file.stream().getReader();
-    const decoder=new TextDecoder('utf-8',{fatal:true}),parts=[];let loaded=0;
-    while(true){
-     const item=await bounded(()=>reader.read(),()=>{void reader.cancel().catch(()=>{});});
-     if(item.done)break;
-     if(item.value?.byteLength){receivedBytes=true;loaded+=item.value.byteLength;if(loaded>total)throw incomplete();parts.push(decoder.decode(item.value,{stream:true}));notify(loaded,'read');}
-    }
-    if(loaded!==total)throw incomplete();parts.push(decoder.decode());check();finished=true;return parts.join('');
-   }catch(e){record('stream',e);}
-   finally{if(reader){if(!finished)try{void reader.cancel().catch(()=>{});}catch(_){}try{reader.releaseLock();}catch(_){}}}
+  if(!streamTried&&typeof file.stream==='function'&&typeof TextDecoder!=='undefined'){
+   try{return await forwardStream();}catch(e){record('stream',e);}
   }
   // Preserve compatibility with providers whose complete text API is the
   // only usable path; an explicitly requested overall deadline still applies.

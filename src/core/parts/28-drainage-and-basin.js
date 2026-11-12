@@ -1369,7 +1369,7 @@ function baciaEscava(g, ctr, p, fundoR, arestaR, daylightR, zFundo, zAresta, ram
         }catch(e2){ try{cmdLog('Malha exata da caixa falhou ('+(e2&&e2.message||e2)+') — usando a grade','avisa');}catch(_){} } })();
       }
     }catch(e){}
-    S.rasters.push(r);
+    S.rasters.push(r);placeProductAbove(r,Llim||orig);
     projectAutoSaveRaster(r);
     try{ if(typeof renderRaster==='function') renderRaster(r); }
     catch(e){ try{ cmdLog('MDT cortado criado, mas renderRaster falhou: '+(e&&e.message||e),'avisa'); }catch(_){} }
@@ -1978,7 +1978,7 @@ function baciaGeraBoca(bocaR, p, ctr){
   // ---- RAMPA de acesso: NÃO gera aqui. Após a caixa, o usuário toca o ponto
   //      onde a rampa deve chegar no fundo (baciaArmaRampa). ----
   const nBacia=1+(S.layers||[]).filter(l=>/^Bacia de retenção(?:\s+\d+)?(?:\s+—\s+linhas)?$/i.test(l.name||'')).length;
-  const Lv=addLayer({name:'Bacia de retenção '+String(nBacia).padStart(2,'0')+' — linhas', gtype:'line', crs, features:feats,
+  const Lv=addLayer({sourceLayer:(S.rasters||[]).find(r=>r.d===g||r.d?.z===g.z),name:'Bacia de retenção '+String(nBacia).padStart(2,'0')+' — linhas', gtype:'line', crs, features:feats,
     fields:[{name:'TIPO',type:'C',length:50,decimal:0},{name:'COTA_MIN',type:'N',length:10,decimal:2},
             {name:'COTA_FUNDO',type:'N',length:10,decimal:2},{name:'PROF_M',type:'N',length:8,decimal:2},
             {name:'AREA_M2',type:'N',length:14,decimal:1},{name:'DECL_PCT',type:'N',length:8,decimal:1},
@@ -3005,7 +3005,7 @@ async function baciaGeraRampa(Lv, p, ctr, fundoR, bocaR, zFundo, zMin, pDest, di
      exatamente nas interseções; depois entram caixa e limite externo. */
   const todas=rampas.concat(internas,contorno);
   const crs = Lv.crs || S.workCRS;
-  const Lnovo = addLayer({
+  const Lnovo = addLayer({sourceLayer:Lv,
     name:'Bacia de retenção — caixa + rampa fundidas', gtype:'polygon', crs, features:todas,
     fields:[
       {name:'FID',type:'N',length:9,decimal:0},
@@ -3042,7 +3042,7 @@ async function baciaGeraRampa(Lv, p, ctr, fundoR, bocaR, zFundo, zMin, pDest, di
   if(Lnovo){
     const antiga=BACIA.ultima&&BACIA.ultima.Lsim;
     if(antiga){ antiga.visible=false; try{ drawLayer(antiga); }catch(e){} }
-    try{ Lsim=baciaCriaSimbolos(p,arestaProjeto,fundoR,base,zMin,zFundo,pista); }catch(e){}
+    try{ Lsim=baciaCriaSimbolos(p,arestaProjeto,fundoR,base,zMin,zFundo,pista);placeProductAbove(Lsim,Lnovo); }catch(e){}
     S.activeId=Lnovo.id;
   }
   // desliga a camada só-da-caixa (mantém no projeto, mas a nova é a boa)

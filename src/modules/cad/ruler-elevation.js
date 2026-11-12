@@ -6,9 +6,9 @@ let revision=0;
 const number=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(+v)?+v:NaN;
 function hitZ(hit){
  const f=hit?.f;if(!f)return NaN;
- const rings=f.multi&&Array.isArray(f.geom?.[0]?.[0])?f.geom:[f.geom];
- const ring=rings[hit.ringIndex||0]||[];
- const zz=f.zg,zs=Array.isArray(zz?.[0])?zz[hit.ringIndex||0]:zz;
+ const part=snapRingPartsOf(hit.L,f)[hit.ringIndex||0];
+ const ring=hit.sourceRing||part?.ring||[],sourceIndex=hit.sourceRingIndex??part?.sourceRingIndex??hit.ringIndex??0;
+ const zz=f.zg,zs=Array.isArray(zz?.[0])?zz[sourceIndex]:zz;
  const zAt=i=>{const z=number(Array.isArray(zs)?zs[i]:zs);return Number.isFinite(z)?z:number(ring[i]?.[2]);};
  if(hit.vertexIndex!=null)return zAt(hit.vertexIndex);
  if(hit.segIndex==null)return NaN;
@@ -36,15 +36,16 @@ function snap(latlng){
    if(e.maxLat<latlng.lat-dLat||e.minLat>latlng.lat+dLat||e.maxLng<latlng.lng-dLng||e.minLng>latlng.lng+dLng)continue;
    if(typeof featureVisible==='function'&&!featureVisible(L,e.f))continue;
    for(let i=0;i<e.ll.length;i+=2){
+    if(!Number.isFinite(e.ll[i])||!Number.isFinite(e.ll[i+1]))continue;
     const ll=L2.latLng(e.ll[i],e.ll[i+1]),q=map.latLngToContainerPoint(ll),d=(q.x-p.x)**2+(q.y-p.y)**2;
-    if(d<=bd){bd=d;best={L,f:e.f,idx:e.idx,ringIndex:e.ringIndex,vertexIndex:i/2,latlng:ll,kind:'vértice',snapped:true};}
+    if(d<=bd){bd=d;best={L,f:e.f,idx:e.idx,ringIndex:e.ringIndex,sourceRing:e.sourceRing,sourceRingIndex:e.sourceRingIndex,vertexIndex:i/2,latlng:ll,kind:'vértice',snapped:true};}
    }
   }
  }
  if(!best){
   best=feicaoMaisProximaPx(latlng,tol,true);
   if(best){
-   const f=best.f,rings=f.multi&&Array.isArray(f.geom?.[0]?.[0])?f.geom:[f.geom],ring=rings[best.ringIndex||0];
+   const f=best.f,ring=best.sourceRing||snapRingsOf(best.L,f)[best.ringIndex||0];
    const a=ring[best.segIndex],b=ring[(best.segIndex+1)%ring.length],p=fromWGS(best.L.crs,latlng.lng,latlng.lat);
    const dx=b[0]-a[0],dy=b[1]-a[1],d=dx*dx+dy*dy,t=d?Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/d)):0;
    const ll=toWGS(best.L.crs,a[0]+t*dx,a[1]+t*dy);best.latlng=L2.latLng(ll[1],ll[0]);best.t=t;

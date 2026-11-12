@@ -172,15 +172,15 @@ async function run(){
   }catch(e){const message=e.name==='AbortError'?'Extração cancelada. Nenhuma feição foi alterada.':e.message;status(message);toast(message);}
   finally{sampler?.close();if(job===q){job=null;busy(false);}}
 }
-function install(catalog){
-  const cat=catalog.find(c=>c.id==='ambiente');if(!cat)return;
+function install(){
+  const cat=CATS.find(c=>c.id==='ambiente');if(!cat)return;
   let group=cat.grupos.find(g=>g.label.toLowerCase()==='preservação permanente');if(!group){group={label:'Preservação permanente',it:[]};cat.grupos.unshift(group);}
   if(group.it[0]?.ic==='thalweg_mdt')return;
   for(const g of cat.grupos)g.it=g.it.filter(i=>i.ic!=='thalweg_mdt');
   group.it.unshift({ic:'thalweg_mdt',nome:'Extração de talvegue',desc:'Delimitar uma área e extrair o talvegue principal no MDT',act:open});
 }
 RIB_SVG.thalweg_mdt='<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l15-3 22 6-4 30-23 2-10-15z" fill="#dfe9c9" stroke="#759558" stroke-width="2" stroke-dasharray="4 3"/><path d="M8 14c8-1 10 12 17 11s8-8 14-7M7 22c8-1 10 12 17 11s8-8 14-7" fill="none" stroke="#99ae76" stroke-width="2"/><path d="M23 8c-12 11 17 14 4 24s-7 5-7 9" fill="none" stroke="#087ea2" stroke-width="3.5" stroke-linecap="round"/><path d="m16 36 4 5 5-4" fill="none" stroke="#087ea2" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-root.GeoMineRibbon.register('environmental.thalweg',install);install(CATS);
+const base=root.ribbonBuild;root.ribbonBuild=function(){install();return base.apply(this,arguments);};install();
 setTimeout(()=>{ribbonBuild();map.on('mousemove',e=>{if(drawing&&S.tool===TOOL)renderRegion(e.latlng);});map.on('dblclick',e=>{if(drawing&&S.tool===TOOL){L2.DomEvent.stop(e);finishRegion();}});},0);
 root.addEventListener('keydown',e=>{
   if(/INPUT|TEXTAREA|SELECT/.test(e.target?.tagName)||e.target?.isContentEditable)return;

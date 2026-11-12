@@ -8,13 +8,18 @@
    remains usable by future tiles. Per-fetch signals cancel only their own
    wait, never a shared physical read. Import cancellation/close cancel all
    this source's queued and active reads. Failed blocks can be retried.
-   Decoded tile cache remains the responsibility of GeoMineTileRuntime. */
+   Decoded tile cache remains the responsibility of GeoMineTileRuntime.
+   On mobile, every returned image is prepared there before exposing it to
+   callers; direct image.readRasters must not bypass its allocation guard. */
 (function(){
 'use strict';
 if(window.GeoMineRasterImport)return;
 const BLOCK_BYTES=4*1024*1024,ANDROID_BLOCK_BYTES=512*1024,MAX_BYTES=16*1024*1024,MAX_ACTIVE=2;
+const nav=typeof navigator==='object'?navigator:{},mobile=/Android|iPhone|iPad|iPod/i.test(nav.userAgent||'')||
+  (/Mac/i.test((nav.platform||'')+' '+(nav.userAgent||''))&&Number(nav.maxTouchPoints)>1);
+const MOBILE_RANGE_BYTES=16*1024*1024;
 const cache=new Map(),pending=new Map(),queue=[],states=new WeakMap();
-let bytes=0,active=0,sequence=0;
+let bytes=0,active=0,sequence=0,rangeBytes=0;
 const counters={hits:0,misses:0,deduplicated:0,physicalReads:0,readBytes:0,maxActive:0};
 function aborted(){const e=new Error('Leitura do GeoTIFF cancelada.');e.name='AbortError';return e;}
 function unreadable(){const e=new Error('Trecho do GeoTIFF incompleto. Baixe o arquivo original completamente e tente novamente.');e.name='NotReadableError';return e;}
@@ -25,6 +30,26 @@ function helpers(){
 }
 function signalCheck(signal){if(signal&&signal.aborted)throw aborted();}
 function sourceCheck(state){if(state.closed)throw aborted();signalCheck(state.signal);}
+function reserveRanges(state,slices){
+  if(!mobile)return 0;
+  let requested=0;
+  for(const slice of slices){
+    const offset=Number(slice?.offset),length=Number(slice?.length);
+    if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(length)||length<0||!Number.isSafeInteger(offset+length))
+      throw new RangeError('Intervalo de bytes GeoTIFF inválido.');
+    // The declared length also bounds the caller's IFD typed-array size;
+    // clipping a huge malformed tag to EOF would not protect that allocation.
+    requested+=length;
+  }
+  // IFD tag arrays and Promise.all(fetch slices) allocate their complete
+  // outputs even while physical reads wait in the two-reader queue. Reserve
+  // those bytes globally BEFORE creating any range output; do not downsample.
+  if(!Number.isSafeInteger(requested)||requested>MOBILE_RANGE_BYTES||rangeBytes+requested>MOBILE_RANGE_BYTES){
+    const error=new RangeError('Trechos do GeoTIFF excedem o limite de leitura simultânea de 16 MiB deste dispositivo. A leitura foi interrompida.');
+    error.code='RASTER_MEMORY_LIMIT';error.estimatedBytes=rangeBytes+requested;error.limitBytes=MOBILE_RANGE_BYTES;throw error;
+  }
+  rangeBytes+=requested;return requested;
+}
 function put(key,data){
   if(data.byteLength>MAX_BYTES)return;
   const old=cache.get(key);if(old){bytes-=old.byteLength;cache.delete(key);}
@@ -115,7 +140,12 @@ function makeSource(blob,control){
       try{
         sourceCheck(state);signalCheck(signal);
         if(!Array.isArray(slices))throw new TypeError('Lista de intervalos GeoTIFF inválida.');
-        return helpers().wait(Promise.all(slices.map(slice=>range(state,slice))),{signal,timeoutMs:state.timeoutMs});
+        const h=helpers(),reserved=reserveRanges(state,slices),reads=slices.map(slice=>range(state,slice));
+        // A failing slice must not release the reservation while sibling
+        // slices are still alive. Timeouts also leave this ownership intact.
+        Promise.allSettled(reads).then(()=>{rangeBytes-=reserved;});
+        const work=Promise.all(reads);
+        return h.wait(work,{signal,timeoutMs:state.timeoutMs});
       }catch(error){return Promise.reject(error);}
     },
     close(){
@@ -126,17 +156,26 @@ function makeSource(blob,control){
   };
   return state;
 }
+function protectImageReads(tiff){
+  if(!mobile||!tiff||typeof tiff.getImage!=='function')return tiff;
+  const getImage=tiff.getImage;
+  tiff.getImage=async function getBoundedImage(...args){
+    const image=await getImage.apply(this,args),runtime=window.GeoMineTileRuntime;
+    return runtime&&typeof runtime.prepareImage==='function'?runtime.prepareImage(image):image;
+  };
+  return tiff;
+}
 async function open(src,control={}){
   signalCheck(control.signal);const h=helpers(),g=window.GeoTIFF;
   if(!g)throw new Error('Biblioteca GeoTIFF indisponível.');
   const isBlob=src&&Number.isSafeInteger(src.size)&&src.size>=0&&typeof src.slice==='function';
-  if(!isBlob)return h.wait(g.fromArrayBuffer(src),control);
+  if(!isBlob)return protectImageReads(await h.wait(g.fromArrayBuffer(src),control));
   if(!g.GeoTIFF||typeof g.GeoTIFF.fromSource!=='function')
     throw new Error('A biblioteca GeoTIFF não oferece a API pública de leitura por intervalos.');
   const state=makeSource(src,control);
   try{
     const tiff=await h.wait(g.GeoTIFF.fromSource(state.source,{cache:false},control.signal),control);
-    sourceCheck(state);states.set(tiff,state);return tiff;
+    sourceCheck(state);states.set(tiff,state);return protectImageReads(tiff);
   }catch(error){state.source.close();throw error;}
 }
 function release(tiff){
@@ -150,6 +189,7 @@ function adoptSource(tiff,blob){
   state.blob=blob;return true;
 }
 function stats(){return {...counters,blockBytes:BLOCK_BYTES,androidBlockBytes:ANDROID_BLOCK_BYTES,maxBytes:MAX_BYTES,cacheBytes:bytes,
-  cacheBlocks:cache.size,pendingBlocks:pending.size,queued:queue.length,active,maxConcurrent:MAX_ACTIVE};}
+  cacheBlocks:cache.size,pendingBlocks:pending.size,queued:queue.length,active,maxConcurrent:MAX_ACTIVE,
+  rangeBytes,rangeBudgetBytes:mobile?MOBILE_RANGE_BYTES:null,mobile};}
 window.GeoMineRasterImport={version:1,open,release,adoptSource,stats};
 })();

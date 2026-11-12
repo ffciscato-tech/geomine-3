@@ -31,9 +31,15 @@
 
   const abas=[
     {id:'est', rot:'Estilo',     nos:filhos.slice(iInfo+1, iRes)},
-    {id:'res', rot:'Resolução',  nos:[bRes]},
     {id:'dad', rot:'Dados',      nos:[bArq,bCur,bExp,bWarp]},
   ];
+  // Keep legacy IDs for existing handlers; display detail is automatic.
+  bRes.style.setProperty('display','none','important');corpo.appendChild(bRes);
+  const native=document.createElement('div');native.className='lp-info';native.innerHTML='<b>Arquivo original</b><div id="rasNativeStatus"></div><button class="tbtn" id="rasNativeReconnect" style="margin-top:8px">Localizar arquivo original</button>';
+  abas.find(a=>a.id==='dad').nos.unshift(native);
+  native.querySelector('button').onclick=()=>document.getElementById('rasLoadFull').click();
+  window.GeoMineNativeRasterPanel={refresh(r){const d=r.d,g=d._full||d,linked=!!d._img0||!rasterPrecisaFonteTela(g),w=d._W0||g.nc,h=d._H0||g.nr,cs=d._bb?(d._bb[2]-d._bb[0])/w:g.cs;
+    document.getElementById('rasNativeStatus').textContent=linked?`${w} × ${h} · ${Number(cs).toLocaleString('pt-BR',{maximumFractionDigits:4})} m/célula · exibição nativa, sem suavização.`:'O arquivo original não está acessível na pasta vinculada. A imagem disponível é uma prévia; localize o original para recuperar o detalhe.';document.getElementById('rasNativeReconnect').style.display=linked?'none':'';}};
   const barra=document.createElement('div');
   barra.id='rasAbas';
   barra.style.cssText='display:flex;gap:4px;margin:8px 0 6px';

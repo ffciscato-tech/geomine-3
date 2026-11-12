@@ -60,6 +60,9 @@ function view(L){return Object.fromEntries(styleKeys.map(k=>[k,clone(L[k])]));}
 function stamp(L){return JSON.stringify([view(L),L.fields,(L.features||[]).map(f=>[f.props,f._featureStyle])]);}
 function refresh(L){
  drawLayer(L);refreshUI();
+ // Colagem pelo menu e Ctrl+Z também precisam atualizar a janela aberta:
+ // a próxima edição do rótulo não pode regravar os valores antigos dela.
+ if(typeof lpLayer!=='undefined'&&lpLayer===L&&document.getElementById('lpModal')?.classList.contains('on'))lpFillLabels(L);
  if(document.getElementById('attrPanel')?.classList.contains('open')&&S.activeId===L.id)openAttr();
  try{layoutSeVisivel();}catch(_){}
  window.GeoMineSessionAutosave?.markDirty('estilo e classificação colados');

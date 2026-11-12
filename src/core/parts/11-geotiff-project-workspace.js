@@ -202,7 +202,7 @@ function projectCRSOptions(selected){
   return keep.map(k=>`<option value="${k}"${k===selected?' selected':''}>${esc(CRS_LABELS[k]||k)}</option>`).join('');
 }
 async function startNewProjectWizard(){
-  if((S.layers.length||S.rasters.length||S.img) &&
+  if((typeof hasContent==='function'?hasContent():(S.layers.length||S.rasters.length||S.img)) &&
      !confirm('Iniciar um projeto novo? O trabalho atual não salvo será perdido.')) return;
   let loc={lat:-14.2,lng:-51.9}, marker=null, miniMap=null, folderOK=false;
   const bg=document.createElement('div');bg.className='modal-bg on';bg.id='newProjectWizard';
@@ -331,7 +331,12 @@ function projectNativeHash(values){
 function projectNativePreview(item,kind,grid){
   const g=grid||(kind==='raster'?projectNativeRasterGradeToSave(item):item.d);
   let value;
-  if(kind==='ortho')value=String(item.url||'');
+  if(kind==='ortho'){
+    // Um recorte de exibição não troca os bytes do original autorizado.
+    const identity=typeof orthoMaskPreviewIdentity==='function'?orthoMaskPreviewIdentity(item):null;
+    if(identity)return identity;
+    value=String(item.url||'');
+  }
   else{
     if(!g)return '';
     const z=g.z||[],a=[g.nc,g.nr,g.cs,g.csy||g.cs,g.xll,g.yll,z.length];
@@ -419,7 +424,7 @@ function projectNativeContext(item,kind){
   return ()=>S.projectId===project&&window.GeoMineSessionAutosave?.state?.generation===gen&&
     (kind==='ortho'?S.img===item:(S.rasters||[]).includes(item))&&
     (kind==='ortho'?item._sourceRaw:item._projectSourceRaw)===source&&
-    (kind==='ortho'?item.url:item.d)===data&&projectNativePreview(item,kind)===preview;
+    (kind==='ortho'?(item.url===data||typeof orthoMaskPreviewIdentity==='function'&&orthoMaskPreviewIdentity(item)===preview):item.d===data)&&projectNativePreview(item,kind)===preview;
 }
 async function projectNativeFingerprint(file){
   const chunk=65536,offsets=[0,Math.max(0,Math.floor(file.size/2)-chunk/2),Math.max(0,file.size-chunk)],out=[];
@@ -430,7 +435,9 @@ async function projectNativeFingerprint(file){
   return file.size+':'+out.join(':');
 }
 async function projectNativeMatches(file,d){
-  return !!d&&d.v===1&&file.size===d.size&&(+file.lastModified||0)===(+d.lastModified||0)&&
+  // Sincronizadores podem alterar só a data da cópia. A identidade segue o
+  // mesmo contrato de tamanho + fingerprint usado para reutilizar a fonte.
+  return !!d&&d.v===1&&file.size===d.size&&
     await projectNativeFingerprint(file)===d.fingerprint;
 }
 let PROJECT_NATIVE_SEQUENCE=0;
@@ -569,8 +576,91 @@ async function projectSyncNativeSources(askPermission){
 // Nunca substitui uma grade já utilizável: o cache nativo pertence à sessão.
 const projectRasterRestores=new WeakMap();
 function projectRasterReady(r){
+  // On iPad the file picker can return a cloud-backed File. Until its
+  // verified OPFS copy is ready, keep the project in preview mode instead of
+  // declaring the original available and starting random tile reads against
+  // the provider while the same file is still being copied sequentially.
+  if(r&&r._nativeCopyPending)return false;
   const d=r&&r.d;
   return !!d&&!!(d._img0||d._full||d.native||d.resampled===1);
+}
+async function projectCloseNativeRasterSource(tiff){
+  try{if(tiff&&typeof tiff.close==='function')await tiff.close();}catch(_){}
+}
+function projectNativeRasterIdentity(r){
+  const stamp=d=>d?[d.v,d.kind,d.id,d.size,d.fingerprint,d.preview,!!d.invalidated]:null;
+  return JSON.stringify([stamp(r.originalSource),stamp(r.projectNativeSource),!!r.projectSavePending,r.projectFile||'']);
+}
+/* The caller has already verified the source identity. Prepare its index in
+   isolation, then attach it without decoding or replacing the saved pixels.
+   Manual File selections and automatic handle restoration use this same commit. */
+async function projectAttachNativeRaster(r,file,options={}){
+  if(!r||!r.d){await projectCloseNativeRasterSource(options.tiff);return false;}
+  const previous=r.d,previousTiff=previous&&previous._tiff,bound=projectNativePreview(r,'raster'),
+    account=window.GeoMineCloudProvider?.user?.uid||'offline',
+    originalSource=r.originalSource,nativeSource=r.projectNativeSource,identity=projectNativeRasterIdentity(r),
+    current=options.isCurrent||projectNativeContext(r,'raster');
+  const check=()=>{
+    rasterImportCheck(options);
+    if(r.d!==previous||(window.GeoMineCloudProvider?.user?.uid||'offline')!==account||
+       r.originalSource!==originalSource||r.projectNativeSource!==nativeSource||projectNativeRasterIdentity(r)!==identity||!current())
+      throw Object.assign(new Error('A superfície mudou durante a leitura do original.'),{name:'AbortError'});
+  };
+  // Ownership of a prevalidated index transfers at entry, before any await.
+  // Even an early cancellation must close it exactly once.
+  let tiff=options.tiff||null,committed=false;
+  try{
+    check();await rasterImportWait(ensureGeoTIFF(),options);check();
+    tiff=await rasterImportOpen(file,options);check();
+    const im=await rasterImportWait(tiff.getImage(0),options);check();
+    const bb=im.getBoundingBox(),W=im.getWidth(),H=im.getHeight();
+    if(!bb||bb.length!==4||bb.some(v=>!Number.isFinite(v))||!(bb[2]>bb[0]&&bb[3]>bb[1])||
+       !Number.isSafeInteger(W)||W<=0||!Number.isSafeInteger(H)||H<=0||im.getSamplesPerPixel()!==1)
+      throw Error('GeoTIFF nativo inválido para esta superfície.');
+    const g={...previous,_tiff:tiff,_img0:im,_W0:W,_H0:H,_bb:Array.from(bb),_nd:im.getGDALNoData()};
+    // Keep the integer import factor when it still describes this preview.
+    // Legacy mean/overview verification must remain repeatable if persisting
+    // the new source descriptor fails after this otherwise successful attach.
+    const reduction=previous.resampled;
+    g.resampled=Number.isInteger(reduction)&&reduction>=1&&
+      Math.max(2,Math.floor(W/reduction))===g.nc&&Math.max(2,Math.floor(H/reduction))===g.nr
+        ?reduction:Math.max(W/g.nc,H/g.nr);
+    // Reusing the same preview also reuses its non-enumerable map projection.
+    for(const key of ['_wm','_wmCRS','_wmResample']){
+      const property=Object.getOwnPropertyDescriptor(previous,key);
+      if(property)Object.defineProperty(g,key,property);
+    }
+    const staged={d:g};projectNativeBindRasterSource(staged,file);
+    const grid={nc:W,nr:H,cs:(bb[2]-bb[0])/W,csy:(bb[3]-bb[1])/H,xll:g.xll,yll:g.yll};
+    const descriptor=options.descriptor&&!options.original
+      ?{...options.descriptor,lastModified:+file.lastModified||0,preview:bound}:null;
+    check();
+    if(projectNativePreview(r,'raster')!==bound)
+      throw Object.assign(new Error('A superfície foi editada durante a leitura do original.'),{name:'AbortError'});
+    if(globalThis.GeoMineRasterImport)GeoMineRasterImport.release(tiff);
+    const wasDem=S.hidro&&S.hidro.dem===previous;
+    // A prévia e seus valores não mudaram. Preservar também as estatísticas
+    // evita varrer novamente a grade inteira na primeira janela de tiles.
+    r.d=g;r.srcName=file.name||r.srcName;
+    r._projectSourceRaw=staged._projectSourceRaw;r._projectNativeBinding=staged._projectNativeBinding;
+    r._projectGrid=grid;r.demHD=true;r.dispFull=true;delete r._demHDLegacy;
+    if(descriptor){r.projectNativeSource=descriptor;r.projectSavePending=false;}
+    delete r._semFonte;delete r._avisouReduzida;
+    committed=true;
+    if(wasDem)S.hidro.dem=g;
+    // A second attachment (used after the iPad finishes copying the selected
+    // cloud file to OPFS) must retire the former provider source. Otherwise
+    // old tile jobs keep a stale File alive and can continue falling back to
+    // the preview even though the verified local copy is already available.
+    if(previousTiff&&previousTiff!==tiff)await projectCloseNativeRasterSource(previousTiff);
+    try{
+      if(options.original)GeoMineOriginalSources.adopt(r,'raster',options.original);
+      if(wasDem){if(typeof hShadeOff==='function')hShadeOff(true);if(typeof hInvalidaD8==='function')hInvalidaD8(g);}
+      if(typeof layoutInvalidateOrtho==='function')layoutInvalidateOrtho('mdt-source');
+      renderRaster(r,{sourceOnly:true});refreshUI();
+    }catch(e){console.warn('Exibição do MDT restaurado:',e);}
+    return true;
+  }finally{if(!committed)await projectCloseNativeRasterSource(tiff);}
 }
 async function projectRestoreNativeRaster(r){
   if(!r||!r.d||r.tinPuro)return false;
@@ -578,36 +668,32 @@ async function projectRestoreNativeRaster(r){
   const pending=projectRasterRestores.get(r);
   if(pending&&pending.current())return pending.promise;
   const raw=r._projectSourceRaw instanceof Blob&&projectNativeRasterSourceCurrent(r)?r._projectSourceRaw:null;
-  if(!raw&&(!r.projectFile||!projectNativeRestoreAllowed(r,'raster')))return false;
-  const current=projectNativeContext(r,'raster'),descriptor=r.projectNativeSource;
+  const unchanged=projectNativeContext(r,'raster'),descriptor=r.projectNativeSource,
+    originalDescriptor=r.originalSource,identity=projectNativeRasterIdentity(r);
+  const current=()=>unchanged()&&r.projectNativeSource===descriptor&&r.originalSource===originalDescriptor&&projectNativeRasterIdentity(r)===identity;
   const path=String(r.projectFile),match=/^ALAGIS\/rasters\/([^/\\]+\.tiff?)$/i.exec(path);
-  if(!raw&&!match)return false;
+  if(!raw&&!match&&!window.GeoMineOriginalSources)return false;
   const job={current};
   job.promise=(async()=>{
     try{
-      let f=raw;
+      let f=raw,original=null;
+      if(!f&&window.GeoMineOriginalSources){
+        original=await GeoMineOriginalSources.resolve(r,'raster');
+        if(!current())return false;
+        if(original)f=original.file;
+      }
       if(!f){
+        if(!match||!projectNativeRestoreAllowed(r,'raster'))return false;
         const ds=await projectDirs(false,true);
         if(!ds||!current()||r.projectNativeSource!==descriptor)return false;
-        const h=await ds.rasters.getFileHandle(match[1]);f=await h.getFile();
-        if(!await projectNativeMatches(f,descriptor))return false;
+        const h=await ds.rasters.getFileHandle(match[1]);f=await (window.GeoMineRasterSource?.wait?GeoMineRasterSource.wait(h.getFile(),{timeoutMs:15000}):h.getFile());
+        const checking=projectNativeMatches(f,descriptor);
+        if(!await (window.GeoMineRasterSource?.wait?GeoMineRasterSource.wait(checking,{timeoutMs:15000}):checking))return false;
       }
       if(!current()||r.projectNativeSource!==descriptor)return false;
-      const g=await parseTIFF(f);
-      if(!current()||r.projectNativeSource!==descriptor)return false;
-      const previous=r.d,wasDem=S.hidro&&S.hidro.dem===previous;
-      if(previous._sig)g._sig=previous._sig;
-      r.d=g;r._st=null;r._stFull=null;projectNativeBindRasterSource(r,f);
-      r._projectGrid={nc:g._W0||g.nc,nr:g._H0||g.nr,
-        cs:g._bb?(g._bb[2]-g._bb[0])/(g._W0||g.nc):g.cs,
-        csy:g._bb?(g._bb[3]-g._bb[1])/(g._H0||g.nr):g.csy||g.cs,xll:g.xll,yll:g.yll};
-      if(r._demHDLegacy){r.demHD=!EH_MOVEL&&g.resampled>1;delete r._demHDLegacy;}
-      if(descriptor)r.projectNativeSource={...descriptor,preview:projectNativePreview(r,'raster')};
-      if(descriptor)r.projectSavePending=false;delete r._semFonte;delete r._avisouReduzida;
-      if(wasDem){if(typeof hShadeOff==='function')hShadeOff(true);S.hidro.dem=g;}
-      try{renderRaster(r);refreshUI();}catch(e){console.warn('Exibição do MDT restaurado:',e);}
-      return true;
-    }catch(e){console.warn('Raster nativo não restaurado:',r.name,e);return false;}
+      return await projectAttachNativeRaster(r,f,{descriptor,original,
+        isCurrent:()=>current()&&r.projectNativeSource===descriptor});
+    }catch(e){if(e?.name!=='AbortError')console.warn('Raster nativo não restaurado:',r.name,e);return false;}
     finally{if(projectRasterRestores.get(r)===job)projectRasterRestores.delete(r);}
   })();
   projectRasterRestores.set(r,job);
@@ -621,13 +707,17 @@ async function projectRestoreNativeRasters(){
     for(const r of todos){
       if(!contexts.get(r)())continue;
       if(projectRasterReady(r))continue;
-      if(r.projectFile){
+      if(r.projectFile||window.GeoMineOriginalSources){
         showLoad('Restaurando raster nativo: '+r.name+'…');
         if(await projectRestoreNativeRaster(r)){restored++;continue;}
       }
       if(!contexts.get(r)()||projectRasterReady(r))continue;
-      missing++;r.dispFull=false;r.demHD=false;
-      try{renderRaster(r);}catch(e){}
+      // Ausência de permissão/arquivo é um estado da sessão, não uma escolha
+      // de resolução. Preserve as opções salvas para quando a fonte voltar.
+      missing++;
+      // The saved preview is already mounted. A missing original cannot improve
+      // it, and rendering hidden rasters defeats deferred project opening.
+      try{if(r.visible!==false&&!r.overlay)renderRaster(r);}catch(e){}
       if(r.projectFile)projectNativeRestoreNotice(r,'MDT');
     }
   }finally{try{hideLoad();}catch(e){}}
@@ -688,19 +778,27 @@ async function projectAutoSaveOrtho(askPermission,queued=false){
    sozinha (mesma regra dos rasters nativos). Sem permissão da pasta, fica a prévia. */
 async function projectRestoreNativeOrtho(){
   const I=S.img;
-  if(!I||!I.url||!I.projectFile||(I._img0&&I._tiff))return {restored:0,missing:0};
-  if(!projectNativeRestoreAllowed(I,'ortho')){
-    projectNativeRestoreNotice(I,'ortofoto');return {restored:0,missing:1,unverified:true};
-  }
+  if(!I||!I.url||(I._img0&&I._tiff)||window.GeoMineOriginalSources&&!GeoMineOriginalSources.needsOrtho(I))return {restored:0,missing:0};
   const current=projectNativeContext(I,'ortho'),descriptor=I.projectNativeSource;
-  const ds=await projectDirs(false,true);
-  if(!current())return {restored:0,missing:0,stale:true};
-  if(!ds)return {restored:0,missing:1,unauthorized:true};
   const nome=String(I.projectFile).split('/').pop();
   try{
+    if(window.GeoMineOriginalSources){
+      const original=await GeoMineOriginalSources.resolve(I,'ortho');
+      if(!current())return {restored:0,missing:0,stale:true};
+      if(original){
+        const ok=await ortoReligarTIFF(original.file,{restoreNative:true,isCurrent:current});
+        if(ok&&S.img===I)GeoMineOriginalSources.adopt(I,'ortho',original);
+        return {restored:ok?1:0,missing:ok?0:1};
+      }
+    }
+    if(!I.projectFile||!projectNativeRestoreAllowed(I,'ortho'))return {restored:0,missing:1,unverified:true};
+    const ds=await projectDirs(false,true);
+    if(!current())return {restored:0,missing:0,stale:true};
+    if(!ds)return {restored:0,missing:1,unauthorized:true};
     showLoad('Restaurando a ortofoto nativa: '+nome+'…');
-    const h=await ds.rasters.getFileHandle(nome), f=await h.getFile();
-    if(!await projectNativeMatches(f,descriptor))throw new Error('a cópia nativa mudou; prévia preservada');
+    const h=await ds.rasters.getFileHandle(nome), access=h.getFile(),f=await (window.GeoMineRasterSource?.wait?GeoMineRasterSource.wait(access,{timeoutMs:15000}):access);
+    const checking=projectNativeMatches(f,descriptor);
+    if(!await (window.GeoMineRasterSource?.wait?GeoMineRasterSource.wait(checking,{timeoutMs:15000}):checking))throw new Error('a cópia nativa mudou; prévia preservada');
     if(!current()||I.projectNativeSource!==descriptor)return {restored:0,missing:0,stale:true};
     const ok=await ortoReligarTIFF(f,{restoreNative:true,isCurrent:current});
     if(ok&&S.img===I){I.projectSavePending=false;I.projectNativeSource={...descriptor,preview:projectNativePreview(I,'ortho')};}

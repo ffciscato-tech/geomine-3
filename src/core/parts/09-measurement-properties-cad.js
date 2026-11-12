@@ -109,6 +109,8 @@ function measureFeature(L,f){
   infos.sort((a,b)=>b.abs-a.abs);
   const index=infos.length>16?measureRingIndex(infos):null;
   infos.forEach((x,i)=>{
+    // No ring has strictly greater area than the first sorted ring.
+    if(i===0)return;
     const p=measureRingInteriorPoint(x.ring);let depth=0;
     if(!p)return;
     if(index)depth=measureRingDepth(index,p,x.abs);
@@ -657,11 +659,24 @@ function showProps(){
   if(window.matchMedia('(max-width:720px)').matches) document.getElementById('right').classList.add('open');
 }
 function showFeatureProperties(){
+  // Recolher é uma preferência explícita: consultar pelo botão direito não
+  // reabre o painel. O menu da feição continua disponível no próprio mapa.
+  if(document.body.classList.contains('prop-dock-collapsed')){if(typeof propRefresh==='function')propRefresh();return;}
   showProps();
-  // An explicit request reveals the dock; ordinary selection keeps the
-  // user's open/collapsed state and never opens a floating window.
-  if(document.body.classList.contains('prop-dock-collapsed'))document.getElementById('propDockToggle')?.click();
+  /* Botão direito é uma solicitação explícita de propriedades. No iPad em
+     “site para computador” a largura pode ficar entre 721 e 900 px: nessa
+     faixa o painel de Camadas/seleção está oculto por CSS, embora o antigo
+     teste de 720 px não o abrisse. Mouse/trackpad no iPad também usa
+     contextmenu, portanto revele os dois destinos de propriedades como no
+     Windows: a seção da seleção e o dock lateral. */
   if(typeof propRefresh==='function')propRefresh();
+  const right=document.getElementById('right'),box=document.getElementById('propBox'),
+    touch=Number(navigator.maxTouchPoints)>0||window.matchMedia?.('(pointer:coarse)').matches,
+    drawer=window.matchMedia?.('(max-width:900px)').matches;
+  if(right&&(touch||drawer))right.classList.add('open');
+  requestAnimationFrame(()=>{
+    try{if(box&&box.style.display!=='none')box.scrollIntoView({block:'nearest',inline:'nearest'});}catch(_){ }
+  });
 }
 
 /* ---------- Propriedades da camada (modal, duplo-clique) ---------- */
@@ -861,8 +876,8 @@ function dsBindGaleria(gal, sel, corDe, espDe){
 }
 let lpLayer=null;
 
-/* paleta de cores para toque (Android): swatches que preenchem o color picker.
-   Cobre tons comuns em cartografia/mina + cinzas + básicas. */
+/* Paleta compartilhada de cartografia: cores usuais, tonalidades e cinzas.
+   Os swatches são criados somente ao expandir a classe. */
 var PAL_CORES = [
   '#000000','#404040','#808080','#b0b0b0','#e0e0e0','#ffffff',
   '#e53935','#d81b60','#8e24aa','#5e35b1','#3949ab','#1e88e5',
@@ -870,8 +885,15 @@ var PAL_CORES = [
   '#fdd835','#ffb300','#fb8c00','#f4511e','#6d4c41','#c25b1a',
   '#173B57','#2e7d32','#1565c0','#b71c1c','#4a148c','#00695c',
 ];
+// Extended hues/lightness plus neutral tones, retaining established colors first.
+(function(){
+ const hsl=(h,s,l)=>{const a=s*Math.min(l,1-l),f=n=>{const k=(n+h/30)%12;return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)))).toString(16).padStart(2,'0');};return '#'+f(0)+f(8)+f(4);};
+ const extra=[];for(const light of [.18,.30,.42,.54,.68,.82,.92])for(let h=0;h<360;h+=15)extra.push(hsl(h,.72,light));
+ for(let v=0;v<=255;v+=17)extra.push('#'+v.toString(16).padStart(2,'0').repeat(3));
+ PAL_CORES=[...new Set([...PAL_CORES,...extra].map(c=>c.toLowerCase()))];
+})();
 function paletaSwatches(){
-  return PAL_CORES.map(c=>`<button type="button" class="ce-sw" data-cor="${c}" title="${c}" style="background:${c}"></button>`).join('');
+  return PAL_CORES.map(c=>`<button type="button" class="ce-sw" data-cor="${c}" aria-label="Cor ${c}" title="${c}" style="background:${c}"></button>`).join('');
 }
 /* Parâmetros declarativos de símbolos. O primeiro uso é a placa R-19, cujo
    número precisa vir da categoria (20, 40, 60 km/h...), e a estrutura já
@@ -964,7 +986,7 @@ function clsEditor(idx, item, label, count, layer){
         <div><label class="field">Preenchimento</label><button type="button" class="ce-color ce-color-pick active" data-target="fill" value="${item.color}" style="background:${item.color}" aria-pressed="true" title="Selecionar preenchimento"></button></div>
         <div><label class="field">Contorno</label><button type="button" class="ce-stroke ce-color-pick" data-target="stroke" value="${item.stroke||item.color}" style="background:${item.stroke||item.color}" aria-pressed="false" title="Selecionar contorno"></button></div>
       </div>
-      <div class="ce-pal" data-for="fill">${paletaSwatches()}</div>
+      <div class="ce-pal" data-for="fill" data-palette-pending="1" tabindex="0" aria-label="Paleta de cores com rolagem"></div>
       <div class="hint" style="margin:-2px 0 4px">Escolha <b>Preenchimento</b> ou <b>Contorno</b> acima e toque em uma cor abaixo.</div>
       ${isPoly?`<label class="field">Hachura</label><select class="ce-hatch">${hSel}</select>
       <div class="ce-hatch-spacing-row" style="${['solid','none',''].includes(item.hatch??s.hatch)?'display:none':''}">
@@ -1141,17 +1163,9 @@ function clsBindEditors(box,camada){
     });
   });
   // A cor é aplicada ao alvo escolhido acima, sem abrir a paleta secundária do navegador.
-  box.querySelectorAll('.ce-sw').forEach(btn=>{
-    const aplica=(alvo)=>{ const cls=btn.closest('.cls'); if(!cls) return;
-      const cor=btn.dataset.cor;
-      const inp=cls.querySelector(alvo==='stroke'?'.ce-stroke':'.ce-color');
-      if(inp){ inp.value=cor; inp.dispatchEvent(new Event('input',{bubbles:true})); }
-      const sw=cls.querySelector('.sw'); if(sw && alvo!=='stroke') sw.style.background=cor;
-    };
-    btn.addEventListener('click',e=>{
-      const cls=btn.closest('.cls'); aplica(cls&&cls.dataset.colorTarget==='stroke'?'stroke':'fill'); e.preventDefault();
-    });
-  });
+  const populate=cls=>{const p=cls?.querySelector('.ce-pal[data-palette-pending]');if(p){p.innerHTML=paletaSwatches();p.removeAttribute('data-palette-pending');}};
+  box.querySelectorAll('.cls').forEach(cls=>{if(cls.classList.contains('open'))populate(cls);cls.querySelector('.cls-h')?.addEventListener('click',()=>{if(cls.classList.contains('open'))populate(cls);});});
+  if(!box._paletteClick){box._paletteClick=e=>{const btn=e.target.closest('.ce-sw');if(!btn||!box.contains(btn))return;const cls=btn.closest('.cls');if(!cls)return;const stroke=cls.dataset.colorTarget==='stroke',inp=cls.querySelector(stroke?'.ce-stroke':'.ce-color');if(inp){inp.value=btn.dataset.cor;inp.dispatchEvent(new Event('input',{bubbles:true}));}const sw=cls.querySelector('.sw');if(sw&&!stroke)sw.style.background=btn.dataset.cor;e.preventDefault();};box.addEventListener('click',box._paletteClick);}
   box.querySelectorAll('.ce-hatch').forEach(sel=>sel.addEventListener('change',()=>{
     const gap=sel.closest('.cls').querySelector('.ce-hatch-spacing-row');
     if(gap)gap.style.display=['solid','none',''].includes(sel.value)?'none':'';
@@ -1389,7 +1403,20 @@ function lpFillLabels(L){
       campos.map(fd=>`<option value="&quot;${esc(fd.name).replace(/&quot;/g,'&quot;&quot;')}&quot;">${esc(fd.name)}</option>`).join('');
     fxc.onchange=()=>{if(fxc.value)lpFormulaInsere(fxc.value);fxc.value='';};}
   const fxf=document.getElementById('lbFormulaFuncao');if(fxf)fxf.onchange=()=>{if(fxf.value)lpFormulaInsere(fxf.value);fxf.value='';};
-  Object.entries(LB_IDS).forEach(([id,k])=>{ const e=document.getElementById(id); if(e) e.value=c[k]; });
+  /* Fontes importadas ou coladas podem não existir na lista curta do seletor
+     (inclusive variações como Arial, sans-serif). Um select sem essa opção
+     ficava vazio e a próxima edição apagava a fonte que acabara de entrar. */
+  const font=document.getElementById('lbFont'),defaults=defaultLabelCfg();
+  if(font){
+    font.querySelectorAll('option[data-layer-font]').forEach(o=>o.remove());
+    const family=c.font||defaults.font;
+    if(![...font.options].some(o=>o.value===family)){
+      const option=document.createElement('option');
+      option.value=family;option.textContent=family;option.setAttribute('data-layer-font','');
+      font.appendChild(option);
+    }
+  }
+  Object.entries(LB_IDS).forEach(([id,k])=>{ const e=document.getElementById(id); if(e) e.value=c[k]??defaults[k]; });
   document.getElementById('lbMap').checked = c.onMap!==false;
   const unico=document.getElementById('lbUnique'), ehPonto=L.gtype==='point';
   if(unico){unico.checked=ehPonto?false:c.unique!==false;unico.disabled=ehPonto;}
@@ -1756,12 +1783,21 @@ document.getElementById('lpRenameBtn').onclick=()=>{
 document.getElementById('lpRename').addEventListener('keydown',e=>{
   if(e.key==='Enter') document.getElementById('lpRenameBtn').click(); });
 function deleteRaster(r){
-  undoPush({t:'raster', r, idx:S.rasters.indexOf(r)});
+  let cava2Delete=null;
+  try{
+    cava2Delete=window.CCMGISCava2?.beforeRasterDelete?.(r)||null;
+  }catch(e){console.warn('snapshot da superfície Cava/DCE',e);}
+  const action={t:'raster',r,idx:S.rasters.indexOf(r)};
+  if(cava2Delete)Object.assign(action,{cava2Delete,stackIdx:(S.stack||[]).indexOf('R:'+r.id),demHD:r.demHD});
+  undoPush(action);
   r.demHD=false;
   try{ if(typeof syncDemTiles==='function') syncDemTiles(r); }catch(e){}
   if(r.overlay) map.removeLayer(r.overlay);
   S.rasters=S.rasters.filter(q=>q.id!==r.id);
   S.stack=(S.stack||[]).filter(k=>k!==('R:'+r.id));
+  try{if(cava2Delete&&window.CCMGISCava2?.onRasterDeleted)
+    window.CCMGISCava2.onRasterDeleted(r,cava2Delete);
+  }catch(e){console.warn('remoção da superfície Cava/DCE',e);}
   if(S.hidro && S.hidro.dem===r.d){
     S.hidro.dem=null;
     const o=document.getElementById('hDemOut');
@@ -1801,6 +1837,7 @@ function doUndo(){
     return;
   }
   const proxima=S.undo[S.undo.length-1];
+  if(proxima?.t==='blastingresult'&&window.GeoMineBlasting){GeoMineBlasting.undo(proxima);return;}
   if(proxima?.t==='linejoin'&&window.GeoMineLineJoin){GeoMineLineJoin.undo(proxima);return;}
   if(proxima?.t==='featurestylebrush'&&window.GeoMineFeatureStyleBrush){GeoMineFeatureStyleBrush.undo(proxima);return;}
   if(proxima?.t==='layerstyletransfer'&&window.GeoMineStyleTransfer){GeoMineStyleTransfer.undo(proxima);return;}
@@ -1928,8 +1965,18 @@ function doUndo(){
     refreshUI(); zApply();
     toast('Camada restaurada: "'+a.L.name+'"');
   } else if(a.t==='raster'){
-    S.rasters.splice(Math.min(a.idx??0,S.rasters.length),0,a.r);
+    if(a.cava2Delete){
+      if(!S.rasters.some(r=>r===a.r||r.id===a.r.id))S.rasters.splice(Math.min(a.idx??0,S.rasters.length),0,a.r);
+      a.r.demHD=a.demHD;
+      if(a.stackIdx>=0){
+        S.stack=(S.stack||[]).filter(k=>k!=='R:'+a.r.id);
+        S.stack.splice(Math.min(a.stackIdx,S.stack.length),0,'R:'+a.r.id);
+      }
+      try{window.CCMGISCava2?.restoreRasterDeletion?.(a.cava2Delete,a.r);}
+      catch(e){console.warn('restauração da superfície Cava/DCE',e);}
+    }else S.rasters.splice(Math.min(a.idx??0,S.rasters.length),0,a.r);
     renderRaster(a.r); refreshUI();
+    if(a.cava2Delete&&typeof zApply==='function')zApply();
     toast('Superfície restaurada: "'+a.r.name+'"');
   } else if(a.t==='image'){
     S.img=a.img;
@@ -2238,16 +2285,20 @@ function cadHatchModal(){
     <div class="modal-h"><b>▨ Hachura CAD</b><div style="flex:1"></div>
       <button class="tbtn" id="cadHatchX" title="Fechar">✕</button></div>
     <div class="modal-b">
-      <div class="hout" id="cadHatchSource">Nenhum polígono selecionado.</div>
+      <div class="hout" id="cadHatchSource">Selecione um polígono ou uma polilinha fechada.</div>
       <div class="row2" style="margin-top:8px">
         <div><label class="field">Definir o contorno</label><select id="cadHatchOrigin">
           <option value="selected">Usar a feição selecionada</option>
-          <option value="inside">Clicar dentro do polígono</option>
+          <option value="inside">Clicar dentro de uma área fechada</option>
         </select></div>
         <div><label class="field">Destino</label><select id="cadHatchDest">
           <option value="new">Nova camada de linhas</option>
           <option value="same">Na própria feição/camada</option>
         </select></div>
+      </div>
+      <div class="row2" style="margin-top:8px">
+        <div><label class="field">Padrão</label><select id="cadHatchPattern"><option value="parallel">Paralela (ANSI31)</option><option value="cross">Cruzada</option><option value="double">Dupla (ANSI32)</option></select></div>
+        <div><label class="field">Tolerância de fechamento (m)</label><input id="cadHatchTolerance" type="number" value="0.001" min="0.000001" step="0.001"></div>
       </div>
       <div class="row3" style="margin-top:8px">
         <div><label class="field">Ângulo (°)</label><input id="cadHatchAngle" type="number" value="45" step="1"></div>
@@ -2256,15 +2307,13 @@ function cadHatchModal(){
       </div>
       <div class="row2" style="margin-top:8px">
         <div><label class="field">Cor</label><input id="cadHatchColor" type="color" value="#f5a524"></div>
-        <div><label class="field">Nome da nova camada</label><input id="cadHatchName" value="Hachura CAD"></div>
+        <div><label class="field">Nome da nova camada</label><input id="cadHatchName" type="text" value="Hachura CAD"></div>
       </div>
-      <label class="field" style="display:flex;align-items:center;gap:8px;margin-top:9px;cursor:pointer">
-        <input id="cadHatchCross" type="checkbox" style="width:auto;accent-color:var(--amber)"> Cruzada (segunda direção a 90°)
-      </label>
+      <input id="cadHatchCross" type="checkbox" hidden>
       <label class="field" style="display:flex;align-items:center;gap:8px;margin-top:5px;cursor:pointer">
         <input id="cadHatchReplace" type="checkbox" checked style="width:auto;accent-color:var(--amber)"> Substituir a hachura vinculada existente
       </label>
-      <div class="hint" style="margin-top:8px">O ângulo é medido no plano: 0° = horizontal (Leste–Oeste) e 90° = vertical. Furos do polígono permanecem vazios. Ctrl+Z desfaz.</div>
+      <div class="hint" style="margin-top:8px">Selecione um polígono ou uma polilinha fechada, ou clique numa região delimitada por linhas visíveis. Ângulo: 0° = Leste–Oeste; 90° = vertical. O padrão é recortado nos limites e furos. Esc cancela; Ctrl+Z desfaz.</div>
       <button class="tbtn" id="cadHatchOk" style="width:100%;justify-content:center;margin-top:12px;background:var(--amber);color:#1a1206;font-weight:700">Criar hachura</button>
     </div></div>`;
   document.body.appendChild(bg);
@@ -2274,11 +2323,14 @@ function cadHatchModal(){
   return bg;
 }
 function cadHatchOpen(){
+  window.GeoMineCadHatch?.cancel();
+  if(S.tool==='cad-hatch')setTool('select');
   const bg=cadHatchModal(),sf=S.selFeat,
-    ok=sf&&sf.layer&&sf.layer.gtype==='polygon'&&sf.layer.features[sf.idx];
+    ok=sf&&S.layers.includes(sf.layer)&&sf.layer.features[sf.idx]&&
+      (sf.layer.gtype==='polygon'||sf.layer.gtype==='line'&&cadHatchRingsWork(sf.layer,sf.layer.features[sf.idx],cadHatchMetricCRS(),sf.partIdx).length);
   const out=bg.querySelector('#cadHatchSource');
   out.innerHTML=ok?`Selecionado: <b>${esc(sf.layer.name)}</b> · feição #${sf.idx+1}`:
-    'Nenhum polígono selecionado — escolha “clicar dentro” ou selecione uma feição primeiro.';
+    'Nenhum contorno fechado selecionado — escolha “clicar dentro” ou selecione um polígono/polilinha fechada.';
   bg.querySelector('#cadHatchOrigin').value=ok?'selected':'inside';
   bg.classList.add('on');
 }
@@ -2287,25 +2339,43 @@ function cadHatchCfg(){
   return {origin:q('cadHatchOrigin').value,dest:q('cadHatchDest').value,
     angle:num('cadHatchAngle'),spacing:num('cadHatchSpacing'),weight:num('cadHatchWeight'),
     color:q('cadHatchColor').value||'#f5a524',name:q('cadHatchName').value.trim()||'Hachura CAD',
-    cross:q('cadHatchCross').checked,replace:q('cadHatchReplace').checked};
+    pattern:q('cadHatchPattern').value,tolerance:num('cadHatchTolerance'),
+    cross:q('cadHatchCross').checked||q('cadHatchPattern').value==='cross',replace:q('cadHatchReplace').checked};
 }
-function cadHatchRingsWork(L,f){
-  const src=(f.multi&&Array.isArray(f.geom&&f.geom[0]&&f.geom[0][0]))?f.geom:[f.geom];
+function cadHatchMetricCRS(){
+  const crs=S.workCRS||'EPSG:31982',definition=proj4.defs(crs);
+  if(!/4326|4674|4618|4989/.test(crs)&&!/(longlat|latlong)/i.test(crs+' '+JSON.stringify(definition||'')))return crs;
+  const c=map.getCenter(),zone=Math.max(1,Math.min(60,Math.floor((c.lng+180)/6)+1));
+  return '+proj=utm +zone='+zone+(c.lat<0?' +south':'')+' +datum=WGS84 +units=m +no_defs';
+}
+function cadHatchRingsWork(L,f,crs=cadHatchMetricCRS(),partIdx,tolerance=.001){
+  let src;
+  if(L.gtype==='line'){
+    const convert=L.crs===crs?p=>[p[0],p[1]]:proj4(L.crs,crs).forward;
+    const raw=Array.isArray(f.geom?.[0]?.[0])?f.geom:[f.geom];
+    const work={geom:raw.map(r=>Array.isArray(r)?r.map(p=>Array.isArray(p)&&Number.isFinite(p[0])&&Number.isFinite(p[1])?convert([p[0],p[1]]):null):[])};
+    return window.GeoMineHatchBoundaries?.closedRings(work,tolerance,partIdx)||[];
+  }
+  src=Array.isArray(f.geom?.[0]?.[0])?f.geom:[f.geom];
+  if(!f.multi&&src.length>1)src=[src.reduce((a,b)=>b.length>a.length?b:a)];
+  if(!src.every(r=>Array.isArray(r)&&r.length>=3&&r.every(p=>Array.isArray(p)&&Number.isFinite(p[0])&&Number.isFinite(p[1]))))return [];
+  const convert=L.crs===crs?p=>[p[0],p[1]]:proj4(L.crs,crs).forward;
   return src.filter(r=>Array.isArray(r)&&r.length>=3).map(r=>{
-    const w=r.map(p=>reproj(L.crs,S.workCRS,p[0],p[1]));
+    if(!r.every(p=>Array.isArray(p)&&Number.isFinite(p[0])&&Number.isFinite(p[1])))return [];
+    const w=r.map(p=>convert([p[0],p[1]]));
     if(w.length>3&&Math.hypot(w[0][0]-w.at(-1)[0],w[0][1]-w.at(-1)[1])<1e-7)w.pop();
     return w;
   }).filter(r=>r.length>=3);
 }
-function cadHatchScan(rings,angle,spacing){
+function cadHatchScan(rings,angle,spacing,offset=0){
   const a=((angle%180)+180)%180*Math.PI/180,d=[Math.cos(a),Math.sin(a)],n=[-d[1],d[0]];
   let mn=Infinity,mx=-Infinity;
   rings.forEach(r=>r.forEach(p=>{const s=p[0]*n[0]+p[1]*n[1];if(s<mn)mn=s;if(s>mx)mx=s;}));
-  const first=Math.ceil((mn-1e-8)/spacing),last=Math.floor((mx+1e-8)/spacing),count=last-first+1;
+  const first=Math.ceil((mn-offset-1e-8)/spacing),last=Math.floor((mx-offset+1e-8)/spacing),count=last-first+1;
   if(count>20000)throw new Error(`Espaçamento muito pequeno: seriam ${count.toLocaleString('pt-BR')} linhas. Use pelo menos ${((mx-mn)/20000).toFixed(3)} m.`);
   const out=[],eps=Math.max(1e-8,spacing*1e-8);
   for(let k=first;k<=last;k++){
-    const c=k*spacing,ts=[];
+    const c=k*spacing+offset,ts=[];
     rings.forEach(r=>{
       for(let i=0,j=r.length-1;i<r.length;j=i++){
         const p=r[j],q=r[i],sp=p[0]*n[0]+p[1]*n[1],sq=q[0]*n[0]+q[1]*n[1];
@@ -2316,82 +2386,148 @@ function cadHatchScan(rings,angle,spacing){
       }
     });
     ts.sort((x,y)=>x-y);
-    const t=[];ts.forEach(v=>{if(!t.length||Math.abs(v-t.at(-1))>eps)t.push(v);});
+    // Coincident intersections cancel in pairs (shared polygon edges and
+    // tangencies). Deduplicating them once incorrectly drops adjacent parts.
+    const t=[];for(let i=0;i<ts.length;){let j=i+1;while(j<ts.length&&Math.abs(ts[j]-ts[i])<=eps)j++;if((j-i)%2)t.push(ts[i]);i=j;}
     for(let i=0;i+1<t.length;i+=2)if(t[i+1]-t[i]>eps)out.push([
       [d[0]*t[i]+n[0]*c,d[1]*t[i]+n[1]*c],
       [d[0]*t[i+1]+n[0]*c,d[1]*t[i+1]+n[1]*c]]);
+    if(out.length>100000)throw Error('O padrão excede 100.000 segmentos. Aumente o espaçamento.');
   }
   return out;
 }
-function cadHatchCreate(L,idx,cfg){
-  const f=L&&L.features&&L.features[idx];
-  if(!f||L.gtype!=='polygon'){toast('A hachura exige uma feição poligonal');return;}
-  if(!Number.isFinite(cfg.angle)||!(cfg.spacing>0)||!(cfg.weight>0)){toast('Revise ângulo, espaçamento e espessura');return;}
-  const rings=cadHatchRingsWork(L,f);if(!rings.length){toast('Polígono sem anéis válidos');return;}
-  let segs;
-  try{segs=cadHatchScan(rings,cfg.angle,cfg.spacing);
-    if(cfg.cross)segs=segs.concat(cadHatchScan(rings,cfg.angle+90,cfg.spacing));}
-  catch(e){toast(e.message||String(e));return;}
-  if(!segs.length){toast('Nenhuma linha pôde ser criada dentro do polígono');return;}
-  if(cfg.dest==='same'){
-    const old=Array.isArray(f.cadHatches)?JSON.parse(JSON.stringify(f.cadHatches)):[];
-    undoPush({t:'hatch',L,f,old});
-    const back=segs.map(s=>s.map(p=>reproj(S.workCRS,L.crs,p[0],p[1]))),
-      h={segments:back,angle:cfg.angle,spacing:cfg.spacing,cross:cfg.cross,color:cfg.color,weight:cfg.weight,opacity:1};
-    f.cadHatches=cfg.replace?[h]:(old.concat([h]));
-    drawLayer(L);refreshUI();S.activeId=L.id;S.selFeat={layer:L,layerId:L.id,idx};highlightSel();
-    toast(`${segs.length.toLocaleString('pt-BR')} segmento(s) de hachura vinculados a “${L.name}”`);
-  }else{
-    const back=segs.map(s=>s.map(p=>reproj(S.workCRS,L.crs,p[0],p[1]))),
-      props={TIPO:'Hachura CAD',ORIGEM:L.name,ANGULO:cfg.angle,ESPACO_M:cfg.spacing,CRUZADA:cfg.cross?'Sim':'Não'},
-      nf={geom:back,multi:true,props},
-      out=addLayer({name:cfg.name,gtype:'line',crs:L.crs,features:[nf],color:cfg.color,
-        fields:[{name:'TIPO',type:'C',length:24},{name:'ORIGEM',type:'C',length:80},
-          {name:'ANGULO',type:'N',length:12,decimal:3},{name:'ESPACO_M',type:'N',length:12,decimal:3},
-          {name:'CRUZADA',type:'C',length:5}]});
-    out.weight=cfg.weight;out.sym.weight=cfg.weight;out.sym.stroke=cfg.color;out.sym.color=cfg.color;
-    drawLayer(out);refreshUI();undoPush({t:'layeradd',L:out});
-    toast(`${segs.length.toLocaleString('pt-BR')} segmento(s) criados em “${out.name}”`);
-  }
+function cadHatchSegments(rings,cfg){
+  let out=cadHatchScan(rings,cfg.angle,cfg.spacing);
+  if(cfg.cross||cfg.pattern==='cross')out=out.concat(cadHatchScan(rings,cfg.angle+90,cfg.spacing));
+  if(cfg.pattern==='double')out=out.concat(cadHatchScan(rings,cfg.angle,cfg.spacing,cfg.spacing*.2));
+  if(out.length>100000)throw Error('O padrão excede 100.000 segmentos. Aumente o espaçamento.');
+  return out;
 }
-function cadHatchFindAt(latlng){
-  for(const L of (S.layers||[])){
-    if(L.visible===false||L.gtype!=='polygon')continue;
-    const p=fromWGS(L.crs,latlng.lng,latlng.lat);
-    for(let i=(L.features||[]).length-1;i>=0;i--){
-      const f=L.features[i];if(!f||!featureVisible(L,f))continue;
-      const rings=(f.multi&&Array.isArray(f.geom&&f.geom[0]&&f.geom[0][0]))?f.geom:[f.geom];
-      let inside=false;rings.forEach(r=>{if(r&&r.length>=3&&pointInRing(p[0],p[1],r))inside=!inside;});
-      if(inside)return{L,idx:i};
-    }
-  }
-  return null;
+let cadHatchWorkerJob=null,cadHatchSequence=0;
+function cadHatchWorker(type,payload){
+  if(cadHatchWorkerJob)cadHatchWorkerJob.abort();
+  return new Promise((resolve,reject)=>{
+    const source=GeoMineHatchBoundaries.workerSource()+'\nconst S={workCRS:"work"};const reproj=(a,b,x,y)=>[x,y];\n'+
+      polygonizeLines.toString()+'\n'+cadHatchScan.toString()+'\n'+cadHatchSegments.toString()+
+      '\nself.onmessage=e=>{try{const p=e.data;const result=p.type==="infer"?GeoMineHatchBoundaries.faceAt(p.paths,p.point,p.tolerance,(paths,tolerance)=>polygonizeLines({crs:"work",features:paths.map(geom=>({geom,multi:false}))},tolerance)):cadHatchSegments(p.rings,p.cfg);self.postMessage({result});}catch(e){self.postMessage({error:e.message});}};';
+    const url=URL.createObjectURL(new Blob([source],{type:'text/javascript'})),worker=new Worker(url);
+    const job={abort(){finish(Object.assign(Error('Hachura cancelada'),{name:'AbortError'}));}};
+    const finish=(error,value)=>{worker.terminate();URL.revokeObjectURL(url);if(cadHatchWorkerJob===job)cadHatchWorkerJob=null;if(error)reject(error);else resolve(value);};
+    cadHatchWorkerJob=job;worker.onmessage=e=>e.data.error?finish(Error(e.data.error)):finish(null,e.data.result);
+    worker.onerror=e=>finish(Error(e.message||'Não foi possível calcular a hachura.'));worker.postMessage({type,...payload});
+  });
 }
-/* A escolha do polígono fica armada até acertar um polígono ou Esc. Antes o
-   clique no mapa era "once": errando o alvo, ele se desarmava mas a captura
-   das feições (S._pickCadHatch) ficava presa para sempre — todo clique em
-   linha respondia "Clique dentro de um polígono" e nada mais era selecionado. */
 function cadHatchDesarma(){
-  if(S._cadHatchMapHandler)try{map.off('click',S._cadHatchMapHandler);}catch(e){}
-  S._cadHatchMapHandler=null;S._pickCadHatch=null;
+  if(S._cadHatchMapHandler)try{map.off('click',S._cadHatchMapHandler);}catch(_){}
+  if(S._pickCancel===S._cadHatchCancelPick)S._pickCancel=null;
+  S._cadHatchMapHandler=null;S._pickCadHatch=null;S._cadHatchCancelPick=null;
 }
+function cadHatchCancel(){cadHatchSequence++;cadHatchWorkerJob?.abort();cadHatchDesarma();}
+function cadHatchContext(layers,watchCatalog=false){
+  const project=S.projectId,generation=window.GeoMineSessionAutosave?.state?.generation,sequence=cadHatchSequence,crs=S.workCRS,
+    catalog=watchCatalog?S.layers.slice():null,
+    snapshots=[...new Set(layers)].map(L=>({L,visible:L.visible,revision:L._rev,features:L.features,geometries:L.features.map(f=>f.geom)}));
+  return ()=>S.projectId===project&&window.GeoMineSessionAutosave?.state?.generation===generation&&cadHatchSequence===sequence&&S.workCRS===crs&&
+    (!catalog||catalog.length===S.layers.length&&catalog.every((L,i)=>L===S.layers[i]))&&
+    snapshots.every(q=>S.layers.includes(q.L)&&q.L.visible===q.visible&&q.L._rev===q.revision&&q.L.features===q.features&&q.L.features.length===q.geometries.length&&q.L.features.every((f,i)=>f.geom===q.geometries[i]));
+}
+async function cadHatchCreate(L,idx,cfg,options={}){
+  const f=L?.features?.[idx],real=!!f&&S.layers.includes(L),crs=options.crs||cadHatchMetricCRS(),current=options.current||(real?cadHatchContext([L]):()=>false);
+  if(!current())return false;
+  if(!Number.isFinite(cfg.angle)||!Number.isFinite(cfg.spacing)||!(cfg.spacing>0)||!Number.isFinite(cfg.weight)||!(cfg.weight>0)){toast('Revise ângulo, espaçamento e espessura');return false;}
+  const linked=cfg.dest==='same'&&real;
+  if(linked&&!collabCanEditLayer(L,true))return false;
+  try{
+    const rings=options.rings||cadHatchRingsWork(L,f,crs,options.partIdx,cfg.tolerance??.001);
+    if(!rings.length){toast('Selecione um polígono ou uma polilinha realmente fechada.');return false;}
+    toast('Calculando a hachura… Esc cancela');
+    const segs=await GeoMineCadHatch.segments(rings,cfg);
+    if(!current())return false;
+    if(!segs.length){toast('Nenhuma linha dentro do contorno; reduza o espaçamento.');return false;}
+    if(linked&&!collabCanEditLayer(L,false))return false;
+    const outputCRS=real?L.crs:S.workCRS,convert=crs===outputCRS?p=>p.slice():proj4(crs,outputCRS).forward,
+      back=segs.map(s=>s.map(p=>convert(p.slice())));
+    if(linked){
+      const old=Array.isArray(f.cadHatches)?JSON.parse(JSON.stringify(f.cadHatches)):[];
+      undoPush({t:'hatch',L,f,old});
+      const h={segments:back,angle:cfg.angle,spacing:cfg.spacing,cross:cfg.cross,pattern:cfg.pattern||'parallel',color:cfg.color,weight:cfg.weight,opacity:1};
+      f.cadHatches=cfg.replace?[h]:old.concat([h]);drawLayer(L);refreshUI();S.activeId=L.id;S.selFeat={layer:L,layerId:L.id,idx};highlightSel();
+    }else{
+      const props={TIPO:'Hachura CAD',ORIGEM:real?L.name:'Área fechada',ANGULO:cfg.angle,ESPACO_M:cfg.spacing,PADRAO:cfg.pattern||'parallel',CRUZADA:cfg.cross||cfg.pattern==='cross'?'Sim':'Não'},
+        out=addLayer({...(real?{sourceLayer:L}:{}),name:cfg.name,gtype:'line',crs:outputCRS,features:[{geom:back,multi:true,props}],color:cfg.color,
+          fields:[{name:'TIPO',type:'C',length:24},{name:'ORIGEM',type:'C',length:80},{name:'ANGULO',type:'N',length:12,decimal:3},{name:'ESPACO_M',type:'N',length:12,decimal:3},{name:'PADRAO',type:'C',length:20},{name:'CRUZADA',type:'C',length:5}]});
+      out.weight=cfg.weight;out.sym.weight=cfg.weight;out.sym.stroke=cfg.color;out.sym.color=cfg.color;
+      S.selFeat=null;if(S.msel?.items?.length)mselClear(true);highlightSel();drawLayer(out);refreshUI();undoPush({t:'layeradd',L:out});
+    }
+    cadHatchDesarma();setTool('select');toast(`${segs.length.toLocaleString('pt-BR')} segmento(s) de hachura criados — Ctrl+Z desfaz`);return true;
+  }catch(e){if(e.name!=='AbortError'&&current())toast(e.message||String(e));return false;}
+}
+function cadHatchBoundaryData(latlng,crs){
+  const paths=[],layers=[],point=fromWGS(crs,latlng.lng,latlng.lat);let target=null,count=0;
+  const ordered=typeof stackSync==='function'?stackSync().filter(n=>n.t==='L').map(n=>n.o):S.layers;
+  for(const L of ordered){
+    if(L.visible===false||!['line','polygon'].includes(L.gtype)||!L.features?.length)continue;
+    const convert=L.crs===crs?p=>[p[0],p[1]]:proj4(L.crs,crs).forward;let used=false;
+    for(let idx=0;idx<L.features.length;idx++){
+      const f=L.features[idx];if(!f?.geom||f.props?.TIPO==='Hachura CAD'||!featureVisible(L,f))continue;
+      const raw=Array.isArray(f.geom[0]?.[0])?f.geom:[f.geom],rings=[];
+      if(L.gtype==='polygon'){
+        const work=cadHatchRingsWork(L,f,crs);let inside=false,contains=false;
+        for(const ring of work){if(pointInRing(point[0],point[1],ring)){inside=!inside;contains=true;}}
+        if(!contains)continue;
+        if(inside&&!target)target={L,idx};
+        for(const ring of work)rings.push(ring.concat([ring[0].slice()]));
+      }else{
+        for(const r of raw){let run=[];
+          for(const p of r||[]){if(Array.isArray(p)&&Number.isFinite(p[0])&&Number.isFinite(p[1]))run.push(convert([p[0],p[1]]));else{if(run.length>1)rings.push(run);run=[];}}
+          if(run.length>1)rings.push(run);
+        }
+      }
+      for(const ring of rings){count+=ring.length-1;if(count>50000)throw Error('Há mais de 50.000 segmentos nos limites visíveis. Selecione o contorno ou oculte as camadas que não serão usadas.');paths.push(ring);used=true;}
+    }
+    if(used)layers.push(L);
+  }
+  return {paths,point,layers,target};
+}
+function cadHatchFindAt(latlng){return cadHatchBoundaryData(latlng,cadHatchMetricCRS()).target;}
 function cadHatchArmPick(cfg){
-  cadHatchDesarma();
-  let done=false;
-  const finish=(L,idx)=>{if(done)return;done=true;cadHatchDesarma();cadHatchCreate(L,idx,cfg);};
-  S._pickCadHatch=(L,idx)=>{if(L.gtype!=='polygon'){toast('Clique dentro de um polígono — Esc cancela a hachura');return;}finish(L,idx);};
-  S._cadHatchMapHandler=e=>{const hit=cadHatchFindAt(e.latlng);if(hit)finish(hit.L,hit.idx);else toast('Nenhum polígono nesse ponto — clique dentro de um polígono ou Esc para cancelar');};
-  map.on('click',S._cadHatchMapHandler);
-  S._pickCancel=()=>{if(S._pickCadHatch||S._cadHatchMapHandler){cadHatchDesarma();toast('Hachura cancelada');}};
-  setTool('select');toast('Clique dentro do polígono que receberá a hachura (Esc cancela)');
+  cadHatchDesarma();setTool('cad-hatch');let busy=false;
+  const pick=latlng=>{
+    if(busy||!latlng)return;busy=true;
+    S._cadHatchPending=(async()=>{
+      let current;
+      try{
+        const crs=cadHatchMetricCRS(),data=cadHatchBoundaryData(latlng,crs);current=cadHatchContext(data.layers,true);
+        if(!data.paths.length){toast('Nenhum limite fechado nesse ponto. Clique dentro de outra área ou Esc.');return false;}
+        toast('Reconhecendo a área fechada… Esc cancela');
+        const result=await GeoMineCadHatch.inferAt(data.paths,data.point,cfg.tolerance);
+        if(!current())return false;
+        if(!result.ok){toast(result.message||'As linhas não fecham uma região nesse ponto.');return false;}
+        return await cadHatchCreate(data.target?.L,data.target?.idx,cfg,{crs,rings:result.rings,current});
+      }catch(e){if(e.name!=='AbortError'&&(!current||current()))toast(e.message||String(e));return false;}
+      finally{busy=false;}
+    })();return S._cadHatchPending;
+  };
+  S._pickCadHatch=(L,idx,latlng)=>pick(latlng);
+  S._cadHatchMapHandler=e=>pick(e.latlng);map.on('click',S._cadHatchMapHandler);
+  S._cadHatchCancelPick=()=>{cadHatchCancel();toast('Hachura cancelada');};S._pickCancel=S._cadHatchCancelPick;
+  toast('Clique dentro da área fechada por polígonos ou linhas visíveis — Esc cancela');
 }
 function cadHatchStart(){
-  const cfg=cadHatchCfg(),bg=document.getElementById('cadHatchModal');
-  if(bg)bg.classList.remove('on');
-  if(cfg.origin==='inside'){cadHatchArmPick(cfg);return;}
-  const sf=S.selFeat;if(!sf||!sf.layer||sf.layer.gtype!=='polygon'){toast('Selecione primeiro uma feição poligonal');return;}
-  cadHatchCreate(sf.layer,sf.idx,cfg);
+  cadHatchCancel();const cfg=cadHatchCfg(),bg=document.getElementById('cadHatchModal');
+  if(!Number.isFinite(cfg.tolerance)||cfg.tolerance<0||!Number.isFinite(cfg.angle)||!(cfg.spacing>0)||!(cfg.weight>0)){toast('Revise os parâmetros da hachura.');return Promise.resolve(false);}
+  if(bg)bg.classList.remove('on');document.activeElement?.blur?.();
+  if(cfg.origin==='inside'){cadHatchArmPick(cfg);return Promise.resolve(true);}
+  const sf=S.selFeat;
+  if(!sf||!S.layers.includes(sf.layer)||!['polygon','line'].includes(sf.layer.gtype)){toast('Selecione um polígono ou uma polilinha fechada.');return Promise.resolve(false);}
+  setTool('cad-hatch');const sequence=cadHatchSequence;
+  S._cadHatchPending=cadHatchCreate(sf.layer,sf.idx,cfg,{partIdx:sf.partIdx}).finally(()=>{if(cadHatchSequence===sequence&&S.tool==='cad-hatch'&&!S._pickCadHatch)setTool('select');});return S._cadHatchPending;
 }
+window.GeoMineCadHatch={inferAt:(paths,point,tolerance)=>cadHatchWorker('infer',{paths,point,tolerance}),segments:(rings,cfg)=>cadHatchWorker('scan',{rings,cfg}),cancel:cadHatchCancel};
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape'||!cadHatchWorkerJob&&!S._pickCadHatch&&S.tool!=='cad-hatch')return;
+  e.preventDefault();e.stopImmediatePropagation();cadHatchCancel();setTool('select');toast('Hachura cancelada');
+},true);
 /* Ícone próprio no mesmo padrão vetorial da ribbon. */
 (function cadHatchIcon(){window.addEventListener('DOMContentLoaded',()=>{try{RIB_SVG.hachura='<svg viewBox="0 0 32 32" fill="none"><title>Hachura CAD</title><defs><linearGradient id="al3_hatch_g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFD27A"/><stop offset="1" stop-color="#F57C00"/></linearGradient></defs><path d="M5 8l11-4 11 6-3 16H8z" fill="white" stroke="#173B57" stroke-width="1.4"/><path d="M7 12l7-7M6 18L19 5M7 24L24 7M12 27l14-14M19 26l6-6" stroke="url(#al3_hatch_g)" stroke-width="1.8"/><path d="M5 8l11-4 11 6-3 16H8z" stroke="#173B57" stroke-width="1.4"/></svg>';}catch(e){}});})();
 /* --- DXF R12 (POLYLINE/VERTEX/SEQEND + POINT), metros no CRS de trabalho --- */

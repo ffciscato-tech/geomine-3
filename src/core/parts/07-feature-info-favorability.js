@@ -162,7 +162,7 @@ async function favorCalcula(){
     style:{mode:'classes', opacity:0.75, classes:[
       {min:-0.5,max:0.5,color:'#c92a2a'},{min:0.5,max:1.5,color:'#f2b705'},{min:1.5,max:2.5,color:'#2f9e44'}]},
     d};
-  S.rasters.push(R);
+  S.rasters.push(R);placeProductAbove(R,Larea);
   try{ renderRaster(R); }catch(e){}
   FAVOR.ultimo={cont, areaCel, resumo, porMotivo, t1, t2, cs, nBloqTot, nNotaBaixa,
     subst:document.getElementById('fvSubst').value||'', area:Larea.name, rasterId:R.id};
@@ -344,7 +344,7 @@ function favorPoligonos(){
     }
     if(!feats.length) return;
     total+=feats.length;
-    addLayer({name:`Favorabilidade — ${nomes[cl]}`, gtype:'polygon', crs:R.srcCRS||S.workCRS,
+    addLayer({sourceLayer:R,name:`Favorabilidade — ${nomes[cl]}`, gtype:'polygon', crs:R.srcCRS||S.workCRS,
       features:feats, fields:[{name:'CLASSE',type:'N',length:3,decimal:0},
         {name:'NOME',type:'C',length:20},{name:'AREA_M2',type:'N',length:14,decimal:1}],
       color:cores[cl]});
@@ -567,7 +567,7 @@ function drenTalvezMostra(L, f){
 }
 function wmsCamadasVisiveis(){
   return (S.wms||[]).filter(w=>{
-    if(!w || w.visible===false || !w.llayer) return false;
+    if(!w || w.protocol==='WMTS' || w.visible===false || !w.llayer) return false;
     try{ return map.hasLayer(w.llayer); }catch(e){ return false; }
   }).slice().reverse();
 }

@@ -91,6 +91,7 @@ function v3RasterCellY(d,row){return d.yll+(d.nr-row-0.5)*(d.csy||d.cs);}
 
 function v3ApplyCam(){
   if(!V3.cam || !V3.tgt) return;          // cena ainda não montada: nada a aplicar
+  if(window.GeoMineBlastingPresentation?.applyPlanCamera(V3))return;
   const {tgt,radius,theta,phi}=V3;
   if(V3.topNorth){
     /* Planta cartográfica verdadeira: E à direita e Norte para cima. Como N
@@ -252,18 +253,28 @@ function v3AbaSync(aba){
 }
 function v3Bind(el){
   let mode=0, px=0, py=0, pinch=0;
+  let touchCount=0,pinchX=0,pinchY=0;
+  const panScreen=(dx,dy)=>{
+    if(!V3.cam||!window.THREE)return;
+    const k=V3.radius*.0016,dir=new THREE.Vector3(...V3.tgt).sub(V3.cam.position).normalize(),
+      right=new THREE.Vector3().crossVectors(dir,new THREE.Vector3(0,1,0));
+    if(right.lengthSq()<1e-10)right.set(1,0,0);else right.normalize();
+    const up=new THREE.Vector3().crossVectors(right,dir);
+    V3.tgt[0]+=(-dx*right.x+dy*up.x)*k;V3.tgt[1]+=(-dx*right.y+dy*up.y)*k;V3.tgt[2]+=(-dx*right.z+dy*up.z)*k;
+  };
   const spd=0.008;
   el.addEventListener('contextmenu',e=>e.preventDefault());
   el.addEventListener('auxclick',e=>{ if(e.button===1) e.preventDefault(); });
   el.addEventListener('mousedown',e=>{ if(e.button===1) e.preventDefault(); });  // evita auto-scroll
   let dn=[0,0],activePointer=null,clickButton=null,moved=false;
   el.addEventListener('pointerdown',e=>{
+    if(e.pointerType==='touch'&&!e.isPrimary){mode=0;activePointer=null;clickButton=null;moved=true;return;}
     if(activePointer!==null){moved=true;return;}
     activePointer=e.pointerId;clickButton=e.button;moved=false;
     el.setPointerCapture(e.pointerId);
     // botão do MEIO (1) = pan · DIREITO (2) = órbita · esquerdo (0) = órbita
     // Shift + arrasto continua funcionando como pan (atalho de teclado).
-    mode=(e.button===1||e.shiftKey)? 2 : 1;
+    mode=(e.button===1||e.shiftKey||(e.pointerType!=='mouse'&&window.GeoMineTouchWorkspace?.pan3D))? 2 : 1;
     px=e.clientX; py=e.clientY; dn=[e.clientX,e.clientY];
   });
   el.addEventListener('pointerup',e=>{
@@ -282,11 +293,12 @@ function v3Bind(el){
   const cancel=()=>{mode=0;activePointer=null;clickButton=null;moved=true;};
   el.addEventListener('pointercancel',cancel);el.addEventListener('lostpointercapture',cancel);
   el.addEventListener('pointermove',e=>{
+    if(touchCount>1)return;
     if(!mode||e.pointerId!==activePointer) return;
     if(Math.hypot(e.clientX-dn[0],e.clientY-dn[1])>=6)moved=true;
     if((V3.measOn||V3.centerPickOn)&&clickButton===0&&!moved)return;
     const dx=e.clientX-px, dy=e.clientY-py; px=e.clientX; py=e.clientY;
-    if(mode===1){ V3.topNorth=false;try{v3LinhasSempreVisiveis(false);}catch(e){}
+    if(mode===1&&!V3.cam?._blastingPlan){ V3.topNorth=false;try{v3LinhasSempreVisiveis(false);}catch(e){}
       V3.theta+=dx*spd; V3.phi+=dy*spd; }
     else{ // PAN no plano da tela, pelos eixos REAIS da câmera: a cena
           // ACOMPANHA o mouse (agarrar o terreno), em qualquer órbita —
@@ -312,20 +324,29 @@ function v3Bind(el){
   },{passive:false});
   // toque: 2 dedos = pinça (zoom)
   el.addEventListener('touchstart',e=>{
+    touchCount=e.touches.length;
     if(e.touches.length===2){
+      mode=0;activePointer=null;clickButton=null;moved=true;
       pinch=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,
                        e.touches[0].clientY-e.touches[1].clientY);
+      pinchX=(e.touches[0].clientX+e.touches[1].clientX)/2;
+      pinchY=(e.touches[0].clientY+e.touches[1].clientY)/2;
     }
   },{passive:true});
   el.addEventListener('touchmove',e=>{
     if(e.touches.length===2 && pinch){
+      e.preventDefault();
       const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,
                          e.touches[0].clientY-e.touches[1].clientY);
-      V3.radius*=pinch/d; pinch=d;
+      if(d>0)V3.radius*=pinch/d; pinch=d;
       V3.radius=Math.max(V3.size*0.02, Math.min(V3.size*20, V3.radius));
+      const x=(e.touches[0].clientX+e.touches[1].clientX)/2,y=(e.touches[0].clientY+e.touches[1].clientY)/2;
+      panScreen(x-pinchX,y-pinchY);pinchX=x;pinchY=y;
       v3ApplyCam();
     }
-  },{passive:true});
+  },{passive:false});
+  const touchEnd=e=>{touchCount=e.touches.length;if(touchCount<2)pinch=0;};
+  el.addEventListener('touchend',touchEnd,{passive:true});el.addEventListener('touchcancel',touchEnd,{passive:true});
 }
 
 const HYPSO=[[0.00,0x276419],[0.25,0x7fbc41],[0.45,0xe6d97a],
@@ -398,6 +419,9 @@ function v3VectorExtent(){
   };
   (S.layers||[]).forEach(L=>{
     if(!['line','polygon','point'].includes(L.gtype))return;
+    // A NoData marker has XY only. Never manufacture its Z from the display
+    // mesh or from the legacy vector-only zero plane.
+    if(L._blasting?.role==='nodata')return;
     const on=(L.visible!==false);   /* a árvore manda, sem marcação paralela */
     if(!on)return;
     (L.features||[]).forEach(f=>{
@@ -544,7 +568,7 @@ function v3PickPivot(clientX,clientY){
   if(V3.vecGroup&&V3.vecGroup.visible)V3.vecGroup.traverse(o=>{
     if(o.visible&&(o.isLine||o.isLineSegments||o.isMesh))objetos.push(o);
   });
-  const hits=objetos.length?rc.intersectObjects(objetos,false):[],
+  const hits=objetos.length?rc.intersectObjects(objetos,true):[],
     p=snap?snap.point:(hits[0]&&hits[0].point);
   if(!p){toast('Clique sobre uma superfície ou linha 3D');return;}
   V3.tgt=[p.x,p.y,p.z];V3.centerPickOn=false;
@@ -558,7 +582,7 @@ function v3MeasPick(clientX, clientY){
   const nd=new THREE.Vector2(((clientX-r.left)/r.width)*2-1, -((clientY-r.top)/r.height)*2+1);
   const rc=new THREE.Raycaster(); rc.setFromCamera(nd, V3.cam);
   const snap=v3MeasVectorSnap(clientX,clientY);
-  const hits=(V3.meshes&&V3.meshes.length)?rc.intersectObjects(V3.meshes.filter(o=>o.visible),false):[];
+  const hits=(V3.meshes&&V3.meshes.length)?rc.intersectObjects(V3.meshes.filter(o=>o.visible),true):[];
   if(!snap&&!hits.length){ toast('Toque sobre o terreno ou um vetor'); return; }
   const p=(snap?snap.point:hits[0].point).clone();
   // OFF levanta o traço apenas para ele não brigar visualmente com o MDT.
@@ -672,6 +696,152 @@ function v3InterpolaVazioLinear(d,rr,cc,maxGap=8){
   return isFinite(h)?h:v;
 }
 
+/* A vista 3D usa células nativas. Os blocos apenas dividem o trabalho e a
+   memória temporária: compartilham a fileira de borda, nunca pulam amostras. */
+function v3HasExactTin(r){
+  return !!(r&&r._tinMesh&&r._tinMesh.positions&&r._tinMesh.indices);
+}
+function v3NativeSourceIdentity(r){
+  const fn=v3NativeSourceIdentity;
+  if(!fn.ids){fn.ids=new WeakMap();fn.serial=0;}
+  return [r.d,r.d&&r.d.z,r.d&&r.d._full,r.d&&r.d._img0,r._tinMesh,
+    r._tinMesh&&r._tinMesh.positions,r._tinMesh&&r._tinMesh.indices,r._projectNativeBinding,r._projectSourceRaw]
+    .map(o=>{if(!o||typeof o!=='object')return 0;if(!fn.ids.has(o))fn.ids.set(o,++fn.serial);return fn.ids.get(o);}).join('.');
+}
+function v3NativeMemoryBudget(){
+  const gb=Number(window.navigator&&window.navigator.deviceMemory)||(alagisModoMobile()?2:8);
+  // Orçamento de visualização. A grade usada nos cálculos não é alterada.
+  return Math.max(128,Math.min(1024,gb*128))*1024*1024;
+}
+function v3SurfaceDataSignature(){
+  return v3SuperficiesAtivas().map(r=>[r.id,v3NativeSourceIdentity(r),r._rev,r.d?._rev].join(':')).join('|');
+}
+async function v3NativeSource(r,isCurrent,loadedGrid=null){
+  const d=r.d,f=d&&d._full,dims=d&&(d.srcDims||[d._W0,d._H0]);
+  const shape=g=>g&&Number.isSafeInteger(g.nc)&&Number.isSafeInteger(g.nr)&&g.nc>0&&g.nr>0&&
+    Number.isFinite(g.cs)&&g.cs>0&&Number.isFinite(g.csy||g.cs)&&(g.csy||g.cs)>0&&
+    Number.isFinite(g.xll)&&Number.isFinite(g.yll)&&g.z&&g.z.length===g.nc*g.nr;
+  const bounds=g=>[g.xll,g.yll,g.xll+g.nc*g.cs,g.yll+g.nr*(g.csy||g.cs)];
+  const cache=d&&d._projectNativeFullCache;
+  const full=shape(f)&&!(f.resampled>1)&&shape(d)&&
+    bounds(f).every((v,i)=>Math.abs(v-bounds(d)[i])<=Math.max(d.cs,d.csy||d.cs)*1e-6)&&
+    (f.native===true||f.nc===Number(dims[0])&&f.nr===Number(dims[1]))&&
+    (!cache||cache.full!==f||!d._img0||cache.sourceImage===d._img0);
+  const native=shape(d)&&!(d.resampled>1)&&
+    (!(Number(dims[0])>0&&Number(dims[1])>0)||d.nc===Number(dims[0])&&d.nr===Number(dims[1]))&&
+    (!d.fromProject||d.native===true||d.nc===Number(dims[0])&&d.nr===Number(dims[1]));
+  if(loadedGrid&&!shape(loadedGrid))throw new Error('A prévia do MDT não contém uma grade válida.');
+  if(!loadedGrid&&!full&&!native){
+    if(!window.GeoMineChannelDEM)throw new Error('Leitor nativo do MDT indisponível.');
+    // O leitor abre o original por janelas, sem carregar a grade inteira nem
+    // aceitar a prévia como substituta quando o arquivo está desconectado.
+    return window.GeoMineChannelDEM.prepare(r,{workCRS:S.workCRS,isCurrent});
+  }
+  const grid=loadedGrid||(full?f:d),crs=grid.crs||d.crs||r.crs||grid.srcCRS||d.srcCRS||r.srcCRS,
+    keys=['z','nc','nr','cs','csy','xll','yll','crs','srcCRS','_rev','resampled','native'],
+    values=keys.map(k=>grid[k]),data=d.z,image=d._img0,rev=r._rev,workCRS=S.workCRS;
+  let closed=false,converter=null;
+  if(crs&&workCRS&&String(crs)!==String(workCRS)){
+    if(typeof proj4!=='function')throw new Error('Conversor de coordenadas indisponível.');
+    converter=proj4(crs,workCRS);
+  }
+  const current=()=>!closed&&isCurrent()&&r.d===d&&d.z===data&&d._full===f&&
+    d._img0===image&&r._rev===rev&&S.workCRS===workCRS&&keys.every((k,i)=>Object.is(grid[k],values[i]));
+  const check=()=>{if(!current())throw Object.assign(new Error('A superfície mudou durante a montagem do 3D.'),{name:'AbortError'});};
+  const nodata=[grid,d,r].flatMap(g=>[g.noData,g.nodata,g._nd]).filter(v=>v!=null&&String(v).trim()!=='').map(Number).filter(Number.isFinite);
+  const clean=z=>Number.isFinite(z)&&!nodata.some(n=>z===n||z===Math.fround(n))?z:NaN;
+  return {grid,nativeResolution:grid===f?full:native,valueAt(col,row){return clean(grid.z[row*grid.nc+col]);},toWork(p){
+    const q=converter?converter.forward(p):p;
+    if(!q||!Number.isFinite(q[0])||!Number.isFinite(q[1]))throw new Error('Coordenada inválida na superfície 3D.');
+    return q;
+  },isCurrent:current,close(){closed=true;},async readWindow(window){
+    check();const [left,top,right,bottom]=window,w=right-left,h=bottom-top,out=new Float64Array(w*h);
+    for(let row=0;row<h;row++)for(let col=0;col<w;col++){
+      const z=grid.z[(top+row)*grid.nc+left+col];
+      out[row*w+col]=clean(z);
+    }
+    check();return out;
+  }};
+}
+async function v3DisplaySource(r,isCurrent,budget){
+  const d=r.d,dims=d.srcDims||[d._W0||d.nc,d._H0||d.nr],
+    maxCells=Math.max(4,Math.floor(budget/112));
+  let source;
+  // Uma fonte original pequena cabe inteira. Se estiver desconectada, a
+  // grade salva é suficiente para visualizar; não abre seletor de arquivo.
+  if(Number(dims[0])*Number(dims[1])<=maxCells){
+    try{source=await v3NativeSource(r,isCurrent);}catch(e){if(e.name==='AbortError')throw e;}
+  }
+  if(!source)source=await v3NativeSource(r,isCurrent,d);
+  if(source.nativeResolution==null)source.nativeResolution=true;
+  const g=source.grid;
+  if(g.nc*g.nr<=maxCells)return source;
+  // Só a malha da tela recebe menos vértices. Cada vértice conserva a cota
+  // e a posição de uma célula real; nunca gravamos esta malha no MDT.
+  const stride=Math.max(2,Math.ceil(Math.sqrt(g.nc*g.nr/maxCells))),
+    nc=Math.ceil((g.nc-1)/stride)+1,nr=Math.ceil((g.nr-1)/stride)+1,
+    colAt=c=>Math.min(g.nc-1,c*stride),rowAt=r=>Math.min(g.nr-1,r*stride),
+    view={...g,nc,nr,cs:g.cs*stride,csy:(g.csy||g.cs)*stride,
+      xll:g.xll+(g.cs-g.cs*stride)/2,
+      yll:g.yll+g.nr*(g.csy||g.cs)-(g.csy||g.cs)/2-(nr-.5)*(g.csy||g.cs)*stride};
+  return {grid:view,nativeResolution:false,displayStride:stride,isCurrent:source.isCurrent,
+    toWork:source.toWork,close:()=>source.close(),
+    cellPoint(c,r){return [g.xll+(colAt(c)+.5)*g.cs,v3RasterCellY(g,rowAt(r))];},
+    async readWindow([left,top,right,bottom]){
+      if(!source.isCurrent())throw Object.assign(new Error('O MDT mudou.'),{name:'AbortError'});
+      const w=right-left,out=new Float64Array(w*(bottom-top));
+      if(source.valueAt){
+        for(let y=top;y<bottom;y++)for(let x=left;x<right;x++){
+          let value=source.valueAt(colAt(x),rowAt(y));
+          // Um furo NoData entre amostras não pode virar uma face sólida.
+          for(let yy=rowAt(y);Number.isFinite(value)&&yy<=rowAt(y+1);yy++)
+            for(let xx=colAt(x);xx<=colAt(x+1);xx++)if(!Number.isFinite(source.valueAt(xx,yy))){value=NaN;break;}
+          out[(y-top)*w+x-left]=value;
+        }
+      }else{
+        const x0=colAt(left),x1=colAt(right-1)+1;
+        for(let y=top;y<bottom;y++){
+          const row=rowAt(y),values=await source.readWindow([x0,row,x1,row+1]);
+          for(let x=left;x<right;x++)out[(y-top)*w+x-left]=values[colAt(x)-x0];
+        }
+      }
+      return out;
+    }};
+}
+async function* v3NativeGridTiles(source,limRings,modoRec,check,onProgress){
+  const d=source.grid,side=128,total=Math.ceil((d.nc-1)/side)*Math.ceil((d.nr-1)/side);
+  let done=0;
+  for(let row=0;row<d.nr-1;row+=side)for(let col=0;col<d.nc-1;col+=side){
+    check();
+    const right=Math.min(d.nc,col+side+1),bottom=Math.min(d.nr,row+side+1),nx=right-col,ny=bottom-row,
+      z=await source.readWindow([col,row,right,bottom]);
+    check();if(!z||z.length!==nx*ny)throw new Error('Bloco nativo incompleto na superfície 3D.');
+    const positions=new Float64Array(nx*ny*3),indices=new Uint16Array((nx-1)*(ny-1)*6);
+    for(let y=0;y<ny;y++)for(let x=0;x<nx;x++){
+      const i=y*nx+x,p=source.toWork(source.cellPoint?source.cellPoint(col+x,row+y):[d.xll+(col+x+.5)*d.cs,v3RasterCellY(d,row+y)]);
+      positions[3*i]=p[0];positions[3*i+1]=p[1];positions[3*i+2]=Number.isFinite(z[i])?z[i]:0;
+    }
+    let count=0;
+    const put=(a,b,c)=>{if(Number.isFinite(z[a])&&Number.isFinite(z[b])&&Number.isFinite(z[c])){
+      indices[count++]=a;indices[count++]=b;indices[count++]=c;
+    }};
+    for(let y=0;y<ny-1;y++)for(let x=0;x<nx-1;x++){
+      const a=y*nx+x,b=a+1,c=a+nx,e=c+1;put(a,c,b);put(b,c,e);
+    }
+    let mesh={positions,indices:indices.subarray(0,count)};
+    if(count&&limRings&&limRings.length){
+      if(typeof tinMalhaExata!=='function')throw new Error('Recorte exato da superfície indisponível.');
+      const xs=new Float64Array(nx*ny),ys=new Float64Array(nx*ny),zs=new Float64Array(nx*ny);
+      for(let i=0;i<xs.length;i++){xs[i]=positions[3*i];ys[i]=positions[3*i+1];zs[i]=positions[3*i+2];}
+      mesh=await tinMalhaExata(xs,ys,zs,mesh.indices,0,limRings,modoRec==='furar',true);
+      if(!mesh||!mesh.exactClip)throw new Error('Não foi possível recortar a superfície pelas faces originais.');
+    }
+    check();if(mesh.indices.length)yield mesh;
+    onProgress(++done,total);
+    await new Promise(resolve=>setTimeout(resolve,0));
+  }
+}
+
 async function build3D(){
   const out=document.getElementById('v3dOut');
   const diag=(html)=>{ if(out) out.innerHTML=html; };
@@ -723,7 +893,25 @@ async function build3D(){
   const drawVec=document.getElementById('v3dVec').checked;
   const perf3=alagisPerf3D();
 
+  const rasterList=S.rasters,layerList=S.layers,workCRS=S.workCRS,
+    inputs=rasters.map(r=>({r,d:r.d,z:r.d.z,rev:r._rev,drev:r.d._rev,tin:r._tinMesh,
+      options:JSON.stringify(r._v3||{}),style:JSON.stringify(r.style||{})})),
+    sources=new Map();
+  const current=()=>V3._lastVE===VE&&S.rasters===rasterList&&S.layers===layerList&&S.workCRS===workCRS&&
+    inputs.every(q=>rasterList.includes(q.r)&&q.r.d===q.d&&q.r.d.z===q.z&&q.r._rev===q.rev&&q.r.d._rev===q.drev&&
+      q.r._tinMesh===q.tin&&JSON.stringify(q.r._v3||{})===q.options&&JSON.stringify(q.r.style||{})===q.style)&&
+    v3SuperficiesAtivas().length===rasters.length&&rasters.every(r=>v3SuperficiesAtivas().includes(r));
+  const check=()=>{if(!current())throw Object.assign(new Error('A superfície mudou durante a montagem do 3D. Atualize a cena.'),{name:'AbortError'});};
+  try{
+  showLoad('Preparando as superfícies 3D…');
+  // Usa os dados disponíveis antes de descartar a cena anterior. A prévia
+  // também é um terreno válido para visualização, inclusive no iPad offline.
+  const displayBudget=Math.min(v3NativeMemoryBudget()*.65,(perf3.mobile?128:512)*1024*1024)/Math.max(1,rasters.length);
+  for(const r of rasters)if(!v3HasExactTin(r)){
+    check();sources.set(r,await v3DisplaySource(r,current,displayBudget));check();
+  }
   showLoad('Montando cena 3D…'); await new Promise(r=>setTimeout(r,10));
+  check();
 
   // renderer/cena (reaproveita entre chamadas)
   // Um contexto perdido continua deixando V3.ren preenchido, mas não desenha
@@ -760,12 +948,21 @@ async function build3D(){
 
   // origem local no MDT ou, na cena somente vetorial, na geometria 3D
   const d0=rasters.length?rasters[0].d:null,ext0=vecExt||solExt;
-  const OX=d0?d0.xll+d0.nc*d0.cs/2:(ext0.xmin+ext0.xmax)/2;
-  const OY=d0?d0.yll+d0.nr*(d0.csy||d0.cs)/2:(ext0.ymin+ext0.ymax)/2;
+  const originSource=rasters.length?sources.get(rasters[0]):null,originGrid=originSource?originSource.grid:d0;
+  const origin=originGrid?[originGrid.xll+originGrid.nc*originGrid.cs/2,
+    originGrid.yll+originGrid.nr*(originGrid.csy||originGrid.cs)/2]:[(ext0.xmin+ext0.xmax)/2,(ext0.ymin+ext0.ymax)/2];
+  const workOrigin=originSource?originSource.toWork(origin):origin,OX=workOrigin[0],OY=workOrigin[1];
   let zmnG=Infinity;
-  rasters.forEach(r=>{ for(let k=0;k<r.d.z.length;k++){ const v=r.d.z[k]; if(!isNaN(v)&&v<zmnG)zmnG=v; } });
+  rasters.forEach(r=>{
+    const g=sources.get(r)?.grid,grid=g&&g.z?g:r.d,
+      nd=[grid,r.d,r].flatMap(q=>[q.noData,q.nodata,q._nd]).filter(v=>v!=null&&String(v).trim()!=='').map(Number).filter(Number.isFinite);
+    for(let k=0;k<grid.z.length;k++){const v=grid.z[k];if(Number.isFinite(v)&&!nd.some(n=>v===n||v===Math.fround(n))&&v<zmnG)zmnG=v;}
+  });
   if(vecExt)zmnG=Math.min(zmnG,vecExt.zmin);
   if(!Number.isFinite(zmnG)&&solExt)zmnG=solExt.zmin;
+  if(!Number.isFinite(zmnG))zmnG=0;
+  let zminScene=vecExt?vecExt.zmin:Infinity;
+  if(solExt)zminScene=Math.min(zminScene,solExt.zmin);
 
   /* Cada MDT pode apontar para uma ortofoto diferente. O cache evita baixar
      duas vezes a mesma imagem quando vários MDTs usam o mesmo drape. */
@@ -790,8 +987,7 @@ async function build3D(){
     return tex?{tex,db,writeUV:geo.writeUV,nome:orto.o.name||'Ortofoto'}:null;
   };
 
-  // uma malha por MDT selecionado
-  const MAXV=perf3.gridSide;  // lado máximo da malha exclusivamente visual
+  // Uma TIN original ou blocos de células nativas por superfície selecionada.
   let bboxMin=vecExt?[vecExt.xmin,vecExt.ymin]:[Infinity,Infinity],
       bboxMax=vecExt?[vecExt.xmax,vecExt.ymax]:[-Infinity,-Infinity],
       zmax=vecExt?vecExt.zmax:-Infinity;
@@ -801,7 +997,12 @@ async function build3D(){
     zmax=Math.max(zmax,solExt.zmax);
   }
   V3.meshes=[];
-  let tinLOD=0;
+  let nativeFaces=0,geometryBytes=0;
+  const geometryBudget=v3NativeMemoryBudget();
+  const reserveGeometry=bytes=>{
+    if(geometryBytes+bytes>geometryBudget)throw new Error('A superfície na resolução original excede a memória disponível para esta cena. Aplique um limite de recorte 3D menor ou desligue outras superfícies. A resolução não foi reduzida.');
+    geometryBytes+=bytes;
+  };
   // pré-computa os anéis das linhas-limite (para furar terrenos / conter cavas)
   const ringsOf=(limId, cs)=>{
     /* PRJ:<idLinha> é a referência ESTÁVEL à interseção fechada de uma
@@ -868,11 +1069,8 @@ async function build3D(){
       if(Math.hypot(a[0]-b[0],a[1]-b[1])>1e-6) c=c.concat([a.slice()]); return c; });
     return (L.gtype==='line'&&typeof tinAneisExternos==='function')?tinAneisExternos(aneis):aneis;
   };
-  const inRings=(rings,x,y)=>{ if(!rings) return false; let n=0;
-    for(const ring of rings){ if(typeof pointInRing==='function' && pointInRing(x,y,ring)) n++; }
-    return (n%2)===1; };
-
   for(const R of rasters){
+    check();
     const d=R.d;
     /* O modo 3D é, por definição, uma vista integral das camadas ligadas.
        Anéis analíticos, interseções armazenadas e vínculos de projeto NÃO
@@ -882,7 +1080,7 @@ async function build3D(){
     /* TEXTURA DEFINIDA NAS PROPRIEDADES DA CAMADA (pv.tex):
        'orto' = ortofoto drapejada · 'hipso' = cor por cota · 'solida' = cor fixa.
        O relevo sombreado não é uma textura à parte: a malha usa material
-       Lambert com luz na cena, então o sombreado do relevo já é real em
+       com normais planas e luz na cena; o sombreado do relevo é real em
        qualquer uma das três opções. */
     const tex3d=pv.tex||((pv.papel==='cava'||pv.papel==='dce'||pv.papel==='estrada')?'solida':'hipso');
     const usaOrto=(tex3d==='orto');
@@ -894,15 +1092,12 @@ async function build3D(){
        superfície de projeto em terreno: o limite de contenção virava furo e
        a malha inteira desaparecia, restando apenas vetores sobre fundo vazio. */
     const isCava=(pv.papel==='cava'||pv.papel==='dce'||pv.papel==='estrada');
-    const isProjeto=(pv.papel==='projeto');
-    const isContido=isCava||isProjeto;
     const solid=(tex3d==='solida')?hexToRGB01(pv.cor||'#8d5524'):null;
     /* Resolve o limite antes dos dois caminhos de malha. A versão anterior
        só o aplicava à grade visual; uma TIN exata ignorava o limite e deixava
        triângulos inteiros sobrar na borda (os “dentes” do 3D). */
     const limIdsPv=Array.isArray(pv.limIds)&&pv.limIds.length?pv.limIds:(pv.limId?[pv.limId]:[]);
     const recorte3D=!!(pv.recorteAtivo===true&&limIdsPv.length);
-    const limLayer=recorte3D?S.layers.find(l=>String(l.id)===String(limIdsPv[0])):null;
     /* O modo de recorte agora é escolhido no menu; sem escolha explícita o
        papel decide: terreno FURA (remove o interior das feições) e
        cava/DCE/estrada/projeto CONTÉM (remove o exterior). */
@@ -917,70 +1112,43 @@ async function build3D(){
        pela Delaunay. Não passa pela grade, não usa sampleZbil e não desloca
        vértices para “alisar” a borda. Faces e cortes permanecem planos e
        cirúrgicos, exatamente como foram calculados. */
-    const nTriExato=R._tinMesh&&R._tinMesh.indices?R._tinMesh.indices.length/3:0;
-    /* Uma TIN existente nunca volta à grade visual. Essa queda para a grade
-       era justamente o que recriava dentes nas bancadas quando a opção de
-       fechar vazios estava ativa. Vazios e limite são resolvidos nas faces. */
-    const usaTinExato=!!(R._tinMesh&&R._tinMesh.positions&&R._tinMesh.indices&&
-      R._tinMesh.indices.length&&nTriExato<=perf3.exactTinMax);
+    const usaTinExato=v3HasExactTin(R);
     if(usaTinExato){
-      /* MALHA DE TOPOGRAFIA DE VERDADE (referência OBJ/STL): índices e XYZ
-         continuam sendo os da TIN. Somente as normais de iluminação são
-         compartilhadas entre vértices coincidentes para evitar listras; a
-         posição de cristas, pés, bermas e interseções não é suavizada. */
+      // XYZ e conectividade originais, inclusive nos dispositivos móveis.
       let m=R._tinMesh;
-      if(limRings&&limRings.length&&typeof tinMalhaExata==='function'){
-        let hs=2166136261;
-        limRings.forEach(rg=>rg.forEach(p=>{hs=Math.imul(hs^Math.round(p[0]*100),16777619);hs=Math.imul(hs^Math.round(p[1]*100),16777619);}));
-        const chave=[pv.papel,modoRec,limIdsPv.join(','),hs>>>0,m.positions.length,m.indices.length].join('|');
+      if(limRings&&limRings.length){
+        if(typeof tinMalhaExata!=='function')throw new Error('Recorte exato da TIN indisponível.');
+        const chave=JSON.stringify([modoRec,limRings,R._rev,d._rev]);
         V3._tinClipCache=V3._tinClipCache||new WeakMap();
         const salvo=V3._tinClipCache.get(R);
-        if(salvo&&salvo.key===chave)m=salvo.mesh;
+        if(salvo&&salvo.key===chave&&salvo.source===R._tinMesh)m=salvo.mesh;
         else{
           const src0=m.positions,n0=(src0.length/3)|0,
             xs0=new Float64Array(n0),ys0=new Float64Array(n0),zs0=new Float64Array(n0);
           for(let i=0;i<n0;i++){xs0[i]=src0[3*i];ys0[i]=src0[3*i+1];zs0[i]=src0[3*i+2];}
-          const rec=await tinMalhaExata(xs0,ys0,zs0,m.indices,0,limRings,modoRec==='furar');
-          if(rec){m=rec;V3._tinClipCache.set(R,{key:chave,mesh:rec});}
+          const rec=await tinMalhaExata(xs0,ys0,zs0,m.indices,0,limRings,modoRec==='furar',true);
+          check();
+          if(!rec||!rec.exactClip)throw new Error('Não foi possível recortar a TIN pelas faces originais.');
+          m=rec;V3._tinClipCache.set(R,{key:chave,source:R._tinMesh,mesh:rec});
         }
       }
       if(!m.indices||!m.indices.length)continue;
-      let src=m.positions,idx=m.indices;
-      const modo3=(R.style&&R.style.mode)||'hipso_hs',
-        suave3=!['classes','cn','slopeclass'].includes(modo3);
-      /* Tanto a geração por breaklines quanto o recorte booleano podem criar
-         o mesmo XYZ mais de uma vez. Para a geometria isso é invisível, mas
-         para a luz cada cópia vira uma face isolada e surgem as faixas
-         serrilhadas. Solda TODA TIN por 1 mm apenas na representação 3D,
-         abaixo da precisão centimétrica exigida para as linhas de projeto. */
-      if(suave3){
-        const mp=new Map(),vv=[],ii=new Uint32Array(idx.length),escW=1000;
-        for(let k=0;k<idx.length;k++){
-          const vi=idx[k],x=src[3*vi],y=src[3*vi+1],z=src[3*vi+2],
-            key=Math.round(x*escW)+'|'+Math.round(y*escW)+'|'+Math.round(z*escW);
-          let ni=mp.get(key);
-          if(ni==null){ni=vv.length/3;mp.set(key,ni);vv.push(x,y,z);}
-          ii[k]=ni;
-        }
-        const vistos=new Set(),limpos=[];
-        for(let k=0;k<ii.length;k+=3){const a=ii[k],b=ii[k+1],c=ii[k+2];
-          if(a===b||b===c||c===a)continue;
-          /* Ordenação manual evita criar um Array por face — em MDTs grandes
-             isso reduz bastante a coleta de lixo durante a abertura do 3D. */
-          let x=a,y=b,z=c,q;if(x>y){q=x;x=y;y=q;}if(y>z){q=y;y=z;z=q;}if(x>y){q=x;x=y;y=q;}
-          const key=x+'|'+y+'|'+z;
-          if(vistos.has(key))continue;vistos.add(key);limpos.push(a,b,c);
-        }
-        src=new Float64Array(vv);idx=new Uint32Array(limpos);
-      }
-      const nT=(idx.length/3)|0,
-        nv=suave3?(src.length/3|0):nT*3,
-        pos=new Float32Array(nv*3),col=new Float32Array(nv*3),
+      const src=m.positions,idx=m.indices,
+        modo3=(R.style&&R.style.mode)||'hipso_hs',
+        indexed3=!['classes','cn','slopeclass'].includes(modo3);
+      if(src.length%3||idx.length%3)throw new Error('TIN com estrutura de faces inválida.');
+      for(let i=0;i<src.length;i++)if(!Number.isFinite(src[i]))throw new Error('TIN com coordenada inválida.');
+      for(let i=0;i<idx.length;i++)if(!Number.isInteger(idx[i])||idx[i]<0||idx[i]>=src.length/3)
+        throw new Error('TIN com referência de vértice inválida.');
+      const nT=(idx.length/3)|0,nv=indexed3?(src.length/3|0):nT*3;
+      reserveGeometry(nv*(36+(db?8:0))+(indexed3?idx.byteLength:0));
+      const pos=new Float32Array(nv*3),col=new Float32Array(nv*3),
         uv=db?new Float32Array(nv*2):null;
       let zmn=Infinity,zmx=-Infinity;
       for(let i=0;i<src.length/3;i++){const z=src[3*i+2];if(z<zmn)zmn=z;if(z>zmx)zmx=z;}
       if(zmx>zmax)zmax=zmx;
-      if(suave3){
+      zminScene=Math.min(zminScene,zmn);
+      if(indexed3){
         for(let vi=0;vi<nv;vi++){
           const X=src[3*vi],Y=src[3*vi+1],Z=src[3*vi+2],q=3*vi,
             fc=v3RasterStyleColor(R,Z,zmn,zmx,solid);
@@ -1004,19 +1172,18 @@ async function build3D(){
         });
       }
       let posGeo=pos,colGeo=col,uvGeo=uv,idxGeo=idx;
-      if(suave3){const cd=v3CreaseData(pos,col,uv,idx,40);
-        posGeo=cd.pos;colGeo=cd.col;uvGeo=cd.uv;idxGeo=cd.idx;}
+      // Não solda XYZ nem compartilha iluminação entre planos adjacentes.
       const geo=new THREE.BufferGeometry();
       geo.setAttribute('position',new THREE.BufferAttribute(posGeo,3));
       geo.setAttribute('color',new THREE.BufferAttribute(colGeo,3));
       if(uvGeo)geo.setAttribute('uv',new THREE.BufferAttribute(uvGeo,2));
-      if(suave3)geo.setIndex(new THREE.BufferAttribute(idxGeo,1));
+      if(indexed3)geo.setIndex(new THREE.BufferAttribute(idxGeo,1));
       geo.computeVertexNormals();
       const mat=(drapeTex&&!isCava&&usaOrto)
         ?v3SurfaceMaterial(R,{map:drapeTex,side:THREE.DoubleSide,
-          depthTest:true,depthWrite:true},!suave3,'orto')
+          depthTest:true,depthWrite:true},true,'orto')
         :v3SurfaceMaterial(R,{vertexColors:true,side:THREE.DoubleSide,
-          depthTest:true,depthWrite:true},!suave3,tex3d);
+          depthTest:true,depthWrite:true},true,tex3d);
       const mesh=new THREE.Mesh(geo,mat);
       mesh.userData={...(mesh.userData||{}),alagisSurface:true,rasterId:R.id};
       /* CAIXA DO MODELO (opcional, como no RightSlope3D): paredes da borda
@@ -1070,285 +1237,65 @@ async function build3D(){
           new THREE.LineBasicMaterial({color:0x263728,transparent:true,opacity:0.20,depthWrite:false}));
         ar.renderOrder=2;mesh.add(ar);
       }
+      mesh.traverse(o=>{if(o.material)v3ApplySurfaceOpacity(R,o.material);});
+      check();nativeFaces+=nT;
       mesh.scale.y=VE;V3.scene.add(mesh);V3.meshes.push(mesh);
       continue;
     }
-    /* No modo Mobile uma TIN excessiva usa apenas a grade visual que já
-       acompanha o produto. A _tinMesh exata permanece intacta na memória e
-       volta a ser exibida integralmente quando o usuário selecionar PC. */
-    if(nTriExato>perf3.exactTinMax)tinLOD++;
-    // TERRENO: o anel FURA (remove o que está dentro da linha).
-    // CAVA/DCE: o anel CONTÉM (remove o que está fora e alisa a borda no traçado).
-    const furoRings=(modoRec==='furar')? limRings : null;
-    const contRings=(modoRec==='conter')? limRings : null;
-    // p/ suavizar a borda: segmentos do anel (projeção do vértice) e índices
-    // por faixa de Y (teste dentro/fora rápido mesmo com anel grande)
-    let limSegs=null, limGrade=null, limIdx=null;
-    if(limRings){
-      limSegs=[];
-      limRings.forEach(rg=>{ for(let i=0;i<rg.length-1;i++) limSegs.push([rg[i],rg[i+1]]); });
-      limGrade=(limSegs.length && typeof gradeSegs==='function')? gradeSegs(limSegs) : null;
-      limIdx=(typeof indiceAnel==='function')? limRings.map(indiceAnel) : limRings.map(()=>null);
-    }
-    const dentroPt=(x,y)=>{ let n=0;
-      for(let q=0;q<limRings.length;q++)
-        if(pointInRing(x,y,limRings[q],limIdx[q])) n++;
-      return (n%2)===1; };
-    // com anel aplicado, a malha precisa de mais resolução: anéis finos
-    // (faixas entre bancadas) são mais estreitos que o quad padrão
-    const capV=limRings
-      ? (perf3.mobile?perf3.clipSide:(isProjeto?1400:perf3.clipSide))
-      : MAXV;
-    const st=Math.max(1, Math.ceil(Math.max(d.nc,d.nr)/capV));
-    const nx=Math.floor((d.nc-1)/st)+1, ny=Math.floor((d.nr-1)/st)+1;
-    const pos=new Float32Array(nx*ny*3);
-    const col=new Float32Array(nx*ny*3);
-    const uv =new Float32Array(nx*ny*2);
-    const valido3D=new Uint8Array(nx*ny);
-    const fechaVazios=pv.fechaVazios!==false;
-    let nVaziosFechados=0;
-    let zmn=Infinity,zmx=-Infinity;
-    for(let k=0;k<d.z.length;k++){const v=d.z[k];if(!isNaN(v)){if(v<zmn)zmn=v;if(v>zmx)zmx=v;}}
-    if(zmx>zmax)zmax=zmx;
-    const idxOf=(r,c)=>r*nx+c;
-    for(let r=0;r<ny;r++) for(let c=0;c<nx;c++){
-      const gc=Math.min(d.nc-1,c*st), gr=Math.min(d.nr-1,r*st);
-      const X=d.xll+(gc+0.5)*d.cs, Y=v3RasterCellY(d,gr);  // CENTRO da célula (alinha com as linhas)
-      let z=d.z[gr*d.nc+gc];
-      /* Um raster recortado armazena NoData fora do contorno. Na malha de
-         projeto, porém, os quads que cruzam a interseção precisam dos quatro
-         vértices para que a borda possa ser projetada exatamente na linha.
-         Reconstitui analiticamente qualquer célula interna perdida pelo
-         recorte raster; os vértices externos serão soldados ao limite abaixo. */
-      if(isProjeto&&isNaN(z)&&limLayer&&limLayer.tinSurface&&
-         (!limRings||dentroPt(X,Y))){
-        const za=tinSurfaceZ(limLayer.tinSurface,X,Y);
-        if(isFinite(za))z=za;
-      }
-      if(isNaN(z)&&fechaVazios&&!isProjeto){
-        const zi=v3InterpolaVazioLinear(d,gr,gc,Math.max(4,Math.round(8*st)));
-        if(isFinite(zi)){ z=zi; nVaziosFechados++; }
-      }
-      const zv=isNaN(z)? zmn : z;
-      const i=idxOf(r,c);
-      if(isFinite(z))valido3D[i]=1;
-      pos[3*i  ]=X-OX;
-      pos[3*i+1]=(zv-zmnG);                               // ESCALA REAL na geometria;
-                                                            // o exagero entra por mesh.scale.y
-      pos[3*i+2]=-(Y-OY);                                   // norte = -Z (tela)
-      { const [cr,cg,cb]=v3RasterStyleColor(R,zv,zmn,zmx,solid);
-        col[3*i]=cr; col[3*i+1]=cg; col[3*i+2]=cb; }
-      if(db)drape.writeUV(X,Y,uv,2*i);
-      if(X<bboxMin[0])bboxMin[0]=X; if(Y<bboxMin[1])bboxMin[1]=Y;
-      if(X>bboxMax[0])bboxMax[0]=X; if(Y>bboxMax[1])bboxMax[1]=Y;
-    }
-    // índices (pulando NaN; furo/recorte pela linha-limite quando aplicável)
-    const idx=[];
-    /* Na superfície de projeto o limite vetorial, e não a máscara quadriculada
-       do raster, decide onde a malha termina. Considerar NoData aqui eliminava
-       quads com dois cantos externos e abria os triângulos brancos da rampa. */
-    const bad=(r,c)=>{
-      if(isProjeto&&contRings)return false;
-      return !valido3D[idxOf(r,c)];
-    };
-    // centro físico de uma célula do grid reduzido
-    const cx=(r,c)=>{ const gc=Math.min(d.nc-1,c*st); return d.xll+(gc+0.5)*d.cs; };
-    const cy=(r,c)=>{ const gr=Math.min(d.nr-1,r*st); return v3RasterCellY(d,gr); };
-    /* BORDA LISA: classifica cada VÉRTICE como dentro/fora do anel; os quads
-       de borda são mantidos e seus cantos do lado errado são depois
-       PROJETADOS na linha do anel — a borda segue o traçado do limite.
-       O teste do PONTO MÉDIO continua valendo para anéis mais finos que o
-       quad (faixas entre bancadas): sem ele, um anel estreito nunca teria
-       os 4 cantos de um quad dentro e o furo simplesmente não abriria.     */
-    let dentroV=null;
-    if(limRings){
-      dentroV=new Uint8Array(nx*ny);
-      for(let r=0;r<ny;r++){ const Y=cy(r,0);
-        for(let c=0;c<nx;c++) dentroV[idxOf(r,c)]=dentroPt(cx(0,c),Y)?1:0;
-      }
-    }
-    // decide se o quad do canto (r,c) participa
-    const _qs=new Set();
-    const quadTemSeg=(r,c)=>{             // algum segmento do anel cruza o quad?
-      if(!limGrade || !limGrade.caixa) return true;
-      const x0=cx(r,c), x1=cx(r,c+1);
-      const ya=cy(r,0), yb=cy(r+1,0);
-      _qs.clear();
-      limGrade.caixa(Math.min(x0,x1),Math.min(ya,yb),Math.max(x0,x1),Math.max(ya,yb),_qs);
-      return _qs.size>0;
-    };
-    // TRIÂNGULOS POR QUAD, com preenchimento diagonal na borda de dado:
-    //   4 cantos válidos → 2 triângulos
-    //   exatamente 1 canto NaN → 1 triângulo com os 3 válidos (suaviza a
-    //     escadinha do limite de dado para degraus a 45°)
-    // adjAnel marca os vértices que tocam quad DESCARTADO — pelo anel OU por
-    // NaN: é o perímetro do buraco. Rasters já recortados pela interseção têm
-    // a borda de dado EM CIMA da linha; esses vértices são costurados nela.
-    const adjAnel=limRings? new Uint8Array(nx*ny) : null;
-    const dentroI=i=>dentroV[i];
-    const marca=(...vs)=>{ if(adjAnel) for(const v of vs) adjAnel[v]=1; };
-    for(let r=0;r<ny-1;r++) for(let c=0;c<nx-1;c++){
-      const a=idxOf(r,c),b=idxOf(r,c+1),cc=idxOf(r+1,c),dd=idxOf(r+1,c+1);
-      const ba=bad(r,c),bb=bad(r,c+1),bc=bad(r+1,c),bd=bad(r+1,c+1);
-      const nb=(ba?1:0)+(bb?1:0)+(bc?1:0)+(bd?1:0);
-      if(nb>=2){ marca(a,b,cc,dd); continue; }               // sem dado: buraco
-      if(nb===1){
-        // triângulo com os 3 cantos válidos (borda de dado a 45°)
-        const tri= ba? [cc,dd,b] : bb? [a,cc,dd] : bc? [a,dd,b] : [a,cc,b];
-        if(furoRings){
-          if(tri.every(dentroI)){ marca(...tri); continue; } // todo dentro: fura
-          idx.push(...tri);                                  // cantos dentro serão projetados
-        } else if(contRings){
-          const badIn=(ba&&dentroV[a])||(bb&&dentroV[b])||(bc&&dentroV[cc])||(bd&&dentroV[dd]);
-          if(badIn){ marca(a,b,cc,dd); continue; }           // buraco de dado no interior
-          if(tri.some(dentroI)) idx.push(...tri); else marca(...tri);
-        } else idx.push(...tri);
-        continue;
-      }
-      // 4 cantos válidos: regras do anel e os 2 triângulos de sempre
-      if(furoRings){
-        const d00=dentroV[a],d01=dentroV[b],d10=dentroV[cc],d11=dentroV[dd];
-        if(d00&&d01&&d10&&d11){ marca(a,b,cc,dd); continue; } // todo dentro: fura
-        if(!(d00||d01||d10||d11) && quadTemSeg(r,c)){
-          // todos os cantos fora: anel fino pode cruzar o quad — centro decide
-          const mx=(cx(r,c)+cx(r,c+1))/2,my=(cy(r,c)+cy(r+1,c))/2;
-          if(dentroPt(mx,my)){ marca(a,b,cc,dd); continue; }
+    const source=sources.get(R),group=new THREE.Group();
+    group.userData={alagisSurface:true,rasterId:R.id,nativeResolution:source.nativeResolution!==false,
+      displayCellSize:source.grid.cs};
+    group.scale.y=VE;
+    let zmn=Infinity,zmx=-Infinity,faceCount=0;
+    // Faixa de cor da camada permanece comum a todos os blocos.
+    for(const z of d.z)if(Number.isFinite(z)){zmn=Math.min(zmn,z);zmx=Math.max(zmx,z);}
+    if(!Number.isFinite(zmn)){zmn=0;zmx=1;}
+    const mat=(drapeTex&&!isCava&&usaOrto)
+      ?v3SurfaceMaterial(R,{map:drapeTex,side:THREE.DoubleSide,depthTest:true,depthWrite:true},true,'orto')
+      :v3SurfaceMaterial(R,{vertexColors:true,side:THREE.DoubleSide,depthTest:true,depthWrite:true},true,tex3d);
+    try{
+      for await(const tile of v3NativeGridTiles(source,limRings,modoRec,check,(n,total)=>
+        showLoad('3D · '+(R.name||'MDT')+' · '+Math.round(100*n/total)+'%'))){
+        const src=tile.positions,nv=src.length/3;
+        reserveGeometry(nv*(36+(db?8:0))+tile.indices.byteLength);
+        const pos=new Float32Array(src.length),col=new Float32Array(src.length),uv=db?new Float32Array(nv*2):null;
+        for(let i=0;i<nv;i++){
+          const X=src[3*i],Y=src[3*i+1],Z=src[3*i+2],fc=v3RasterStyleColor(R,Z,zmn,zmx,solid);
+          pos[3*i]=X-OX;pos[3*i+1]=Z-zmnG;pos[3*i+2]=-(Y-OY);
+          col[3*i]=fc[0];col[3*i+1]=fc[1];col[3*i+2]=fc[2];
+          if(uv)drape.writeUV(X,Y,uv,2*i);
         }
-      } else if(contRings){
-        const d00=dentroV[a],d01=dentroV[b],d10=dentroV[cc],d11=dentroV[dd];
-        if(!(d00||d01||d10||d11)){
-          let dentro=false;
-          if(quadTemSeg(r,c)){
-            const mx=(cx(r,c)+cx(r,c+1))/2,my=(cy(r,c)+cy(r+1,c))/2;
-            dentro=dentroPt(mx,my);
-          }
-          if(!dentro){ marca(a,b,cc,dd); continue; }          // todo fora: cortado pelo anel
+        // Somente vértices de faces válidas entram na extensão; NoData fica vazio.
+        for(const i of tile.indices){
+          bboxMin[0]=Math.min(bboxMin[0],src[3*i]);bboxMin[1]=Math.min(bboxMin[1],src[3*i+1]);
+          bboxMax[0]=Math.max(bboxMax[0],src[3*i]);bboxMax[1]=Math.max(bboxMax[1],src[3*i+1]);
+          zmax=Math.max(zmax,src[3*i+2]);zminScene=Math.min(zminScene,src[3*i+2]);
         }
+        const geo=new THREE.BufferGeometry();
+        geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+        geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+        if(uv)geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
+        geo.setIndex(new THREE.BufferAttribute(tile.indices,1));
+        geo.computeVertexNormals();
+        const mesh=new THREE.Mesh(geo,mat);
+        mesh.userData={alagisSurface:true,rasterId:R.id,nativeResolution:source.nativeResolution!==false};
+        group.add(mesh);faceCount+=tile.indices.length/3;
       }
-      idx.push(a,cc,b, b,cc,dd);
-    }
-    // projeta na linha do anel os vértices em uso: os do lado "errado"
-    // (terreno → dentro; cava/dce → fora ou sem dado) E os do perímetro
-    // dos buracos (adjAnel) — inclusive a borda de dado NaN, quando ela
-    // está a até ~1,5 quad da linha (raster já recortado pela interseção).
-    if(limRings && limGrade){
-      const usado=new Uint8Array(nx*ny);
-      for(const ii of idx) usado[ii]=1;
-      // cota perto: acha o dado válido mais próximo na grade (borda recortada
-      // tem NaN meia-célula para fora — a bilinear pura falharia ali)
-      const zPerto=(X,Y,maxR)=>{
-        const c0=Math.round((X-d.xll)/d.cs-0.5), r0=Math.round((d.nr-1)-((Y-d.yll)/(d.csy||d.cs)-0.5));
-        for(let rad=0;rad<=maxR;rad++){
-          for(let dr=-rad;dr<=rad;dr++) for(let dc=-rad;dc<=rad;dc++){
-            if(Math.max(Math.abs(dr),Math.abs(dc))!==rad) continue;
-            const rr=r0+dr, cc2=c0+dc;
-            if(rr<0||rr>=d.nr||cc2<0||cc2>=d.nc) continue;
-            const v=d.z[rr*d.nc+cc2]; if(!isNaN(v)) return v;
-          }
-        }
-        return NaN;
-      };
-      // a projeção nunca deve puxar o vértice mais que ~1,5 quad — se o anel
-      // está longe, é borda de dado comum (margem do raster), não a interseção
-      const raioPux=st*Math.max(d.cs,d.csy||d.cs)*1.6, puxMax=raioPux*raioPux;
-      const _pq=new Set();
-      for(let r=0;r<ny;r++) for(let c=0;c<nx;c++){
-        const i=idxOf(r,c);
-        if(!usado[i]) continue;
-        const errado = furoRings ? dentroV[i] : (!dentroV[i] || bad(r,c));
-        if(!errado && !(adjAnel && adjAnel[i])) continue;
-        const X=cx(r,c), Y=cy(r,c);
-        if(!errado){                      // perímetro do lado certo: só se o anel está PERTO
-          _pq.clear();
-          if(limGrade.caixa) limGrade.caixa(X-raioPux,Y-raioPux,X+raioPux,Y+raioPux,_pq);
-          if(!_pq.size) continue;         // nada do anel por perto: borda de dado comum
-        }
-        const pr=limGrade.maisProx(X,Y); if(!pr || pr.k<0) continue;
-        const [q1,q2]=limSegs[pr.k];
-        const dx=q2[0]-q1[0], dy=q2[1]-q1[1], L2s=dx*dx+dy*dy;
-        let t=L2s>0?((X-q1[0])*dx+(Y-q1[1])*dy)/L2s:0; t=t<0?0:(t>1?1:t);
-        const Xp=q1[0]+t*dx, Yp=q1[1]+t*dy;
-        // vértice do lado certo só é puxado se o anel está realmente perto
-        if(!errado && ((Xp-X)**2+(Yp-Y)**2)>puxMax) continue;
-        /* Na superfície projetada, a interseção precisa ter a MESMA cota do
-           MDT de terreno. Amostrar o próprio raster recortado junto ao NoData
-           puxava a borda para uma célula interna mais baixa e criava parede,
-           dentes ou triângulos suspensos. */
-        let zp=NaN;
-        if(isProjeto&&typeof sampleZbil==='function'){
-          for(const Rt of rasters){
-            if(Rt===R||!Rt.d)continue;
-            const pp=(Rt._v3&&Rt._v3.papel)||'terreno';
-            if(pp==='cava'||pp==='dce'||pp==='estrada'||pp==='projeto')continue;
-            const zt=sampleZbil(Rt.d,Xp,Yp);
-            if(isFinite(zt)){zp=zt;break;}
-          }
-        }
-        if(!isFinite(zp)&&typeof sampleZbil==='function')zp=sampleZbil(d,Xp,Yp);
-        if(!isFinite(zp)) zp=zPerto(Xp,Yp,3);
-        if(!isFinite(zp)) zp=pos[3*i+1]+zmnG;             // sem dado por perto: mantém
-        pos[3*i  ]=Xp-OX;
-        pos[3*i+1]=zp-zmnG;
-        pos[3*i+2]=-(Yp-OY);
-        if(db)drape.writeUV(Xp,Yp,uv,2*i);
+      check();
+      if(R._tinMethod&&R._tinMethod!=='delaunay-terrain-clip'&&pv.wire===true&&faceCount<=perf3.wireMax){
+        group.children.slice().forEach(mesh=>{
+          const ar=new THREE.LineSegments(new THREE.WireframeGeometry(mesh.geometry),
+            new THREE.LineBasicMaterial({color:0x263728,transparent:true,opacity:0.22,depthWrite:false}));
+          ar.renderOrder=2;mesh.add(ar);
+        });
       }
+      group.traverse(o=>{if(o.material)v3ApplySurfaceOpacity(R,o.material);});
+      if(faceCount){V3.scene.add(group);V3.meshes.push(group);nativeFaces+=faceCount;}else mat.dispose();
+    }catch(error){
+      group.traverse(o=>{if(o.geometry)o.geometry.dispose();});mat.dispose();throw error;
     }
-    /* Limpeza geométrica final. A projeção de dois cantos sobre o mesmo
-       segmento pode colapsar um triângulo; além disso, valores espúrios na
-       borda de um GeoTIFF podem formar "agulhas" quase verticais. Esses
-       triângulos não representam terreno e devem ser descartados. */
-    const idxLimpo=[];
-    for(let k=0;k<idx.length;k+=3){
-      const ia=idx[k],ib=idx[k+1],ic=idx[k+2];
-      const ax=pos[3*ia],ay=pos[3*ia+1],az=pos[3*ia+2];
-      const bx=pos[3*ib],by=pos[3*ib+1],bz=pos[3*ib+2];
-      const cx3=pos[3*ic],cy3=pos[3*ic+1],cz=pos[3*ic+2];
-      const area2=Math.abs((bx-ax)*(cz-az)-(bz-az)*(cx3-ax));
-      if(area2<1e-7)continue;                         // colapsado na borda
-      const h1=Math.hypot(bx-ax,bz-az),h2=Math.hypot(cx3-bx,cz-bz),
-            h3=Math.hypot(ax-cx3,az-cz),hmax=Math.max(h1,h2,h3);
-      const dz=Math.max(ay,by,cy3)-Math.min(ay,by,cy3);
-      if(hmax>1e-6&&dz>hmax*8)continue;              // agulha quase vertical
-      idxLimpo.push(ia,ib,ic);
-    }
-    R._v3=R._v3||{};
-    R._v3.vaziosFechados3D=nVaziosFechados;
-    const geo=new THREE.BufferGeometry();
-    geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
-    geo.setAttribute('color',new THREE.BufferAttribute(col,3));
-    if(db) geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
-    geo.setIndex(idxLimpo);
-    geo.computeVertexNormals();
-    /* Um TIN é uma coleção de planos triangulares, não uma superfície
-       spline. O sombreamento suave compartilhava normais entre faces e dava
-       exatamente o aspecto arredondado que não existe na triangulação. */
-    const isTIN=!!R._tinMethod;
-    const mat = (drapeTex && !isCava && usaOrto)
-      ? v3SurfaceMaterial(R,{map:drapeTex,side:THREE.DoubleSide,
-          depthTest:true,depthWrite:true},isTIN,'orto')
-      : v3SurfaceMaterial(R,{vertexColors:true,side:THREE.DoubleSide,
-          depthTest:true,depthWrite:true},isTIN,tex3d);
-    const mesh=new THREE.Mesh(geo,mat);
-    mesh.userData={...(mesh.userData||{}),alagisSurface:true,rasterId:R.id};
-    /* Mostra as arestas reais quando a malha cabe com segurança na GPU.
-       Em TINs muito densos, as faces planas continuam ativas, mas evitamos
-       duplicar milhões de segmentos e travar tablets. */
-    /* O TIN recortado diretamente pelo MDT usa a grade NoData como limite.
-       Desenhar o wireframe dessa grade evidencia diagonais residuais de borda
-       como se fossem arestas suspensas e ainda duplica a geometria na GPU. */
-    const wirePermitido=R._tinMethod!=='delaunay-terrain-clip';
-    if(isTIN && wirePermitido && R._v3&&R._v3.wire===true&&
-       idxLimpo.length/3<=perf3.wireMax){
-      const arestas=new THREE.LineSegments(
-        new THREE.WireframeGeometry(geo),
-        new THREE.LineBasicMaterial({color:0x263728,transparent:true,opacity:0.22,depthWrite:false})
-      );
-      arestas.renderOrder=2;
-      mesh.add(arestas);
-    }
-    mesh.scale.y=VE;                                  // exagero aplicado por escala
-    V3.scene.add(mesh); V3.meshes.push(mesh);
   }
+  if(!V3.meshes.length&&!vecExt&&!solExt)throw new Error('Nenhuma face válida nas superfícies ligadas. Verifique as cotas e os limites de recorte.');
   V3.OX=OX; V3.OY=OY; V3.z0=zmnG; V3.VE=VE;          // p/ medição (inversa local->E,N,z)
   /* origem nova: sólidos voltam às mesmas coordenadas reais */
   if(typeof solPosicionaTodos==='function')solPosicionaTodos();
@@ -1361,7 +1308,8 @@ async function build3D(){
 
   // câmera
   const cx=(bboxMin[0]+bboxMax[0])/2-OX, cz=-((bboxMin[1]+bboxMax[1])/2-OY);
-  const span=Math.max(bboxMax[0]-bboxMin[0], bboxMax[1]-bboxMin[1], (zmax-zmnG)*VE, 10);
+  if(!Number.isFinite(zminScene))zminScene=zmnG;
+  const span=Math.max(bboxMax[0]-bboxMin[0], bboxMax[1]-bboxMin[1], (zmax-zminScene)*VE, 10);
   V3.size=span;
   if(!V3.cam){ V3.cam=new THREE.PerspectiveCamera(55,1,1,span*40); }
   if(camAnterior){
@@ -1370,7 +1318,7 @@ async function build3D(){
     V3.theta=camAnterior.theta; V3.phi=camAnterior.phi;
     V3.topNorth=camAnterior.topNorth;
   }else{
-    V3.tgt=[cx,(zmax-zmnG)*VE*0.4,cz];
+    V3.tgt=[cx,(zminScene-zmnG+(zmax-zminScene)*0.4)*VE,cz];
     V3.radius=span*1.1; V3.theta=Math.PI*0.75; V3.phi=Math.PI*0.22;
   }
   V3.cam.far=Math.max(span*40,V3.radius*12,100); V3.cam.updateProjectionMatrix();
@@ -1400,13 +1348,19 @@ async function build3D(){
     if(vecExt.n2)info.push(vecExt.n2.toLocaleString('pt-BR')+' vértices no plano vetorial');
   }
   info.push('modo '+(perf3.mobile?'Mobile':'PC'));
-  if(tinLOD)info.push(tinLOD+' TIN(s) em LOD visual — produto original preservado');
+  if(rasters.length){
+    const previews=rasters.filter(r=>sources.get(r)?.nativeResolution===false);
+    info.push(previews.length?'prévia 3D · '+previews.map(r=>`${r.name}: ${sources.get(r).grid.cs.toLocaleString('pt-BR',{maximumFractionDigits:3})} m`).join(', '):'resolução original');
+    info.push(nativeFaces.toLocaleString('pt-BR')+' faces');
+  }
   const nSol=(S.solidos||[]).filter(s=>s._grp&&s.visible!==false).length;
   if(nSol)info.push(nSol+' sólido(s)');
   if(!V3.meshes.length&&!vecExt&&!nSol) info.push('⚠ nenhuma geometria 3D gerada');
   if(rasters.length)info.push(nDrapes?`drape: ${nDrapes} MDT(s) com ortofoto`:'drape: hipsometria');
   document.getElementById('v3dOut').innerHTML=info.join(' · ');
+  V3._surfaceDataSignature=v3SurfaceDataSignature();
   toast('Cena 3D pronta — arraste para orbitar');
+  }finally{sources.forEach(source=>source.close());hideLoad();}
 }
 /* Mede a área real do canvas. Quando o painel 3D ainda está oculto, o
    clientWidth vem 0 e o fallback fixo (800×500) deixava o canvas menor que a
@@ -1427,17 +1381,31 @@ function v3Medir(){
 function v3Resize(){
   if(!V3.ren||!V3.cam) return;
   const m=v3Medir(); if(!m) return;
-  V3.ren.setSize(m.w,m.h,false);
+  if(V3._sizeRenderer!==V3.ren||!V3._wh||V3._wh[0]!==m.w||V3._wh[1]!==m.h){
+    V3.ren.setSize(m.w,m.h,false);V3._sizeRenderer=V3.ren;
+  }
   const cv=V3.ren.domElement;
-  if(cv){ cv.style.width='100%'; cv.style.height='100%'; cv.style.display='block'; }
+  if(cv){
+    if(cv.style.width!=='100%')cv.style.width='100%';
+    if(cv.style.height!=='100%')cv.style.height='100%';
+    if(cv.style.display!=='block')cv.style.display='block';
+  }
   V3.cam.aspect=m.w/m.h; V3.cam.updateProjectionMatrix();
+  window.GeoMineBlastingPresentation?.applyPlanCamera(V3);
   V3._wh=[m.w,m.h];
 }
 /* Observa o contêiner: qualquer mudança de tamanho reajusta o canvas sozinho */
 function v3ObservaTamanho(){
   const wrap=document.getElementById('v3dCanvasWrap');
   if(!wrap || V3._ro || typeof ResizeObserver==='undefined') return;
-  V3._ro=new ResizeObserver(()=>{ if(V3.ren&&V3.cam) v3Resize(); });
+  /* DOM writes run in the next frame, outside ResizeObserver delivery.
+     Several notifications in one frame share one canvas resize. */
+  let pending=0;
+  V3._ro=new ResizeObserver(()=>{
+    if(!pending)pending=requestAnimationFrame(()=>{
+      pending=0;if(V3.ren&&V3.cam&&S._view==='v3d')v3Resize();
+    });
+  });
   V3._ro.observe(wrap);
 }
 /* Quais camadas vetoriais drapejar no MDT — escolha explícita, e não
@@ -1540,7 +1508,8 @@ function v3BuildVectors(){
      por isso que desligar a camada na aba de camadas não mudava nada em 3D.
      Pior, a chave era gravada com `+L.id`, então id não-numérico nem batia. */
   const escolhidas=S.layers.filter(L=>
-    ['line','polygon','point'].includes(L.gtype) && L.visible!==false&&!window.GeoMineGeology?.meshViews?.isLayer(L));
+    ['line','polygon','point'].includes(L.gtype) && L.visible!==false&&
+      L._blasting?.role!=='nodata'&&!window.GeoMineGeology?.meshViews?.isLayer(L));
 
   // passo de densificação: ~2 células do MDT
   const eVec=v3VectorExtent();
@@ -1598,14 +1567,14 @@ function v3BuildVectors(){
      descartava o segmento INTEIRO — e o ANM, com vértices a ~100 m, some quase
      todo se as bordas caem fora do modelo. Linhas de fluxo, densas, não sofriam:
      era por isso que só elas apareciam. */
-  const amostraSeg=(a,b,push,za,zb,recortaNoMdt=false,ocultaAcima=false,semOffset=false)=>{
+  const amostraSeg=(a,b,push,za,zb,recortaNoMdt=false,ocultaAcima=false,semOffset=false,semLift=false)=>{
     const dx=b[0]-a[0], dy=b[1]-a[1];
     const n=Math.max(1, Math.ceil(Math.hypot(dx,dy)/passo));
     const hasZ=(za!=null&&isFinite(za)&&zb!=null&&isFinite(zb));
     for(let i=0;i<=n;i++){
       const t=i/n;
       const zg=hasZ? (za+(zb-za)*t) : null;
-      push(Vz(a[0]+dx*t, a[1]+dy*t, zg,recortaNoMdt,false,ocultaAcima,semOffset));
+      push(Vz(a[0]+dx*t, a[1]+dy*t, zg,recortaNoMdt,semLift,ocultaAcima,semOffset));
     }
   };
 
@@ -1790,7 +1759,7 @@ function v3BuildVectors(){
                  (corteUp?zg<zt-tol:zg>zt+tol)){push(null);continue;}
               push(Vz(x,y,zg,recortaNoMdt,false,false,topologiaExata3D));
             }
-          }else amostraSeg(pr[i],pr[i+1],push,za,zb,recortaNoMdt,ocultaAcima,topologiaExata3D);
+          }else amostraSeg(pr[i],pr[i+1],push,za,zb,recortaNoMdt,ocultaAcima,topologiaExata3D,!!L._blasting);
         }
         fecha();
         /* Apenas o terminal geométrico original recebe ponta: um recorte no
@@ -1804,7 +1773,7 @@ function v3BuildVectors(){
                 const zt=v3SampleZ(corteD,p[0],p[1]),tol=Math.max(.05,(corteD.cs||1)*.35);
                 if(Number.isFinite(z)&&Number.isFinite(zt)&&(corteUp?z<zt-tol:z>zt+tol))return null;
               }
-              return Vz(p[0],p[1],z,recortaNoMdt,false,ocultaAcima,topologiaExata3D);
+              return Vz(p[0],p[1],z,recortaNoMdt,!!L._blasting,ocultaAcima,topologiaExata3D);
             };
             const a=vertex(terminal.a,terminal.previous),b=vertex(terminal.b,terminal.end),
               arrow=GeoMineLineArrows.three(a,b,st3,st3.hex,st3.arrowWeight,THREE);
@@ -1817,6 +1786,7 @@ function v3BuildVectors(){
   if(corrigidasCamadas.size && !V3._avisouCor){ V3._avisouCor=1;
     toast(`${corrigidasCamadas.size} camada(s) com cor clareada para contrastar com o fundo`); }
   v3AtualizaFitas(true);
+  window.GeoMineBlastingPresentation?.decorate3D(V3.vecGroup);
   V3.ren && V3.cam && V3.ren.render(V3.scene,V3.cam);
 }
 
@@ -2174,11 +2144,22 @@ function mina3DStatus(msg,erro){
    Antes cada lugar chamava mina3DAuto direto (e alguns nem chamavam). Agora
    todo gesto passa por aqui: se a atualização automática estiver ligada, a
    cena se refaz; se estiver desligada, o usuário atualiza pelo botão. */
+function v3SyncRasterOpacity(){
+  const rasters=new Map((S.rasters||[]).map(r=>[String(r.id),r]));
+  (V3.meshes||[]).forEach(mesh=>{
+    if(!mesh.userData||!mesh.userData.alagisSurface)return;
+    const r=rasters.get(String(mesh.userData.rasterId));if(!r)return;
+    mesh.traverse(o=>{if(o.material)v3ApplySurfaceOpacity(r,o.material);});
+  });
+}
 function v3Auto(){
   if(S._view!=='v3d')return;
+  /* O controle de opacidade é leve e também responde quando a reconstrução
+     automática da geometria foi suspensa. Nunca altera os materiais de furos. */
+  v3SyncRasterOpacity();
   const cb=document.getElementById('v3dAuto');
   const aviso=document.getElementById('v3dPendente');
-  if(cb&&!cb.checked){
+  if(cb&&!cb.checked&&V3.meshes?.length&&V3._surfaceDataSignature===v3SurfaceDataSignature()){
     /* "Atualização automática" pode suspender a reconstrução pesada dos
        MDTs, mas nunca a sincronização dos vetores. Cor, classe e olho da
        árvore são comandos leves e precisam aparecer no 3D imediatamente. */
@@ -2226,7 +2207,8 @@ function mina3DAuto(force){
         const d=r.d||{},v=r._v3||{};
         /* As superfícies já foram filtradas pela visibilidade da árvore;
            os demais campos detectam mudanças reais nos dados do MDT. */
-        return [r.id,r.name||'',d.nc,d.nr,d.cs,v.papel||'',v.cor||'',
+        return [r.id,r.name||'',d.nc,d.nr,d.cs,d.native===true,d.resampled,d._full&&d._full.nc,
+          d._full&&d._full.nr,v3NativeSourceIdentity(r),v.papel||'',v.cor||'',
           v.limId||'',(v.limIds||[]).map(idL=>{
             /* Feição PRJ: o alvo real muda de id e de geometria a cada
                render da projeção — a assinatura acompanha para o furo não
@@ -2280,6 +2262,7 @@ function mina3DAuto(force){
       v3Resize();
       mina3DStatus('');
     }catch(err){
+      MINA3D_AUTO.lastSurf=null;MINA3D_AUTO.last=null;
       const msg=(err&&err.message)||String(err);
       const out=document.getElementById('v3dOut');
       if(out) out.textContent='Falha ao atualizar a cena 3D: '+msg;

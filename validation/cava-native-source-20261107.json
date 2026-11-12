@@ -1,0 +1,22 @@
+{
+  "original": "G:/Drives compartilhados/Massari/CCM_179_25_Morro_Verde/TOPOGRAFIA/MorroVerde_18mai26/SIRGAS2000/MDT_MorroVerde_18Maio26.tif",
+  "size": 405974626,
+  "crs": 31983,
+  "resolution": [
+    0.2728524007112512,
+    -0.27285240071129535,
+    1
+  ],
+  "window": [
+    1602,
+    1485,
+    4267,
+    3925
+  ],
+  "nc": 2665,
+  "nr": 2440,
+  "valid": 6502600,
+  "bytesRead": 117472883,
+  "reads": 2450,
+  "resampled": false
+}

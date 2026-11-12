@@ -2,7 +2,7 @@
 (function(){
 'use strict';
 const el=id=>document.getElementById(id),finite=Number.isFinite;
-const views=new Set(['map','layout','v3d','cava2','geo','hidro','perfis']);
+const views=new Set(['map','layout','v3d','cava2','geo','hidro','perfis','licenses']);
 const scrollIds=['side','layerList','propDockContent','attrWrap','sheetWrap'];
 const controls=['v3dVE','v3dBg','v3dBgC','v3dVec','v3dDrape','v3dWire','v3dGrid','v3dVecOff','v3dVecOffR','v3dVecFix','v3dVER'];
 let generation=0,pendingCamera=null,allowPrevious=true;
@@ -47,7 +47,10 @@ function restore(d){
  const f=q.selection,L=S.layers.find(l=>l.id===f?.layerId);
  S.selFeat=L&&Number.isInteger(f?.index)&&L.features[f.index]?{layer:L,layerId:L.id,idx:f.index,partIdx:Number.isInteger(f.partIdx)?f.partIdx:undefined}:null;
  const p=q.panels||{},button=el('propDockToggle');
- if(typeof p.propertiesCollapsed==='boolean'&&document.body.classList.contains('prop-dock-collapsed')!==p.propertiesCollapsed)button?.click();
+ if(typeof p.propertiesCollapsed==='boolean'){
+  if(window.GeoMinePropDock?.restore)window.GeoMinePropDock.restore(p.propertiesCollapsed);
+  else if(document.body.classList.contains('prop-dock-collapsed')!==p.propertiesCollapsed)button?.click();
+ }
  if(typeof p.sideOpen==='boolean')el('side')?.classList.toggle('open',p.sideOpen);
  if(['mini','max','grande','normal'].includes(p.commandSize))CMD.alt=p.commandSize;
  CMD.hFix=finite(p.commandHeight)&&p.commandHeight>=30&&p.commandHeight<=2000?p.commandHeight:null;

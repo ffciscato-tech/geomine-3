@@ -1,0 +1,1 @@
+{"error":"locator.dispatchEvent: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#cava2Frame').contentFrame().locator('#b_ajustar')\u001b[22m\n\n    at C:\\Users\\filip\\.codex\\visualizations\\2026\\10\\01\\01a0f706-ba83-7da2-bac5-a521852b1b24\\cava-morro-probe.cjs:45:82","errors":[]}

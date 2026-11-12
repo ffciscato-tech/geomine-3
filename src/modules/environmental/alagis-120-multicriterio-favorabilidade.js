@@ -1786,8 +1786,9 @@ function mcfPutRaster(name,grid,classes,opacity,meta){
   if(novo) R.visible = !!(meta && meta.kind==='classified');
   R.d=d; R._st=null;                                  /* força recalcular min/max */
   R.style=Object.assign(R.style||{},{mode:'classes',opacity:opacity??0.75,classes});
-  R.groupId=mcfGroupId();
+  if(novo&&!mcfLayer(MCF.state?.grid?.areaLayerId))R.groupId=mcfGroupId();
   R._mcf=meta||{};
+  if(novo)placeProductAbove(R,mcfLayer(MCF.state?.grid?.areaLayerId));
   /* Sem isto o painel de informação lê qualquer superfície como MDT e anuncia
      "Cota 4,129 m" para um índice adimensional de 0 a 5 — junto com uma
      declividade calculada sobre ele, que não significa nada. */
@@ -1884,8 +1885,8 @@ function mcfApplyOutputs(st,res){
   }
   let LP=null;
   if(feats.length){
-    LP=addLayer({name:nome,gtype:'polygon',crs:dst,features:feats,fields:MCF_FIELDS,color:'#1b5e20'});
-    LP.groupId=mcfGroupId();
+    LP=addLayer({sourceLayer:mcfLayer(st.grid.areaLayerId),name:nome,gtype:'polygon',crs:dst,features:feats,fields:MCF_FIELDS,color:'#1b5e20'});
+    if(!mcfLayer(st.grid.areaLayerId))LP.groupId=mcfGroupId();
     /* categorias no formato do CCMGIS: {value,color,vis} — é o que classOf lê */
     LP.sym.mode='cat'; LP.sym.field='CLASSE_TXT';
     LP.sym.cats=[{value:'Excluded · Excluída',color:st.symbology.excluded,vis:true}]
@@ -2099,7 +2100,7 @@ function mcfPublicaCriterios(st,res){
       style:{mode:'classes',opacity:0.85,classes:cls.map(x=>Object.assign({},x))},
       visible:false, overlay:null, quantity:null, unit:null, groupId:null,
       _exactClipRings:null, _v3:{papel:'projeto',cor:'#8d5524',limId:''}};
-    S.rasters.push(r); try{ renderRaster(r); }catch(e){}
+    S.rasters.push(r);placeProductAbove(r,c.rasterId?mcfRaster(c.rasterId):mcfLayer(c.layerId)); try{ renderRaster(r); }catch(e){}
     n++;
   });
   try{ refreshUI(); }catch(e){}

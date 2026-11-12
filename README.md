@@ -1,124 +1,80 @@
 # GeoMine
 
-Fonte oficial do aplicativo GeoMine.
+Código-fonte do GeoMine, o GIS web da CCM publicado em https://geomine-3.web.app/
+(projeto Firebase `geomine-3`).
 
-## Versão-base
+A raiz deste repositório corresponde à versão publicada em 12/11/2026 às 11h27
+(horário de Brasília). Ela foi trazida da pasta `GeoMine/atual` do Google Drive
+e a montagem feita a partir daqui reproduz o site byte a byte:
 
-Esta árvore foi extraída exclusivamente de
-`CCMGIS2_011_CRS_PROJETO_ARQUIVO_AGRUPADOS.html`. Esse arquivo permanece como
-referência histórica imutável; as novas funções do GeoMine são acrescentadas
-somente pela árvore modular. Recursos da experiência de placas QGIS não fazem
-parte desta fonte oficial.
+| Arquivo gerado | SHA-256 |
+|---|---|
+| `dist/GeoMine.html` | `24afcc3e67e705d38be7ea0ce037eef6857ad7cb5fa5ac7184692d1f3f81a848` |
+| `public/index.html` | `bdaef92045f3c324d591dee76fa03a3187d28f13a2273eb9be28146e7f8becf1` |
 
-- arquivo para abrir: `dist/GeoMine.html`
-- referência imutável: `reference/GeoMine_001_BASE.html`
-- SHA-256 da versão-base: `6341acd1835250188d47e3ae72cadd248b1a2154da2f33ad8fd71f4158e13377`
+Os mesmos valores estão em `CURRENT_RELEASE.json` (`distSha256` e
+`publishedSha256`), junto com o histórico de publicações e validações.
 
-## Regra de trabalho
+## Montar
 
-Edite somente arquivos dentro de `src/`. O HTML em `dist/` é uma saída gerada
-e nunca deve receber alterações manuais.
-
-Para montar e conferir a equivalência com a versão-base:
-
-```bash
-python3 tools/build.py --verify-reference
-```
-
-Depois da primeira alteração funcional intencional, monte sem comparar com a
-referência histórica:
+Edite somente arquivos dentro de `src/`. Os HTML de `dist/` e `public/` são
+saídas geradas, não entram no git e nunca devem ser alterados à mão.
 
 ```bash
-python3 tools/build.py
+python3 -I -X utf8 tools/build.py            # gera dist/GeoMine.html (uso offline)
+python3 -I -X utf8 tools/preparar_hosting.py # gera public/index.html (com login Google)
+sha256sum dist/GeoMine.html public/index.html
 ```
+
+## Publicar
+
+```bash
+firebase deploy --only hosting --project geomine-3
+```
+
+O workflow `.github/workflows/firebase-hosting.yml` faz a montagem e a
+publicação automaticamente a cada push na branch `main`, e gera um link de
+prévia em pull requests. Ele precisa do segredo
+`FIREBASE_SERVICE_ACCOUNT_GEOMINE_3` cadastrado no repositório.
+
+Antes de publicar, confirme que o site no ar ainda corresponde ao
+`publishedSha256` de `CURRENT_RELEASE.json`. Se não corresponder, alguém
+publicou de outro lugar e este repositório está desatualizado.
 
 ## Organização
 
-- `src/index.template.html`: estrutura do documento.
-- `src/module-order.json`: contrato e ordem de montagem.
-- `src/core/parts/`: núcleo legado dividido em partes ordenadas.
-- `src/modules/`: recursos organizados por domínio.
-- `src/modules/mining/cava2/`: motor Cava v10.6 separado do integrador.
-- `src/styles/`: estilos do aplicativo.
-- `src/vendor/`: bibliotecas embarcadas para uso offline.
-- `tools/build.py`: orquestrador da montagem.
-- `reference/`: referência imutável e hashes de proveniência.
-- `dist/GeoMine.html`: aplicativo final em arquivo único.
+| Caminho | Conteúdo |
+|---|---|
+| `src/index.template.html` | Estrutura do documento |
+| `src/module-order.json` | Contrato e ordem de montagem |
+| `src/core/parts/` | Núcleo legado dividido em partes ordenadas |
+| `src/modules/` | Recursos por domínio (blasting, cad, environmental, mining, raster, ui...) |
+| `src/styles/`, `src/assets/`, `src/vendor/`, `src/services/` | Estilos, imagens, bibliotecas embarcadas e serviços auxiliares |
+| `tools/` | `build.py`, `preparar_hosting.py` e utilitários |
+| `web/` | Portão de login (`gate.template.html`), configuração do Firebase e logotipos |
+| `public/` | Licenças servidas junto com o site; `index.html` é gerado |
+| `validation/` | Relatórios e testes das validações de cada entrega |
+| `firestore.rules`, `firestore.indexes.json`, `storage.rules` | Regras da colaboração em nuvem |
+| `docs/` | Notas técnicas por funcionalidade |
+| `firebase/`, `cloud/` | Projetos auxiliares (functions e protótipo Next.js) |
+| `reference/` | Referências históricas da migração para a árvore modular |
+| `arquivo/base-2026-11-06/` | Linha anterior do código, descrita abaixo |
 
-## Exportação em lote
+## Duas linhas de código
 
-O menu **Exportar → Várias camadas** reproduz a ordem da árvore do projeto,
-incluindo grupos e subgrupos, e reúne tudo em um único ZIP. Somente grupos e
-subgrupos viram pastas; os arquivos de cada camada ficam diretamente no grupo
-correspondente, com prefixos numéricos que preservam a ordem visual. O tipo é detectado
-automaticamente: vetores usam Shapefile por padrão, rasters numéricos usam
-GeoTIFF e ortofotos usam o GeoTIFF original quando a fonte está ligada; em um
-projeto reaberto, usam explicitamente o PNG da prévia + PGW + PRJ. Também é
-possível escolher por item GeoJSON, KML, DXF 3D, ESRI ASCII Grid ou XYZ.
-Superfícies TIN permanecem bloqueadas até serem rasterizadas.
+Até 06/11/2026 existiam duas árvores no Drive que evoluíram em paralelo:
 
-Cada Shapefile exportado inclui `.shp`, `.shx`, `.dbf`, `.prj` e `.cpg`. A
-tabela DBF é gravada em UTF-8 e o `.cpg` declara essa mesma codificação, evitando
-acentos quebrados no GeoMine, QGIS e demais leitores compatíveis.
+- **`GeoMine/src` (base de 06/11).** Recebeu a etapa de compartimentação de
+  06/11: `core/layer-store.js`, `core/project-state.js` e o ribbon dividido em
+  `modules/ui/ribbon-*.js`. Não é a versão publicada. Está preservada em
+  `arquivo/base-2026-11-06/`.
+- **`GeoMine/development/Blasting` (publicada).** Recebeu tudo o que foi ao ar
+  depois: desmonte (blasting), licenças ambientais, geoestatística, refinamento
+  de TPI, área de trabalho para tablet e ortofotos por tiles. É a raiz deste
+  repositório.
 
-Na janela, **Pastas conforme a árvore** preserva essa hierarquia e aplica os
-prefixos numéricos. A opção **Arquivos brutos · sem pastas ou numeração** coloca
-todos os componentes diretamente na raiz do ZIP com o nome da camada. O pacote
-contém somente os arquivos escolhidos: não acrescenta
-`LEIA-ME.txt` nem `manifesto.json`.
+A compartimentação de 06/11 não foi incorporada à linha publicada. Se ela for
+retomada, o trabalho é portá-la de `arquivo/base-2026-11-06/` para `src/`.
 
-Para validar a árvore, grupos/subgrupos, formatos vetoriais e raster, ortofoto,
-filtros, multipartes, nomes seguros e falhas parciais:
-
-```bash
-node tools/validate_batch_export.mjs
-```
-
-## Colaboração em nuvem
-
-Na versão Web autenticada, **Início → Colaboração** permite criar ou entrar
-numa sala, convidar contas da CCM e acompanhar pessoas e histórico. A unidade
-de edição simultânea é a camada vetorial: colaboradores podem trabalhar em
-camadas diferentes; uma reserva renovável impede sobrescrita silenciosa da
-mesma camada. Alterações feitas sem conexão entram numa fila local e um
-conflito recebido é preservado como uma nova camada para comparação.
-
-O convite autoriza a conta informada, mas não envia e-mail: quem cria a sala
-deve encaminhar também o código mostrado na tela. O acesso exige e-mail
-`@ccmeng.net` verificado.
-
-Escopo desta primeira versão: a fotografia inicial leva o projeto completo e
-a sincronização ao vivo cobre camadas vetoriais — inclusive observações,
-contatos, litologias e logs gravados nas feições geológicas. Exclusão de
-camada, árvore/grupos, rasters, pranchas e configurações globais das seções
-geológicas ainda permanecem locais e devem ser consolidados num `.ccmgis`.
-
-O aplicativo offline continua independente do Firebase. Firestore e Storage
-só são usados depois que a pessoa cria ou entra numa sala. O autosave e os
-arquivos `.ccmgis` locais continuam funcionando normalmente.
-
-Para preparar a versão autenticada e incluir no `firebase.json` as regras de
-Firestore e Storage:
-
-```bash
-python3 tools/build.py
-python3 tools/publicar_web.py --config web/firebase-config.json
-```
-
-Antes de publicar, valide os dois contratos:
-
-```bash
-node tools/validate_collaboration_core.mjs
-node tools/validate_collaboration_firebase_contract.mjs
-```
-
-## Estado da modularização
-
-Estado inicial e regras da pilha possuem módulos independentes. A interface
-foi dividida por responsabilidade e dispõe de um registro de extensões para
-novas integrações. Veja `docs/compartimentacao.md` para contratos, fontes e
-validações da etapa de 06/11/2026.
-
-A autoria é modular e a montagem é reproduzível. Parte do núcleo ainda depende
-de ordem de carga e de nomes globais; portanto, a separação atual organiza a
-fonte, mas ainda não representa isolamento completo entre todos os módulos.
+Os HTML monolíticos de referência (acima de 2 MB) e os pacotes `.zip` de
+entregas antigas ficaram só no Drive.

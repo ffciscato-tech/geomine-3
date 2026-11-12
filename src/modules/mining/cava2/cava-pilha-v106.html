@@ -34,6 +34,12 @@
   .campo .un{font-size:11px; color:var(--texto2); width:24px; margin-left:5px;}
   .campo input[type=checkbox]{accent-color:var(--acento);}
   .campo input.calc{background:#14171c; color:var(--texto2); border-style:dashed; cursor:default;}
+  .cava-number{display:inline-flex;align-items:stretch;gap:2px;flex:none;}
+  .cava-number button{width:28px;min-height:32px;padding:0;border:1px solid var(--borda);border-radius:5px;
+    color:var(--texto);background:var(--painel);font:600 18px system-ui;touch-action:manipulation;cursor:pointer;}
+  .cava-number button:disabled{opacity:.35;cursor:default;}
+  .campo .cava-number input[type=number]{width:54px;min-height:32px;appearance:textfield;}
+  .cava-number input::-webkit-inner-spin-button,.cava-number input::-webkit-outer-spin-button{appearance:none;margin:0;}
   #resultados{font-size:12px; line-height:1.5;}
   #resultados b{color:var(--acento);}
   #resultados .grp{margin-bottom:8px;}
@@ -135,11 +141,18 @@
   }
   #ccmgisV74Toolbar .ccmgis-tool:disabled{opacity:.38;cursor:default;}
   #ccmgisV74Toolbar svg{
-    width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.65;
+    width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.65;
     stroke-linecap:round;stroke-linejoin:round;pointer-events:none;
   }
   #ccmgisV74Toolbar svg .soft{fill:currentColor;stroke:none;opacity:.18;}
   #ccmgisV74Toolbar svg .solid{fill:currentColor;stroke:none;}
+  #ccmgisV74Toolbar svg .accent{stroke:#d68a21;}
+  #ccmgisV74Toolbar svg .muted{opacity:.5;}
+  #ccmgisV74Toolbar svg .handle{fill:#edf3f7;stroke:currentColor;stroke-width:1.6;}
+  #ccmgisV74Toolbar .ativa svg .accent{stroke:currentColor;}
+  #ccmgisV74Toolbar [data-tooltip]{touch-action:manipulation;-webkit-touch-callout:none;}
+  #ccmgisV74Toolbar [data-tooltip].touch-tooltip::after{display:block;opacity:1;visibility:visible;transform:translateX(-50%);}
+
   #ccmgisV74Toolbar svg .icon-text{
     fill:currentColor;stroke:none;font:700 5px "Signika",sans-serif;letter-spacing:-.2px;
   }
@@ -183,7 +196,7 @@
   #ccmgisV74Toolbar .ccmgis-retired-controls{display:none!important;}
   #ccmgisV74Toolbar [data-tooltip]::after{
     content:attr(data-tooltip);position:absolute;left:50%;top:calc(100% + 7px);
-    transform:translateX(-50%) translateY(-2px);z-index:500;display:block;
+    transform:translateX(-50%) translateY(-2px);z-index:500;display:none;
     padding:5px 8px;border:1px solid #466175;border-radius:5px;
     background:#10263a;color:#f5f9fc;box-shadow:0 5px 16px #0005;
     font:600 11px/1.15 "Signika",sans-serif;white-space:nowrap;
@@ -192,7 +205,7 @@
   #ccmgisV74Toolbar [data-tooltip]:hover::after,
   #ccmgisV74Toolbar [data-tooltip]:focus-visible::after,
   #ccmgisV74Toolbar [data-tooltip]:focus-within::after{
-    opacity:1;visibility:visible;transform:translateX(-50%) translateY(0);
+    display:block;opacity:1;visibility:visible;transform:translateX(-50%) translateY(0);
   }
   body.ccmgis-claro #ccmgisV74Toolbar{
     background:#edf3f7;border-bottom-color:#a8bac8;
@@ -362,6 +375,7 @@
 
   <fieldset>
     <legend>Resultados</legend>
+    <div class="campo"><label for="ccmgisEmpolamento">Empolamento</label><input id="ccmgisEmpolamento" type="number" min="0" step="1" placeholder="—"><span class="un">%</span></div>
     <div id="resultados">—</div>
   </fieldset>
 
@@ -382,7 +396,7 @@
   <header id="ccmgisV74Toolbar" aria-label="Ferramentas da cava e do DCE">
     <div id="ccmgisMdtCommand" class="ccmgis-mdt-command" title="Escolher MDT de trabalho" aria-label="Escolher MDT de trabalho" data-tooltip="Escolher MDT de trabalho">
       <select id="ccmgis_mdt" aria-label="Escolher MDT de trabalho"><option value="">Escolher MDT de trabalho</option></select>
-      <button type="button" id="ccmgisMdtOpen" aria-label="Escolher MDT de trabalho" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="m3 17 5-9 4 5 4-8 5 12Z"/><path d="m3 17 5-9 4 5 4-8 5 12M3 20h18"/><path d="m18 3 2 2 2-2"/></svg></button>
+      <button type="button" id="ccmgisMdtOpen" aria-label="Escolher MDT de trabalho" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="M2 17 8 6l5 7 4-5 5 9Z"/><path d="m2 17 6-11 5 7 4-5 5 9M2 21h20M6 17h12M8 10l2 2 2-1"/></svg></button>
     </div>
     <label id="ccmgisCotaCommand" class="ccmgis-cota-command" title="Cota de trabalho" aria-label="Cota de trabalho" hidden>
       <span class="ccmgis-cota-caption">Cota</span>
@@ -394,67 +408,33 @@
 
     <span class="ccmgis-tool-sep" aria-hidden="true"></span>
 
-    <button type="button" id="t_mover" class="ccmgis-tool" title="Mover" aria-label="Mover" data-tooltip="Mover">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 12V7.5a1.5 1.5 0 0 1 3 0V11 5.5a1.5 1.5 0 0 1 3 0V11 6.5a1.5 1.5 0 0 1 3 0V12 9a1.5 1.5 0 0 1 3 0v5c0 4.5-2.7 7-7 7-3.1 0-4.7-1.7-6.5-4.5L4 14.3A1.6 1.6 0 0 1 6.4 12l.6.5Z"/><path class="soft" d="M7 12V7.5a1.5 1.5 0 0 1 3 0V11 5.5a1.5 1.5 0 0 1 3 0V11 6.5a1.5 1.5 0 0 1 3 0V12 9a1.5 1.5 0 0 1 3 0v5c0 4.5-2.7 7-7 7-3.1 0-4.7-1.7-6.5-4.5L4 14.3A1.6 1.6 0 0 1 6.4 12l.6.5Z"/></svg>
-    </button>
-    <button type="button" id="t_cava" class="ccmgis-tool" title="Desenhar cava" aria-label="Desenhar cava" data-tooltip="Desenhar cava">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="M3 5h18l-3 4H6l3 4h6l-2 6h-2l-2-6-3-4Z"/><path d="M3 5h18M6 9h12M9 13h6M11 19h2"/><path d="m18 16 3 3m0-3-3 3"/></svg>
-    </button>
-    <button type="button" id="t_pilha" class="ccmgis-tool" title="Desenhar DCE" aria-label="Desenhar DCE" data-tooltip="Desenhar DCE">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="M3 20h18l-3-4H6l3-4h6l-2-7h-2l-2 7-3 4Z"/><path d="M3 20h18M6 16h12M9 12h6M11 5h2"/><path d="m18 7 3-3m-3 0 3 3"/></svg>
-    </button>
-    <button type="button" id="t_editar" class="ccmgis-tool" title="Editar vértices" aria-label="Editar vértices" data-tooltip="Editar vértices">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 4-10 9-3 3 12-9 5z"/><rect x="2.5" y="15.5" width="3" height="3" class="solid"/><rect x="6.5" y="5.5" width="3" height="3" class="solid"/><rect x="15.5" y="2.5" width="3" height="3" class="solid"/></svg>
-    </button>
-    <button type="button" id="b_escolher" class="ccmgis-tool" title="Escolher linha existente" aria-label="Escolher linha existente" data-tooltip="Escolher linha existente">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17 9 8l6 5 5-8"/><circle cx="4" cy="17" r="2" class="solid"/><circle cx="15" cy="13" r="2"/><path d="M15 4v5m-2.5-2.5h5"/></svg>
-    </button>
+    <button type="button" id="t_mover" class="ccmgis-tool" title="Mover vista" aria-label="Mover vista" data-tooltip="Mover vista"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12V6a1.5 1.5 0 0 1 3 0v5-7a1.5 1.5 0 0 1 3 0v7-5a1.5 1.5 0 0 1 3 0v6-3a1.5 1.5 0 0 1 3 0v5c0 5-3 8-7 8-3 0-4-2-6-5l-3-4a1.6 1.6 0 0 1 2.5-2L8 13"/></svg></button>
+    <button type="button" id="t_cava" class="ccmgis-tool" title="Desenhar cava" aria-label="Desenhar cava" data-tooltip="Desenhar cava"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="M2 6h4v4h4v6h4v-6h4V6h4v15H2Z"/><path d="M2 6h4v4h4v6h4v-6h4V6h4"/><path class="accent" d="M12 2v8m-2-2 2 2 2-2"/><path d="M3 21h18"/></svg></button>
+    <button type="button" id="t_pilha" class="ccmgis-tool" title="Desenhar depósito de estéril" aria-label="Desenhar depósito de estéril" data-tooltip="Desenhar depósito de estéril"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="M2 20v-4h4v-4h4V7h4v5h4v4h4v4Z"/><path d="M2 20v-4h4v-4h4V7h4v5h4v4h4v4M2 21h20"/><path class="accent" d="M12 5V1m-2 2 2-2 2 2"/></svg></button>
+    <button type="button" id="t_editar" class="ccmgis-tool" title="Editar vértices e bermas" aria-label="Editar vértices e bermas" data-tooltip="Editar vértices e bermas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h12l4 14H4Z"/><path class="accent" d="m8 15 1-4 9-9 3 3-9 9-4 1m8-11 3 3"/><rect x="2" y="3" width="4" height="4" class="handle"/><rect x="2" y="17" width="4" height="4" class="handle"/><rect x="18" y="17" width="4" height="4" class="handle"/></svg></button>
+    <button type="button" id="b_escolher" class="ccmgis-tool" title="Escolher linha e continuar bermas" aria-label="Escolher linha e continuar bermas" data-tooltip="Escolher linha e continuar bermas"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="muted" d="M2 5h12M2 10h12M2 15h6"/><path class="accent" d="M2 10h11v5h5v6h4"/><path d="m16 2 6 4-4 1-2 4Z"/></svg></button>
 
     <span class="ccmgis-tool-sep" aria-hidden="true"></span>
 
-    <button type="button" id="t_rampa" class="ccmgis-tool" title="Início da rampa" aria-label="Início da rampa" data-tooltip="Início da rampa">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18h5V9h6V4h5"/><path d="m17 2 3 2-3 2"/><circle cx="9" cy="18" r="2" class="solid"/></svg>
-    </button>
-    <button type="button" id="t_retorno" class="ccmgis-tool" title="Retorno da rampa" aria-label="Retorno da rampa" data-tooltip="Retorno da rampa">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="M5 18h7a5 5 0 1 0 0-10H7v4l-4-4 4-4v3h5a6 6 0 1 1 0 12H5z"/><path d="M5 18h7a5 5 0 1 0 0-10H4m3-4L3 8l4 4"/><circle cx="5" cy="18" r="1.8" class="solid"/></svg>
-    </button>
-    <button type="button" id="t_secao" class="ccmgis-tool" title="Seção" aria-label="Seção" data-tooltip="Seção">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="M4 19 12 5l8 14Z"/><path d="M4 19 12 5l8 14ZM8 16h8M10 12h4"/></svg>
-    </button>
-    <button type="button" id="b_parar" class="ccmgis-tool" title="Finalizar" aria-label="Finalizar" data-tooltip="Finalizar">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14"/><path class="soft" d="M5 17h14v3H5z"/></svg>
-    </button>
-    <button type="button" id="ccmgis_cortar_cava" class="ccmgis-tool ccmgis-cut-tool" title="Cortar cava" aria-label="Cortar cava" data-tooltip="Cortar cava">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="M3 6h18l-3 4H6l3 4h6l-2 6h-2l-2-6-3-4Z"/><path d="M3 6h18M6 10h12M9 14h6M11 20h2"/><path d="m5 4 14 17" stroke-dasharray="2.5 2"/></svg>
-    </button>
-    <button type="button" id="b_reverter" class="ccmgis-tool" title="Reverter string" aria-label="Reverter string" data-tooltip="Reverter string">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7H3V3M3 7a9 9 0 1 1-1 8"/><path d="m9 15 3-3 3 3"/></svg>
-    </button>
-    <button type="button" id="b_desfazer" class="ccmgis-tool" title="Desfazer (Ctrl+Z)" aria-label="Desfazer" data-tooltip="Desfazer">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 7-5 5 5 5"/><path d="M4 12h9a7 7 0 0 1 7 7"/></svg>
-    </button>
-    <button type="button" id="b_refazer" class="ccmgis-tool" title="Refazer (Ctrl+Shift+Z)" aria-label="Refazer" data-tooltip="Refazer">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 7 5 5-5 5"/><path d="M20 12h-9a7 7 0 0 0-7 7"/></svg>
-    </button>
-    <button type="button" id="b_limpar" class="ccmgis-tool ccmgis-clear-tool" title="Limpar tudo" aria-label="Limpar tudo" data-tooltip="Limpar tudo">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3m-8 0 1 14h8l1-14M10 11v6m4-6v6"/></svg>
-    </button>
+    <button type="button" id="t_rampa" class="ccmgis-tool" title="Marcar início da rampa" aria-label="Marcar início da rampa" data-tooltip="Marcar início da rampa"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="M3 20 20 7v5L3 23Z"/><path d="m3 20 17-13v5L3 23M3 4v14m0-14h8l-2 3 2 3H3"/><path class="accent" d="m8 18 8-6m-4 0 4 0v4"/></svg></button>
+    <button type="button" id="t_retorno" class="ccmgis-tool" title="Inserir retorno na rampa" aria-label="Inserir retorno na rampa" data-tooltip="Inserir retorno na rampa"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V8a8 8 0 0 1 16 0v11M8 21V8a4 4 0 0 1 8 0v11"/><path class="accent" d="m14 16 4 5 4-5"/></svg></button>
+    <button type="button" id="t_secao" class="ccmgis-tool" title="Traçar seção da cava" aria-label="Traçar seção da cava" data-tooltip="Traçar seção da cava"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h4v5h4v5h4v-5h4V6h4"/><path class="accent" d="M2 3h20M12 2v19" stroke-dasharray="2 2"/><path d="m2 3 2-2m-2 2 2 2m18-2-2-2m2 2-2 2M2 21h20"/></svg></button>
+    <button type="button" id="b_parar" class="ccmgis-tool" title="Encerrar nesta bancada" aria-label="Encerrar nesta bancada" data-tooltip="Encerrar nesta bancada"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h4v5h4v5h4M2 21h20"/><rect class="accent" x="13" y="9" width="8" height="8" rx="1"/><path class="soft" d="M13 9h8v8h-8Z"/></svg></button>
+    <button type="button" id="ccmgis_cortar_cava" class="ccmgis-tool ccmgis-cut-tool" title="Recortar cava no MDT" aria-label="Recortar cava no MDT" data-tooltip="Recortar cava no MDT"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="muted" d="M2 18 7 4l6 9 4-6 5 6"/><path d="M2 5h3v5h4v6h6v-6h4V5h3"/><path class="accent" d="m5 10 4 6h6l4-6" stroke-width="2.7"/><circle class="handle" cx="5" cy="10" r="1.5"/><circle class="handle" cx="19" cy="10" r="1.5"/></svg></button>
+    <button type="button" id="b_reverter" class="ccmgis-tool" title="Restaurar berma selecionada" aria-label="Restaurar berma selecionada" data-tooltip="Restaurar berma selecionada"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h5v5h7v5h6M3 19h12"/><path class="accent" d="M21 4a7 7 0 0 0-12 1m0-4v4h4"/><path class="muted" d="M8 9h7" stroke-width="3"/></svg></button>
+    <button type="button" id="b_desfazer" class="ccmgis-tool" title="Desfazer (Ctrl+Z)" aria-label="Desfazer (Ctrl+Z)" data-tooltip="Desfazer (Ctrl+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-6 6 6 6M3 9h10a7 7 0 0 1 7 7v4"/></svg></button>
+    <button type="button" id="b_refazer" class="ccmgis-tool" title="Refazer (Ctrl+Shift+Z)" aria-label="Refazer (Ctrl+Shift+Z)" data-tooltip="Refazer (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 3 6 6-6 6m6-6h-10a7 7 0 0 0-7 7v4"/></svg></button>
+    <button type="button" id="b_limpar" class="ccmgis-tool ccmgis-clear-tool" title="Limpar desenho" aria-label="Limpar desenho" data-tooltip="Limpar desenho"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/></svg></button>
     <label class="ccmgis-toggle" title="Limites em preto" aria-label="Limites em preto" data-tooltip="Limites em preto">
       <input id="chk_lim_preto" type="checkbox" checked aria-label="Limites em preto">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="m4 15 3-9 9-2 4 8-5 8-8-1z"/><path d="m4 15 3-9 9-2 4 8-5 8-8-1z" stroke-width="2.2"/></svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="m4 5 12-2 5 10-7 8-11-5Z"/><path d="m4 5 12-2 5 10-7 8-11-5Z" stroke-width="2.6"/><path d="M8 9h7m-7 4h7m-7 4h4" stroke-width=".8"/></svg>
     </label>
 
     <div class="sep"></div>
 
-    <button type="button" id="b_ajustar" class="ccmgis-tool" title="Ajustar vista" aria-label="Ajustar vista" data-tooltip="Ajustar vista">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5m13 5h5v-5"/><path d="m3 8 6-6m12 6-6-6M3 16l6 6m12-6-6 6"/></svg>
-    </button>
-    <button type="button" id="b_dxf" class="ccmgis-tool" title="Exportar DXF" aria-label="Exportar DXF" data-tooltip="Exportar DXF">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="M6 3h9l4 4v14H6z"/><path d="M6 3h9l4 4v14H6zM15 3v5h5"/><text x="8" y="17" class="icon-text">DXF</text></svg>
-    </button>
-    <button type="button" id="b_png" class="ccmgis-tool" title="Exportar PNG" aria-label="Exportar PNG" data-tooltip="Exportar PNG">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="9" r="1.5" class="solid"/><path class="soft" d="m4 18 5-5 3 3 3-4 5 6z"/><path d="m4 18 5-5 3 3 3-4 5 6"/></svg>
-    </button>
+    <button type="button" id="b_ajustar" class="ccmgis-tool" title="Ajustar vista ao desenho" aria-label="Ajustar vista ao desenho" data-tooltip="Ajustar vista ao desenho"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><path class="accent" d="m8 7 8 2 1 7-9 1-2-5Z"/></svg></button>
+    <button type="button" id="b_dxf" class="ccmgis-tool" title="Exportar DXF" aria-label="Exportar DXF" data-tooltip="Exportar DXF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2h10l5 5v15H5ZM15 2v6h5"/><path class="accent" d="m8 14 3-2 5 3-3 4-5-2Z"/></svg></button>
+    <button type="button" id="b_png" class="ccmgis-tool" title="Exportar imagem PNG" aria-label="Exportar imagem PNG" data-tooltip="Exportar imagem PNG"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="18" rx="2"/><circle cx="8" cy="8" r="2"/><path class="soft" d="m3 18 5-5 4 4 4-6 5 7Z"/><path d="m3 18 5-5 4 4 4-6 5 7"/></svg></button>
     <span class="ccmgis-retired-controls" hidden aria-hidden="true">
       <button type="button" id="b_novo_lim" tabindex="-1">Novo limite (desenhar)</button>
       <select id="sel_como" tabindex="-1"><option value="crista">CRISTA</option><option value="pe">PÉ</option></select>
@@ -518,6 +498,7 @@ function fixaTrava(){
   const cop=a.Sk.map(q=>({x:q.x, y:q.y, si:q.si}));
   travaSk={alvo:congelada.alvo, g:o.design.aneis.length-1-congelada.idx,
            S:cop, Sin:cop.map(q=>({x:q.x, y:q.y, si:q.si})),
+           P:a.P.map(q=>({...q})),projecaoEntrada:a.projecaoEntrada?JSON.parse(JSON.stringify(a.projecaoEntrada)):null,
            est: a.est ? JSON.parse(JSON.stringify(a.est)) : null};
 }
 
@@ -534,7 +515,9 @@ function alvos(){
   const ord=t=>{const L=[t];
     for(const k of Object.keys(objs)) if(new RegExp("^"+t+"#\\d+$").test(k)) L.push(k);
     L.sort((a,b)=>(a===t?-1:b===t?1:(+a.split("#")[1])-(+b.split("#")[1])));
-    return L;};
+    const out=[],seen=new Set(),visit=k=>{if(seen.has(k))return;seen.add(k);out.push(k);
+      for(const c of L)if(objs[c]?.paiDe===k)visit(c);};
+    L.forEach(visit);return out;};
   return ord("cava").concat(ord("pilha")).filter(k=>objs[k]);
 }
 const objs = {
@@ -1188,7 +1171,7 @@ function faixaCorredorInt(S, wideIn, dh, W, s0, L, dir, zIni, zFim, costura, LtA
 // percorridos pela estrada acima/atrás dele. A ENTRADA da janela abre em
 // flare cosseno (sem degrau); a CHEGADA (posição da estrada) mantém o corte
 // reto — mesma mecânica de sempre, espelhada para dentro.
-function anelComRampaInt(Sk, W, anc, ancIni, voltas, dir, corte, LtA){
+function anelComRampaInt(Sk, W, anc, ancIni, voltas, dir, corte, LtA, entradaFisica){
   // (voltas)·W uniformes para dentro na base (offsetU robusto); o flare da
   // travessia corrente entra como ABERTURA COSSENO e a janela corrente com W
   // cheio; corte reto EXATO só na CHEGADA
@@ -1237,6 +1220,36 @@ function anelComRampaInt(Sk, W, anc, ancIni, voltas, dir, corte, LtA){
   const w_se =proj1(pontoNoArco(baseA,cum,se), se);
   const w_seP=proj1(pontoNoArco(baseA,cum,seP), seP);
   const w_sc =proj1(pontoNoArco(baseA,cum,sc), sc);
+  // Só a entrada inicial: a face sob a pista segue sua borda XYZ. A reta
+  // projetada tem dn/ds=-sinal·greide/tan(face), e termina no portal que já
+  // pertence à janela. Seu recuo conserva as bermas locais, inclusive editadas.
+  // Não substituir costuras posteriores nem inventar uma curva de ligação.
+  let projecaoEntrada=null,residuoEntrada=null;
+  if(entradaFisica&&voltas===0){
+    const {T,N,g,sinal,tanFace,B,zAlvo,bermas,bermasEditadas,alcance}=entradaFisica,Q=em1(w_seP),
+      V={x:T.x-N.x*sinal*g/tanFace,y:T.y-N.y*sinal*g/tanFace},hits=[];
+    const sx=(Q.x-B.x)*T.x+(Q.y-B.y)*T.y,ny=(Q.x-B.x)*N.x+(Q.y-B.y)*N.y;
+    residuoEntrada=ny+sinal*g*sx/tanFace-(sinal*(zAlvo-B.z)/tanFace+bermas);
+    for(let i=0;i<baseA.length;i++){
+      const a=baseA[i],b=baseA[(i+1)%baseA.length],dx=b.x-a.x,dy=b.y-a.y,
+        den=V.x*dy-V.y*dx;if(Math.abs(den)<1e-10)continue;
+      const x=a.x-Q.x,y=a.y-Q.y,t=(x*V.y-y*V.x)/den,
+        s=(x*dy-y*dx)/den;
+      if(t<-.000001||t>1.000001)continue;
+      const arc=wrap(cum[i]+clamp(t,0,1)*Math.hypot(dx,dy)),
+        P={x:Q.x+s*V.x,y:Q.y+s*V.y},back=dir===1?wrap(seP-arc):wrap(arc-seP),
+        station=(P.x-B.x)*T.x+(P.y-B.y)*T.y;
+      // A antiga abertura de 4W não limita a projeção. A busca pode avançar
+      // para trás somente dentro do acesso reto realmente construído.
+      if(!(alcance>0)||s>1e-5||station<-alcance-1e-5||back>perB/2)continue;
+      hits.push({arc,back,s,P});
+    }
+    hits.sort((a,b)=>b.s-a.s);
+    if(hits.length&&Math.abs(residuoEntrada)<=Math.max(.02,W*.002)){
+      const h=hits[0],span=Math.max(Lt,h.back);
+      projecaoEntrada={...h,Q,V,Lt:span,se:wrap(seP-dir*span),seP,base:baseA};
+    }
+  }
   const arco1=(a,b)=>dir===1 ? wrap1(b-a) : wrap1(a-b);
   const L1f=Math.max(arco1(w_se,w_seP), 1e-6);   // flare em wide1
   const L1j=Math.max(arco1(w_seP,w_sc), 1e-6);   // janela em wide1
@@ -1274,6 +1287,13 @@ function anelComRampaInt(Sk, W, anc, ancIni, voltas, dir, corte, LtA){
     // cobre mais arco. Os 12 restantes caíam no transporte por projeção, que é
     // o que errava metros ao arrastar string profunda.
     const si=pos.si;
+    const back=wrap(Lt-u);
+    if(projecaoEntrada&&(back<=projecaoEntrada.Lt+1e-7||Math.abs(u-Lt)<1e-7)){
+      if(back>projecaoEntrada.back)return {x:pos.x,y:pos.y,si};
+      const f=clamp(1-back/Math.max(1e-9,projecaoEntrada.back),0,1),
+        a=projecaoEntrada.P,b=projecaoEntrada.Q;
+      return {x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f,si};
+    }
     if(!j && f<=1e-9) return {x:pos.x, y:pos.y, si};
     const p1=em1(w1De(u));
     if(!j) return {x:pos.x+(p1.x-pos.x)*f, y:pos.y+(p1.y-pos.y)*f, si};   // flare puro
@@ -1300,13 +1320,17 @@ function anelComRampaInt(Sk, W, anc, ancIni, voltas, dir, corte, LtA){
   }
   // amostras SÓ na zona do flare: a abertura do portal é curva e precisa de
   // pontos próprios (fora dela a string fica com os vértices que já tem)
-  {
+  if(!projecaoEntrada){
     const nf=14;
     for(let k2=1;k2<nf;k2++){
       const sF=wrap(se + dir*(k2*Lt/nf));
       if(distArc(sF, sc)<margem) continue;
       itens.push({a:sF, p:ponto(uDe(sF), pontoNoArco(baseA,cum,sF))});
     }
+  }
+  if(projecaoEntrada){
+    itens.push({a:projecaoEntrada.arc,p:{...projecaoEntrada.P}});
+    itens.push({a:seP,p:{...projecaoEntrada.Q}});
   }
   // vértices de wide1 dentro da janela, ancorados no arco correspondente da base
   for(let i=0;i<wide1.length;i++){
@@ -1333,7 +1357,13 @@ function anelComRampaInt(Sk, W, anc, ancIni, voltas, dir, corte, LtA){
   else       { itens.push({a:wrap(sc-eps), p:{x:pLo.x,y:pLo.y}});
                itens.push({a:wrap(sc+eps), p:{x:pHi.x,y:pHi.y}}); }
   itens.sort((x,y)=>x.a-y.a);
-  return {P:removeLacos(dedup(itens.map(it=>it.p))), ent:entLo};
+  const candidato=removeLacos(dedup(itens.map(it=>it.p))),
+    original=projecaoEntrada?anelComRampaInt(Sk,W,anc,ancIni,voltas,dir,corte,LtA).P:candidato;
+  return {P:original, ent:entLo,
+    projecaoEntrada:projecaoEntrada?{inicio:projecaoEntrada.P,fim:projecaoEntrada.Q,
+      direcao:projecaoEntrada.V,base:projecaoEntrada.base,se:projecaoEntrada.se,seP,Lt:projecaoEntrada.Lt,
+      residuo:residuoEntrada,bermas:entradaFisica.bermas,bermasEditadas:!!entradaFisica.bermasEditadas,candidato}:null,
+    entradaRecusada:!!entradaFisica&&voltas===0&&!projecaoEntrada};
 }
 
 // LINHA DESENHADA = string exterior LITERAL. Gera de fora para dentro,
@@ -1405,48 +1435,310 @@ function insereGanchos(corredores, retornos, p, avisos){
 
 
 
-// ===== A CRISTA CONTORNA A BOCA DA RAMPA ====================================
-// A linha de crista é o contorno da cava na cota do topo. Onde a rampa arranca,
-// ela abre uma boca NESSA cota — então a crista não pode passar reta por cima:
-// ela tem de contornar a abertura. É a própria crista mudando de traçado, não
-// uma estrada nova. Nesse trecho curto a berma abaixo dela deixa de ter a
-// largura parametrizada, porque precisa encaixar na rampa. Com a rampa
-// desligada nada disto existe e a linha volta a ser uma crista normal.
-function cristaContornaBoca(aneis, corredores, W){
-  if(!aneis.length || !corredores.length) return 0;
-  const c0=corredores.find(c=>!c.gancho && !c.ligacao && !c.entrada);
-  if(!c0 || c0.borda1.length<3) return 0;
-  const anel=aneis[aneis.length-1];            // anel da cota do topo = linha desenhada
-  const P=anel.P;
-  if(!P || P.length<4) return 0;
-  // trecho da boca que ainda está NA cota do topo: enquanto a rampa não desceu
-  // mais que meio metro, ela é abertura na crista
-  const z0=c0.zIni;
-  let n=0;
-  while(n+1<c0.borda1.length && Math.abs((c0.borda1[n+1].z!=null?c0.borda1[n+1].z:z0)-z0)<0.5) n++;
-  if(n<1) n=1;
-  const A=c0.borda1[0], B=c0.borda2[0], C=c0.borda2[n], D=c0.borda1[n];
-  // onde entrar e sair do anel
-  const cum=cumulativo(P), per=cum[cum.length-1];
-  const sA=arcoMaisProximo(P,cum,A).s, sD=arcoMaisProximo(P,cum,D).s;
-  const dentroArco=(s)=>{const a=((s-sA)%per+per)%per, b=((sD-sA)%per+per)%per; return a<b;};
-  const novo=[];
+// A entrada se projeta PARA FORA da linha-base. A crista e o pé mantêm os
+// anéis analíticos; só a representação das linhas é interrompida onde a pista
+// passa. Não inserir o antigo entalhe A-B-C-D na crista (nem alterar bermas).
+// O prolongamento reto pertence ao primeiro corredor, em XYZ, seção, exportação
+// e recorte pelo MDT. Assim não vira um banco extra nem um patamar fictício.
+function projetaEntradaExterna(base, corredores, p, avisos){
+  const c=corredores.find(c=>!c.gancho&&!c.ligacao&&!c.entrada);
+  if(!c||c.centro.length<2||c.borda1.length<2)return false;
+  const a=c.borda1[0],b=c.borda2[0],j=c.centro[0],prox=c.centro[1],
+    W=Math.hypot(a.x-b.x,a.y-b.y),ds=Math.hypot(prox.x-j.x,prox.y-j.y);
+  if(!(W>0&&ds>1e-6))return false;
+  const N={x:(a.x-b.x)/W,y:(a.y-b.y)/W},T={x:-N.y,y:N.x};
+  if(T.x*(prox.x-j.x)+T.y*(prox.y-j.y)<0){T.x=-T.x;T.y=-T.y;}
+  const D={x:-T.x,y:-T.y},g=(prox.z-j.z)/ds,eps=1e-7,
+    local=q=>({u:(q.x-j.x)*D.x+(q.y-j.y)*D.y,v:(q.x-j.x)*N.x+(q.y-j.y)*N.y}),
+    P=base.map(local),cuts=[0],edges=[];
+  // Interseção exata do contorno com a faixa da pista. Os extremos em u
+  // delimitam todos os intervalos onde a seção transversal pode sair inteira.
+  // Testar só as duas pontas deixaria passar uma reentrância entre elas.
   for(let i=0;i<P.length;i++){
-    const s=cum[i];
-    if(dentroArco(s)) continue;               // o pedaço reto por cima da boca sai
-    novo.push(P[i]);
-    // ...e no lugar dele entra o contorno da abertura
-    const sN=cum[(i+1)%P.length];
-    const passou = dentroArco(sN) || (((sN-s)%per+per)%per > 0 && !dentroArco(s) && dentroArco((s+1e-6)%per));
-    if(dentroArco(sN)){
-      novo.push({x:A.x,y:A.y}, {x:B.x,y:B.y}, {x:C.x,y:C.y}, {x:D.x,y:D.y});
+    const q=P[i],r=P[(i+1)%P.length],dv=r.v-q.v;
+    let lo=0,hi=1;
+    if(Math.abs(dv)<eps){if(Math.abs(q.v)>W/2+eps)continue;}
+    else{const s=(-W/2-q.v)/dv,t=(W/2-q.v)/dv;lo=Math.max(0,Math.min(s,t));hi=Math.min(1,Math.max(s,t));if(lo>hi)continue;}
+    const u=q.u+(r.u-q.u)*lo,v=q.u+(r.u-q.u)*hi;
+    edges.push([Math.min(u,v),Math.max(u,v)]);
+    if(u>0)cuts.push(u);if(v>0)cuts.push(v);
+  }
+  const fim=Math.max(0,...P.map(q=>q.u))+W;
+  cuts.push(fim);cuts.sort((a,b)=>a-b);
+  const stops=cuts.filter((u,i)=>!i||u-cuts[i-1]>eps),
+    point=(q,u)=>({x:q.x+D.x*u,y:q.y+D.y*u}),
+    secaoFora=u=>!edges.some(([lo,hi])=>u>=lo-eps&&u<=hi+eps)&&!dentroDe(base,point(j,u));
+  let L=null;
+  for(let i=1;i<stops.length;i++){
+    const lo=stops[i-1],hi=stops[i];
+    if(hi-lo>eps&&secaoFora((lo+hi)/2)){L=lo+Math.min(W/2,(hi-lo)/2);break;}
+  }
+  // Não atravessar uma segunda parede. Classificar os intervalos dos raios
+  // evita ignorar reentrâncias estreitas por amostragem ou contar tangências.
+  const saiUmaVez=q=>{
+    const v=local(q).v,ss=[0,L];
+    for(let i=0;i<P.length;i++){
+      const a=P[i],b=P[(i+1)%P.length],dv=b.v-a.v;
+      if(Math.abs(dv)<eps){if(Math.abs(a.v-v)<eps)for(const u of [a.u,b.u])if(u>0&&u<L)ss.push(u);}
+      else{const t=(v-a.v)/dv,u=a.u+t*(b.u-a.u);if(t>=0&&t<=1&&u>0&&u<L)ss.push(u);}
+    }
+    ss.sort((a,b)=>a-b);let saiu=false;
+    for(let i=1;i<ss.length;i++){
+      if(ss[i]-ss[i-1]<eps)continue;
+      const at=point(q,(ss[i]+ss[i-1])/2),inside=dentroDe(base,at)||distAoAnel(base,at)<eps;
+      if(inside&&saiu)return false;if(!inside)saiu=true;
+    }
+    return saiu;
+  };
+  // Entre valores v de vértices a ordem das interseções não muda. Testar
+  // cada faixa lateral detecta paredes estreitas entre o eixo e as bordas.
+  const laterais=[-W/2,0,W/2,...P.map(q=>q.v).filter(v=>v>-W/2&&v<W/2)];
+  for(let i=0;i<P.length;i++){
+    const a=P[i],b=P[(i+1)%P.length],du=b.u-a.u;
+    if(Math.abs(du)<eps)continue;
+    for(const u of [0,L]){
+      const t=(u-a.u)/du,v=a.v+t*(b.v-a.v);
+      if(t>0&&t<1&&v>-W/2&&v<W/2)laterais.push(v);
     }
   }
-  if(novo.length>=4){ anel.P=dedup(novo); return 1; }
-  return 0;
+  laterais.sort((a,b)=>a-b);
+  const vs=laterais.filter((v,i)=>!i||v-laterais[i-1]>eps),raios=vs.slice();
+  for(let i=1;i<vs.length;i++)raios.push((vs[i-1]+vs[i])/2);
+  if(L===null||!raios.every(v=>saiUmaVez({x:j.x+N.x*v,y:j.y+N.y*v}))){
+    avisos.push('Entrada reta: o prolongamento cruza outra parede; mova o ponto R para perto da saída.');return false;
+  }
+  const n=Math.max(2,Math.ceil(L/3)),centro=[],borda1=[],borda2=[];
+  for(let k=0;k<=n;k++){
+    const u=L*(1-k/n),z=j.z-g*u;
+    centro.push({...point(j,u),z});borda1.push({...point(a,u),z});borda2.push({...point(b,u),z});
+  }
+  centro[n]={...j};borda1[n]={...a};borda2[n]={...b};
+  const meta={tipo:'prolongamento-reto',comprimento:L,gradiente:100*g};
+  c.entradaExterna={...meta,indiceJuncao:centro.length-1,pontoJuncao:{...j}};
+  c.centro=centro.slice(0,-1).concat(c.centro);
+  c.borda1=borda1.slice(0,-1).concat(c.borda1);c.borda2=borda2.slice(0,-1).concat(c.borda2);
+  c.zIni=c.centro[0].z;c.L=(+c.L||0)+meta.comprimento;
+  c.poly=c.borda1.concat(aparaAberta(c.borda2).slice().reverse());
+  return true;
 }
 
-function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
+// Limite de apresentação: a união envolve somente a boca da rampa. A base
+// editável e os anéis usados em bancadas, volumes e interseção não mudam.
+function contornoComEntrada(base,corredores){
+  const c=corredores.find(c=>c.entradaExterna);if(!c)return null;
+  const C=window.ClipperLib||window.parent?.ClipperLib;
+  if(!C?.Clipper)return null;
+  let fim=c.entradaExterna.indiceJuncao;
+  // Num vértice o prefixo pode só tocar o anel. Incluímos a transição já
+  // existente até a primeira seção interna, sem redesenhar o resto da pista.
+  for(;fim<Math.min(c.borda1.length,c.borda2.length)-1;fim++){
+    const a=c.borda1[fim],b=c.borda2[fim],m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+    if([a,b,m].every(q=>dentroDe(base,q))&&!base.some((q,i)=>segInt(a,b,q,base[(i+1)%base.length])))break;
+  }
+  const entrada=c.borda1.slice(0,fim+1).concat(c.borda2.slice(0,fim+1).reverse()),
+    original=base.map(q=>({x:q.x,y:q.y,z:0})),origem=base[0],tol=1e-6,
+    fontes=[original,entrada],paths=fontes.map(P=>{
+      const Q=P.map(q=>({X:Math.round((q.x-origem.x)/tol),Y:Math.round((q.y-origem.y)/tol)}));
+      if(!C.Clipper.Orientation(Q))Q.reverse();return Q;
+    }),clipper=new C.Clipper(),solution=[];
+  clipper.StrictlySimple=true;clipper.PreserveCollinear=true;
+  clipper.AddPaths(paths,C.PolyType.ptSubject,true);
+  if(!clipper.Execute(C.ClipType.ctUnion,solution,C.PolyFillType.pftNonZero,C.PolyFillType.pftNonZero))return null;
+  const aneis=solution.map(P=>P.map(q=>({x:origem.x+q.X*tol,y:origem.y+q.Y*tol}))),
+    arestas=fontes.flatMap((P,tipo)=>P.map((a,i)=>({a,b:P[(i+1)%P.length],tipo}))),partes=[];
+  const proj=(q,a,b)=>{const dx=b.x-a.x,dy=b.y-a.y,l2=dx*dx+dy*dy,
+    t=l2?clamp(((q.x-a.x)*dx+(q.y-a.y)*dy)/l2,0,1):0;
+    return {t,d:Math.hypot(q.x-a.x-t*dx,q.y-a.y-t*dy)};};
+  for(const P of aneis){
+    let parte=null,tipoAnterior=null;
+    for(let i=0;i<P.length;i++){
+      const a=P[i],b=P[(i+1)%P.length],m={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      let fonte=null,dist=Infinity;
+      for(const e of arestas){const q=proj(m,e.a,e.b);if(q.d<dist){dist=q.d;fonte=e;}}
+      if(!fonte||dist>tol*8)throw new Error('Não foi possível conservar a cota do contorno da entrada.');
+      const z=q=>{const t=proj(q,fonte.a,fonte.b).t;return {...q,z:fonte.a.z+t*(fonte.b.z-fonte.a.z)};},
+        p0=z(a),p1=z(b);
+      // A mesma XY pode ter Z da crista e Z da rampa. Não achatar nem
+      // interpolar uma ligação fictícia: são partes distintas do limite.
+      if(!parte||tipoAnterior!==fonte.tipo||Math.abs(parte.at(-1).z-p0.z)>tol*8){parte=[p0];partes.push(parte);}
+      parte.push(p1);tipoAnterior=fonte.tipo;
+    }
+  }
+  return {aneis,partes};
+}
+
+// A entrada é uma cadeia de faces físicas, não um buffer de escavação.
+// Geometry guard: test only pairs involving a newly generated ring segment.
+// Consecutive coincident SI handles do not turn a normal join into a crossing.
+function conflitoNovoNaEntrada(P,original,eps=1e-6){
+ const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y),cross=(a,b)=>a.x*b.y-a.y*b.x,sub=(a,b)=>({x:a.x-b.x,y:a.y-b.y}),
+  originals=new Map(original.map((q,i)=>[q,i])),n=P.length,
+  sameRun=(start,end,q)=>{for(let k=start;;k=(k+1)%n){if(dist(P[k],q)>eps)return false;if(k===end)return true;}},
+  normalJoin=(i,j,q)=>sameRun((i+1)%n,j,q)||sameRun((j+1)%n,i,q),
+  edges=P.map((a,i)=>{const b=P[(i+1)%n],u=sub(b,a),len=Math.hypot(u.x,u.y),old=originals.has(a)&&originals.get(b)===(originals.get(a)+1)%original.length;return {a,b,u,len,old};});
+ for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){
+  const A=edges[i],B=edges[j];if(A.len<=eps||B.len<=eps||(A.old&&B.old))continue;
+  const r=sub(B.a,A.a),v=B.u,u=A.u,den=cross(u,v),d0=cross(r,u)/A.len,d1=cross(sub(B.b,A.a),u)/A.len,
+   e0=cross(sub(A.a,B.a),v)/B.len,e1=cross(sub(A.b,B.a),v)/B.len;
+  if(Math.max(Math.abs(d0),Math.abs(d1),Math.abs(e0),Math.abs(e1))<=eps){
+   const t0=(r.x*u.x+r.y*u.y)/A.len,t1=((B.b.x-A.a.x)*u.x+(B.b.y-A.a.y)*u.y)/A.len,
+    lo=Math.max(0,Math.min(t0,t1)),hi=Math.min(A.len,Math.max(t0,t1));
+   if(hi-lo>eps)return {i,j,kind:'overlap',length:hi-lo};
+   if(hi>=lo-eps){const q={x:A.a.x+u.x*lo/A.len,y:A.a.y+u.y*lo/A.len};if(!normalJoin(i,j,q))return {i,j,kind:'touch'};}
+   continue;
+  }
+  if(Math.abs(den)<=Number.EPSILON*A.len*B.len)continue;
+  const t=cross(r,v)/den,w=cross(r,u)/den;
+  if(t< -eps/A.len||t>1+eps/A.len||w< -eps/B.len||w>1+eps/B.len)continue;
+  const q={x:A.a.x+t*u.x,y:A.a.y+t*u.y};if(!normalJoin(i,j,q))return {i,j,kind:'crossing'};
+ }
+ return null;
+}
+
+function projetaArcoEntradaFisico({P,Sk,corr,sourceRamp,z,tanFace,tanReference,sinal,bermas=0,dir=1,anc,portal,bancoOffsetConstant,offsetConstant}){
+ corr=corr||sourceRamp;tanFace=tanFace||tanReference;anc=anc||portal;
+ const offset=bancoOffsetConstant??offsetConstant??(sinal*z/tanFace+bermas);
+ const EPS=1e-6,dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y),cross=(a,b)=>a.x*b.y-a.y*b.x,
+  sub=(a,b)=>({x:a.x-b.x,y:a.y-b.y}),lerp=(a,b,t)=>({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t}),
+  area=A=>{const o=A[0];let s=0;for(let i=1;i<A.length-1;i++)s+=cross(sub(A[i],o),sub(A[i+1],o));return s/2;},
+  cumulative=(A,closed)=>{const c=[0];for(let i=1;i<A.length+(closed?1:0);i++)c.push(c.at(-1)+dist(A[i-1],A[i%A.length]));return c;},
+  closest=(A,C,Q,closed=true)=>{let best=null;for(let i=0;i<A.length-(closed?0:1);i++){
+   const a=A[i],b=A[(i+1)%A.length],v=sub(b,a),l2=v.x*v.x+v.y*v.y,t=l2?Math.max(0,Math.min(1,((Q.x-a.x)*v.x+(Q.y-a.y)*v.y)/l2)):0,q=lerp(a,b,t),d=dist(q,Q);
+   if(!best||d<best.d)best={...q,d,s:C[i]+t*Math.sqrt(l2),i,t};}return best;},
+  at=(A,C,s)=>{for(let i=0;i<C.length-1;i++)if(s<=C[i+1]+EPS)return lerp(A[i],A[(i+1)%A.length],Math.max(0,Math.min(1,(s-C[i])/Math.max(EPS,C[i+1]-C[i]))));return {...A.at(-1)};},
+  inside=(A,q)=>{let yes=false;for(let i=0,j=A.length-1;i<A.length;j=i++){
+   const a=A[i],b=A[j];if((a.y>q.y)!==(b.y>q.y)&&q.x<(b.x-a.x)*(q.y-a.y)/(b.y-a.y)+a.x)yes=!yes;}return yes;},
+  fail=reason=>({ok:false,reason,P,changed:false});
+ if(!corr?.entradaExterna||!P?.length||!Sk?.length)return fail('missing entrance/ring');
+ const outer=corr.borda1,inner=corr.borda2;if(outer.length!==inner.length)return fail('unpaired road edges');
+ const boundary=outer.concat(inner.slice().reverse()),sgn=Math.sign(area(boundary));if(!sgn)return fail('degenerate road strip');
+ const lines=[];
+ for(let i=0;i<boundary.length;i++){
+  const a=boundary[i],b=boundary[(i+1)%boundary.length],v=sub(b,a),len=Math.hypot(v.x,v.y);
+  if(len<EPS)return fail('zero road edge');
+  const N={x:sgn*v.y/len,y:-sgn*v.x/len},ra=offset-sinal*a.z/tanFace,rb=offset-sinal*b.z/tanFace;
+  if(ra<-EPS||rb<-EPS)return fail('target crosses the road elevation');
+  const q={x:a.x+N.x*ra,y:a.y+N.y*ra},r={x:b.x+N.x*rb,y:b.y+N.y*rb};lines.push({q,r});
+ }
+ const envelope=[];
+ for(let i=0;i<lines.length;i++){
+  const before=lines[(i+lines.length-1)%lines.length],now=lines[i],u=sub(before.r,before.q),v=sub(now.r,now.q),den=cross(u,v),scale=Math.hypot(u.x,u.y)*Math.hypot(v.x,v.y);
+  // Amostras de uma face reta pertencem ao mesmo plano. Em coordenadas UTM,
+  // diferenças nanométricas não podem criar miters e retornos de decímetros.
+  const lu=Math.hypot(u.x,u.y),lv=Math.hypot(v.x,v.y),sameFace=lu>EPS&&lv>EPS&&u.x*v.x+u.y*v.y>0&&
+    dist(before.r,now.q)<=EPS&&
+    Math.max(Math.abs(cross(sub(now.q,before.q),u))/lu,Math.abs(cross(sub(now.r,before.q),u))/lu,
+      Math.abs(cross(sub(before.q,now.q),v))/lv,Math.abs(cross(sub(before.r,now.q),v))/lv)<=EPS;
+  if(sameFace)envelope.push({...now.q});
+  else if(Math.abs(den)<1e-10*scale){
+   if(dist(before.r,now.q)>1e-4)return fail('disconnected parallel face planes');
+   envelope.push({...now.q});
+  }else{const t=cross(sub(now.q,before.q),v)/den;envelope.push({x:before.q.x+t*u.x,y:before.q.y+t*u.y});}
+ }
+ // Only these edges are physical: the front cap and the inward-facing side.
+ // The back cap closes the temporary footprint, but is NEVER used as a face.
+ const physical=[envelope[0],...envelope.slice(outer.length).reverse()];
+ const path=[];for(const q of physical)if(!path.length||dist(path.at(-1),q)>EPS)path.push(q);
+ if(path.length<2)return fail('empty physical chain');
+ const CSk=cumulative(Sk,true),per=CSk.at(-1),s0=closest(Sk,CSk,anc).s,
+  unwrap=s=>((s+per/2)%per+per)%per-per/2,
+  station=q=>unwrap(dir*(closest(Sk,CSk,q).s-s0)),
+  front=[envelope[0],envelope.at(-1)],back=[envelope[outer.length-1],envelope[outer.length]],
+  lo=Math.min(0,...front.map(station)),hi=Math.max(0,...back.map(station)),
+  local=q=>station(q)>=lo-1e-5&&station(q)<=hi+1e-5;
+ if(hi-lo>=per-EPS)return fail('entrance domain consumes the whole ring');
+ const CP=cumulative(P,true),perP=CP.at(-1),CQ=cumulative(path,false),events=[{s:0,hit:false},{s:CQ.at(-1),hit:false}],add=(s,hit)=>events.push({s,hit});
+ for(let k=0;k<path.length-1;k++)for(let i=0;i<P.length;i++){
+  const a=path[k],b=path[k+1],c=P[i],d=P[(i+1)%P.length],u=sub(b,a),v=sub(d,c),den=cross(u,v),r=sub(c,a),len=CQ[k+1]-CQ[k],scale=Math.hypot(u.x,u.y)*Math.hypot(v.x,v.y);
+  if(scale<EPS*EPS)continue;
+  if(Math.abs(den)>1e-10*scale){const t=cross(r,v)/den,w=cross(r,u)/den;if(t>=-EPS&&t<=1+EPS&&w>=-EPS&&w<=1+EPS)add(CQ[k]+Math.max(0,Math.min(1,t))*len,true);}
+  else if(Math.abs(cross(r,u))/len<EPS){for(const p of [c,d]){const t=((p.x-a.x)*u.x+(p.y-a.y)*u.y)/(len*len);if(t>=-EPS&&t<=1+EPS)add(CQ[k]+Math.max(0,Math.min(1,t))*len,true);}}
+ }
+ events.sort((a,b)=>a.s-b.s);const stops=[];for(const e of events){if(stops.length&&Math.abs(stops.at(-1).s-e.s)<=EPS)stops.at(-1).hit||=e.hit;else stops.push({...e});}
+ const isInterior=q=>inside(P,q)&&closest(P,CP,q).d>EPS;
+ let first=null,last=null;
+ for(let i=1;i<stops.length;i++){
+  const mid=at(path,CQ,(stops[i-1].s+stops[i].s)/2),yes=isInterior(mid);
+  if(first===null&&yes){if(!stops[i-1].hit)return fail('chain starts within excavation');first=stops[i-1].s;}
+  if(first!==null&&!yes){last=stops[i-1].s;break;}
+ }
+ // A chegada à berma pode tocar o anel e continuar por dentro até a
+ // extremidade da face. Esse contato real fecha o arco: não exigir uma
+ // saída para fora, nem usar a tampa traseira do corredor como talude.
+ if(first!==null&&last===null){const close=stops.filter(e=>e.hit&&e.s>first+EPS).at(-1);if(close)last=close.s;}
+ if(first===null||last===null||last-first<=EPS)return fail('physical faces do not close on the original ring');
+ const chain=[at(path,CQ,first)];for(let i=1;i<path.length-1;i++)if(CQ[i]>first+EPS&&CQ[i]<last-EPS)chain.push(path[i]);chain.push(at(path,CQ,last));
+ // Limpar somente o arco físico escolhido. Um laço remoto, após a
+ // ligação com o anel, não pode mudar a entrada que já foi resolvida.
+ const limpa=[];
+ for(const q of chain){
+  if(limpa.length&&dist(limpa.at(-1),q)<=EPS)continue;
+  // O encontro de faces quase paralelas pode formar um laço no envelope
+  // projetado. A borda física passa pela interseção das próprias faces;
+  // não percorre o laço nem troca o plano por uma corda aproximada.
+  if(limpa.length>=2){
+   const A=limpa.at(-2),B=limpa.at(-1),u=sub(B,A),v=sub(q,B),lu=Math.hypot(u.x,u.y);
+   if(lu>EPS&&u.x*v.x+u.y*v.y<0&&Math.abs(cross(sub(q,A),u))/lu<=EPS)limpa.pop();
+  }
+  while(limpa.length>=3){
+   const A=limpa.at(-1),u=sub(q,A),lu=Math.hypot(u.x,u.y);if(lu<=EPS)break;
+   let hit=null;
+   for(let i=0;i<limpa.length-2;i++){
+    const B=limpa[i],C=limpa[i+1],v=sub(C,B),lv=Math.hypot(v.x,v.y);if(lv<=EPS)continue;
+    const den=cross(u,v),r=sub(B,A);let t=null,w=null;
+    if(Math.abs(den)>Number.EPSILON*lu*lv){
+     const ti=cross(r,v)/den,wi=cross(r,u)/den;
+     if(ti>=-EPS/lu&&ti<=1+EPS/lu&&wi>=-EPS/lv&&wi<=1+EPS/lv){t=clamp(ti,0,1);w=clamp(wi,0,1);}
+    }else if(Math.abs(cross(r,u))/lu<=EPS){
+     const t0=(r.x*u.x+r.y*u.y)/(lu*lu),t1=((C.x-A.x)*u.x+(C.y-A.y)*u.y)/(lu*lu),lo=Math.max(0,Math.min(t0,t1)),hi=Math.min(1,Math.max(t0,t1));
+     if(lo<=hi+EPS/lu){t=clamp(lo,0,1);const at=lerp(A,q,t);w=clamp(((at.x-B.x)*v.x+(at.y-B.y)*v.y)/(lv*lv),0,1);}
+    }
+    if(t!==null&&(!hit||t<hit.t))hit={i,t,p:lerp(B,C,w)};
+   }
+   if(!hit)break;
+   limpa.splice(hit.i+1,limpa.length-hit.i-1);
+   if(dist(limpa.at(-1),hit.p)>EPS)limpa.push(hit.p);
+  }
+  if(!limpa.length||dist(limpa.at(-1),q)>EPS)limpa.push(q);
+ }
+ chain.splice(0,chain.length,...limpa);
+ const A=chain[0],B=chain.at(-1),a=closest(P,CP,A),b=closest(P,CP,B);
+ if(a.d>EPS*5||b.d>EPS*5)return fail('endpoints off original ring');
+ const arc=(start,end)=>{const span=((end.s-start.s)%perP+perP)%perP,pts=[];for(let i=0;i<P.length;i++){
+  const s=((CP[i]-start.s)%perP+perP)%perP;if(s>EPS&&s<span-EPS)pts.push({s,p:P[i],index:i});}pts.sort((x,y)=>x.s-y.s);return pts;},
+  ab=arc(a,b),ba=arc(b,a),abLocal=ab.every(q=>local(q.p)),baLocal=ba.every(q=>local(q.p));
+ let removed,remaining,newChain;
+ if(abLocal&&!baLocal){removed=ab;remaining=ba;newChain=chain;}
+ else if(baLocal&&!abLocal){removed=ba;remaining=ab;newChain=chain.slice().reverse();}
+ else return fail('entrance arc is ambiguous');
+ if(remaining.filter(q=>!local(q.p)).length<3)return fail('insufficient untouched witnesses');
+ if(!newChain.every(local))return fail('physical chain leaves the defined entrance domain');
+ const originalIds=new Set(P.map(p=>p.si).filter(s=>s!=null)),keptIds=new Set(remaining.map(q=>q.p.si).filter(s=>s!=null)),
+  CNew=cumulative(newChain,false),items=newChain.map((p,i)=>({s:CNew[i],p:{...p}}));
+ for(const {p,index} of removed){if(p.si==null||keptIds.has(p.si))continue;const q=closest(newChain,CNew,p,false);items.push({s:q.s,p:{x:q.x,y:q.y,si:p.si},index});keptIds.add(p.si);}
+ items.sort((a,b)=>a.s-b.s||(a.index??-1)-(b.index??-1));const line=[];
+ for(const item of items){const p=item.p,prev=line.at(-1);if(prev&&dist(prev,p)<EPS){if(prev.si==null&&p.si!=null)prev.si=p.si;else if(p.si!=null&&prev.si!==p.si)line.push(p);}else line.push(p);}
+ // Road sampling stations do not create new bends in a face plane. Keep
+ // endpoints and all edit handles; remove only redundant points on a segment.
+ for(let i=1;i<line.length-1;i++){
+  const p=line[i],a=line[i-1],b=line[i+1];if(p.si!=null)continue;
+  const v=sub(b,a),l2=v.x*v.x+v.y*v.y,t=l2?((p.x-a.x)*v.x+(p.y-a.y)*v.y)/l2:-1;
+  if(t>=0&&t<=1&&dist(p,lerp(a,b,t))<=1e-7){line.splice(i,1);i=Math.max(0,i-2);}
+ }
+ let out=remaining.map(q=>q.p).concat(line);
+ for(const id of originalIds)if(!out.some(q=>q.si===id)){
+  const old=P.find(q=>q.si===id),index=out.findIndex(q=>dist(q,old)<EPS),match=out[index];
+  if(match&&match.si==null){if(P.includes(match))out[index]={...match,si:id};else match.si=id;}else return fail('lost source handle '+id);
+ }
+ const originalStart=out.findIndex(q=>q===P[0]);if(originalStart>0)out=out.slice(originalStart).concat(out.slice(0,originalStart));
+ if(Math.sign(area(out))!==Math.sign(area(P)))return fail('ring orientation changed');
+ const conflito=conflitoNovoNaEntrada(out,P,EPS);
+ if(conflito)return fail('new entrance '+conflito.kind);
+ const meta={chain:line,physicalPath:path,envelope,domain:{lo,hi,s0,per,reference:Sk},removedIndices:removed.map(q=>q.index),outsideWitnesses:remaining.filter(q=>!local(q.p)).map(q=>q.index),areaBefore:Math.abs(area(P)),areaAfter:Math.abs(area(out)),rearCapUsed:false};
+ return {ok:true,P:out,meta,changed:true,...meta};
+}
+
+function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos, acessoExterno=true, entradaHerdada=null){
   bermas = bermas || {};
   // SEMENTE DA IDENTIDADE: cada vértice da linha desenhada é marcado com o seu
   // índice (si). Como o offset é miter puro, esse si viaja intacto para TODAS
@@ -1504,7 +1796,8 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
   let ancBoca={x:anc.x,y:anc.y};
   // bermas editadas são guardadas pelo índice de GERAÇÃO (0 = linha
   // desenhada, crescendo para dentro); a string editada substitui a gerada
-  let Sk=Sk0, z=0, rest=p.H, voltas=0, LtA=null, arestaFim=null, Hef=0;
+  let Sk=Sk0, z=0, rest=p.H, voltas=0, LtA=null, arestaFim=null, Hef=0,
+    entradaFisica=null,bermasEntrada=0,bermasEntradaEditadas=false;
   let truncou=false, gargalo=null;
   // GUARDA DE ANEL DEGENERADO. As guardas antigas comparavam números, e TODA
   // comparação com NaN é falsa — então um anel já colapsado passava por todas e
@@ -1659,6 +1952,17 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
       if(compEixo(f.corr.centro) < 0.98*Lalvo)
         avisos.push("rampa não cabe no perímetro — trecho encurtado, mais íngreme que o nominal");
       corr=f.corr;
+      if(acessoExterno&&!entradaFisica&&corr.centro.length>1){
+        const a=corr.centro[0],b=corr.centro[1],B=corr.borda2[0],A=corr.borda1[0],
+          len=Math.hypot(b.x-a.x,b.y-a.y),w=Math.hypot(B.x-A.x,B.y-A.y),
+          N={x:(B.x-A.x)/w,y:(B.y-A.y)/w},T={x:N.y,y:-N.x};
+        if(T.x*(b.x-a.x)+T.y*(b.y-a.y)<0){T.x=-T.x;T.y=-T.y;}
+        if(len>1e-6&&w>1e-6){
+          const copia=JSON.parse(JSON.stringify(corr));projetaEntradaExterna(E,[copia],p,[]);
+          entradaFisica={T,N,B:{...B},g:(b.z-a.z)/len,sinal,tanFace:tanF,
+            alcance:copia.entradaExterna?.comprimento||0,sourceRamp:copia,modoCadeia:null};
+        }
+      }
       {
         const n=corr.borda1.length-1;
         const b1f=corr.borda1[n], b2f=corr.borda2[n];
@@ -1680,10 +1984,22 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
     const prevAnel=aneis[aneis.length-1].P;
     const corteC = corr ? {lo: corr.borda1[corr.borda1.length-1],
                            hi: corr.borda2[corr.borda2.length-1]} : null;
-    let Pb=SkP;
+    let Pb=SkP,projecaoPe=null;
     if(rampaOn){
-      const rc=anelComRampaInt(SkP, p.rampaL, anc, ancBoca, voltas, p.dir, corteC, LtA);
+      const entrada=entradaFisica
+        ?{...entradaFisica,zAlvo:zB,bermas:bermasEntrada,bermasEditadas:bermasEntradaEditadas}:null,
+        rc=anelComRampaInt(SkP, p.rampaL, anc, ancBoca, voltas, p.dir, corteC, LtA,entrada);
       Pb=rc.P;
+      projecaoPe=rc.projecaoEntrada;
+      // O método da entrada é decidido no primeiro pé/crista, portanto não
+      // muda quando o usuário aprofunda ou separa o restante da cava.
+      if(entradaFisica&&entradaFisica.modoCadeia===null){
+        const m=rc.projecaoEntrada;
+        entradaFisica.modoCadeia=!m||![m.inicio,m.fim].every(q=>
+          m.candidato.some(r=>Math.hypot(q.x-r.x,q.y-r.y)<1e-7));
+      }
+      if(rc.entradaRecusada&&!avisos.some(s=>s.startsWith('Projeção da entrada:')))
+        avisos.push('Projeção da entrada: não foi possível encaixar a face da rampa nesta bancada sem alterar o restante; reposicione R.');
       if(rc.ent) ancBoca=rc.ent;
     }
     if(Pb.length<4){ truncou=true; gargalo=gargalo||achaGargalo(SkP); break; }
@@ -1707,7 +2023,7 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
     // cima só olhavam SkP. Sem isto o fundo saía com pontos NaN.
     Pb=reporHandles(Pb);
     if(!anelOK(Pb) || cruzaMuito(Pb, prevAnel) || vazaFora(Pb) || foraDe(Pb, prevAnel)){ truncou=true; gargalo=gargalo||achaGargalo(SkP); break; }
-    aneis.push({P:Pb, z:zB, tp:tpIn, ov:false, Sk:SkP});
+    aneis.push({P:Pb, z:zB, tp:tpIn, ov:false, Sk:SkP,projecaoEntrada:projecaoPe});
     if(corr) corredores.push(corr);
     // só agora a âncora avança: os cortes de anel deste banco já usaram o fim real
     if(ancProx){ anc=ancProx; ancProx=null; }
@@ -1724,6 +2040,7 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
         voltas=trava.est.voltas; LtA=trava.est.LtA;
         arestaFim=trava.est.arestaFim ? {b1:{x:trava.est.arestaFim.b1.x,y:trava.est.arestaFim.b1.y},
                                          dir:{x:trava.est.arestaFim.dir.x,y:trava.est.arestaFim.dir.y}} : null;
+        if(trava.est.entradaFisica)entradaFisica=JSON.parse(JSON.stringify(trava.est.entradaFisica));
       }
       const edB=bermas[aneis.length];
       // a PRÓPRIA congelada nasce do esqueleto gravado (não só o que vem depois
@@ -1734,7 +2051,8 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
       // ">" estrito: berma 0 dá área IGUAL (offset nulo) e é válida
       if(SkC2.length<4 || perimetro(SkC2)<minPer || areaAssinada(SkC2)<=0 ||
          Math.abs(areaAssinada(SkC2))>Math.abs(areaAssinada(SkP))*(1+1e-9)){ truncou=true; gargalo=gargalo||achaGargalo(SkP); break; }
-      let C2;
+      let C2,projecaoCrista=null;
+      bermasEntrada+=p.berma;bermasEntradaEditadas=bermasEntradaEditadas||!!edB?.length;
       if(rampaOn){
         // o corte desta string fica NA MESMA RETA da aresta de chegada do
         // trecho, prolongada pela berma para DENTRO (junção sem cunha)
@@ -1760,8 +2078,13 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
             if(Math.min(dArc, perPb-dArc) > p.berma+p.rampaL+2) corteOk=null;
           }
         }
-        const rt=anelComRampaInt(SkC2, p.rampaL, anc, ancBoca, voltas, p.dir, corteOk, LtA);
+        const entrada=entradaFisica
+          ?{...entradaFisica,zAlvo:zB,bermas:bermasEntrada,bermasEditadas:bermasEntradaEditadas}:null,
+          rt=anelComRampaInt(SkC2, p.rampaL, anc, ancBoca, voltas, p.dir, corteOk, LtA,entrada);
         C2=rt.P;
+        projecaoCrista=rt.projecaoEntrada;
+        if(rt.entradaRecusada&&!avisos.some(s=>s.startsWith('Projeção da entrada:')))
+          avisos.push('Projeção da entrada: não foi possível encaixar a face da rampa nesta bancada sem alterar o restante; reposicione R.');
         if(rt.ent) ancBoca=rt.ent;
       }else{
         C2=offsetU(Pb, -p.berma);
@@ -1783,14 +2106,15 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
       }
       C2=reporHandles(C2);
       if(!anelOK(C2) || cruzaMuito(C2, Pb) || vazaFora(C2) || foraDe(C2, Pb)){ truncou=true; gargalo=gargalo||achaGargalo(SkP); break; }
-      aneis.push({P:C2, z:zB, tp:tpE, ov: (edB && edB.length) ? "edit" : false, Sk:SkC2,
+      aneis.push({P:C2, z:zB, tp:tpE, ov: (edB && edB.length) ? "edit" : false, Sk:SkC2,projecaoEntrada:projecaoCrista,
         // estado da RAMPA neste ponto: sem congelar isto, a rampa se re-assenta
         // quando a linha externa muda e ARRASTA a string congelada junto (ela
         // andava 27 m mesmo com o esqueleto fixo)
         est:{anc:{x:anc.x,y:anc.y}, ancBoca:{x:ancBoca.x,y:ancBoca.y}, voltas, LtA,
              arestaFim: arestaFim ? {b1:{x:arestaFim.b1.x,y:arestaFim.b1.y},
                                      dir:{x:arestaFim.dir.x,y:arestaFim.dir.y}} : null,
-             z:zB, rest, Hef}});
+             z:zB, rest, Hef,entradaFisica:entradaFisica?JSON.parse(JSON.stringify(entradaFisica)):null,
+             bermasEntrada,bermasEntradaEditadas}});
       // ===== TRAVA: a string congelada vira uma SEGUNDA linha desenhada =====
       // Daqui para dentro tudo passa a ser gerado a partir do esqueleto GRAVADO
       // dela, não da linha desenhada. Assim mexer no limite externo (ou em
@@ -1805,6 +2129,9 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
           voltas=trava.est.voltas; LtA=trava.est.LtA;
           arestaFim=trava.est.arestaFim ? {b1:{x:trava.est.arestaFim.b1.x,y:trava.est.arestaFim.b1.y},
                                            dir:{x:trava.est.arestaFim.dir.x,y:trava.est.arestaFim.dir.y}} : null;
+          if(trava.est.entradaFisica)entradaFisica=JSON.parse(JSON.stringify(trava.est.entradaFisica));
+          if(Number.isFinite(trava.est.bermasEntrada))bermasEntrada=trava.est.bermasEntrada;
+          bermasEntradaEditadas=!!trava.est.bermasEntradaEditadas;
           z=trava.est.z; rest=trava.est.rest; Hef=trava.est.Hef;
         }
       }else Sk = SkC2;
@@ -1822,6 +2149,120 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
     if(orf) avisos.push(orf+" berma(s) editada(s) em bancos fora desta profundidade — voltam a valer se o projeto aprofundar");
   }
 
+  const aneisLegadosEntrada=aneis.map(a=>a.P);
+  // Aplicação local, DEPOIS das guardas legadas: garanteDentro não pode
+  // propagar o ajuste da boca para outras paredes ou bancadas. A decisão é
+  // de fora para dentro: um banco profundo recusado não desfaz o topo já
+  // resolvido (inclusive quando ele é separado como novo limite).
+  if(entradaFisica||trava?.P){
+    const originais=aneis.map(a=>a.P),igual=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y)<1e-7,
+      propostas=aneis.map(a=>a.projecaoEntrada?.candidato||a.P);
+    const trecho=(P,local)=>{
+      const flags=P.map(local),inicios=[];
+      for(let i=0;i<P.length;i++)if(flags[i]&&!flags[(i+P.length-1)%P.length])inicios.push(i);
+      if(inicios.length!==1)return null;
+      const inicio=inicios[0],dentro=[];let fim=inicio;
+      do{dentro.push(P[fim]);fim=(fim+1)%P.length;}while(flags[fim]&&fim!==inicio);
+      const fora=[];for(let i=fim;i!==inicio;i=(i+1)%P.length)fora.push(P[i]);
+      return {dentro,fora};
+    };
+    const validas=aneis.map(()=>true);
+    for(let i=0;i<aneis.length;i++){
+      const m=aneis[i].projecaoEntrada;if(!m)continue;
+      const cum=cumulativo(m.base),per=cum.at(-1),wrap=s=>((s%per)+per)%per,
+        local=q=>{const s=arcoMaisProximo(m.base,cum,q).s,u=p.dir===1?wrap(s-m.se):wrap(m.se-s);return u<=m.Lt+.01;},
+        mudou=(A,B)=>A.filter(q=>!B.some(r=>igual(q,r))),
+        ids=A=>[...new Set(A.map(q=>q.si).filter(x=>x!=null))].sort((a,b)=>a-b).join(',');
+      const antes=trecho(originais[i],local),depois=trecho(propostas[i],local);
+      if(!antes||!depois){validas[i]=false;continue;}
+      // As correções legadas da chegada e demais paredes já estão em fora.
+      // Só o arco da boca é substituído; não restaurar a versão pré-guarda.
+      const P=antes.fora.concat(depois.dentro.map(q=>originais[i].find(r=>igual(q,r))||q)),
+        inicio=P.findIndex(q=>igual(q,originais[i][0]));
+      propostas[i]=inicio>0?P.slice(inicio).concat(P.slice(0,inicio)):P;
+      validas[i]=mudou(originais[i],propostas[i]).every(local)&&mudou(propostas[i],originais[i]).every(local)&&
+        ids(originais[i])===ids(propostas[i])&&anelOK(propostas[i])&&
+        [m.inicio,m.fim].every(q=>propostas[i].some(r=>igual(q,r)));
+    }
+    const cruzamentos=(A,B)=>{let n=0;for(let i=0;i<A.length;i++)for(let j=0;j<B.length;j++)
+      if(segInt(A[i],A[(i+1)%A.length],B[j],B[(j+1)%B.length]))n++;return n;},
+      vazamentos=(A,B)=>A.filter(q=>!dentroDe(B,q)&&distAoAnel(B,q)>.01).length;
+    const compativel=(A,B,refA,refB)=>cruzamentos(A,B)<=cruzamentos(refA,refB)&&
+      vazamentos(A,B)<=vazamentos(refA,refB);
+    let recusou=false;
+    for(let i=0;i<aneis.length;i++){
+      const a=aneis[i];if(!a.projecaoEntrada)continue;
+      // Também manter o vizinho interno original compatível: se o ajuste
+      // dele for recusado depois, não poderá exigir desfazer este banco.
+      const ok=validas[i]&&
+        (i===0||compativel(propostas[i],aneis[i-1].P,originais[i],originais[i-1]))&&
+        (i===aneis.length-1||compativel(originais[i+1],propostas[i],originais[i+1],originais[i]));
+      if(ok)a.P=propostas[i];else{a.projecaoEntrada=null;recusou=true;}
+      if(a.projecaoEntrada)delete a.projecaoEntrada.candidato;
+    }
+    if(recusou&&entradaFisica&&!avisos.some(s=>s.startsWith('Projeção da entrada:')))
+      avisos.push('Projeção da entrada: alguns bancos exigiriam alterar outra parte da cava/DCE; esses trechos foram preservados. Reposicione R.');
+    if(trava?.P&&aneis[trava.g]){
+      aneis[trava.g].P=trava.P.map(q=>({...q}));
+      aneis[trava.g].projecaoEntrada=trava.projecaoEntrada?JSON.parse(JSON.stringify(trava.projecaoEntrada)):null;
+    }
+  }
+  let entradaProjecao=null,baseDerivadaEntrada=null;
+  const fonteEntrada=entradaHerdada||(entradaFisica?.sourceRamp?.entradaExterna?{
+    sourceRamp:entradaFisica.sourceRamp,tanReference:tanF,sinal,dir:p.dir,portal:ancInicial,offsetBase:0
+  }:null);
+  if(fonteEntrada){
+    const baseOffset=Number(fonteEntrada.offsetBase)||0,propostas=[],metas=[];
+    // Se a linha inicial é pé (ou crista no DCE), a primeira berma já
+    // está na posição XYZ da pista. O datum da face é Sk0, não E.
+    const baseInicio = !entradaHerdada && Sk0 !== E ? 1 : 0;
+    let recuo=baseOffset-(baseInicio?p.berma:0),ok=true,motivo='';
+    for(let i=0;i<aneis.length;i++){
+      if(i){const dz=Math.abs(aneis[i].z-aneis[i-1].z);recuo+=dz>1e-9?dz/tanF:p.berma;}
+      const a=aneis[i],original=aneisLegadosEntrada[i];
+      // O anel congelado tem prioridade também sobre a berma inicial.
+      if(trava?.P&&trava.g===i){propostas.push(trava.P.map(q=>({...q})));metas.push(trava.projecaoEntrada||null);continue;}
+      if(i<=baseInicio&&!entradaHerdada){propostas.push(original);metas.push(null);continue;}
+      const r=projetaArcoEntradaFisico({P:original,Sk:a.Sk||E,sourceRamp:fonteEntrada.sourceRamp,
+        portal:fonteEntrada.portal,dir:fonteEntrada.dir,bancoOffsetConstant:recuo,
+        tanReference:fonteEntrada.tanReference,sinal:fonteEntrada.sinal});
+      if(!r.ok){
+        // Um encaixe analítico já validado pode ficar do lado de fora do
+        // anel legado, sem dois cruzamentos para a cadeia. Conservar somente
+        // o encaixe com plano e ambas as ligações comprovados, nunca um
+        // resultado recusado pelas guardas de contenção acima.
+        const existente=a.projecaoEntrada;
+        if(!entradaHerdada&&existente&&!existente.tipo&&
+          Number.isFinite(existente.residuo)&&Math.abs(existente.residuo)<=Math.max(.02,p.rampaL*.002)&&
+          [existente.inicio,existente.fim].every(q=>q&&a.P.some(v=>Math.hypot(q.x-v.x,q.y-v.y)<1e-7))){
+          propostas.push(a.P);metas.push(existente);continue;
+        }
+        ok=false;motivo=r.reason;break;
+      }
+      propostas.push(r.P);metas.push({tipo:'cadeia-fisica',...r.meta,offsetConstant:recuo});
+    }
+    // Validar a cadeia física completa. Os envelopes crescem para dentro e
+    // os anéis encolhem; comparar com o vizinho legado impediria justamente
+    // substituir a saliência antiga que o usuário pediu para corrigir.
+    const cruzamentos=(A,B)=>{let n=0;for(let i=0;i<A.length;i++)for(let j=0;j<B.length;j++)
+      if(segInt(A[i],A[(i+1)%A.length],B[j],B[(j+1)%B.length]))n++;return n;},
+      fora=(A,B)=>A.filter(q=>!dentroDe(B,q)&&distAoAnel(B,q)>.01).length;
+    for(let i=0;i<propostas.length&&ok;i++){
+      if(!anelOK(propostas[i])){ok=false;motivo='anel degenerado';break;}
+      if(i&&(cruzamentos(propostas[i],propostas[i-1])>cruzamentos(aneisLegadosEntrada[i],aneisLegadosEntrada[i-1])||
+        fora(propostas[i],propostas[i-1])>fora(aneisLegadosEntrada[i],aneisLegadosEntrada[i-1]))){
+        ok=false;motivo='faces incompatíveis entre bancadas';
+      }
+    }
+    if(ok){
+      for(let i=0;i<aneis.length;i++){aneis[i].P=propostas[i];aneis[i].projecaoEntrada=metas[i];}
+      if(entradaHerdada||metas.some(m=>m?.tipo==='cadeia-fisica'))
+        entradaProjecao={...fonteEntrada,offsetBase:baseOffset,offsetBottom:recuo};
+      if(entradaHerdada)baseDerivadaEntrada=aneis[0].P;
+      for(let i=avisos.length-1;i>=0;i--)if(avisos[i].startsWith('Projeção da entrada:'))avisos.splice(i,1);
+      if(entradaHerdada)avisos.push('Entrada ajustada à parede do trecho superior; os pontos manuais permanecem na receita, inclusive os limitados pela parede neste arco.');
+    }else avisos.push('Projeção da entrada: não foi possível ajustar somente o arco da entrada ('+motivo+'); geometria anterior preservada.');
+  }
   // o resto do app espera [0] = fundo/topo ... [fim] = linha desenhada
   aneis.reverse();
 
@@ -1834,8 +2275,9 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
       vol+=dz/3*(A1+A2+Math.sqrt(A1*A2));
     }
   }
-  // a crista de topo contorna a boca da rampa
-  const bocaOK=cristaContornaBoca(aneis, corredores, p.rampaL);
+  // Somente a pista de acesso pode sair do limite. As guardas de aninhamento
+  // das bancadas continuam integrais; nenhuma string ganha degrau na boca.
+  if(rampaOn&&acessoExterno)projetaEntradaExterna(E,corredores,p,avisos);
   // ganchos de retorno marcados pelo usuário
   const nGanchos=insereGanchos(corredores, retornos, p, avisos);
   if(nGanchos){
@@ -1857,14 +2299,17 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
     const seg=[];
     for(let i=1;i<c.centro.length;i++)
       seg.push(Math.hypot(c.centro[i].x-c.centro[i-1].x, c.centro[i].y-c.centro[i-1].y));
-    const ord=seg.slice().sort((a,b)=>a-b), med=ord[Math.floor(ord.length/2)]||0;
+    // A entrada é mais densificada que a espiral. Ela não altera a
+    // mediana usada para detectar o salto da costura no trecho original.
+    const inicioOriginal=c.entradaExterna?.indiceJuncao||0,
+      ord=seg.slice(inicioOriginal).sort((a,b)=>a-b),med=ord[Math.floor(ord.length/2)]||0;
     const maiorSeg=ord[ord.length-1]||0;
-    const pulaCostura = seg.length>3 && med>1e-9 && maiorSeg>2*med;
+    const pulaCostura = ord.length>3 && med>1e-9 && maiorSeg>2*med;
     let jaPulou=false;
     for(let i=1;i<c.centro.length;i++){
       const a=c.centro[i-1], b=c.centro[i];
       const dxy=seg[i-1];
-      if(pulaCostura && !jaPulou && dxy===maiorSeg){ jaPulou=true; continue; }  // salto lateral
+      if(i>inicioOriginal && pulaCostura && !jaPulou && dxy===maiorSeg){ jaPulou=true; continue; }  // salto lateral
       rampaHoriz+=dxy;
       rampaDesenv+=Math.hypot(dxy, b.z-a.z);
     }
@@ -1898,7 +2343,8 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
                 `(exigido ${fmt(p.raioMin,0)} m) — ${curvasAgudas.length} ponto(s) marcados no mapa`);
   }
   return {
-    aneis, corredores, avisos, tipo, ancInicial,
+    aneis, corredores, avisos, tipo, ancInicial,entradaProjecao,baseDerivadaEntrada,
+    projecaoEntradaHerdada:!!(entradaHerdada&&baseDerivadaEntrada),
     curvasAgudas, raioMinReal: isFinite(raioMinReal) ? raioMinReal : null,
     vol,
     areaBase:Math.abs(areaAssinada(aneis[0].P)),
@@ -1907,7 +2353,11 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos){
     gargalo,          // onde a parede quase fechou (ponto p/ abrir a crista)
     rampaDesenv,
     gradEfetivo: rampaHoriz>0 ? 100*rampaQueda/rampaHoriz : 0,
-    limiteExterior:E
+    limiteExterior:E,
+    contornoExterior:baseDerivadaEntrada?{
+      aneis:[baseDerivadaEntrada],
+      partes:[baseDerivadaEntrada.map(q=>({...q,z:0})).concat([{...baseDerivadaEntrada[0],z:0}])]
+    }:contornoComEntrada(E,corredores)
   };
 }
 
@@ -2072,12 +2522,40 @@ function blocoParaPainel(){
   if($(t+"_rampa_on")) $(t+"_rampa_on").checked = !!P.rampaOn;
 }
 
+// Um bloco filho substitui a continuação do pai a partir da sua cota.
+// Também corrige receitas antigas salvas com os dois trechos sobrepostos,
+// sem alterar a linha editada do filho nem as bermas já ajustadas do pai.
+function limitaPaisNasContinuacoes(){
+  for(const k of alvos()){
+    const filho=objs[k],pai=objs[filho?.paiDe];
+    if(!filho?.base?.length||!pai?.base?.length||filho===pai||tipoDe(k)!==tipoDe(filho.paiDe))continue;
+    const sinal=tipoDe(k)==="cava"?-1:1,
+      altura=(Number(filho.z0||0)-Number(pai.z0||0))*sinal,
+      p=parametrosDe(filho.paiDe);
+    if(!Number.isFinite(altura)||altura<0||altura>=p.H-1e-8)continue;
+    pai.prm=Object.assign({},p,{H:altura});
+    if(pai.ovMeta)pai.ovMeta={...pai.ovMeta,H:altura};
+  }
+}
+function entradaHerdadaDoBloco(k,pk){
+  const o=objs[k],pai=objs[o?.paiDe],D=pai?.design,entrada=D?.entradaProjecao,
+    fundo=D?.aneis?.[0];
+  if(!o?.base?.length||!pai?.base?.length||!entrada||!fundo||tipoDe(k)!==tipoDe(o.paiDe))return null;
+  // Um limite independente em outra cota não recebe uma ligação inventada.
+  if(Math.abs(Number(o.z0||0)-Number(fundo.z))>1e-5)return null;
+  pk=pk||parametrosDe(k);
+  const tp=pk.tpLinha||(tipoDe(k)==="cava"?"crista":"pe"),
+    berma=tp===fundo.tp?0:Math.max(0,+parametrosDe(o.paiDe).berma||0);
+  if(!Number.isFinite(+entrada.offsetBottom))return null;
+  return {...entrada,sourceRamp:entrada.sourceRamp?JSON.parse(JSON.stringify(entrada.sourceRamp)):null,portal:entrada.portal?{...entrada.portal}:null,
+    offsetBase:+entrada.offsetBottom+berma,sourceParent:o.paiDe};
+}
 function regen(){
+  limitaPaisNasContinuacoes();
   const prm=parametros();
   // nº de strings ANTES de regenerar, p/ remapear a seleção pelo índice de
   // geração (um override que trunca a geração muda o comprimento do array)
-  const lensAntes={cava: objs.cava.design ? objs.cava.design.aneis.length : 0,
-                   pilha: objs.pilha.design ? objs.pilha.design.aneis.length : 0};
+  const lensAntes=Object.fromEntries(alvos().map(k=>[k,objs[k].design?.aneis.length||0]));
   for(const k of alvos()){
     const o=objs[k];
     o.erro=null;
@@ -2100,7 +2578,7 @@ function regen(){
     o.ovMeta=meta;
     if(o.base && o.base.length>=3){
       try{
-        o.design=geraDesign(o.base, pk, tipoDe(k), o.anc, o.bermas, travaDe(k), o.retornos);
+        o.design=geraDesign(o.base, pk, tipoDe(k), o.anc, o.bermas, travaDe(k), o.retornos,!objs[o.paiDe]?.base?.length,entradaHerdadaDoBloco(k,pk));
         // bloco encadeado nasce na cota 0: desloca tudo para a cota onde o
         // bloco anterior parou, senão as cotas e a seção saem erradas
         if(o.z0){
@@ -2119,12 +2597,14 @@ function regen(){
           }
           for(const c of o.design.corredores){
             c.zIni+=dz; c.zFim+=dz;
+            if(c.entradaExterna?.pontoJuncao)move(c.entradaExterna.pontoJuncao);
             for(const q of c.centro) move(q);
             if(c.borda1) for(const q of c.borda1) move(q);
             if(c.borda2) for(const q of c.borda2) move(q);
             if(c.poly)   for(const q of c.poly)   move(q);
           }
           if(o.design.curvasAgudas)for(const q of o.design.curvasAgudas)move(q);
+          for(const P of o.design.contornoExterior?.partes||[])for(const q of P)move(q);
         }
         if(avisoOv) o.design.avisos.push(avisoOv);
       }
@@ -2324,7 +2804,22 @@ function carregaEstado(){
 }
 
 /* ================= resultados ================= */
+let volumeResumo=null;
+function linhasVolume(volume,tipo,cut=false){
+  const p=volumeResumo?.swelling,has=p!=null&&Number.isFinite(+p)&&+p>=0,factor=has?1+(+p)/100:null,
+    inSitu=tipo==='pilha'?(has?volume/factor:null):volume,
+    loose=tipo==='pilha'?volume:(has?volume*factor:null),
+    number=v=>v==null?'—':fmt(v,2)+' m³',
+    line=(name,value)=>`<div class="lin"><span>${name}</span><span>${number(value)}</span></div>`;
+  return `<div class="sub">${cut?'Recorte × MDT · 0,20 m':'Estimativa bruta entre strings'}</div>`+
+    line(tipo==='pilha'?'Equivalente in situ':'Volume in situ',inSitu)+
+    line(tipo==='pilha'?'Volume empolado (pilha)':'Volume empolado',loose);
+}
 function atualizaResultados(){
+  if(volumeResumo?.cut){
+    const nome=String(volumeResumo.name||'Recorte').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    $('resultados').innerHTML=`<div class="grp"><b>${nome}</b>${linhasVolume(volumeResumo.cut.volume,volumeResumo.type,true)}</div>`;return;
+  }
   const bloco=(nome,o)=>{
     if(o.erro) return `<div class="grp"><b>${nome}</b><div class="aviso">erro: ${o.erro}</div></div>`;
     if(!o.design) return `<div class="grp"><b>${nome}</b><div class="lin"><span>sem linha-base desenhada</span></div></div>`;
@@ -2336,7 +2831,7 @@ function atualizaResultados(){
       ${lin("Strings geradas", d.aneis.length)}
       ${lin("Área do fundo/topo", fmt(d.areaBase/1e4,2)+" ha")}
       ${lin("Área do limite (desenhada)", fmt(d.areaFinal/1e4,2)+" ha")}
-      ${lin("Volume", fmt(d.vol/1e6,3)+" Mm³")}
+      ${linhasVolume(d.vol,nome.startsWith('Pilha')?'pilha':'cava')}
       ${d.rampaDesenv?lin("Rampa (desenv. real)", fmt(d.rampaDesenv,0)+" m"):""}
       ${d.rampaDesenv?lin("Gradiente efetivo", fmt(d.gradEfetivo,1)+"%"):""}
       ${d.avisos.map(a=>`<div class="aviso">⚠ ${a}</div>`).join("")}
@@ -2359,8 +2854,8 @@ function atualizaResultados(){
   const nP=alvos().filter(k=>tipoDe(k)==="pilha").length;
   if(nC>1 || nP>1){
     html+=`<div class="grp"><b>Total da cadeia</b>`;
-    if(temC && nC>1) html+=`<div class="lin"><span>Cava (${nC} limites)</span><span>${fmt(volC/1e6,3)} Mm³</span></div>`;
-    if(temP && nP>1) html+=`<div class="lin"><span>Pilha (${nP} limites)</span><span>${fmt(volP/1e6,3)} Mm³</span></div>`;
+    if(temC && nC>1) html+=`<b>Cava (${nC} limites)</b>${linhasVolume(volC,'cava')}`;
+    if(temP && nP>1) html+=`<b>Pilha (${nP} limites)</b>${linhasVolume(volP,'pilha')}`;
     html+=`</div>`;
   }
   if(temC && temP){
@@ -2378,7 +2873,10 @@ function bboxTudo(){
   const inclui=P=>{for(const p of P){x0=Math.min(x0,p.x);x1=Math.max(x1,p.x);y0=Math.min(y0,p.y);y1=Math.max(y1,p.y);tem=true;}};
   for(const k of alvos()){
     const o=objs[k];
-    if(o.design) inclui(o.design.aneis[o.design.aneis.length-1].P);
+    if(o.design){
+      inclui(o.design.aneis[o.design.aneis.length-1].P);
+      for(const P of o.design.contornoExterior?.aneis||[])inclui(P);
+    }
     else if(o.base) inclui(o.base);
   }
   for(const item of contexto) for(const P of (item.paths||[])) inclui(P);
@@ -2474,8 +2972,9 @@ function desenhaContexto(frente){
   ctx.globalAlpha=1;
   for(const item of contexto){
     if(!!item.foreground!==primeiroPlano)continue;
-    const cor=item.color||"#687786",lw=Math.max(.1,+item.weight||1),
+    const cor=item.color||"#687786",lw=Math.max(0,Number.isFinite(+item.weight)?+item.weight:1),
       op=Math.max(0,Math.min(1,Number.isFinite(+item.opacity)?+item.opacity:1));
+    ctx.beginPath();
     for(const P of (item.paths||[])){
       if(!P||!P.length)continue;
       if(item.point){
@@ -2483,12 +2982,14 @@ function desenhaContexto(frente){
         for(const p of P){const [sx,sy]=W2S(p.x,p.y);ctx.beginPath();ctx.arc(sx,sy,Math.max(1.5,lw+1),0,7);ctx.fill();}
         continue;
       }
-      ctx.beginPath();P.forEach((p,i)=>{const [sx,sy]=W2S(p.x,p.y);i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy);});
+      P.forEach((p,i)=>{const [sx,sy]=W2S(p.x,p.y);i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy);});
       if(item.closed)ctx.closePath();
-      if(item.closed&&item.fillColor){ctx.save();ctx.globalAlpha=op*Math.max(.08,+item.fillOpacity||.18);ctx.fillStyle=item.fillColor;ctx.fill();ctx.restore();}
+    }
+    if(!item.point){
+      if(item.closed&&item.fillColor&&+item.fillOpacity>0){ctx.save();ctx.globalAlpha=op*Math.min(1,+item.fillOpacity);ctx.fillStyle=item.fillColor;ctx.fill('evenodd');ctx.restore();}
       ctx.globalAlpha=op;ctx.strokeStyle=cor;ctx.lineWidth=lw;
       ctx.setLineDash(item.dash?String(item.dash).split(/[ ,]+/).map(Number).filter(Number.isFinite):[]);
-      ctx.stroke();ctx.setLineDash([]);
+      if(lw>0)ctx.stroke();ctx.setLineDash([]);
     }
   }
   ctx.restore();
@@ -2524,14 +3025,37 @@ function cruzaCotaTrabalho(a,b,qa,qb){
   }
   return mid||pontoCotaTrabalho(a,b,.5);
 }
+// A classificação é espacial: pan/zoom não alteram cotas nem os cruzamentos.
+// Incluímos também caminhos abertos (eixos da rampa e contornos multipartes).
+// A chave exata detecta edições in-place durante o arraste, sem arredondar XYZ.
+const custosCacheLinhasPorCota=new WeakMap();
+const LIMITE_CACHE_LINHAS_POR_COTA=32*1024*1024;
+function guardaTrechosLinhaPorCota(chave,runs){
+  const custo=chave.length*2+runs.reduce((n,r)=>n+96+r.points.length*128,0);
+  // Um caminho excepcionalmente grande não expulsa todos os demais.
+  if(custo>LIMITE_CACHE_LINHAS_POR_COTA/2)return;
+  custosCacheLinhasPorCota.set(runs,custo);
+  cacheSuperficieTrabalho.set(chave,runs);
+  let bytes=0;for(const r of cacheSuperficieTrabalho.values())bytes+=custosCacheLinhasPorCota.get(r)||0;
+  while(cacheSuperficieTrabalho.size>256||bytes>LIMITE_CACHE_LINHAS_POR_COTA){
+    const primeira=cacheSuperficieTrabalho.keys().next().value;
+    bytes-=custosCacheLinhasPorCota.get(cacheSuperficieTrabalho.get(primeira))||0;
+    cacheSuperficieTrabalho.delete(primeira);
+  }
+}
 function trechosLinhaPorCota(P,fechado,cota){
   const Q=(P||[]).map((p,i)=>({x:+p.x,y:+p.y,
     lineZ:typeof cota==="function"?+cota(p,i):+cota})).filter(p=>
       Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.lineZ));
   if(!superficieTrabalho||Q.length<2)return [];
-  const chave=fechado?[superficieTrabalho.id,superficieTrabalho.revision,Q.length,
-    Q.map(p=>p.x.toFixed(4)+","+p.y.toFixed(4)+","+p.lineZ.toFixed(3)).join(";")].join("|"):null;
-  if(chave&&cacheSuperficieTrabalho.has(chave))return cacheSuperficieTrabalho.get(chave);
+  const chave=[superficieTrabalho.id,superficieTrabalho.revision,superficieTrabalho.cellSize,
+    superficieTrabalho.tolerance,fechado?1:0,Q.length,
+    Q.map(p=>p.x+","+p.y+","+p.lineZ).join(";")].join("|");
+  if(cacheSuperficieTrabalho.has(chave)){
+    const runs=cacheSuperficieTrabalho.get(chave);
+    cacheSuperficieTrabalho.delete(chave);cacheSuperficieTrabalho.set(chave,runs);
+    return runs;
+  }
   const runs=[],mesmo=(a,b)=>a&&b&&Math.hypot(a.x-b.x,a.y-b.y)<1e-7;
   const inclui=(relation,a,b)=>{
     if(!a||!b||Math.hypot(a.x-b.x,a.y-b.y)<1e-9)return;
@@ -2558,7 +3082,7 @@ function trechosLinhaPorCota(P,fechado,cota){
       qa=qb;
     }
   }
-  if(chave){cacheSuperficieTrabalho.set(chave,runs);while(cacheSuperficieTrabalho.size>32)cacheSuperficieTrabalho.delete(cacheSuperficieTrabalho.keys().next().value);}
+  guardaTrechosLinhaPorCota(chave,runs);
   return runs;
 }
 function trechosLinhaBasePorCota(P,fechado,z){return trechosLinhaPorCota(P,fechado,+z);}
@@ -2568,14 +3092,13 @@ function tracaLinhaPorCota(P,fechado,cota,estilo){
     dashBase=Array.isArray(estilo.dash)?estilo.dash:String(estilo.dash||"").split(/[ ,]+/).map(Number).filter(Number.isFinite),
     opLinha=Math.max(0,Math.min(1,Number.isFinite(+estilo.opacity)?+estilo.opacity:1)),opBruta=+superficieTrabalho.opacity,
     opMdt=Math.max(0,Math.min(1,Number.isFinite(opBruta)?opBruta:1)),
-    opAbaixo=opMdt>=.999?0:Math.min(.9,Math.max(.45,1-opMdt));
+    opAbaixo=.55;
   const desenha=(r,stroke,lw,alpha)=>{ctx.beginPath();r.points.forEach((p,i)=>{const q=W2S(p.x,p.y);i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);});ctx.strokeStyle=stroke;ctx.lineWidth=lw;ctx.globalAlpha=alpha;ctx.stroke();};
   ctx.save();ctx.lineCap="round";ctx.lineJoin="round";
   for(const r of runs){
     if(r.relation==="below"){
       if(opAbaixo<=.02)continue;
-      ctx.setLineDash([6,5]);desenha(r,"#ffffff",Math.max(.8,peso*.9)+2.6,Math.min(.85,opAbaixo*.9)*opLinha);
-      desenha(r,cor,Math.max(.9,peso*.95),opAbaixo*opLinha);
+      ctx.setLineDash(dashBase);desenha(r,"#000000",peso,opAbaixo*opLinha);
     }else{
       ctx.setLineDash(dashBase);desenha(r,cor,peso,opLinha);
     }
@@ -2607,10 +3130,9 @@ function preencheRampaPorCota(c,cor,opacidade){
 }
 function desenhaLegendaCotaTrabalho(){
   if(!superficieTrabalho)return;
-  const opBruta=+superficieTrabalho.opacity,oculto=(Number.isFinite(opBruta)?opBruta:1)>=.999;
   const itens=[
     ["#263746",[],"Acima / na superfície"],
-    ["#263746",oculto?[]:[6,5],oculto?"Abaixo do MDT · oculto":"Abaixo do MDT · tracejado"]
+    ["rgba(0,0,0,.55)",[],"Abaixo do MDT · 55%"]
   ],w=186,h=44,x=Math.max(8,cv.clientWidth-w-10),y=10;
   ctx.save();ctx.fillStyle=document.body.classList.contains("ccmgis-claro")?"rgba(255,255,255,.94)":"rgba(17,28,38,.94)";
   ctx.strokeStyle=document.body.classList.contains("ccmgis-claro")?"#9fb2c0":"#3b5264";ctx.lineWidth=1;
@@ -2706,13 +3228,46 @@ function marcaVertice(sx, sy, cor, destaque){
   ctx.fillStyle=CASING_ESC; ctx.fillRect(sx-r,sy-r,2*r,2*r);
   ctx.fillStyle=cor;        ctx.fillRect(sx-r+1,sy-r+1,2*(r-1),2*(r-1));
 }
-function tracaAnel(P, cor, lw, tracejado){
+function tracaAnel(P, cor, lw, tracejado, fechado=true){
   ctx.beginPath();
   P.forEach((p,i)=>{const [sx,sy]=W2S(p.x,p.y); i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy);});
-  ctx.closePath();
+  if(fechado)ctx.closePath();
   if(tracejado) ctx.setLineDash([6,4]);
   ctx.strokeStyle=cor; ctx.lineWidth=lw; ctx.stroke();
   ctx.setLineDash([]);
+}
+function baseParaDesenho(k){
+  return editando?.tipo==="base"&&editando.alvo===k&&editando.work?
+    (editando.viewWork||editando.work):(objs[k]?.design?.baseDerivadaEntrada||objs[k]?.base);
+}
+function verticesDaBaseParaEdicao(k){
+  const o=objs[k],P=baseParaDesenho(k);if(!P||!o?.base)return [];
+  const derivada=P===o.design?.baseDerivadaEntrada||editando?.alvo===k&&!!editando.viewWork,
+    usados=new Set();
+  return P.flatMap((p,i)=>{
+    const idx=derivada?p.si:i;
+    if(!Number.isInteger(idx)||idx<0||idx>=(editando?.alvo===k?editando.work?.length||o.base.length:o.base.length)||usados.has(idx))return [];
+    usados.add(idx);return [{p,idx}];
+  });
+}
+function segmentosDaBaseParaEdicao(k){
+  const H=verticesDaBaseParaEdicao(k),o=objs[k],out=[],n=editando?.alvo===k?editando.work?.length||o.base.length:o.base.length;
+  for(let j=0;j<H.length;j++){
+    const a=H[j],b=H[(j+1)%H.length];
+    // Somente segmentos entre vértices fontes consecutivos ganham o botão +.
+    const i=(a.idx+1)%n===b.idx?a.idx:((b.idx+1)%n===a.idx?b.idx:null);
+    if(i!=null)out.push({a:a.p,b:b.p,i});
+  }
+  return out;
+}
+function tracaContornoObjeto(k,peso=LW_LIMITE){
+  const o=objs[k],base=baseParaDesenho(k),movendo=editando?.tipo==="base"&&editando.alvo===k,
+    partes=movendo?null:o.design?.contornoExterior?.partes;
+  if(partes?.length){
+    for(const P of partes)if(!tracaLinhaPorCota(P,false,p=>cotaAbsolutaDoDesign(p.z),{color:corLimite(k),weight:peso}))
+      tracaAnel(P,corLimite(k),peso,false,false);
+  }else if(!tracaLinhaBasePorCota(base,true,cotaTrabalhoDoObjeto(k),{color:corLimite(k),weight:peso}))
+    tracaLimite(base,corLimite(k),peso,false);
 }
 function preencheAnel(P, cor){
   ctx.beginPath();
@@ -2751,12 +3306,14 @@ function desenhaObjeto(k){
   const vis=visibilidade[tipoDe(k)]||visibilidade.cava;if(!vis.on)return;
   const o=objs[k], cor=corDe(k);
   if(!o.design){
-    if(o.base&&!tracaLinhaBasePorCota(o.base,true,cotaTrabalhoDoObjeto(k),{color:corLimite(k),weight:LW_LIMITE})){ tracaLimite(o.base, corLimite(k), LW_LIMITE, false); }
+    const base=baseParaDesenho(k);
+    if(base&&!tracaLinhaBasePorCota(base,true,cotaTrabalhoDoObjeto(k),{color:corLimite(k),weight:LW_LIMITE})){ tracaLimite(base, corLimite(k), LW_LIMITE, false); }
     return;
   }
   const an=o.design.aneis;
+  const temContinuacao=alvos().some(c=>objs[c]?.paiDe===k&&objs[c]?.base?.length);
   preencheAnel(an[an.length-1].P, cor.fill);
-  preencheAnel(an[0].P, tipoDe(k)==="cava"?"#efe6d2":"#c9ced6");
+  if(!temContinuacao)preencheAnel(an[0].P, tipoDe(k)==="cava"?"#efe6d2":"#c9ced6");
   for(let i=0;i<an.length;i++){
     const a=an[i];
     // CRISTA sempre cheia e mais grossa; PÉ sempre tracejado e fino — SEMPRE.
@@ -2765,8 +3322,13 @@ function desenhaObjeto(k){
     // "duas cristas", ainda mais com vários limites encadeados.
     if(vis[a.tp]!==false){
       const padrao={color:cor[a.tp],weight:a.tp==="crista"?1.8:1.1,dash:a.tp==="pe"?[6,4]:[]},est=estiloIntegrado(k,a.tp,padrao);
-      if(!tracaLinhaPorCota(a.P,true,cotaAbsolutaDoDesign(a.z),est))
-        tracaAnel(a.P,est.color,est.weight,!!String(est.dash||"").length);
+      const entrada=i===an.length-1&&o.design.contornoExterior&&o.design.corredores.find(c=>c.entradaExterna),
+        recorte=entrada?recortaLinhaForaRampas(a.P,[entrada.poly]):null;
+      for(const P of recorte?.partes||[a.P]){
+        const fechado=!recorte?.cortado;
+        if(!tracaLinhaPorCota(P,fechado,cotaAbsolutaDoDesign(a.z),est))
+          tracaAnel(P,est.color,est.weight,!!String(est.dash||"").length,fechado);
+      }
     }
   }
   // seleção múltipla da barra inferior do CCMGIS
@@ -2912,10 +3474,31 @@ function desenhaObjeto(k){
   const [nx,ny]=W2S(cxm,cym);
   // cada bloco da cadeia com o próprio nome — antes todos escreviam "CAVA"
   const rot=(tipoDe(k)==="cava"?"CAVA":"PILHA")+(ehExtra(k)?" "+(1+ +k.split("#")[1]):"");
-  rotuloHalo(rot, nx, ny, corDe(k).crista, 13);
+  if(!temContinuacao)rotuloHalo(rot, nx, ny, corDe(k).crista, 13);
 }
 
+// Eventos de mouse podem chegar várias vezes antes da próxima pintura.
+// A vista e os vértices recebem cada movimento; só a pintura e a consulta
+// da cota do cursor são agrupadas, sem simplificar a geometria ou o MDT.
+let quadroInteracao=0, pinturaPendente=false, cursorPendente=null;
+function agendaInteracao(pintar=false){
+  pinturaPendente=pinturaPendente||pintar;
+  if(quadroInteracao)return;
+  quadroInteracao=requestAnimationFrame(()=>{
+    quadroInteracao=0;
+    const cursor=cursorPendente, pintarAgora=pinturaPendente;
+    cursorPendente=null;pinturaPendente=false;
+    if(cursor){
+      const q=S2W(cursor.x,cursor.y);
+      $("st_coord").innerHTML=`E: <b>${fmt(q.x,1)}</b> &nbsp; N: <b>${fmt(q.y,1)}</b>`;
+      window.dispatchEvent(new CustomEvent("cava2:cursor",{detail:{x:q.x,y:q.y,z:cotaTotal(q)}}));
+    }
+    if(pintarAgora)redesenha();
+  });
+}
 function redesenha(){
+  pinturaPendente=false;
+  if(quadroInteracao&&!cursorPendente){cancelAnimationFrame(quadroInteracao);quadroInteracao=0;}
   const dpr=window.devicePixelRatio||1;
   const W=cv.clientWidth, H=cv.clientHeight;
   if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);}
@@ -2927,19 +3510,19 @@ function redesenha(){
   // desenha TODOS os limites da cadeia (cava, cava#1, cava#2, ...) e depois a pilha
   for(const k of alvos()) desenhaObjeto(k);
 
-  // limite exterior desenhado: sempre visível (tracejado leve)
+  // O limite bruto acompanha a visibilidade do objeto, inclusive no recorte.
   if(ferramenta!=="editar"){
     for(const k of alvos()){
       const o=objs[k];
-      if(!o.base) continue;
-      if(!tracaLinhaBasePorCota(o.base,true,cotaTrabalhoDoObjeto(k),{color:corLimite(k),weight:LW_LIMITE}))tracaLimite(o.base, corLimite(k), LW_LIMITE, false);
+      if(!o.base||visibilidade[tipoDe(k)]?.on===false) continue;
+      tracaContornoObjeto(k);
     }
   }
   // linha-base em edição
   if(ferramenta==="editar"){
     for(const k of alvos()){
-      const o=objs[k];
-      if(!o.base) continue;
+      const o=objs[k],base=baseParaDesenho(k);
+      if(!base||visibilidade[tipoDe(k)]?.on===false) continue;
       // o limite ATIVO fica em destaque; os outros continuam visíveis e
       // clicáveis, só que esmaecidos — assim dá para ver em qual você está
       const ativo = (k===blocoAtivo);
@@ -2947,15 +3530,14 @@ function redesenha(){
       ctx.save();
       if(!ativo) ctx.globalAlpha=0.35;
       const pesoLimite=ativo?LW_LIMITE+1.2:LW_LIMITE;
-      if(!tracaLinhaBasePorCota(o.base,true,cotaTrabalhoDoObjeto(k),{color:corL,weight:pesoLimite}))tracaLimite(o.base,corL,pesoLimite,false);
-      for(const p of o.base){
+      tracaContornoObjeto(k,pesoLimite);
+      for(const {p} of verticesDaBaseParaEdicao(k)){
         const [sx,sy]=W2S(p.x,p.y);
         marcaVertice(sx, sy, corV, ativo);
       }
       ctx.restore();
       // "+" no meio de cada segmento: clique para inserir um vértice novo
-      for(let i=0;i<o.base.length;i++){
-        const a=o.base[i], b=o.base[(i+1)%o.base.length];
+      for(const {a,b} of segmentosDaBaseParaEdicao(k)){
         const [ax,ay]=W2S(a.x,a.y), [bx,by]=W2S(b.x,b.y);
         if(Math.hypot(bx-ax,by-ay)<26) continue;   // segmento curto na tela: sem clutter
         const mx=(ax+bx)/2, my=(ay+by)/2;
@@ -3015,9 +3597,9 @@ function redesenha(){
     rotuloHalo("A'",bx2+12,by2-10,"#2a7f52",12);
   }
   desenhaContexto(true);
-  desenhaLegendaCotaTrabalho();
+  if(alvos().some(k=>objs[k]?.base&&visibilidade[tipoDe(k)]?.on!==false))desenhaLegendaCotaTrabalho();
   // dica quando vazio
-  if(!objs.cava.base && !objs.pilha.base && !(desenho&&desenho.pts.length)){
+  if(!objs.cava.base && !objs.pilha.base && !contexto?.length && !(desenho&&desenho.pts.length)){
     ctx.fillStyle="#8d8571"; ctx.font="14px Signika, sans-serif";
     ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText("Use ✏️ Desenhar cava / pilha e clique para digitalizar a linha fechada.", W/2, H/2);
@@ -3237,7 +3819,7 @@ function sincNb(pref){
   iN.value=nb;
   iH.value=+(nb*banco).toFixed(2);
 }
-document.querySelectorAll("aside input, aside select").forEach(el=>
+document.querySelectorAll("aside input:not(#ccmgisEmpolamento), aside select").forEach(el=>
   el.addEventListener("input", ()=>{
     marcaHistorico("campo:"+el.id);
     if(/^(cava|pilha)_(nb|banco)$/.test(el.id)) sincNb(el.id.split("_")[0]);
@@ -3247,6 +3829,38 @@ document.querySelectorAll("aside input, aside select").forEach(el=>
     regen();
   }));
 sincNb("cava"); sincNb("pilha");
+
+// Controles explícitos funcionam também no Safari/iPad, onde o spinner
+// nativo do input numérico não é exibido. Disparam a mesma edição do teclado.
+function instalaIncrementosNumericos(){
+  for(const input of document.querySelectorAll('aside input[type="number"]:not([readonly])')){
+    if(input.closest('.cava-number'))continue;
+    const box=document.createElement('span');box.className='cava-number';
+    const label=input.closest('.campo')?.querySelector('label')?.textContent?.trim()||input.id;
+    const dec=document.createElement('button'),inc=document.createElement('button');
+    dec.type=inc.type='button';dec.textContent='−';inc.textContent='+';
+    dec.setAttribute('aria-label','Diminuir '+label);inc.setAttribute('aria-label','Aumentar '+label);
+    dec.title='Diminuir '+label;inc.title='Aumentar '+label;
+    input.before(box);box.append(dec,input,inc);input.inputMode='decimal';
+    const sync=()=>{const v=input.valueAsNumber;
+      dec.disabled=input.disabled||(input.min!==''&&Number.isFinite(v)&&v<=+input.min);
+      inc.disabled=input.disabled||(input.max!==''&&Number.isFinite(v)&&v>=+input.max);};
+    const step=direction=>{if(input.disabled||input.readOnly)return;
+      const before=input.value;
+      if(!Number.isFinite(input.valueAsNumber))input.value=input.min||input.defaultValue||'0';
+      direction>0?input.stepUp():input.stepDown();
+      if(input.value!==before){input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));}
+      sync();};
+    dec.onclick=()=>step(-1);inc.onclick=()=>step(1);
+    input.addEventListener('input',sync);input.addEventListener('change',sync);sync();
+    new MutationObserver(sync).observe(input,{attributes:true,attributeFilter:['disabled','min','max']});
+  }
+}
+instalaIncrementosNumericos();
+$('ccmgisEmpolamento').addEventListener('input',e=>{
+  const p=e.target.value.trim()===''?null:e.target.valueAsNumber;
+  volumeResumo={...volumeResumo,swelling:p!=null&&Number.isFinite(p)&&p>=0?p:null};atualizaResultados();
+});
 
 function fechaDesenho(){
   if(!desenho || desenho.pts.length<3){desenho=null; defineTool("mover"); return;}
@@ -3391,10 +4005,10 @@ cv.addEventListener("pointerdown", e=>{
     if(!escolhendoLinha) for(const k of alvos()){
       const o=objs[k];
       if(!o.base) continue;
-      o.base.forEach((p,i)=>{
+      verticesDaBaseParaEdicao(k).forEach(({p,idx:i})=>{
         const [sx,sy]=W2S(p.x,p.y);
         const d=Math.hypot(e.offsetX-sx, e.offsetY-sy);
-        if(d<10 && (!melhor||d<melhor.d)) melhor={tipo:"base", alvo:k, idx:i, d};
+        if(d<10 && (!melhor||d<melhor.d)) melhor={tipo:"base", alvo:k, idx:i, d,cursor0:{x:p.x,y:p.y}};
       });
     }
     // 1) vértice da string selecionada (edição suave com raio de influência)
@@ -3443,6 +4057,9 @@ cv.addEventListener("pointerdown", e=>{
     // 2) vértice da linha-base (quadrados magenta) — já procurado no passo 0
     if(melhor){
       melhor.p0={x:objs[melhor.alvo].base[melhor.idx].x, y:objs[melhor.alvo].base[melhor.idx].y};
+      melhor.work=objs[melhor.alvo].base.map(p=>({...p}));
+      const derivada=objs[melhor.alvo].design?.baseDerivadaEntrada;
+      if(derivada)melhor.viewWork=derivada.map(p=>({...p}));
       // o limite que você pegou passa a ser o destacado
       if(blocoAtivo!==melhor.alvo){ blocoAtivo=melhor.alvo; blocoParaPainel(); atualizaDicaSel(); }
       editando=melhor; cv.setPointerCapture(e.pointerId); return;
@@ -3452,8 +4069,7 @@ cv.addEventListener("pointerdown", e=>{
     if(!escolhendoLinha) for(const k of alvos()){
       const o=objs[k];
       if(!o.base) continue;
-      for(let i=0;i<o.base.length;i++){
-        const a=o.base[i], b=o.base[(i+1)%o.base.length];
+      for(const {a,b,i} of segmentosDaBaseParaEdicao(k)){
         const [ax,ay]=W2S(a.x,a.y), [bx,by]=W2S(b.x,b.y);
         if(Math.hypot(bx-ax,by-ay)<26) continue;
         const mx=(ax+bx)/2, my=(ay+by)/2;
@@ -3463,9 +4079,17 @@ cv.addEventListener("pointerdown", e=>{
     }
     if(melM){
       const o=objs[melM.alvo];
-      marcaHistorico();                       // inserir + arrastar = um passo só
-      o.base.splice(melM.i+1, 0, {x:melM.m.x, y:melM.m.y});
-      editando={tipo:"base", alvo:melM.alvo, idx:melM.i+1, jaMarcado:true};
+      const work=o.base.map(p=>({...p})),derivada=o.design?.baseDerivadaEntrada,
+        a=work[melM.i],b=work[(melM.i+1)%work.length],
+        fonte=derivada?{x:(a.x+b.x)/2,y:(a.y+b.y)/2}:{...melM.m};
+      work.splice(melM.i+1, 0, fonte);
+      // Inserção e arraste só entram no histórico quando o gesto termina.
+      editando={tipo:"base", alvo:melM.alvo, idx:melM.i+1, work,insercao:true,p0:{...fonte},cursor0:{...melM.m}};
+      if(derivada){
+        const viewWork=derivada.map(p=>({...p,si:Number.isInteger(p.si)&&p.si>melM.i?p.si+1:p.si})),
+          pos=viewWork.findIndex(p=>p.si===melM.i),prox=viewWork.findIndex(p=>p.si===(melM.i+2)%work.length);
+        viewWork.splice(pos<prox||prox===0?pos+1:prox+1,0,{...melM.m,si:melM.i+1});editando.viewWork=viewWork;
+      }
       cv.setPointerCapture(e.pointerId);
       redesenha();
       return;
@@ -3634,6 +4258,45 @@ function simplificaParaEdicao(alvo, idx){
     o.design.aneis[idx].P=out;
   }
 }
+// Operações CAD editam a linha que CONSTRÓI o bloco. As strings derivadas
+// continuam ligadas à mesma fonte; não se altera só uma cópia publicada no GIS.
+function vectorEditTarget(){
+  const alvo=sel?.alvo||blocoAtivo,o=objs[alvo];
+  if(!o?.base?.length)throw Error("Selecione uma linha da cava/DCE.");
+  if(congelada?.alvo===alvo)throw Error("Descongele a linha-limite para alterar a linha-base deste bloco.");
+  return {alvo,points:o.base.map(p=>({x:p.x,y:p.y})),selected:sel?{...sel}:null};
+}
+function replaceBasePoints(alvo,points){
+  const target=vectorEditTarget();
+  if(target.alvo!==alvo)throw Error("A seleção mudou. Abra o comando novamente.");
+  const o=objs[alvo],P=points.map(p=>({x:+p.x,y:+p.y}));
+  if(P.length<3||P.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y)))throw Error("Linha-base inválida.");
+  if(P.length>20000)throw Error("A linha-base resultaria em mais de 20 mil vértices. Aumente a distância ou reduza as iterações.");
+  if(Math.abs(areaAssinada(P))<1e-6)throw Error("A operação eliminaria a área da linha-base.");
+  // Varredura por caixas de segmentos: não deixar o gerador corrigir em
+  // silêncio um cruzamento introduzido pela simplificação/suavização.
+  const segments=P.map((a,i)=>{const b=P[(i+1)%P.length];return {a,b,i,minX:Math.min(a.x,b.x),maxX:Math.max(a.x,b.x),minY:Math.min(a.y,b.y),maxY:Math.max(a.y,b.y)};}).sort((a,b)=>a.minX-b.minX);
+  for(let i=0;i<segments.length;i++)for(let j=i+1;j<segments.length&&segments[j].minX<=segments[i].maxX;j++){
+    const a=segments[i],b=segments[j],di=Math.abs(a.i-b.i);
+    if(di===1||di===P.length-1||a.maxY<b.minY||b.maxY<a.minY)continue;
+    if(segInt(a.a,a.b,b.a,b.b))throw Error("A operação cruzaria a linha-base. Reduza a tolerância ou as iterações.");
+  }
+  const antes=JSON.stringify(o.base),depois=JSON.stringify(P);
+  if(antes===depois)return {before:P.length,after:P.length,changed:false};
+  const bermas=JSON.parse(JSON.stringify(o.bermas||{}));
+  // si é o índice da fonte: remapear os pontos preservados; nos removidos,
+  // manter a âncora espacial existente da edição de berma, sem índice velho.
+  const ids=new Map(P.map((p,i)=>[p.x+','+p.y,i]));
+  for(const edits of Object.values(bermas))for(const e of edits||[]){
+    const old=o.base[e.si];e.si=old?(ids.get(old.x+','+old.y)??null):null;
+  }
+  const trial=geraDesign(P,parametrosDe(alvo),tipoDe(alvo),o.anc,bermas,null,o.retornos,!objs[o.paiDe]?.base?.length);
+  if(!trial?.aneis?.length)throw Error("Não foi possível reconstruir as bancadas com essa linha.");
+  marcaHistorico();const before=o.base.length;
+  o.base=P;o.bermas=bermas;editando=null;desenho=null;modoLinha=null;selecaoMultipla=[];
+  blocoAtivo=alvo;vistaManual=true;defineTool("editar");regen();
+  return {before,after:P.length,changed:true};
+}
 // deixa claro no painel QUAL limite os campos estão editando
 // escreve o estado da cadeia no título de CADA tipo. Antes escrevia sempre em
 // "tit_cava", então ativar um limite de PILHA anunciava a edição no painel da
@@ -3672,12 +4335,11 @@ function atualizaDicaSel(){
 cv.addEventListener("pointermove", e=>{
   const q=S2W(e.offsetX,e.offsetY);
   hover=q;
-  $("st_coord").innerHTML=`E: <b>${fmt(q.x,1)}</b> &nbsp; N: <b>${fmt(q.y,1)}</b>`;
-  window.dispatchEvent(new CustomEvent("cava2:cursor",{detail:{x:q.x,y:q.y,z:cotaTotal(q)}}));
+  cursorPendente={x:e.offsetX,y:e.offsetY};agendaInteracao();
   if(arrasto){
     ox+=e.clientX-arrasto.x; oy+=e.clientY-arrasto.y;
     arrasto={x:e.clientX,y:e.clientY}; vistaManual=true;
-    redesenha(); return;
+    agendaInteracao(true); return;
   }
   if(editando){
     if(editando.tipo==="anel"){
@@ -3685,18 +4347,21 @@ cv.addEventListener("pointermove", e=>{
       // desenhada, então editar uma string é igual a editar a linha externa
       const dx=q.x-editando.p0.x, dy=q.y-editando.p0.y;
       for(let j=0;j<editando.orig.length;j++) editando.work[j]=editando.orig[j];
-      editando.work[editando.vi]={x:editando.p0.x+dx, y:editando.p0.y+dy};
+      editando.work[editando.vi]={...editando.orig[editando.vi],x:editando.p0.x+dx, y:editando.p0.y+dy};
       objs[editando.alvo].design.aneis[editando.idx].P=editando.work;
     }else{
-      objs[editando.alvo].base[editando.idx]={x:q.x,y:q.y};
+      const origem=editando.cursor0||editando.p0,
+        x=editando.p0.x+q.x-origem.x,y=editando.p0.y+q.y-origem.y;
+      editando.work[editando.idx]={...editando.work[editando.idx],x,y};
+      if(editando.viewWork)for(const p of editando.viewWork)if(p.si===editando.idx){p.x=q.x;p.y=q.y;}
     }
-    redesenha(); return;
+    agendaInteracao(true); return;
   }
-  if(ferramenta==="secao" && secA && !secB){secTemp=q; redesenha(); return;}
-  if(desenho && desenho.pts.length) redesenha();
+  if(ferramenta==="secao" && secA && !secB){secTemp=q; agendaInteracao(true); return;}
+  if(desenho && desenho.pts.length) agendaInteracao(true);
 });
 cv.addEventListener("pointerup", e=>{
-  if(arrasto){arrasto=null; cv.classList.remove("arrastando");}
+  if(arrasto){arrasto=null; cv.classList.remove("arrastando");if(pinturaPendente)redesenha();}
   if(editando){
     if(editando.tipo==="anel"){
       // só grava override se houve movimento real — clique parado não congela a string
@@ -3847,7 +4512,7 @@ cv.addEventListener("pointerup", e=>{
           for(let it=0; it<8; it++){
             gravaBerma(dB);
             let dT;
-            try{ dT=geraDesign(o.base, prmB, editando.alvo, o.anc, o.bermas, travaDe(editando.alvo), o.retornos); }
+            try{ dT=geraDesign(o.base, prmB, tipoDe(editando.alvo), o.anc, o.bermas, travaDe(editando.alvo), o.retornos,!objs[o.paiDe]?.base?.length,entradaHerdadaDoBloco(editando.alvo,prmB)); }
             catch(err){ break; }
             if(!dT || dT.aneis.length!==nA || !dT.aneis[editando.idx]) break;
             const pt=dT.aneis[editando.idx].P.find(q=>q.si===si);
@@ -3893,7 +4558,7 @@ cv.addEventListener("pointerup", e=>{
           for(let it=0; it<10; it++){
             travaSk.Sin[k]={x:sm0.x+cx, y:sm0.y+cy, si};
             let dT;
-            try{ dT=geraDesign(o.base, prmS, editando.alvo, o.anc, o.bermas, travaDe(editando.alvo), o.retornos); }
+            try{ dT=geraDesign(o.base, prmS, tipoDe(editando.alvo), o.anc, o.bermas, travaDe(editando.alvo), o.retornos,!objs[o.paiDe]?.base?.length,entradaHerdadaDoBloco(editando.alvo,prmS)); }
             catch(err){ break; }
             if(!dT || dT.aneis.length!==nA || !dT.aneis[editando.idx]) break;
             const pt=dT.aneis[editando.idx].P.find(q=>q.si===si);
@@ -3922,7 +4587,7 @@ cv.addEventListener("pointerup", e=>{
               }
             }
             if(!ruim){
-              let dV; try{ dV=geraDesign(o.base, parametros()[editando.alvo], editando.alvo, o.anc, o.bermas, travaDe(editando.alvo), o.retornos); }catch(e2){ dV=null; }
+              let dV; try{ const pV=parametrosDe(editando.alvo);dV=geraDesign(o.base, pV, tipoDe(editando.alvo), o.anc, o.bermas, travaDe(editando.alvo), o.retornos,!objs[o.paiDe]?.base?.length,entradaHerdadaDoBloco(editando.alvo,pV)); }catch(e2){ dV=null; }
               if(!dV || dV.aneis.length!==nA || cruzDe(dV)>cruzAntes+6) ruim=true;
             }
             if(ruim){
@@ -3970,7 +4635,7 @@ cv.addEventListener("pointerup", e=>{
             if(alargaBerma) gravaBerma(dB);
             o.base[si]={x:+(b0.x+cx).toFixed(3), y:+(b0.y+cy).toFixed(3)};
             let dTeste;
-            try{ dTeste=geraDesign(o.base, prmA, editando.alvo, o.anc, o.bermas, travaDe(editando.alvo), o.retornos); }
+            try{ dTeste=geraDesign(o.base, prmA, tipoDe(editando.alvo), o.anc, o.bermas, travaDe(editando.alvo), o.retornos,!objs[o.paiDe]?.base?.length,entradaHerdadaDoBloco(editando.alvo,prmA)); }
             catch(err){ break; }
             if(!dTeste || dTeste.aneis.length!==nA) break;   // mudou de estrutura: para
             const pt=dTeste.aneis[editando.idx].P.find(q=>q.si===si);
@@ -4107,18 +4772,23 @@ cv.addEventListener("pointerup", e=>{
         objs[editando.alvo].design.aneis[editando.idx].P=editando.orig;
       }
     }
-    else if(editando.tipo==="base" && !editando.jaMarcado){
-      const v=objs[editando.alvo].base[editando.idx];
-      if(v && editando.p0 && (Math.abs(v.x-editando.p0.x)>0.01 || Math.abs(v.y-editando.p0.y)>0.01))
-        marcaHistorico();
+    else if(editando.tipo==="base"){
+      const v=editando.work?.[editando.idx],mudou=v&&editando.p0&&
+        (Math.abs(v.x-editando.p0.x)>0.01||Math.abs(v.y-editando.p0.y)>0.01);
+      if(v&&(editando.insercao||mudou)){
+        if(!editando.jaMarcado)marcaHistorico();
+        objs[editando.alvo].base=editando.work.map(p=>({...p}));
+      }
     }
     editando=null; regen(); atualizaDicaSel();
   }
 });
-cv.addEventListener("pointercancel", ()=>{
-  if(arrasto){arrasto=null; cv.classList.remove("arrastando");}
+function cancelaArrasteCava(){
+  if(arrasto){arrasto=null; cv.classList.remove("arrastando");if(pinturaPendente)redesenha();}
   if(editando){ editando=null; regen(); atualizaDicaSel(); }
-});
+}
+cv.addEventListener("pointercancel",cancelaArrasteCava);
+cv.addEventListener("lostpointercapture",cancelaArrasteCava);
 cv.addEventListener("dblclick", e=>{
   if(ferramenta==="selpoly"&&poligonoSelecao.length>=3){finalizaSelecaoPoligono();e.preventDefault();return;}
   if(desenho && desenho.pts.length>=3){fechaDesenho(); return;}
@@ -4128,13 +4798,14 @@ cv.addEventListener("dblclick", e=>{
       const o=objs[k];
       if(!o.base) continue;
       const listas=[];
-      if(sel && sel.alvo===k && o.design && o.design.aneis[sel.idx]) listas.push(o.design.aneis[sel.idx].P);
-      listas.push(o.base);
+      if(sel && sel.alvo===k && o.design && o.design.aneis[sel.idx]) listas.push(o.design.aneis[sel.idx].P
+        .filter(p=>Number.isInteger(p.si)&&!!o.base[p.si]).map(p=>({...p,sourceBaseIndex:p.si})));
+      listas.push(verticesDaBaseParaEdicao(k).map(({p,idx})=>({...p,sourceBaseIndex:idx})));
       let alvoV=null;
       for(const P of listas){
         for(const p of P){
           const [sx,sy]=W2S(p.x,p.y);
-          if(Math.hypot(e.offsetX-sx, e.offsetY-sy)<10){ alvoV={x:p.x,y:p.y}; break; }
+          if(Math.hypot(e.offsetX-sx, e.offsetY-sy)<10){const fonte=p.sourceBaseIndex==null?p:o.base[p.sourceBaseIndex];alvoV={x:fonte.x,y:fonte.y};break;}
         }
         if(alvoV) break;
       }
@@ -4155,7 +4826,7 @@ cv.addEventListener("wheel", e=>{
   ox=e.offsetX-(e.offsetX-ox)*f;
   oy=e.offsetY-(e.offsetY-oy)*f;
   escala=novo; vistaManual=true;
-  redesenha();
+  agendaInteracao(true);
 },{passive:false});
 document.addEventListener("keydown", e=>{
   if((e.ctrlKey||e.metaKey) && (e.key==="z"||e.key==="Z")){   // Ctrl/⌘+Z desfaz, +Shift refaz
@@ -4275,6 +4946,7 @@ function finalizaAqui(){
   marcaHistorico();
   congelaParametros(T);                         // ninguém mais lê o painel direto
   o.prm=Object.assign({}, P0, {H:prof});        // o bloco passa a terminar aqui
+  if(o.ovMeta)o.ovMeta={...o.ovMeta,H:prof};
   // A ÚLTIMA LINHA FICA SOLTA: ela vira a linha-FONTE de um bloco novo, ainda
   // sem bancadas (H=0). Linha-fonte é desenhada, não gerada — por isso tem
   // movimento livre: dá para arrastar os vértices dela à vontade e só depois
@@ -4304,19 +4976,24 @@ function limiteDeLinhaExistente(){
   if(!a || !a.P || a.P.length<4){ ultimaEdicao="linha inválida"; atualizaDicaSel(); return; }
   marcaHistorico();
   const P0=parametrosDe(k);
-  const usado=Math.abs(a.z);
-  const Ptot=parametros()[T];
-  const Hrest=Math.max(P0.banco, Ptot.H-usado);
+  const usado=Math.abs(a.z-(o.z0||0));
+  const Hrest=Math.max(0,P0.H-usado);
   // mesma regra do Finalizar: a linha escolhida sai no TIPO DE PARTIDA, com a
   // berma aberta sozinha quando ela é do tipo errado para iniciar
   const part=linhaDePartida(a, T, P0.berma);
   const linha=part.pontos;
   congelaParametros(T);
+  o.prm=Object.assign({},P0,{H:usado});
+  if(o.ovMeta)o.ovMeta={...o.ovMeta,H:usado};
   let n=1; while(objs[T+"#"+n]) n++;
   const nk=T+"#"+n, pe=(part.tp==="pe");
   objs[nk]={base:linha, anc:null, design:null, erro:null, bermas:{}, ovMeta:null,
             prm:Object.assign({}, P0, {H:Hrest}), z0:a.z, paiDe:k,
             comoPe:pe, comoCrista:!pe};
+  // Ao dividir novamente o trecho superior, a continuação que já existia
+  // passa a seguir o novo trecho, conservando seus vértices e parâmetros.
+  for(const [ck,c] of Object.entries(objs))if(ck!==nk&&c.paiDe===k&&
+    (Number(c.z0||0)-a.z)*(T==="cava"?-1:1)>=-1e-8)c.paiDe=nk;
   blocoAtivo=nk; sel=null; blocoParaPainel(); regen();
   ultimaEdicao=`<b>limite novo (${nk})</b> a partir da linha da cota ${fmt(a.z,0)} m, valendo como <b>${pe?"PÉ":"CRISTA"}</b>`+
     (part.abriuBerma ? ` (berma de ${fmt(P0.berma,0)} m aberta automaticamente)` : "")+
@@ -4371,15 +5048,36 @@ $("b_refazer").onclick=refaz;
 atualizaBotoesHist();
 window.addEventListener("resize", ()=>{redesenha(); desenhaSecPainel();});
 
+// Pressionar um ícone no toque identifica a ferramenta sem executá-la.
+(()=>{
+  const bar=$('ccmgisV74Toolbar');let timer=0,target=null,blocked=null,until=0,start=null;
+  const clear=()=>{clearTimeout(timer);timer=0;};
+  const hide=()=>{bar.querySelectorAll('.touch-tooltip').forEach(e=>e.classList.remove('touch-tooltip'));};
+  bar.addEventListener('pointerdown',e=>{
+    clear();hide();blocked=null;until=0;if(e.pointerType==='mouse')return;
+    target=e.target.closest('[data-tooltip]');if(!target||!target.matches('button,label.ccmgis-toggle,.ccmgis-mdt-command'))return;
+    start={x:e.clientX,y:e.clientY};
+    timer=setTimeout(()=>{target.classList.add('touch-tooltip');blocked=target;until=performance.now()+2000;},500);
+  });
+  bar.addEventListener('pointermove',e=>{if(start&&Math.hypot(e.clientX-start.x,e.clientY-start.y)>8)clear();});
+  bar.addEventListener('pointerup',()=>{clear();start=null;});
+  bar.addEventListener('pointercancel',()=>{clear();hide();start=null;});
+  bar.addEventListener('click',e=>{if(blocked&&performance.now()<until&&blocked.contains(e.target)){
+    e.preventDefault();e.stopImmediatePropagation();blocked=null;
+  }else hide();},true);
+  document.addEventListener('pointerdown',e=>{if(!bar.contains(e.target)){clear();hide();}},true);
+})();
+
 /* ================= boot ================= */
 window.__api={objs, geraDesign, offsetU, cotaEm, cotaTotal, parametros, parametrosDe, exemplo,
+              setVolumeSummary(value){volumeResumo=value;atualizaResultados();},
               regen, removeLacos, resample, faixaCorredorInt,
               anelComRampaInt, areaAssinada,
               dentroDe, cumulativo, arcoMaisProximo, pontoNoArco, recortaLinhaForaRampas,
               garanteFora, garanteDentro, compHoriz, segInt, distAoAnel, perimetro,
               tipoDe, alvos, estadoAtual, aplicaEstado, limpaCadeia, saneiaPainel,
               blocoParaPainel, painelParaBloco, finalizaAqui, limiteDeLinhaExistente,
-              setContextLayers(v){
+              setContextLayers(v,redraw=true){
                 contexto=Array.isArray(v)?v:[];
                 for(const item of contexto){
                   const src=item&&item.imageUrl;if(!src)continue;
@@ -4387,17 +5085,18 @@ window.__api={objs, geraDesign, offsetU, cotaEm, cotaTotal, parametros, parametr
                   if(!im){im=new Image();im.onload=()=>redesenha();im.src=src;contextoImgCache.set(src,im);}
                   item._img=im;
                 }
-                redesenha();
+                if(redraw)redesenha();
               },
-              setObjectVisibility(k,v){
+              setObjectVisibility(k,v,redraw=true){
                 const t=tipoDe(k);if(!visibilidade[t])return false;
-                visibilidade[t]={...visibilidade[t],...(v||{})};redesenha();return true;
+                visibilidade[t]={...visibilidade[t],...(v||{})};if(redraw)redesenha();return true;
               },
-              setObjectStyle(k,v){
+              setObjectStyle(k,v,redraw=true){
                 const t=tipoDe(k);if(!estilosIntegracao[t]||!v)return false;
-                estilosIntegracao[t]={...estilosIntegracao[t],...v};redesenha();return true;
+                estilosIntegracao[t]={...estilosIntegracao[t],...v};if(redraw)redesenha();return true;
               },
               get contextLayers(){return contexto;},
+              vectorEditTarget,replaceBasePoints,undo:desfaz,redo:refaz,
               get sel(){return sel;}, set sel(v){sel=v;},
               get blocoAtivo(){return blocoAtivo;}, set blocoAtivo(v){if(objs[v]){blocoAtivo=v;blocoParaPainel();}},
               get congelada(){return congelada;}, set congelada(v){congelada=v;},
@@ -4421,14 +5120,14 @@ window.__api={objs, geraDesign, offsetU, cotaEm, cotaTotal, parametros, parametr
                 }
                 return !!ok;
               },
-              setWorkSurface(v){
+              setWorkSurface(v,redraw=true){
                 superficieTrabalho=v&&typeof v.sampleZ==="function"?{
                   id:v.id,name:v.name||"MDT",designId:v.designId||null,revision:v.revision||0,
                   workZ:+v.workZ,cellSize:Math.max(.05,+v.cellSize||1),
                   tolerance:Math.max(.001,+v.tolerance||.1),
                   opacity:Math.max(0,Math.min(1,Number.isFinite(+v.opacity)?+v.opacity:1)),sampleZ:v.sampleZ
                 }:null;cacheSuperficieTrabalho.clear();
-                redesenha();return !!superficieTrabalho;
+                if(redraw)redesenha();return !!superficieTrabalho;
               },
               setWorkElevation(z){
                 if(!superficieTrabalho||!Number.isFinite(+z))return false;

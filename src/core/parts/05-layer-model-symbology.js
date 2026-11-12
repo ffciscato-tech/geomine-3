@@ -33,7 +33,10 @@ function addLayer(o){
     if(L.gtype==='point' && window.GeoMinePointSymbols)
       window.GeoMinePointSymbols.autoApplyLayer(L);
   }catch(e){ console.warn('biblioteca de símbolos pontuais',e); }
-  S.layers.unshift(L); S.activeId=L.id; drawLayer(L); zApply();
+  if(!L.labelField&&L.src&&(L.src.url||L.src.provider))window.GeoMineAutomaticLabels?.apply(L,L.src);
+  S.layers.unshift(L);
+  if(o.sourceLayer)placeProductAbove(L,o.sourceLayer);
+  S.activeId=L.id; drawLayer(L); zApply();
   /* addLayer é o ponto comum de importações, Mesclar e demais produtos
      vetoriais. Vários chamadores atualizavam o mapa, mas esqueciam a aba
      CAMADAS. Agenda uma reconstrução curta e agrupada: assim toda camada
@@ -209,6 +212,11 @@ function attrFilterCount(L){let n=0;(L.features||[]).forEach(f=>{if(f&&f.geom&&a
 function featureStyle(L,f){
   const base=baseFeatureStyle(L,f);
   return window.GeoMineFeatureStyleBrush?.effective(L,f,base)||base;
+}
+/* Rendering and picking must agree: transparent interiors never mask a
+   feature below. Visible hatch patterns still count as painted interiors. */
+function polygonFillVisible(st){
+  return st.hatch!=='none'&&(+st.fill>0||!!(st.hatch&&st.hatch!=='solid'&&PATTERN_TPL[st.hatch]));
 }
 function baseFeatureStyle(L,f){
   const s=L.sym;
@@ -1435,7 +1443,6 @@ function apagarSelecao(q,semConfirmar){
   const L=q&&(q.layer||S.layers.find(x=>x.id===q.layerId)),f=L&&L.features[q.idx];
   if(!L||!f)return false;
   const parte=selParteValida(q,L,f);
-  if(!semConfirmar&&!confirm(parte?'Apagar somente a parte geométrica selecionada?':'Apagar esta feição de "'+L.name+'"?'))return false;
   if(parte){
     const antes=JSON.parse(JSON.stringify(f));
     f.geom.splice(q.partIdx,1);
@@ -1448,8 +1455,47 @@ function apagarSelecao(q,semConfirmar){
   S.selFeat=null;clearVertices();drawLayer(L);refreshUI();return true;
 }
 function attachFactories(L){ /* compat: fábricas agora inline em drawLayer */ }
+/* Explicit CAD hatches are ordinary vector strokes, independent from the
+   SVG fill-pattern shortcut. Read only XY and split unreadable gaps instead
+   of drawing a bridge across them; source XYZ/segments remain untouched. */
+function cadHatchRenderStyle(h,st={}){
+  const weight=Number(h?.weight??1),opacity=Number(h?.opacity??1),featureOpacity=Number(st.opacity??1);
+  return {color:h?.color||st.stroke||st.color||'#111111',
+    weight:Number.isFinite(weight)?Math.max(0,weight):1,
+    opacity:(Number.isFinite(opacity)?Math.max(0,Math.min(1,opacity)):1)*
+      (Number.isFinite(featureOpacity)?Math.max(0,Math.min(1,featureOpacity)):1)};
+}
+function cadHatchProjectSegments(h,project){
+  const paths=[];
+  for(const segment of Array.isArray(h?.segments)?h.segments:[]){
+    if(!Array.isArray(segment))continue;
+    let path=[];
+    const finish=()=>{if(path.length>=2)paths.push(path);path=[];};
+    for(const point of segment){
+      let p=null;
+      if(Array.isArray(point)&&Number.isFinite(point[0])&&Number.isFinite(point[1]))
+        try{p=project(point[0],point[1]);}catch(_){}
+      if(!Array.isArray(p)||!Number.isFinite(p[0])||!Number.isFinite(p[1])){finish();continue;}
+      path.push([p[0],p[1]]);
+    }
+    finish();
+  }
+  return paths;
+}
+function cadHatchMapLayers(L,f,st,renderer){
+  if(!['line','polygon'].includes(L.gtype)||!Array.isArray(f.cadHatches))return [];
+  const layers=[];
+  for(const h of f.cadHatches){
+    const style=cadHatchRenderStyle(h,st);if(style.weight<=0||style.opacity<=0)continue;
+    const paths=cadHatchProjectSegments(h,(x,y)=>{
+      const w=toWGS(L.crs,x,y);return w?[w[1],w[0]]:null;
+    });
+    if(paths.length)layers.push(L2.polyline(paths,{...style,fill:false,interactive:false,...renderer}));
+  }
+  return layers;
+}
 const L2 = L; // alias
-const BIG_LAYER=4000;                 // acima disto: canvas + sem hachura/rótulo
+const BIG_LAYER=4000;                 // acima disto: canvas + sem padrões SVG/rótulos
 /* Recorte VISUAL das linhas da cava contra o MDT natural.
    A feição original permanece inteira em memória (e reaparece inteira durante
    a edição); no mapa normal desenhamos somente os arcos que não estão
@@ -1546,22 +1592,69 @@ function desenhaNuvemCanvas(L){
    com centenas de milhares de vértices a cada mousemove bloqueia a soltura
    do botão e faz os marcadores parecerem travados. Renderizações especiais
    continuam usando o caminho completo; rótulos/cotas são refeitos ao soltar. */
-function drawVertexFeature(L,f){
+function vertexUpdateLatLngs(L,f,path,edit){
+  if(!edit?.ring||!Array.isArray(edit.indices))return false;
+  let cache=path._vertexCoordinateCache;
+  if(!cache||cache.geom!==f.geom||cache.rendered!==path.getLatLngs()){
+    const coords=path.getLatLngs(),rendered=[];
+    const collect=a=>{if(!Array.isArray(a)||!a.length)return;if(a[0]&&Number.isFinite(a[0].lat))rendered.push(a);else a.forEach(collect);};
+    collect(coords);
+    const rings=snapRingsOf(L,f);
+    if(rings.length!==rendered.length)return false;
+    const refs=new Map();
+    for(let i=0;i<rings.length;i++){
+      const ring=rings[i],ll=rendered[i],a=ring[0],b=ring.at(-1),closed=ring.length>1&&a[0]===b[0]&&a[1]===b[1];
+      if(ring.length!==ll.length&&!(closed&&ring.length===ll.length+1))return false;
+      refs.set(ring,ll);
+    }
+    cache={geom:f.geom,coords,rendered:coords,refs};path._vertexCoordinateCache=cache;
+  }
+  const ll=cache.refs.get(edit.ring);if(!ll)return false;
+  for(const index of edit.indices){
+    const pt=edit.ring[index];if(!Array.isArray(pt)||!Number.isFinite(pt[0])||!Number.isFinite(pt[1]))return false;
+    const w=toWGS(L.crs,pt[0],pt[1]);if(!Number.isFinite(w[0])||!Number.isFinite(w[1]))return false;
+    const i=index===ll.length&&edit.ring.length===ll.length+1?0:index;
+    if(i<0||i>=ll.length)return false;
+    ll[i]=L2.latLng(w[1],w[0]);
+  }
+  path.setLatLngs(cache.coords);cache.rendered=path.getLatLngs();return true;
+}
+function drawVertexFeature(L,f,edit){
   const path=L._vertexPaths?.get(f);
   if(!path||!L.llayer?.hasLayer(path)||!['line','polygon'].includes(L.gtype)){
     drawLayer(L);return;
   }
   if(L.gtype==='polygon')autoAreaSyncFeature(L,f);
-  path.setLatLngs(featToLatLngs(L,f));
+  if(!vertexUpdateLatLngs(L,f,path,edit)){
+    delete path._vertexCoordinateCache;
+    path.setLatLngs(featToLatLngs(L,f));
+  }
   L._rev=(+L._rev||0)+1;
-  if(!L._vertexRenderPending){L._snapCache=null;L._endCache=null;}
+  if(!L._vertexRenderPending){
+    // The edited feature is excluded from drag snap. Other features can
+    // reuse this snapshot until release instead of reprojecting the layer.
+    L._vertexSnapCache=L._snapCache;L._vertexEditedFeature=f;
+    L._snapCache=null;L._endCache=null;
+  }else if(L._vertexEditedFeature!==f){
+    // A second edited feature invalidates the single-feature snapshot.
+    delete L._vertexSnapCache;delete L._vertexEditedFeature;
+    L._snapCache=null;L._endCache=null;
+  }
   L._vertexRenderPending=true;
+  L._vertexLastFeature=f;
   window.GeoMineSessionAutosave?.markDirty('vértice editado');
   if(!S._vtxDragging&&!(typeof ED!=='undefined'&&ED.drag))finishVertexRender(L);
 }
 function finishVertexRender(L){
   if(!L?._vertexRenderPending)return;
+  // Snap off means no preparation at all. With it on, refresh only this
+  // feature so a second drag does not rebuild every neighbouring target.
+  const refreshed=S.snapOn&&L._vertexSnapCache&&typeof snapRefreshFeatureCache==='function'
+    ?snapRefreshFeatureCache(L,L._vertexSnapCache,L._vertexEditedFeature):null;
   delete L._vertexRenderPending;
+  delete L._vertexSnapCache;delete L._vertexEditedFeature;
+  const edited=L._vertexPaths?.get(L._vertexLastFeature);if(edited)delete edited._vertexCoordinateCache;
+  delete L._vertexLastFeature;
   L._snapCache=null;L._endCache=null;
   // As geometrias simples já estão atualizadas, inclusive seus atributos.
   // Adornos e classificações podem depender da área/comprimento alterados.
@@ -1569,6 +1662,8 @@ function finishVertexRender(L){
     (L.sym?.mode&&L.sym.mode!=='single')||L.gtype==='line'||
     L.features.some(f=>f.cadHatches?.length);
   if(extras)drawLayer(L);
+  if(refreshed&&refreshed.sourceFeatures===L.features&&
+    refreshed.featureRefs.every((f,i)=>L.features[i]===f&&f.geom===refreshed.geometryRefs[i]))L._snapCache=refreshed;
   if(S._view==='v3d'&&typeof v3Auto==='function')v3Auto();
 }
 function drawLayer(L,options){
@@ -1581,7 +1676,7 @@ function drawLayer(L,options){
     L._drawnBig===(L.features.length>BIG_LAYER)&&!L.visReal&&
     !(labelAtivo(L)&&labelCfg(L).unique)&&
     options.previousFeatures.every((f,i)=>L.features[i]===f));
-  if(L){delete L._vertexRenderPending;if(!append||!L._vertexPaths)L._vertexPaths=new WeakMap();}
+  if(L){delete L._vertexRenderPending;delete L._vertexSnapCache;delete L._vertexEditedFeature;delete L._vertexLastFeature;if(!append||!L._vertexPaths)L._vertexPaths=new WeakMap();}
   if(L)delete L._projectDrawDeferred;
   /* Todo redesenho causado por edição atualiza primeiro os atributos de área.
      Isso cobre vértices, movimento da feição, undo, clip, união e dissolve. */
@@ -1642,7 +1737,7 @@ function drawLayer(L,options){
   } else R={pane:paneNome};
   const labelUnicas=(!big&&labelAtivo(L))?labelUniqueSet(L):null;
   if(big && labelAtivo(L) && !L._bigWarn){ L._bigWarn=1;
-    toast(`"${L.name}": ${L.features.length.toLocaleString('pt-BR')} feições — modo desempenho (canvas, sem rótulos/hachuras)`); }
+    toast(`"${L.name}": ${L.features.length.toLocaleString('pt-BR')} feições — modo desempenho (canvas, sem rótulos/padrões SVG)`); }
   (append?L.features.slice(appendFrom):L.features).forEach((f,localIdx)=>{
     const idx=localIdx+(append?appendFrom:0);
     if(!f.geom || !featureVisible(L,f)) return;
@@ -1655,8 +1750,7 @@ function drawLayer(L,options){
        ligado e opacidade 0, o Leaflet mantinha o INTERIOR do polígono
        clicável: um limite transparente que cobre o projeto inteiro (o DCE)
        capturava todo clique do mapa e "só deixava selecionar o DCE". */
-    const semFill = isPoly && (st.hatch==='none' ||
-      (!(+st.fill>0.02) && (st.hatch==null || st.hatch==='none')));
+    const semFill = isPoly && !polygonFillVisible(st);
     const style={color:st.stroke,weight:+st.weight,fillColor:st.color,
       fill: isPoly && !semFill,
       fillOpacity: (isPoly && !semFill) ? +st.fill : 0,
@@ -1698,18 +1792,17 @@ function drawLayer(L,options){
       if(window.GeoMineLineArrows)layers.push(...GeoMineLineArrows.leaflet(lls,st,R));
     } else {
       const lls=featToLatLngs(L,f); const lyr=L2.polygon(lls,style); lyr._fidx=idx; layers.push(lyr);L._vertexPaths.set(f,lyr);
-      if(!big) polyRefs.push([lyr,st]);       // hachura só no SVG
-      /* Hachuras CAD vinculadas permanecem na feição poligonal, mas são
-         desenhadas como linhas vetoriais recortadas. Assim o projeto pode
-         salvá-las na camada escolhida sem converter toda a camada em mista. */
-      if(!big&&Array.isArray(f.cadHatches))f.cadHatches.forEach(h=>{
-        if(!h||!Array.isArray(h.segments)||!h.segments.length)return;
-        const llsH=h.segments.map(seg=>seg.map(pt=>{
-          const w=toWGS(L.crs,pt[0],pt[1]);return [w[1],w[0]];}));
-        layers.push(L2.polyline(llsH,{color:h.color||st.stroke,weight:+h.weight||1,
-          opacity:Number.isFinite(+h.opacity)?+h.opacity:1,interactive:false,...R}));
-      });
+      if(!big){
+        /* O Leaflet recria o path ao religar a camada ou o grupo. O padrão
+           vive no SVG, portanto precisa voltar depois de cada inclusão,
+           inclusive quando a opacidade sólida da feição é zero. */
+        lyr.on('add',()=>applyHatch(lyr,st));
+        polyRefs.push([lyr,st]);             // hachura só no SVG
+      }
     }
+    // Linked polygon and closed-polyline hatches follow the same pane,
+    // feature visibility and renderer, including large Canvas layers.
+    layers.push(...cadHatchMapLayers(L,f,st,R));
     /* Cotas por segmento: escreve a distância de cada trecho no ponto médio.
        Independe do rótulo por campo — os dois podem conviver.               */
     if(!big && L.cotasSeg && L.gtype!=='point'){

@@ -24,7 +24,11 @@ function projectCaptureDroppedFiles(dt){
     if(item.kind!=='file')continue;
     const file=item.getAsFile();if(!file)continue;files.push(file);
     if(typeof item.getAsFileSystemHandle==='function'){
-      try{projectDroppedHandles.set(file,Promise.resolve(item.getAsFileSystemHandle()).then(h=>h?.kind==='file'?h:null,()=>null));}catch(_){}
+      try{projectDroppedHandles.set(file,Promise.resolve(item.getAsFileSystemHandle()).then(h=>{
+        const handle=h?.kind==='file'?h:null;
+        if(handle)try{window.GeoMineOriginalSources?.capture(file,handle);}catch(_){}
+        return handle;
+      },()=>null));}catch(_){}
     }
   }
   return files.length?files:Array.from(dt?.files||[]);
@@ -60,6 +64,59 @@ function fsSeletorSimples(acao,titulo){
   bg.querySelector('#fsSimplesNo').onclick=()=>bg.remove();
   bg.querySelector('#fsSimplesOk').onclick=()=>{bg.remove();acao();};
 }
+/* Desktop imports/relinks retain the exact file capability selected by the
+   user. Keep native inputs/change handlers intact for mobile, unsupported
+   browsers, automation and programmatic clicks outside an active gesture. */
+(function(){
+  const installed=new WeakSet(),bypass=new WeakSet();let busy=false;
+  function bind(){
+    for(const id of ['fileIn','ortoReligarFile','imgReligarFile']){
+      const input=document.getElementById(id);if(!input||installed.has(input))continue;
+      installed.add(input);
+      input.addEventListener('click',async event=>{
+        if(bypass.has(input)){bypass.delete(input);return;}
+        if(!fsApiOK()||!fsHandlesOK()||typeof window.showOpenFilePicker!=='function')return;
+        const importing=id==='fileIn',onChange=input.onchange;
+        if(!importing&&typeof onChange!=='function')return;
+        const activation=navigator.userActivation;
+        if((activation&&!activation.isActive)||(!event.isTrusted&&!activation?.isActive))return;
+        event.preventDefault();if(busy)return;busy=true;
+        const project=S.projectId,generation=window.GeoMineSessionAutosave?.state?.generation,image=S.img,
+          current=()=>S.projectId===project&&window.GeoMineSessionAutosave?.state?.generation===generation&&
+            (importing||S.img===image);
+        try{
+          // This call must stay before the first await: the OS picker requires
+          // the transient activation of the Import/Locate button or label.
+          const pending=window.showOpenFilePicker({id:importing?'geomine-import-files':'geomine-ortho-source',multiple:importing,
+            ...(window.GeoMineProjectTabSession?.pickerStartIn?.()?{startIn:window.GeoMineProjectTabSession.pickerStartIn()}:{}),
+            ...(!importing?{types:[{description:'GeoTIFF',accept:{'image/tiff':['.tif','.tiff']}}]}:{})});
+          const handles=await pending,files=[];
+          if(!current())return;
+          for(const handle of handles||[]){
+            if(handle?.kind!=='file'||typeof handle.getFile!=='function')continue;
+            const file=await handle.getFile();if(!current())return;
+            projectDroppedHandles.set(file,Promise.resolve(handle));
+            try{window.GeoMineOriginalSources?.capture(file,handle);}catch(_){}
+            files.push(file);
+          }
+          if(files.length&&current()){
+            const selection={files,value:''};
+            if(importing)await GeoMineImportHandoff.fromInput(selection);
+            else await onChange.call(input,{target:selection,currentTarget:input,type:'change'});
+          }
+        }catch(error){
+          if(error?.name==='AbortError')return;
+          if(fsMarcaRecusa(error)&&current()){
+            fsSeletorSimples(()=>{bypass.add(input);input.click();},importing?'Importar pelo seletor simples':'Localizar o GeoTIFF');
+          }else if(current()){
+            toast('Não foi possível abrir os arquivos: '+(error?.message||error));
+          }
+        }finally{busy=false;}
+      });
+    }
+  }
+  bind();document.addEventListener('DOMContentLoaded',bind,{once:true});
+})();
 /* Abre GeoTIFF como ARQUIVO, não como fotografia. No Android, qualquer MIME
    image/* (inclusive image/tiff) pode entregar o pedido ao Google Fotos em
    vez do gerenciador Files/Drive. Por isso o tablet recebe o seletor genérico
@@ -130,6 +187,11 @@ function abrirSeletorGeoTIFF(inp){
    camadas. Funciona também depois de redimensionar a janela ou alterar a
    ribbon, sem depender da largura fixa escrita no CSS. */
 (function(){
+  let quadroComando=0;
+  function agendaJanelasComando(){
+    if(quadroComando)return;
+    quadroComando=requestAnimationFrame(()=>{quadroComando=0;posicionaJanelasComando();});
+  }
   function posicionaJanelasComando(){
     if(!document.body.classList.contains('alagis3'))return;
     const raiz=document.body,camadas=document.getElementById('right'),corpo=document.getElementById('body'),
@@ -148,21 +210,21 @@ function abrirSeletorGeoTIFF(inp){
     // cabeçalho, duas linhas de ações por toque e uma faixa rolável de campos.
     const topo=Math.max(visTop+6,Math.min(Math.max(visTop+6,(rb&&rb.height?rb.top:150)+5),limite-240));
     const baixo=Math.max(8,innerHeight-limite);
-    raiz.style.setProperty('--alagis-command-left',esquerda+'px');
-    raiz.style.setProperty('--alagis-command-top',topo+'px');
-    raiz.style.setProperty('--alagis-command-bottom',baixo+'px');
-    raiz.style.setProperty('--alagis-command-height',Math.max(0,limite-topo)+'px');
+    const valores={'--alagis-command-left':esquerda+'px','--alagis-command-top':topo+'px',
+      '--alagis-command-bottom':baixo+'px','--alagis-command-height':Math.max(0,limite-topo)+'px'};
+    for(const [nome,valor] of Object.entries(valores))
+      if(raiz.style.getPropertyValue(nome)!==valor)raiz.style.setProperty(nome,valor);
   }
-  window.addEventListener('resize',posicionaJanelasComando,{passive:true});
+  window.addEventListener('resize',agendaJanelasComando,{passive:true});
   if(window.visualViewport){
-    window.visualViewport.addEventListener('resize',posicionaJanelasComando,{passive:true});
-    window.visualViewport.addEventListener('scroll',posicionaJanelasComando,{passive:true});
+    window.visualViewport.addEventListener('resize',agendaJanelasComando,{passive:true});
+    window.visualViewport.addEventListener('scroll',agendaJanelasComando,{passive:true});
   }
   document.addEventListener('DOMContentLoaded',()=>{
     posicionaJanelasComando();
     const alvos=[document.getElementById('right'),document.getElementById('ribbon'),document.getElementById('ribCats'),document.querySelector('.readout')].filter(Boolean);
-    if(window.ResizeObserver){const ro=new ResizeObserver(posicionaJanelasComando);alvos.forEach(x=>ro.observe(x));}
-    const mo=new MutationObserver(posicionaJanelasComando);
+    if(window.ResizeObserver){const ro=new ResizeObserver(agendaJanelasComando);alvos.forEach(x=>ro.observe(x));}
+    const mo=new MutationObserver(agendaJanelasComando);
     alvos.forEach(x=>mo.observe(x,{attributes:true,attributeFilter:['style','class']}));
   });
 })();
@@ -512,6 +574,31 @@ async function resolveCompanions(groups){
    de avisos sobre o que não é problema nenhum. São ignoradas em silêncio. */
 const EXT_AUXILIAR=new Set(['sbn','sbx','atx','qix','fbn','fbx','ain','aih','ixs','mxs',
   'cor','avl','lyr','xml','qpj','qmd','lock','ini','ds_store','md5','txt~','bak','aux']);
+function legacyOrthoPreviewForImport(previous,file,image,target){
+  // An old project may contain only a JPEG preview. Bind that identity to the
+  // explicitly imported original only when its name, full extent and CRS agree.
+  // Existing byte descriptors remain authoritative; geometry never overrides them.
+  if(!previous?.url||previous.originalSource||previous.projectNativeSource||typeof projectNativePreview!=='function')return null;
+  try{
+    const filename=value=>String(value||'').split(/[\\/]/).pop().normalize('NFC').toLowerCase(),
+      sourceName=filename(previous.src?.file||previous.srcName||previous.name),name=filename(file?.name);
+    if(!/\.tiff?$/.test(sourceName)||sourceName!==name)return null;
+    const epsg=value=>{const m=/^(?:EPSG:)?(\d+)$/i.exec(String(value??''));const n=m?Number(m[1]):0;return n>0&&n<32767?n:null;},
+      keys=image.getGeoKeys?.()||{},nativeCRS=epsg(keys.ProjectedCSTypeGeoKey||keys.GeographicTypeGeoKey),
+      sourceCRS=epsg(previous._crsFixo||previous._sourceCRS||S.workCRS),
+      targetCRS=epsg(target?(target._crsFixo||target._sourceCRS||S.workCRS):S.workCRS),
+      b=previous.b,bb=image.getBoundingBox(),W=image.getWidth(),H=image.getHeight();
+    if(!nativeCRS||sourceCRS!==nativeCRS||targetCRS!==nativeCRS||image.getSamplesPerPixel()<3||
+      !Number.isSafeInteger(W)||!Number.isSafeInteger(H)||W<=0||H<=0||
+      !Array.isArray(bb)||bb.length!==4||!bb.every(Number.isFinite)||bb[2]<=bb[0]||bb[3]<=bb[1])return null;
+    const pixelX=(bb[2]-bb[0])/W,pixelY=(bb[3]-bb[1])/H,
+      matches=bounds=>Array.isArray(bounds)&&bounds.length===4&&bounds[2]>bounds[0]&&bounds[3]>bounds[1]&&
+        bounds.every((v,i)=>Number.isFinite(v)&&Math.abs(v-bb[i])<=(i%2?pixelY:pixelX));
+    if(!matches(b)||target&&!matches(target.b))return null;
+    const preview=projectNativePreview(previous,'ortho');
+    return preview?{preview,identity:JSON.stringify([preview,sourceName,b,sourceCRS])}:null;
+  }catch(_){return null;}
+}
 async function handleFiles(fileList){
   const files=[...fileList];
   if(!files.length){ toast('Nenhum arquivo selecionado'); return; }
@@ -522,7 +609,7 @@ async function handleFiles(fileList){
   S._rasterImportController=controller;
   S._loadCancel=false;
   const ignorados=[], falhas=[];
-  let projectLoaded=false;
+  let projectLoaded=false;const importedRasters=[];
   /* Uma leva com vários DXFs pergunta a classificação uma única vez por
      padrão. Sem isso, o próximo arquivo recriava uma caixa idêntica no mesmo
      lugar e parecia que o primeiro clique não havia fechado a janela. */
@@ -547,21 +634,52 @@ async function handleFiles(fileList){
         // A preliminary range would duplicate Drive I/O and has no byte progress.
         if(!['geojson','json','ccmgis'].includes(ext))await checaArquivoLegivel(f,control);
         if(ext==='tif'||ext==='tiff'){
+          const ownerProject=S.projectId,ownerGeneration=window.GeoMineSessionAutosave?.state?.generation,
+            ownerCurrent=()=>S._rasterImportController===controller&&!control.signal.aborted&&S.projectId===ownerProject&&
+              window.GeoMineSessionAutosave?.state?.generation===ownerGeneration;
           showLoad('Lendo GeoTIFF…');
+          await window.GeoMineImportRecovery?.before(control);
+          showLoad('Acessando o TIFF original…');
           await ensureGeoTIFF();
           // Inspect just the TIFF header before considering an Android copy.
           // RGB imports can draw progressively from ranges of the original.
-          const header=await rasterImportOpen(f,control);
+          const localSource=await window.GeoMineOriginalSources?.stageFile?.(f,control)||f;
+          const header=await rasterImportOpen(localSource,control);
           const headerImage=await rasterImportWait(header.getImage(0),control);
-          const rgb=headerImage.getSamplesPerPixel()>=3;
-          const src=await bufferFonte(f,{...control,preferDirect:rgb&&f.size>=64*1024*1024});
-          const _t=src===f?header:await rasterImportOpen(src,control);
-          if(_t!==header&&globalThis.GeoMineRasterImport)GeoMineRasterImport.release(header);
-          control.tiff=_t;
-          if(rgb) await addRGBFromTIFF(src, f.name, f.size,control);
-          else await addRasterFromTIFF(src, f.name, f.size,control);
-          if(globalThis.GeoMineRasterImport)GeoMineRasterImport.release(_t);
-          delete control.tiff;
+          const rgb=headerImage.getSamplesPerPixel()>=3,previousImage=S.img,
+            previousPreview=rgb?legacyOrthoPreviewForImport(previousImage,f,headerImage):null;
+          let _t=header,target,relinked=false;
+          try{
+          if(previousPreview){
+            // The saved preview is already on screen. Reattach the matching
+            // original by headers, without decoding every TIFF strip again.
+            const current=()=>ownerCurrent()&&S.img===previousImage&&
+              legacyOrthoPreviewForImport(previousImage,f,headerImage)?.identity===previousPreview.identity;
+            if(!current()){controller.abort();break;}
+            relinked=await ortoReligarTIFF(localSource,{restoreNative:true,isCurrent:current})===true;
+            if(!ownerCurrent()){controller.abort();break;}
+            if(!relinked||!current())throw Error('Não foi possível religar o TIFF original à ortofoto aberta. A importação não foi concluída.');
+            target=previousImage;
+          }else{
+            const src=await bufferFonte(localSource,{...control,preferDirect:rgb&&f.size>=64*1024*1024});
+            _t=src===localSource?header:await rasterImportOpen(src,control);
+            control.tiff=_t;
+            const imported=rgb?await addRGBFromTIFF(src,f.name,f.size,control):await addRasterFromTIFF(src,f.name,f.size,{...control,deferNative:true});
+            target=rgb?(imported||S.img):imported;
+          }
+          if(target&&ownerCurrent()&&(rgb?S.img===target&&(target!==previousImage||relinked):(S.rasters||[]).includes(target))){
+            importedRasters.push(target);
+            window.GeoMineImportHandoff?.presentRaster?.(target,rgb?'I':'R');
+            showLoad('Vinculando o original de '+target.name+'…');
+            if(previousPreview&&legacyOrthoPreviewForImport(previousImage,f,headerImage,target)?.identity===previousPreview.identity)
+              window.GeoMineOriginalSources?.validated?.(target,'ortho',previousPreview.preview);
+            try{await window.GeoMineOriginalSources?.rememberFile(target,rgb?'ortho':'raster',f);}
+            catch(error){try{cmdLog('Arquivo importado; vínculo automático do original indisponível: '+(error?.message||error),'avisa');}catch(_){}}
+          }else if(ownerCurrent())throw Error('O GeoTIFF não gerou uma camada. A importação não foi concluída.');
+          }finally{
+            if(globalThis.GeoMineRasterImport){GeoMineRasterImport.release(header);if(_t!==header)GeoMineRasterImport.release(_t);}
+            delete control.tiff;
+          }
         }
         else if(['shp','dbf','shx','prj','cpg'].includes(ext)){
           // chave normalizada: minúsculas e sem sufixo de cópia " (1)" que o
@@ -702,9 +820,15 @@ async function handleFiles(fileList){
       }
     }
     refreshUI();
+    // Finish the durable checkpoint while newly imported MDT tiles are held.
+    // A discarded mobile tab must reopen the new layer, not the pre-import state.
+    if(importedRasters.length&&S._rasterImportController===controller&&!control.signal.aborted){
+      window.GeoMineWorkspaceResume?.request();
+      await window.GeoMineWorkspaceResume?.flush({importController:controller});
+    }
     // loadProject already restores its viewport (or fits a legacy file).
     // Import/drop must not replace that view with another automatic fit.
-    if(!projectLoaded)fitAll();
+    if(!projectLoaded&&!importedRasters.length)fitAll();
     if(!projectLoaded && window.matchMedia('(max-width:720px)').matches && S.layers.length)
       document.getElementById('right').classList.add('open');
   }catch(err){
@@ -712,10 +836,16 @@ async function handleFiles(fileList){
   }
   finally{
     if(S._rasterImportController===controller){
+      for(const r of importedRasters){if(!(S.rasters||[]).includes(r)||!r._nativeCopyPending)continue;
+        delete r._nativeCopyPending;
+        try{syncDemTiles(r);projectAutoSaveRaster(r);}catch(e){console.warn('Ativação dos tiles do MDT:',e);}
+      }
+      if(importedRasters.length)try{refreshUI();}catch(_){}
       S._rasterImportController=null;
-      hideLoad(control.signal.aborted?'cancel':falhas.length?'error':undefined);
+      hideLoad(control.signal.aborted?'cancel':falhas.length||ignorados.length===files.length?'error':undefined);
     }
   }
+  return {ok:!control.signal.aborted&&!falhas.length&&(!ignorados.length||ignorados.length<files.length),canceled:control.signal.aborted,failures:falhas,ignored:ignorados,rastersAdded:importedRasters.length};
 }
 /* detecta tipo pelos primeiros bytes/caracteres */
 /* O seletor do Android devolve uma URI do provedor (Drive, OneDrive…), não um
@@ -751,7 +881,8 @@ async function sniffExt(f){
   try{
     const head=new Uint8Array(await f.slice(0,256).arrayBuffer());
     if(head[0]===0x50 && head[1]===0x4b) return 'zip';                 // PK.. (zip)
-    if((head[0]===0x49&&head[1]===0x49&&head[2]===0x2a)||(head[0]===0x4d&&head[1]===0x4d&&head[3]===0x2a)) return 'tif';
+    if((head[0]===0x49&&head[1]===0x49&&head[3]===0&&[42,43].includes(head[2]))||
+       (head[0]===0x4d&&head[1]===0x4d&&head[2]===0&&[42,43].includes(head[3]))) return 'tif';
     // SHP: big-endian file code 9994 nos primeiros 4 bytes
     const be=(head[0]<<24)|(head[1]<<16)|(head[2]<<8)|head[3];
     if(be===9994) return 'shp';

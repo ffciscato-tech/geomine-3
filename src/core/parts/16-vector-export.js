@@ -43,12 +43,12 @@ function layerToGeoJSON(L){
    nunca era gravado e o diálogo sempre abria na raiz/Documentos.               */
 async function pickSaveFile(opt){
   const o=Object.assign({}, opt);
-  /* Um startIn explícito tem prioridade. Para projetos, ele é o handle do
-     arquivo atualmente aberto: o Chrome/Edge abre o diálogo exatamente na
-     pasta que contém esse arquivo. Para outras exportações permanece a
-     última pasta utilizada. */
+  /* Um startIn explícito tem prioridade; os demais diálogos partem da pasta
+     do projeto, sem serem desviados por uma exportação anterior. */
   if(!o.startIn){
-    if(S._lastDir)o.startIn=S._lastDir;
+    const project=window.GeoMineProjectTabSession?.pickerStartIn?.();
+    if(project)o.startIn=project;
+    else if(S._lastDir)o.startIn=S._lastDir;
     else o.startIn='documents';
   }
   try{ return await window.showSaveFilePicker(o); }

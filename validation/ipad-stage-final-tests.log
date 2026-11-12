@@ -1,0 +1,30 @@
+✔ exact remembered handles survive a new module and serialized project, with account/project isolation (29.1454ms)
+✔ revoked permission and changed external bytes cannot restore a remembered source (4.9789ms)
+✔ unsaved legacy project reload accepts both validated previous and resulting previews (13.6652ms)
+✔ forSave remaps the preview to the serialized grid; explicit descriptor authorizes the same verified file (6.9934ms)
+✔ edited cells block remembered, legacy-handle and folder fallback, including reopened invalidation (24.7481ms)
+✔ complete PNG/JPEG/WebP images are excluded, while TIFF provenance takes precedence (11.1487ms)
+✔ deferred dropped-handle lookup cannot remember a source after project, generation, account or in-place grid edits (9.524ms)
+✔ one read-only folder selection binds all legacy images, and the unchanged unsaved project reloads from aliases (13.646ms)
+✔ recursive homonyms are refused for legacy images, and verified fingerprints select the correct source (10.6357ms)
+✔ legacy ortho candidates with wrong byte length, overlapping but different extent, wrong CRS or too few bands are rejected (13.1328ms)
+✔ a unique legacy RGB ortho with matching source size, full extent and declared CRS is restored using headers only (3.9662ms)
+✔ failed persistence retains newer folder and source capabilities in session memory instead of reading stale IndexedDB records (5.0824ms)
+✔ a cloud-folder enumeration timeout is logged without preventing restoration from another known folder (6.2339ms)
+✔ an in-flight resolution is discarded when the project, account or same grid cells change while fingerprinting (12.7146ms)
+✔ iPad input selection persists real bytes with 1 MiB backpressure and restores after fresh page state (125.1097ms)
+✔ large iPad TIFF is staged before decoding, then adopted without a second byte copy (950.0064ms)
+✔ a matching existing device copy is reused, including a fresh page and repeated selection (70.7011ms)
+✔ device copies stay scoped to account and project and altered cached bytes are rejected (128.7477ms)
+✔ insufficient quota is explicit; it preserves session access and never pretends persistence succeeded (78.8134ms)
+✔ copy failure and in-place edits remove only their own partial file, without altering the project (422.7157ms)
+✔ missing or truncated cached file is replaced once and a later cache failure cannot advertise device availability (84.5039ms)
+✔ failed IDB publication stays session-only even when its complete file already exists on disk (98.0678ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2596.0906

@@ -162,7 +162,7 @@ function save(v,target,automatic){
       if(layers[i]){layers[i].features=next[i].features;layers[i].fields=next[i].fields;continue;}
       const other=layers[1-i],name=target.name?(i?target.name:uniqueName('Seções — '+target.name)):
         uniqueName(!i&&other?'Seções — '+other.name:items[0].specs[i].name);
-      const L=addLayer({...items[0].specs[i],name,features:next[i].features,fields:next[i].fields});if(i){L.fill=.25;L.sym.fill=.25;}
+      const L=addLayer({sourceLayer:v.q.L,...items[0].specs[i],name,features:next[i].features,fields:next[i].fields});if(i){L.fill=.25;L.sym.fill=.25;}
       layers[i]=L;added.push(L);
     }
     for(let i=0;i<2;i++)layers[i]._channelLink=next[i].link;

@@ -4,14 +4,24 @@
 'use strict';
 let last=null;
 function previewLimit(){
+  // iPadOS can identify itself as desktop Safari/MacIntel. Limit only the
+  // temporary overview canvases; native TIFF windows retain every pixel.
+  const ios=/iPhone|iPad|iPod/i.test(navigator.userAgent)||
+    /Mac/i.test((navigator.platform||'')+' '+navigator.userAgent)&&navigator.maxTouchPoints>1;
+  if(ios)return 1536;
   // Android needs only a quick overview to establish the map. Visible tiles
   // and Layout keep reading the unmodified original at their own resolution.
   // Do not spend the first display on a 4K PNG, even on high-memory tablets.
   if(/Android/i.test(navigator.userAgent))return 1024;
+  // On desktop macOS, establish the map without decoding/compositing a 4K
+  // preview first. Native visible tiles and Layout still read the original.
+  // This caps only the overview; it does not resample the stored TIFF.
+  if(/Mac/i.test(navigator.platform||navigator.userAgent)&&!(navigator.maxTouchPoints>1))return 1536;
   const mobile=/iPhone|iPad|iPod/i.test(navigator.userAgent);
   return !mobile||(navigator.deviceMemory||0)>=6?4096:2560;
 }
-function create(width,height,bounds,crs,nd,signal){
+function create(width,height,bounds,crs,nd,signal,sourceImage){
+  const color=typeof orthoColorReader==='function'?orthoColorReader(sourceImage):null;
   const scale=Math.min(1,640/Math.max(width,height)),w=Math.max(1,Math.floor(width*scale)),h=Math.max(1,Math.floor(height*scale));
   const cv=document.createElement('canvas');cv.width=w;cv.height=h;
   const ctx=cv.getContext('2d'),id=ctx.createImageData(w,h),xs=new Map(),ys=new Map();
@@ -42,7 +52,8 @@ function create(width,height,bounds,crs,nd,signal){
     const [R,G,B,A]=bands,sc=R instanceof Uint16Array||R instanceof Int16Array?1/257:1;
     for(const y of yy)for(const x of xx){const k=y.out*width+x.out,o=(ys.get(y.out)*w+xs.get(x.out))*4;
       const alpha=A&&A[k]===0||nd!=null&&R[k]==nd&&G[k]==nd&&B[k]==nd?0:255;
-      id.data[o]=R[k]*sc;id.data[o+1]=G[k]*sc;id.data[o+2]=B[k]*sc;id.data[o+3]=alpha;
+      const rgb=color?color(R[k],G[k],B[k],sc):null;
+      id.data[o]=rgb?rgb[0]:R[k]*sc;id.data[o+1]=rgb?rgb[1]:G[k]*sc;id.data[o+2]=rgb?rgb[2]:B[k]*sc;id.data[o+3]=alpha;
       if(alpha)hasData=true;
     }
     dirty=true;paint();

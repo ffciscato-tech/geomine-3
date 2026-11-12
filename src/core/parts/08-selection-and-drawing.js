@@ -188,7 +188,6 @@ function mselDelete(){
   if(!S.msel.items.length){ toast('Nada selecionado'); return; }
   const bloqueada=[...new Set(S.msel.items.map(i=>i.layerId))].map(id=>S.layers.find(L=>L.id===id)).find(L=>L&&typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false));
   if(bloqueada){collabCanEditLayer(bloqueada,true);return;}
-  if(!confirm(`Apagar ${S.msel.items.length} feição(ões)/parte(s) selecionada(s)?`)) return;
   const porCamada=new Map();
   for(const it of S.msel.items){
     if(!porCamada.has(it.layerId)) porCamada.set(it.layerId,[]);
@@ -225,7 +224,7 @@ function mselMove(){
   const feats=[]; const rem=[];
   for(const i of idxs){ rem.push({idx:i, feat:L.features[i]}); feats.unshift(L.features[i]); L.features.splice(i,1); }
   undoPush({t:'mseldel', L, rem});                // desfazer devolve à origem (a nova camada fica)
-  const NL=addLayer({name:(L.name+'_sel').slice(0,60), gtype:L.gtype, crs:L.crs,
+  const NL=addLayer({sourceLayer:L,name:(L.name+'_sel').slice(0,60), gtype:L.gtype, crs:L.crs,
     features:feats, fields:(L.fields||[]).map(f=>({...f}))});
   drawLayer(L); mselClear(true); refreshUI();
   toast(`${feats.length} feição(ões) movidas para "${NL.name}" — edite lá e Ctrl+Z devolve à origem`);
@@ -256,7 +255,8 @@ function mselBind(){
     return !!S.msel.items?.some(x=>x.layerId===h.L.id&&x.idx===idx);
   };
   const caixaNaSeta=e=>{
-    if(S.tool!=='select'||e.pointerType!=='mouse'||e.button!==0||!e.isPrimary||e.altKey)return false;
+    const touchBox=e.pointerType!=='mouse'&&window.GeoMineTouchWorkspace?.boxSelection;
+    if(S.tool!=='select'||(!touchBox&&e.pointerType!=='mouse')||(e.pointerType==='mouse'&&e.button!==0)||!e.isPrimary||e.altKey)return false;
     if(!mapaVista2D())return false;
     if(e.target?.closest?.('.leaflet-control,.leaflet-marker-icon,.gm-vtx-hit,.modal,.edbox,input,button,select,textarea,.feat-menu'))return false;
     if(S._vtxCtx||S._vtxDragging||S.drawBuf?.length)return false;
@@ -270,12 +270,13 @@ function mselBind(){
     return true;
   };
   el.addEventListener('pointerdown',e=>{
+    if(st&&!e.isPrimary){religa(st);mselClearSketch();st=null;return;}
     if(S.tool==='selpoly'){
       if(!e.isPrimary || (e.pointerType==='mouse' && e.button!==0)) return;
       st={id:e.pointerId, p0:cp(e), moved:false, modo:'selpoly'};return;
     }
     if(!caixaNaSeta(e))return;
-    st={id:e.pointerId, p0:cp(e), moved:false, modo:'seta', somar:e.shiftKey||e.ctrlKey||e.metaKey};
+    st={id:e.pointerId, p0:cp(e), moved:false, modo:'seta', somar:e.shiftKey||e.ctrlKey||e.metaKey||!!window.GeoMineTouchWorkspace?.additive};
     /* Shift+arrasto é o zoom por caixa do Leaflet: na seta, ele soma à seleção */
     if(map.boxZoom&&map.boxZoom.enabled()){ map.boxZoom.disable(); st.bz=true; }
     /* o botão esquerdo do mouse é da seta: nunca arrasta o mapa junto com o retângulo */
@@ -290,7 +291,7 @@ function mselBind(){
   el.addEventListener('pointermove',e=>{
     if(!st || e.pointerId!==st.id || (st.modo==='selpoly'&&S.tool!=='selpoly') || (st.modo==='seta'&&S.tool!=='select')) return;
     /* botão solto fora do mapa: o retângulo termina onde estava */
-    if(st.modo==='seta'&&e.buttons===0){ fim(e); return; }
+    if(st.modo==='seta'&&e.pointerType==='mouse'&&e.buttons===0){ fim(e); return; }
     const p=cp(e);
     if(!st.moved && p.distanceTo(st.p0)<(st.modo==='seta'?5:8)) return;
     st.moved=true;
@@ -332,6 +333,7 @@ function mselBind(){
   map.on('dblclick',()=>{ if(S.tool==='selpoly') mselFinish(); });
 }
 document.addEventListener('keydown',e=>{
+  if(S._view==='licenses')return;
   const tag=(document.activeElement&&document.activeElement.tagName)||'';
   if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
   /* Cascata como no CAD. Este Esc/Enter é da seleção múltipla: marca o evento
@@ -360,6 +362,7 @@ function mselAvisoMantida(tit){
    preservam o comportamento nativo da tecla. */
 document.addEventListener('keydown',e=>{
   if(e.key!=='Delete'&&e.key!=='Backspace')return;
+  if(S._view==='licenses')return;
   const tag=(document.activeElement&&document.activeElement.tagName)||'';
   if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||
      (document.activeElement&&document.activeElement.isContentEditable))return;
@@ -404,6 +407,12 @@ document.addEventListener('keydown',e=>{
 })();
 
 function onMapClick(e){
+  // Filled vector paths forward their stopped click here instead of firing
+  // the map listener. Hatch picking must receive that same real click.
+  if(S.tool==='cad-hatch'&&S._cadHatchMapHandler){S._cadHatchMapHandler(e);return;}
+  if(S.tool==='blastingBoundary'||S.tool==='blastingDirection'){
+    window.GeoMineBlasting?.mapClick(e);return;
+  }
   if(S.tool==='feature-style-brush'){
     window.GeoMineFeatureStyleBrush?.mapClick(e);return;
   }
@@ -453,7 +462,10 @@ function onMapClick(e){
      em vértice marca a opção na própria Régua. */
   const medindoLivre = S.tool==='measure' && typeof measMode==='function' &&
     measMode()==='points' && !(document.getElementById('mbSnap')||{}).checked;
-  if(S.snapOn&&!medindoLivre&&!['point','line','poly','select','selpoly'].includes(S.tool)){
+  // A contributing-area query picks the closest visible flow segment itself.
+  // Global CAD snapping can move the outlet to an unrelated vertex first.
+  const nativeBasinPoint=S.tool==='basin'&&window.GeoMinePointCatchment;
+  if(S.snapOn&&!medindoLivre&&!nativeBasinPoint&&!['point','line','poly','select','selpoly'].includes(S.tool)){
     try{const sn=snapLatLng(cmdLL,null,{flash:true});if(sn&&sn.latlng)cmdLL=sn.latlng;}catch(_){}
   }
   if(S.tool==='measure'){
@@ -483,9 +495,10 @@ function onMapClick(e){
     const destino=S.tool==='point'?L:GeoMineDrawingSession.acquire();
     if(!destino){ if(S.tool==='point')toast('Selecione ou crie uma camada primeiro'); return; }
     const sn=GeoMineOrtho.drawing(e.latlng,true);
+    if(sn.invalidNumeric){toast('Corrija o comprimento ou o ângulo antes de inserir o vértice.');return;}
     const ll=sn.latlng;
     if(S.tool==='point'){ addFeature(destino,[[ll.lat,ll.lng]]); }
-    else { S.drawBuf.push([ll.lat,ll.lng]); redrawDraw(); }
+    else { S.drawBuf.push([ll.lat,ll.lng]); window.GeoMineDynamicSegment?.reset();redrawDraw();window.GeoMineDynamicSegment?.beginAt(ll); }
   }
 }
 function redrawDraw(){
@@ -557,7 +570,7 @@ function prepareDrawingCommand(){
   setTool('select');
   return true;
 }
-function clearDraw(){ GeoMineDrawingSession.clear(); S.drawBuf=[]; S.drawLayer.clearLayers(); GeoMineOrtho.clearPreview();
+function clearDraw(){ window.GeoMineDynamicSegment?.reset();GeoMineDrawingSession.clear(); S.drawBuf=[]; S.drawLayer.clearLayers(); GeoMineOrtho.clearPreview();
   /* cancelar a continuação não mexe na feição: ela nunca saiu da camada */
   S._continuando=null; }
 

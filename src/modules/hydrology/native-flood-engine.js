@@ -311,5 +311,5 @@ async function analyzeByField(source,options={}){
     c.clearWorking();c.progress('done',{progress:1,nWet,nTested,areaM2:result.areaM2,volM3:result.volM3},true);return result;
   }catch(error){disposed=true;c.dispose();throw error;}
 }
-window.GeoMineNativeFloodEngine={analyze,scan,analyzeByField};
+window.GeoMineNativeFloodEngine={analyze,scan,analyzeByField,createCellMask:create,traceCellMask:contours};
 })();

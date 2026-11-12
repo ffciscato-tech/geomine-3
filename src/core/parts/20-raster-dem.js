@@ -167,6 +167,7 @@ function rasterClassRangeFind(classes,value){
   return null;
 }
 function rasterPainter(r,mn,rng){
+  if(r.style?.mode==='relevo_local')return ()=>false; // TPI is computed from the native halo in its worker, never from preview elevations.
   const modo=(r.style&&r.style.mode)||'hipso';
   const px=col=>{const c=String(col||'#777777');
     return [parseInt(c.slice(1,3),16)||0,parseInt(c.slice(3,5),16)||0,parseInt(c.slice(5,7),16)||0];};
@@ -607,7 +608,9 @@ function rasterDimensoesOriginais(d){
   if(!d)return [0,0];
   return [d._W0||(d._full&&d._full.nc)||d.nc,d._H0||(d._full&&d._full.nr)||d.nr];
 }
-function renderRaster(r){
+function renderRaster(r,options={}){
+  if(r&&!r.tinPuro){r.demHD=true;r.dispFull=true;}
+  if(r?.style?.mode==='relevo_local'&&window.GeoMineLocalRelief){r.demHD=true;if(r.overlay)r.overlay.setOpacity(0);demTilesRefresh(r);syncDemTiles(r);zApply();return;}
   if(r)delete r._projectDrawDeferred;
   /* Uma superfície recalculada com as mesmas dimensões também precisa
      invalidar a malha 3D. */
@@ -615,6 +618,16 @@ function renderRaster(r){
     if(S._view==='v3d'&&typeof v3Auto==='function')setTimeout(()=>v3Auto(),0);}
   /* Superfície TIN nunca é desenhada como raster */
   if(r&&r.tinPuro&&r.d&&r.d.tin){ if(renderTinMalha2D(r))return; }
+  /* Religar o original não muda nenhum pixel da prévia já exibida. Não
+     refazer warp, ImageData, canvas e PNG de milhões de células enquanto o
+     seletor do iPad termina e os primeiros tiles nativos começam a ler.
+     A grade e o overlay existentes permanecem; só a fonte dos tiles muda.
+     Sem overlay, a própria GridLayer desenha a prévia por tile se a leitura
+     nativa falhar, sem precisar criar um segundo bitmap da área inteira. */
+  if(options.sourceOnly===true&&r&&!r.tinPuro&&
+     (r.overlay||r.visible===false||demTilesAtivo(r))){
+    demTilesRefresh(r);syncDemTiles(r);zApply();return;
+  }
   /* "Original" nunca passa por media de bloco. Se a grade inteira nao cabe
      com seguranca num unico canvas, o preview permanece somente como fundo e
      os tiles HD releem o GeoTIFF por janela. Assim nao se promete resolucao
@@ -622,7 +635,7 @@ function renderRaster(r){
   /* A escolha explícita por tiles também vale para arquivos pequenos. O
      overlay fica apenas como prévia, ocultada quando a janela HD termina;
      não se desenha um segundo canvas nativo por cima dos mesmos pixels. */
-  const usaTiles=!!(r.demHD&&r.d._img0);
+  const usaTiles=demTilesAtivo(r);
   let gsrc=r.dispFull&&!usaTiles?rasterGradeOriginalCanvas(r):null,
     nativoNoOverlay=!!gsrc;
   /* Se a grade original inteira cabe no canvas, ela ja e a fonte de maior
@@ -631,7 +644,7 @@ function renderRaster(r){
   if(nativoNoOverlay&&r.demHD)r.demHD=false;
   if(r.dispFull&&!gsrc&&r.d._img0)r.demHD=true;
   const baseGrid=gsrc||r.d;
-  const gw=gradeParaTela(baseGrid,nativoNoOverlay?'nearest':'bilinear'); // grade ja em Web Mercator
+  const gw=gradeParaTela(baseGrid,r.dispFull?'nearest':'bilinear'); // grade ja em Web Mercator
   const emWM=(gw!==baseGrid);
   const cv=rasterCanvas(r, gw, emWM?'EPSG:3857':S.workCRS); if(!cv) return;
   const b=rasterBounds(r, gw);
@@ -655,6 +668,26 @@ function renderRaster(r){
   zApply();
 }
 
+/* readRasters entrega os canais armazenados no TIFF. JPEG/YCbCr também tem
+   três bandas, mas elas são Y, Cb, Cr: branco [255,128,128] virava rosa e não
+   passava no recorte de borda branca. Convertemos somente o pixel de exibição,
+   sem alterar bandas, cache, resolução ou TIFF. Cada overview usa sua própria
+   tag PhotometricInterpretation; o pequeno buffer é reutilizado no laço. */
+function orthoColorReader(image){
+  const fd=image&&(image.fileDirectory||image.getFileDirectory?.())||{};
+  if(Number(fd.PhotometricInterpretation)===6){
+    const rgb=new Uint8ClampedArray(3);
+    return (y,cb,cr,scale=1)=>{
+      y*=scale;cb=cb*scale-128;cr=cr*scale-128;
+      // Mesma conversão de GeoTIFF.readRGB para YCbCr de 8 bits.
+      rgb[0]=y+1.402*cr;rgb[1]=y-.34414*cb-.71414*cr;rgb[2]=y+1.772*cb;
+      return rgb;
+    };
+  }
+  const rgb=new Float64Array(3);
+  return (r,g,b,scale=1)=>{rgb[0]=r*scale;rgb[1]=g*scale;rgb[2]=b*scale;return rgb;};
+}
+
 /* ---------- GeoTIFF RGB (ortofoto): georreferência automática ----------
    Lê 3 bandas subamostradas para um canvas (máx ~2048 px no maior lado),
    registra a imagem em S.img com os bounds do próprio TIFF (CRS de trabalho)
@@ -662,6 +695,8 @@ function renderRaster(r){
    automaticamente — sem digitar cantos. Suporta pirâmides (COG) e leitura
    por blocos, como o parseTIFF de banda única.                              */
 async function addRGBFromTIFF(f, fname, fsize,control){
+  await window.GeoMineImportRecovery?.before(control);
+  const originalFile=f;if(!control?.tiff)f=await window.GeoMineOriginalSources?.stageFile?.(f,{...control,sourceKind:'ortho'})||f;
   await rasterImportWait(ensureGeoTIFF(),control);
   fname=fname||f.name||'ortofoto'; fsize=fsize??(f.size||0);
   const tiff=await rasterImportOpen(f,control);
@@ -672,13 +707,13 @@ async function addRGBFromTIFF(f, fname, fsize,control){
   // S.img._tiff e é relido em resolução plena na hora de plotar (ver orthoWindow).
   // Em aparelho móvel o teto de memória da aba é bem menor: preview menor evita
   // que o Chrome do Android mate a aba (sintoma: o app "recarrega sozinho").
-  const movel=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const movel=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||/Mac/i.test(navigator.platform||'')&&navigator.maxTouchPoints>1;
   const mem=navigator.deviceMemory||0;                 // GB (Chrome/Android informa)
   // A prévia serve para abrir o mapa; os tiles visíveis usam o TIFF original.
   const MAXPX = window.GeoMineOrthoFirstFrame?.previewLimit?.()||((!movel || mem>=6) ? 4096 : 2560);
   const W0=img0.getWidth(), H0=img0.getHeight();
   const fct=Math.max(1, Math.ceil(Math.max(W0,H0)/MAXPX));
-  const w=Math.max(2,Math.floor(W0/fct)), h=Math.max(2,Math.floor(H0/fct));
+  let w=Math.max(2,Math.floor(W0/fct)), h=Math.max(2,Math.floor(H0/fct));
   // melhor pirâmide disponível
   const runtime=globalThis.GeoMineTileRuntime;
   let img=img0;
@@ -693,11 +728,13 @@ async function addRGBFromTIFF(f, fname, fsize,control){
     }
   }catch(e){if(e&&['AbortError','TimeoutError','NotReadableError'].includes(e.name))throw e;}
   const W=img.getWidth(), H=img.getHeight();
+  if(runtime?.previewSize){const size=runtime.previewSize(img,w,h);w=size.width;h=size.height;}
   const spp=img.getSamplesPerPixel();
   if(spp<3) throw new Error('TIFF com '+spp+' banda(s) — para ortofoto RGB são necessárias 3+');
   const hasA=spp>=4;                                   // banda alfa (RGBA) — comum em ortomosaicos
   let nd=null; try{ nd=img.getGDALNoData(); }catch(e){} // valor nodata declarado no TIFF
-  const firstFrame=window.GeoMineOrthoFirstFrame?.create(w,h,bb.slice(),S.workCRS,nd,control?.signal);
+  const color=orthoColorReader(img);
+  const firstFrame=window.GeoMineOrthoFirstFrame?.create(w,h,bb.slice(),S.workCRS,nd,control?.signal,img);
   try{
   showLoad(`Lendo ortofoto ${W0}×${H0}…`);
   const cvs=document.createElement('canvas'); cvs.width=w; cvs.height=h;
@@ -751,7 +788,8 @@ async function addRGBFromTIFF(f, fname, fsize,control){
         let a=255;
         if(A && A[k]===0) a=0;
         else if(nd!=null && rv==nd && gv==nd && bv==nd) a=0;
-        id.data[o]=rv*sc; id.data[o+1]=gv*sc; id.data[o+2]=bv*sc; id.data[o+3]=a;
+        const rgb=color(rv,gv,bv,sc);
+        id.data[o]=rgb[0]; id.data[o+1]=rgb[1]; id.data[o+2]=rgb[2]; id.data[o+3]=a;
       }
     }
     if(!fast)firstFrame?.rows(id.data,r,rEnd);
@@ -790,17 +828,19 @@ async function addRGBFromTIFF(f, fname, fsize,control){
   const cut=applyImgNoData();          // gera url (PNG c/ alfa), overlay e recorte do sem-dado
   S.img._ndPct=cut.pct;
   /* O arquivo original acabou de ser autorizado: a ortofoto já entra no modo
-     tile, inclusive no tablet. Se o aparelho não conseguir reler os blocos,
-     a proteção de syncOrthoTiles desliga o HD e conserva a prévia. */
-  S.orthoHD=true;
+     tile, inclusive no tablet. Uma falha conserva a intenção nativa; a
+     prévia fica apenas como apoio enquanto o original está indisponível. */
+  S.orthoHD=true;S.orthoDispFull=true;
   try{ syncOrthoTiles(); }
-  catch(e){ S.orthoHD=false; try{syncOrthoTiles();}catch(_){}
-    if(typeof cmdLog==='function')cmdLog('ortofoto carregada; tiles HD indisponíveis: '+(e&&e.message||e),'warn'); }
+  catch(e){ S.img._nativeTileError=String(e&&e.message||e);
+    if(typeof cmdLog==='function')cmdLog('ortofoto carregada; resolução nativa selecionada, tiles temporariamente indisponíveis: '+S.img._nativeTileError,'warn'); }
   safeFit(S.img.overlay.getBounds());
   refreshUI();
-  hideLoad();
-  toast(`Ortofoto: ${w}×${h} px · ${cut.pct.toFixed(1)}% de células sem dado descartadas`);
+  if(!control)hideLoad(); // The batch importer still has to bind the source.
+  const gsd=((b[2]-b[0])/W0*100).toFixed(1);
+  toast(`TIFF: ${W0}×${H0} px (${gsd} cm/px) · resolução nativa por tiles · ${cut.pct.toFixed(1)}% de células sem dado descartadas`);
   window.GeoMineOrthoFirstFrame?.stabilize(tiff,f,S.img);
+  if(f!==originalFile)await window.GeoMineOriginalSources?.rememberFile(S.img,'ortho',originalFile);
   }finally{firstFrame?.dispose();}
 }
 
@@ -817,13 +857,18 @@ async function ortoReligarTIFF(file,options){
   const I=S.img;
   if(!I || !I.b){ toast('Não há ortofoto carregada para religar'); return false; }
   options=options||{};
-  const request=I._nativeRelinkRequest=(I._nativeRelinkRequest||0)+1,
+  const handoff=options.handoffRequest;
+  if(handoff!==undefined&&(!options.restoreNative||!Number.isInteger(handoff)||handoff<0||handoff!==(I._nativeRelinkRequest||0)))return false;
+  const previousPreview=typeof projectNativePreview==='function'?projectNativePreview(I,'ortho'):null;
+  const request=I._nativeRelinkRequest=handoff!==undefined?handoff:(I._nativeRelinkRequest||0)+1,
     project=S.projectId,generation=window.GeoMineSessionAutosave?.state?.generation;
   const current=()=>S.img===I&&S.projectId===project&&
     window.GeoMineSessionAutosave?.state?.generation===generation&&I._nativeRelinkRequest===request&&
     (!options.isCurrent||options.isCurrent());
   showLoad('Lendo o GeoTIFF da ortofoto…');
   try{
+    if(!options.restoreNative)await window.GeoMineImportRecovery?.before(options);
+    file=await window.GeoMineOriginalSources?.stageFile?.(file,{...options,sourceKind:'ortho',isCurrent:current})||file;
     await ensureGeoTIFF();
     if(!current())return false;
     // A prévia salva já está visível. Religamos por intervalos sem aguardar
@@ -852,6 +897,18 @@ async function ortoReligarTIFF(file,options){
            if(img0.fileDirectory && img0.fileDirectory.TileWidth) tiled=true; }catch(e){}
       return {nOv,tiled,tw,th};
     })();
+    if(options.restoreNative&&I.url){
+      if(!current())return false;
+      // A prévia salva é recortada antes de substituir a fonte nativa.
+      // Até o último await, inclusive o guard do chamador continua válido.
+      if(!I._id&&orthoMaskOptions().enabled)await applyOrthoMask(I,{isCurrent:current});
+      if(!current())return false;
+      Object.assign(I,{_tiff:tiff,_img0:img0,_W0:W0,_H0:H0,_hasA:spp>=4,_ndVal:nd,_cog:cog,_cache:new Map()});
+      Object.defineProperty(I,'_sourceRaw',{value:file,writable:true,configurable:true});
+      window.GeoMineOriginalSources?.validated(I,'ortho',previousPreview);
+      if(globalThis.GeoMineRasterImport)GeoMineRasterImport.release(tiff);
+      S.orthoHD=true;S.orthoDispFull=true;orthoHDReset();syncOrthoTiles();orthoMaskRefreshUI(I);return true;
+    }
     /* RECONSTRÓI O PIXEL ORIGINAL DA PRÉVIA (_id).
        Sem ele, "Aplicar" (recorte do sem-dado), a opacidade e o reposicionamento
        ficam desabilitados — era o que acontecia depois de reabrir um projeto:
@@ -861,7 +918,7 @@ async function ortoReligarTIFF(file,options){
     const MAXPX=window.GeoMineOrthoFirstFrame?.previewLimit?.()||
       ((!EH_MOVEL || (navigator.deviceMemory||0)>=6) ? 4096 : 2560);
     const fct=Math.max(1, Math.ceil(Math.max(W0,H0)/MAXPX));
-    const w=Math.max(2,Math.floor(W0/fct)), hh=Math.max(2,Math.floor(H0/fct));
+    let w=Math.max(2,Math.floor(W0/fct)), hh=Math.max(2,Math.floor(H0/fct));
     const runtime=globalThis.GeoMineTileRuntime;
     let im=img0;
     try{
@@ -876,8 +933,9 @@ async function ortoReligarTIFF(file,options){
     }catch(e){if(e&&['AbortError','TimeoutError','NotReadableError'].includes(e.name))throw e;}
     if(!current())return false;
     const hasA=spp>=4;
+    if(runtime?.previewSize){const size=runtime.previewSize(im,w,hh);w=size.width;hh=size.height;}
     const readOptions={samples:hasA?[0,1,2,3]:[0,1,2],window:[0,0,im.getWidth(),im.getHeight()],
-      width:w,height:hh,resampleMethod:'bilinear'};
+      width:w,height:hh,resampleMethod:'nearest'};
     const ras=runtime&&typeof runtime.read==='function'
       ?await runtime.read(im,readOptions,{isCurrent:current,onProgress:({loaded,total})=>{
         if(current()&&total>0)showLoad('Reconstruindo a prévia da ortofoto — '+Math.round(100*loaded/total)+'%');
@@ -889,19 +947,21 @@ async function ortoReligarTIFF(file,options){
     const R=ras[0],G=ras[1],B=ras[2],A=hasA?ras[3]:null;
     const is16=(R instanceof Uint16Array)||(R instanceof Int16Array), sc=is16?1/257:1;
     const cvp=document.createElement('canvas'); cvp.width=w; cvp.height=hh;
-    const idp=cvp.getContext('2d').createImageData(w,hh), DP=idp.data;
+    const idp=cvp.getContext('2d').createImageData(w,hh), DP=idp.data,color=orthoColorReader(im);
     for(let k=0;k<w*hh;k++){
       const o=k*4, v=R[k];
       const semDado=(nd!=null && R[k]===nd && G[k]===nd && B[k]===nd) ||
         (A && (is16? A[k]/257 : A[k])<8);
       if(semDado){ DP[o+3]=0; continue; }
-      DP[o]=R[k]*sc; DP[o+1]=G[k]*sc; DP[o+2]=B[k]*sc; DP[o+3]=255;
+      const rgb=color(R[k],G[k],B[k],sc);
+      DP[o]=rgb[0]; DP[o+1]=rgb[1]; DP[o+2]=rgb[2]; DP[o+3]=255;
     }
     /* Só troca o estado depois que a leitura terminou. Se canvas/warp falhar
        (principalmente por memória no tablet), volta integralmente à ortofoto
        anterior e NÃO informa um sucesso falso. */
     const antes=Object.getOwnPropertyDescriptors(I), overlayAntes=I.overlay;
     try{
+      delete I._visualMask;I._visualMaskRequest=(I._visualMaskRequest||0)+1;
       Object.assign(I,{
         _tiff:tiff, _img0:img0, _W0:W0, _H0:H0, _hasA:hasA, _ndVal:nd,
         /* Religar não muda o CRS em que os cantos já eram lidos: se o usuário
@@ -932,7 +992,7 @@ async function ortoReligarTIFF(file,options){
       try{ if(S.orthoHD) syncOrthoTiles(); }catch(_){}
       throw e;
     }
-    if(!options.restoreNative)S.orthoHD=true;
+    if(!options.restoreNative){S.orthoHD=true;S.orthoDispFull=true;}
     const cb=document.getElementById('imModHD'); if(cb){ cb.disabled=false; cb.checked=!!S.orthoHD; }
     const cb2=document.getElementById('imgHD'); if(cb2){ cb2.disabled=false; cb2.checked=!!S.orthoHD; }
     ['imModND','imModW','imModB','imModApply'].forEach(id=>{
@@ -945,9 +1005,9 @@ async function ortoReligarTIFF(file,options){
       /* A prévia nova já está válida. Se somente a grade HD falhar, mantém a
          atualização visível e degrada para a prévia em vez de deixar estado
          meio aplicado ou dizer que a troca inteira falhou. */
-      hdAtivo=false; S.orthoHD=false;
-      if(cb) cb.checked=false; if(cb2) cb2.checked=false;
-      try{ syncOrthoTiles(); }catch(_){}
+      hdAtivo=false;I._nativeTileError=String(e&&e.message||e);
+      // Fonte vinculada e intenção nativa permanecem disponíveis para repetir.
+      if(cb) cb.checked=true; if(cb2) cb2.checked=true;
       if(typeof cmdLog==='function') cmdLog('ortofoto atualizada; tiles HD indisponíveis: '+(e&&e.message||e),'warn');
     }
     try{if(typeof layoutInvalidateOrtho==='function')layoutInvalidateOrtho('ortofoto original atualizada');}catch(e){}
@@ -959,7 +1019,14 @@ async function ortoReligarTIFF(file,options){
     // A cópia opcional para os tiles começa só após reconstruir a prévia.
     // O TIFF nativo e a leitura do Layout conservam a resolução integral.
     window.GeoMineOrthoFirstFrame?.stabilize(tiff,file,I);
-    return true;
+    window.GeoMineOriginalSources?.validated(I,'ortho',previousPreview);
+    // Guarda a cópia verificada primeiro e então assume essa fonte estável
+    // no mesmo pedido, sem manter dependência do File temporário do provedor.
+    if(!options.restoreNative&&current())await window.GeoMineOriginalSources?.rememberFile(I,'ortho',file,{deferLocalHandoff:true});
+    if(!current())return false;
+    if(!options.restoreNative)await window.GeoMineRasterSourceUI?.preferLocal(I,current);
+    if(!current())return false;
+    orthoMaskRefreshUI(I);return true;
   }catch(e){
     if(current())toast('Não foi possível religar: '+(e&&e.message||e));
     return false;
@@ -1018,7 +1085,7 @@ async function orthoWindow(bb, pxW, options){
   }
   check();
   const cv=document.createElement('canvas'); cv.width=outW; cv.height=outH;
-  const ctx=cv.getContext('2d');
+  const ctx=cv.getContext('2d'),color=orthoColorReader(image);
   /* readRasters aloca a JANELA ANTES de reduzir: pedir 2000px de um TIFF
      de 46000px inteiro ainda alocava gigabytes. Lemos faixas/colunas pequenas
      e amostramos na mesma grade global, sem costuras nem deslocar os bounds. */
@@ -1053,7 +1120,7 @@ async function orthoWindow(bb, pxW, options){
     };
     for(let y=0;y<height;y++)for(let x=0;x<width;x++){
       const X=sx0+x*stepX-left,Y=sy0+y*stepY-top,rr=value(R,X,Y),gg=value(G,X,Y),bbv=value(B,X,Y),
-        rv=rr*sc,gv=gg*sc,bv=bbv*sc,o=(y*width+x)*4;
+        rgb=color(rr,gg,bbv,sc),rv=rgb[0],gv=rgb[1],bv=rgb[2],o=(y*width+x)*4;
       let a=255;
       if(A&&value(A,X,Y)===0)a=0;
       else if(nd!=null&&rr===nd&&gg===nd&&bbv===nd)a=0;
@@ -1089,7 +1156,6 @@ async function orthoWindow(bb, pxW, options){
    grade em RAM — barato e sem tocar no arquivo.
    =========================================================================== */
 const _demGrids=new Map();          // rasterId -> L.GridLayer
-const _demFails=new Map();          // rasterId -> falhas seguidas de leitura
 /* Cache de tiles PRONTOS separado dos blocos TIFF: voltar ao mesmo zoom não
    refaz nem a leitura nem a reprojeção. É local à grade/estilo, limitado em
    bytes e descartado ao substituir a fonte ou editar a simbologia. */
@@ -1139,16 +1205,40 @@ function rasterTileFinish(gl,cv,coords,done){
 function clearDemTiles(){
   const antigos=Array.from(_demGrids.values());
   _demGrids.clear();
-  _demFails.clear();
   for(const gl of antigos){
     gl._demRetired=true;
     try{if(map&&map.hasLayer(gl))map.removeLayer(gl);}catch(e){}
   }
 }
-function demTilesAtivo(r){ return !!(r && r.demHD && r.d && r.d._img0 && r.visible!==false); }
+function demTilesAtivo(r){ return !!(r && !r._nativeCopyPending && !r._nativeSourceHolds?.size && r.demHD && r.d && (r.d._img0||r.d._full||!rasterPrecisaFonteTela(r.d)||r.style?.mode==='relevo_local') && r.visible!==false); }
 function demPreviewOpacity(r,tilesProntos){
   if(!r||!r.overlay||typeof r.overlay.setOpacity!=='function')return;
+  if(r.style?.mode==='relevo_local'){r.overlay.setOpacity(0);return;}
   r.overlay.setOpacity(tilesProntos?0:((r.style&&r.style.opacity)??0.9));
+}
+function demTileFallbackState(gl){
+  let preview=false,hole=false;
+  for(const record of Object.values(gl&&gl._tiles||{})){
+    const cv=record.el;
+    if(record.current===false||!cv||cv._tileCancelled)continue;
+    preview=preview||!!cv._demPreviewFallback;
+    hole=hole||!!cv._demFallbackHole;
+  }
+  return {preview,hole};
+}
+function demTilesUsingFallback(r){
+  return !!(r&&r.demHD&&demTileFallbackState(_demGrids.get(String(r.id))).preview);
+}
+async function buildDemTileWithRetry(cv,coords,r,job){
+  try{return await buildDemTile(cv,coords,r,false,job);}
+  catch(error){
+    if(error?.name==='AbortError'||!job.isCurrent())throw error;
+    // Uma segunda leitura cobre falhas transitórias sem criar um ciclo de
+    // redraw/retry. Um tile substituído pelo zoom nunca reinicia a leitura.
+    await new Promise(resolve=>setTimeout(resolve,150));
+    await job.checkpoint();
+    return buildDemTile(cv,coords,r,false,job);
+  }
 }
 function syncDemTiles(r){
   if(typeof map==='undefined'||!map) return;
@@ -1174,37 +1264,25 @@ function syncDemTiles(r){
           const job=rasterTileJob(gl,cv,coords,vigente);
           const finish=()=>rasterTileFinish(gl,cv,coords,done);
           if(rasterTileCacheGet(gl,cv,coords)){setTimeout(finish,0);return cv;}
-          buildDemTile(cv,coords,R,false,job)
-            .then(modo=>{
-              /* Um tile nativo bem-sucedido reduz gradualmente o contador,
-                 mas nao apaga falhas simultaneas dos outros tiles. */
-              if(job.isCurrent()&&modo==='native')
-                _demFails.set(id,Math.max(0,(_demFails.get(id)||0)-1));
+          buildDemTileWithRetry(cv,coords,R,job)
+            .then(()=>{
               if(job.isCurrent())rasterTileCachePut(gl,cv,coords);
               finish();
             })
             .catch(async err=>{
               if(!job.isCurrent()||err?.name==='AbortError'){finish();return;}
               console.warn('tile MDT:',err&&err.message||err);
-              /* Nunca entregue um quadrado transparente. Se a janela do
-                 GeoTIFF falhar, pinte neste mesmo tile a grade leve que ja
-                 esta em memoria; depois de quatro falhas o sistema volta
-                 integralmente para a previa e avisa o usuario. */
+              /* A prévia mantém o mapa utilizável, mas não muda a escolha
+                 persistida nem entra no cache de tiles bem-sucedidos. */
               let fallbackOk=false;
-              try{await buildDemTile(cv,coords,R,true);fallbackOk=true;}catch(_){}
+              try{await buildDemTile(cv,coords,R,true,job);fallbackOk=true;}catch(_){}
               if(!job.isCurrent()){finish();return;}
+              cv._demPreviewFallback=true;cv._demFallbackHole=!fallbackOk;
               if(!fallbackOk)gl._demFallbackHole=true;
-              const n=(_demFails.get(id)||0)+1; _demFails.set(id,n);
-              if(n>=4 && R.demHD){
-                R.demHD=false;
-                if(!rasterGradeOriginalCanvas(R))R.dispFull=false;
-                syncDemTiles(R);
-                if(rasCur===R){
-                  const cb=document.getElementById('rasDemHD');if(cb)cb.checked=false;
-                  const cf=document.getElementById('rasDispFull');if(cf)cf.checked=!!R.dispFull;
-                  rasResInfo();rasSyncResolutionControls(R);
-                }
-                toast('⚠ Tiles do MDT DESLIGADOS: não consegui reler o GeoTIFF. O mapa voltou à prévia; recarregue o .tif.');
+              if(rasCur===R){rasResInfo();rasSyncResolutionControls(R);}
+              if(!gl._demFailureNotice){
+                gl._demFailureNotice=true;
+                toast('⚠ Falha ao ler tiles do MDT: prévia temporária. A resolução original continua selecionada; use “Tentar novamente” nas propriedades.');
               }
               finish();
             });
@@ -1214,14 +1292,17 @@ function syncDemTiles(r){
       const gl=new Grid({pane,tileSize:256,keepBuffer:1,updateWhenZooming:false,
         updateWhenIdle:false,updateInterval:100,opacity:(R.style&&R.style.opacity)??0.9});
       rasterTileBindLifecycle(gl);
-      window.GeoMineLoadProgress?.bind(gl,'MDT · '+R.name,()=>gl._demFallbackHole);
+      window.GeoMineLoadProgress?.bind(gl,'MDT · '+R.name,()=>demTileFallbackState(gl).preview);
       const vigente=()=>!gl._demRetired&&_demGrids.get(id)===gl&&demTilesAtivo(R);
-      _demFails.set(id,0);
       /* A previa aparece somente enquanto os tiles estao carregando. Quando
          a janela original fica pronta, some para nao somar duas opacidades
          (0,8 sobre 0,8 virava visualmente 0,96). */
       gl.on('loading',()=>{if(vigente()){gl._demFallbackHole=false;demPreviewOpacity(R,false);}});
-      gl.on('load',()=>{if(vigente())demPreviewOpacity(R,!gl._demFallbackHole);});
+      gl.on('load',()=>{if(vigente()){
+        gl._demFallbackHole=demTileFallbackState(gl).hole;
+        demPreviewOpacity(R,!gl._demFallbackHole);
+        if(rasCur===R){rasResInfo();rasSyncResolutionControls(R);}
+      }});
       _demGrids.set(id,gl);gl.addTo(map);
       /* O desenho normal continua por baixo: o mapa não pisca a cada pan. */
       if(R.overlay && R.visible!==false && !map.hasLayer(R.overlay)) R.overlay.addTo(map);
@@ -1232,7 +1313,7 @@ function syncDemTiles(r){
       demPreviewOpacity(R,!carregando&&!atual._demFallbackHole);
     }
     if(!quer && atual){
-      atual._demRetired=true;_demGrids.delete(id);_demFails.delete(id);
+      atual._demRetired=true;_demGrids.delete(id);
       map.removeLayer(atual);
       if(R.overlay && R.visible!==false && !map.hasLayer(R.overlay)) R.overlay.addTo(map);
       demPreviewOpacity(R,false);
@@ -1248,12 +1329,13 @@ function demTilesRefresh(r){
   gl.options.opacity=(r.style&&r.style.opacity)??0.9;
   gl.setOpacity(gl.options.opacity);
   gl._tileEpoch=(gl._tileEpoch||0)+1;
+  gl._demFailureNotice=false;
   if(gl._readyTileCache)gl._readyTileCache.clear();gl._readyTileBytes=0;
   gl.redraw();
   return true;
 }
 async function buildDemTile(cv,coords,r,forcaPrevia,job){
-  const d=r.d, W0=d._W0||d.nc, H0=d._H0||d.nr;
+  const d=(!r.d._img0&&r.d._full)?r.d._full:r.d, W0=d._W0||d.nc, H0=d._H0||d.nr;
   const bb=d._bb||[d.xll,d.yll,d.xll+d.nc*d.cs,d.yll+d.nr*(d.csy||d.cs)];
   const [Wb,Sb,Eb,Nb]=bb, gx=(Eb-Wb)/W0, gy=(Nb-Sb)/H0;     // m/pixel do NATIVO
   // grade de warp 9×9: pixel do tile -> pixel nativo do GeoTIFF
@@ -1271,11 +1353,12 @@ async function buildDemTile(cv,coords,r,forcaPrevia,job){
   if(mxx<0||mxy<0||mnx>W0||mny>H0) return;                  // tile fora do raster
   const dpp=Math.max((mxx-mnx),(mxy-mny))/OUT,              // px nativos por px fisico do tile
     clipAceita=rasterTileClipper(r);
+  if(r.style?.mode==='relevo_local'&&window.GeoMineLocalRelief)return GeoMineLocalRelief.paintTile(cv,r,{SX,SY,N,st,W0,H0,Wb,Nb,gx,gy,clipAceita},job);
   const fPrev=W0/d.nc;                                      // px nativos por px do preview
   const stats=(r.dispFull&&d._sourceStats)||(r._st||(r._st=rasterStats(r.d))),
     mn=stats.mn, rng=(stats.mx-stats.mn)||1;
   // --- zoom afastado: a grade de tela já basta (nada é lido do arquivo) ---
-  if(forcaPrevia||dpp>=fPrev*0.95){
+  if(forcaPrevia||!d._img0||(!r.dispFull&&dpp>=fPrev*0.95)){
     pintaTileDaGrade(cv,r,d,SX,SY,N,st,fPrev,mn,rng,W0,H0,
       clipAceita,Wb,Nb,gx,gy);
     return 'preview';
@@ -1400,10 +1483,10 @@ function pintaTileDaGrade(cv,r,d,SX,SY,N,st,fPrev,mn,rng,W0,H0,clipAceita,Wb,Nb,
    zoom — medido: 6,5× mais detalhe já numa orto que cabe inteira no preview,
    e muito mais quando há redução. No tablet segue desligado por padrão
    (fluidez e memória da aba), disponível no ⚙ da ortofoto.                  */
-S.orthoHD=!EH_MOVEL;
+S.orthoHD=true;S.orthoDispFull=true;
 /* "Mostrar o mapa em resolução original" da ortofoto — mesma opção do MDT:
    tiles com os pixels do retina (até 2×), sem suavização. Desligado por padrão. */
-S.orthoDispFull=false;
+S.orthoDispFull=true;
 
 /* ===========================================================================
    ORTOFOTO POR TILES — pirâmide dinâmica no zoom
@@ -1462,49 +1545,102 @@ function orthoSemDadoLimiares(){
   const gvn=(id,d)=>{const e=document.getElementById(id); const v=e?+e.value:NaN; return isFinite(v)?v:d;};
   return {on:gcb('imgND',true), w:gvn('imgNDw',250), b:gvn('imgNDb',4)};
 }
+/* Um fallback já mostrado pelo Leaflet continua sendo PRÉVIA. Duas novas
+   leituras, no máximo, recuperam uma falha transitória na mesma vista sem
+   redesenhar toda a grade. Retirar o tile ou trocar fonte/projeto cancela-as. */
+function orthoTileRetryCancel(gl,cv){
+  if(cv._orthoRetryTimer!=null)clearTimeout(cv._orthoRetryTimer);
+  delete cv._orthoRetryTimer;gl._orthoRetryTiles?.delete(cv);
+}
+function orthoTileFallbackStatus(gl){
+  gl._fallbackHole=!!gl._orthoFallbackTiles?.size;
+  if(_orthoGrid!==gl||gl._retired)return;
+  _tileFails=gl._orthoFallbackTiles?.size||0;
+  if(!gl._fallbackHole)delete gl._nativeError;
+  let loading=false;try{loading=!!gl.isLoading?.();}catch(_){}
+  orthoPreviewOpacity(!loading&&!gl._fallbackHole);
+}
+function orthoTileReadComplete(gl,cv,coords,mode){
+  cv._orthoReadMode=mode;
+  const fallback=gl._orthoFallbackTiles||(gl._orthoFallbackTiles=new Set());
+  if(mode==='native'||mode==='fora'){
+    fallback.delete(cv);orthoTileRetryCancel(gl,cv);rasterTileCachePut(gl,cv,coords);
+  }else fallback.add(cv);
+  orthoTileFallbackStatus(gl);
+}
+function orthoTileRetry(gl,cv,coords,px,job,error){
+  if(!job.isCurrent()||cv._orthoRetryTimer!=null||(cv._orthoRetryAttempts||0)>=2||
+    error?.code==='RASTER_MEMORY_LIMIT'||error?.name==='RangeError')return;
+  const attempt=cv._orthoRetryAttempts=(cv._orthoRetryAttempts||0)+1;
+  const pending=gl._orthoRetryTiles||(gl._orthoRetryTiles=new Set());pending.add(cv);
+  cv._orthoRetryTimer=setTimeout(async()=>{
+    delete cv._orthoRetryTimer;
+    if(!job.isCurrent()){orthoTileRetryCancel(gl,cv);return;}
+    try{
+      const mode=await buildOrthoTile(cv,coords,px,false,job);
+      if(!job.isCurrent())return;
+      orthoTileReadComplete(gl,cv,coords,mode);
+    }catch(err){
+      if(!job.isCurrent()||err?.name==='AbortError')return;
+      gl._nativeError=String(err?.message||err);orthoTileRetry(gl,cv,coords,px,job,err);
+    }finally{
+      if(cv._orthoRetryTimer==null)pending.delete(cv);
+      if(job.isCurrent()){
+        orthoTileFallbackStatus(gl);
+        gl.fire?.('tileload',{tile:cv,coords});
+        if(!gl.isLoading?.())gl.fire?.('load');
+      }
+    }
+  },attempt===1?400:1500);
+}
+function orthoTileBindRetries(gl){
+  gl.on('tileunload',e=>{if(e.tile){orthoTileRetryCancel(gl,e.tile);gl._orthoFallbackTiles?.delete(e.tile);orthoTileFallbackStatus(gl);}});
+  gl.on('remove',()=>{for(const cv of gl._orthoRetryTiles||[])orthoTileRetryCancel(gl,cv);gl._orthoFallbackTiles?.clear();});
+}
 function syncOrthoTiles(){
   const I=S.img;
-  const quer = S.orthoHD && I && I._img0 && I.visible!==false && map;
+  if(_orthoGrid&&_orthoGrid._orthoSourceCurrent&&!_orthoGrid._orthoSourceCurrent()){
+    const old=_orthoGrid;old._retired=true;_orthoGrid=null;try{map.removeLayer(old);}catch(_){}
+  }
+  // Conferir e guardar o original vem antes das leituras de desenho. Os
+  // decodificadores de grandes faixas JPEG podem atrasar até o fingerprint
+  // do File e o IndexedDB se competirem com essa etapa no thread principal.
+  const quer = S.orthoHD && I && I._img0 && !I._nativeSourceHolds?.size && I.visible!==false && map;
   if(quer && !_orthoGrid){
     if(!map.getPane('orthoHD')){ const pn=map.createPane('orthoHD'); pn.style.zIndex=350; }
     /* PIXELS NATIVOS NO RETINA (mesma opção "resolução original" do MDT): o
        canvas do tile ganha 2× os pixels e é mostrado em 256 px CSS; sem isto o
        tile de 256 era ampliado 2× em toda tela de alta densidade. */
     const dpr=S.orthoDispFull?Math.min(2,Math.max(1,window.devicePixelRatio||1)):1;
-    const px=Math.round(256*dpr);
+    const px=Math.round(256*dpr),sourceImage=I._img0,sourceTiff=I._tiff,sourceRaw=I._sourceRaw,
+      sourceURL=I.url,sourceBounds=I.b?.join(','),sourceProject=S.projectId,
+      sourceGeneration=window.GeoMineSessionAutosave?.state?.generation,sourceFull=!!S.orthoDispFull;
+    const sourceCurrent=()=>S.img===I&&S.projectId===sourceProject&&
+      window.GeoMineSessionAutosave?.state?.generation===sourceGeneration&&I._img0===sourceImage&&
+      I._tiff===sourceTiff&&I._sourceRaw===sourceRaw&&I.url===sourceURL&&I.b?.join(',')===sourceBounds&&!!S.orthoDispFull===sourceFull;
     const Grid=L2.GridLayer.extend({
       createTile:function(coords, done){
         const gl=this;
         const cv=document.createElement('canvas');
         cv.width=cv.height=px; cv.style.width=cv.style.height='256px';
         if(S.orthoDispFull){ cv.classList.add('geomine-raster-native-pixels'); cv.style.imageRendering='pixelated'; }
-        const vigente=()=>!gl._retired && _orthoGrid===gl && S.img===I;
+        const vigente=()=>!gl._retired && _orthoGrid===gl && sourceCurrent();
         const job=rasterTileJob(gl,cv,coords,vigente);
         const finish=()=>rasterTileFinish(gl,cv,coords,done);
-        if(rasterTileCacheGet(gl,cv,coords)){setTimeout(finish,0);return cv;}
+        if(rasterTileCacheGet(gl,cv,coords)){cv._orthoReadMode='native';setTimeout(finish,0);return cv;}
+        cv._orthoReadMode='pending';
         buildOrthoTile(cv, coords, px, false,job)
-          .then(()=>{ if(job.isCurrent()){
-            _tileFails=Math.max(0,_tileFails-1);rasterTileCachePut(gl,cv,coords);
-          }finish(); })
+          .then(mode=>{if(job.isCurrent())orthoTileReadComplete(gl,cv,coords,mode);finish();})
           .catch(async err=>{
             if(!job.isCurrent()||err?.name==='AbortError'){finish();return;}
             console.warn('tile ortofoto:', err&&err.message||err);
-            /* Nunca entregue um quadrado transparente. Se a janela do TIFF
-               falhar, pinte este tile da PRÉVIA que já está em RAM (como o MDT
-               faz com a grade leve); só depois de quatro falhas seguidas o modo
-               tile é desligado, com aviso. */
-            let ok=false;
-            try{ await buildOrthoTile(cv, coords, px, true); ok=true; }catch(_){}
-            if(!job.isCurrent()){ finish(); return; }
-            if(!ok) gl._fallbackHole=true;
-            if(++_tileFails>=4 && S.orthoHD){
-              S.orthoHD=false; syncOrthoTiles();
-              ['imModHD','imgHD'].forEach(id=>{
-                const cb=document.getElementById(id); if(cb) cb.checked=false;
-              });
-              toast('⚠ Tiles da ortofoto DESLIGADOS: falha ao reler o arquivo. Recarregue o .tif.');
-            }
-            finish();
+            // A prévia sustenta o desenho, mas nunca entra no cache nativo.
+            try{await buildOrthoTile(cv,coords,px,true,job);}catch(_){}
+            if(!job.isCurrent()){finish();return;}
+            orthoTileReadComplete(gl,cv,coords,'fallback');
+            gl._nativeError=String(err?.message||err);
+            if(!gl._nativeNotice){gl._nativeNotice=true;toast('Original temporariamente indisponível. Prévia temporária; a resolução nativa continua selecionada.');}
+            finish();orthoTileRetry(gl,cv,coords,px,job,err);
           });
         return cv;
       }
@@ -1512,13 +1648,14 @@ function syncOrthoTiles(){
     const novaGrade=new Grid({pane:'orthoHD', tileSize:256, keepBuffer:1,
       updateWhenZooming:false, updateWhenIdle:false, updateInterval:100,
       opacity:orthoOpacidade()});
-    rasterTileBindLifecycle(novaGrade);
+    novaGrade._orthoSourceCurrent=sourceCurrent;
+    rasterTileBindLifecycle(novaGrade);orthoTileBindRetries(novaGrade);
     window.GeoMineLoadProgress?.bind(novaGrade,'Ortofoto · '+(I.name||'imagem'),()=>novaGrade._fallbackHole);
     /* A prévia aparece somente enquanto os tiles estão carregando. Quando a
        grade fica pronta, some — para não somar duas opacidades. */
-    novaGrade.on('loading',()=>{ if(_orthoGrid===novaGrade){ novaGrade._fallbackHole=false; orthoPreviewOpacity(false); } });
+    novaGrade.on('loading',()=>{if(_orthoGrid===novaGrade){orthoTileFallbackStatus(novaGrade);orthoPreviewOpacity(false);}});
     novaGrade.on('load',()=>{ if(_orthoGrid===novaGrade) orthoPreviewOpacity(!novaGrade._fallbackHole); });
-    try{ _orthoGrid=novaGrade; novaGrade.addTo(map); }
+    try{ _orthoGrid=novaGrade; novaGrade.addTo(map);delete I._nativeTileError; }
     catch(e){ try{ map.removeLayer(novaGrade); }catch(_){} _orthoGrid=null; throw e; }
     /* A PRÉVIA FICA POR BAIXO. Antes ela era retirada e, enquanto os tiles não
        chegavam, a ortofoto sumia a cada pan — o que se sente como travamento.
@@ -1578,7 +1715,7 @@ async function buildOrthoTile(cv, coords, px, soPrevia,job){
      mapa pesado no zoom de trabalho, com dezenas de tiles indo ao TIFF a cada
      pan para devolver o mesmo pixel da prévia. Só abaixo desse limiar o tile
      vai ao arquivo. (Antes esse atalho valia apenas para arquivo SEM pirâmide.) */
-  const usaPrevia = soPrevia || dpp >= fPrev*0.95;
+  const usaPrevia = soPrevia || (!S.orthoDispFull && dpp >= fPrev*0.95);
   if(usaPrevia && I._prevID===undefined){
     /* Todos os tiles da vista compartilham UMA decodificação da prévia.
        Um relink enquanto ela decodifica não pode devolver o bitmap antigo. */
@@ -1680,7 +1817,7 @@ async function buildOrthoTile(cv, coords, px, soPrevia,job){
   /* SEM-DADO: a MESMA regra do carregamento e do "Aplicar" — alfa, nodata GDAL
      nas três bandas e os limiares de branco/preto. Antes o tile só olhava o
      alfa, e as bordas brancas/pretas do mosaico voltavam com os tiles ligados. */
-  const nd=(I._ndVal!=null)?I._ndVal:null, lim=orthoSemDadoLimiares();
+  const nd=(I._ndVal!=null)?I._ndVal:null, lim=orthoSemDadoLimiares(),color=orthoColorReader(im);
   // --- pintura: warp bilinear da grade para cada pixel do tile ---
   const ctx=cv.getContext('2d'), id=ctx.createImageData(px,px), D=id.data;
   const kx=rw/((wx1-wx0)*f), ky=rh/((wy1-wy0)*fy);     // cada eixo conserva sua extensão
@@ -1706,18 +1843,18 @@ async function buildOrthoTile(cv, coords, px, soPrevia,job){
         let red=0,green=0,blue=0,valid=true;
         for(let dy=-1;dy<=1&&valid;dy++)for(let dx=-1;dx<=1;dx++){
           if(!dx&&!dy)continue;
-          const n=q+dy*rw+dx,nr=R[n],ng=G[n],nb=B[n];
+          const n=q+dy*rw+dx,nr=R[n],ng=G[n],nb=B[n],rgb=color(nr,ng,nb,sc);
           if(A[n]*sc<254||!Number.isFinite(nr+ng+nb)||
             nd!==null&&nr===nd&&ng===nd&&nb===nd||
-            lim.on&&((nr*sc>=lim.w&&ng*sc>=lim.w&&nb*sc>=lim.w)||
-                     (nr*sc<=lim.b&&ng*sc<=lim.b&&nb*sc<=lim.b))){valid=false;break;}
+            lim.on&&((rgb[0]>=lim.w&&rgb[1]>=lim.w&&rgb[2]>=lim.w)||
+                     (rgb[0]<=lim.b&&rgb[1]<=lim.b&&rgb[2]<=lim.b))){valid=false;break;}
           red+=nr;green+=ng;blue+=nb;
         }
         if(!valid)continue;
         r0=red/8;g0=green/8;b0=blue/8;al=255;
       }
       if(nd!==null && r0===nd && g0===nd && b0===nd) continue;
-      const r8=r0*sc, g8=g0*sc, b8=b0*sc;
+      const rgb=color(r0,g0,b0,sc),r8=rgb[0],g8=rgb[1],b8=rgb[2];
       if(lim.on && ((r8>=lim.w&&g8>=lim.w&&b8>=lim.w)||(r8<=lim.b&&g8<=lim.b&&b8<=lim.b))) continue;
       D[o]=r8; D[o+1]=g8; D[o+2]=b8; D[o+3]=al;
     }
@@ -1766,12 +1903,8 @@ async function _orthoHDRefresh_janela_unica(){
     S._hdFails=(S._hdFails||0)+1;
     if(_hdOn && I.url){ I.overlay.setUrl(I.url); I.overlay.setBounds(imgLLBounds(I.b)); _hdOn=false; _hdKey=''; }
     if(S._hdFails>=2 && S.orthoHD){
-      S.orthoHD=false;
-      ['imModHD','imgHD'].forEach(id=>{
-        const cb=document.getElementById(id); if(cb) cb.checked=false;
-      });
-      toast('⚠ Alta resolução dinâmica DESLIGADA: não consegui reler o arquivo da ortofoto. '+
-            'Recarregue o .tif (de preferência da pasta Downloads, fora do Drive).');
+      toast('Original temporariamente indisponível; resolução nativa continua selecionada. '+
+            'Localize o .tif para retomar a leitura dos pixels originais.');
     }
   }
   finally{ _hdBusy=false; }
@@ -1796,6 +1929,113 @@ function orthoHDReset(){
     _orthoGrid=null;
   }
   try{ if(S.img&&S.img._cache&&S.img._cache.clear) S.img._cache.clear(); }catch(e){}
+}
+
+/* A máscara visual também pode usar a prévia salva, que já pode estar em
+   Web Mercator. Ela nunca é promovida a _id (grade do TIFF). A base imutável
+   e a identidade anterior permitem desfazer e manter o vínculo do original. */
+function orthoMaskState(I){
+  const m=I&&I._visualMask;
+  return m&&m.renderedURL===I.url&&(!m.nativeID||!I._id||m.nativeID===I._id)?m:null;
+}
+function orthoMaskPreviewIdentity(I){return orthoMaskState(I)?.identity||null;}
+function orthoMaskOptions(){
+  const get=(id,fallback)=>{const e=document.getElementById(id),v=e?Number(e.value):NaN;return Number.isFinite(v)?Math.max(0,Math.min(255,v)):fallback;};
+  return {enabled:document.getElementById('imgND')?.checked!==false,w:get('imgNDw',250),b:get('imgNDb',4)};
+}
+function orthoMaskKeep(I,m){Object.defineProperty(I,'_visualMask',{value:m,writable:true,configurable:true});}
+function orthoMaskForSave(I){
+  const m=orthoMaskState(I);if(!m)return null;
+  return {v:1,baseURL:m.baseURL,grid:m.grid,identity:m.identity,enabled:m.enabled,w:m.w,b:m.b};
+}
+function orthoMaskRestore(I,data){
+  // Cada projeto começa com suas próprias opções, nunca com as da aba anterior.
+  const on=document.getElementById('imgND'),w=document.getElementById('imgNDw'),b=document.getElementById('imgNDb');
+  if(on)on.checked=true;if(w)w.value=250;if(b)b.value=4;
+  if(I)delete I._visualMask;
+  if(!I||!I.url||data?.v!==1||typeof data.baseURL!=='string'||!data.baseURL.startsWith('data:image/')||
+    !['source','mercator'].includes(data.grid)||typeof data.identity!=='string'||!data.identity||data.identity.length>256||
+    !Number.isFinite(data.w)||!Number.isFinite(data.b)||data.w<0||data.w>255||data.b<0||data.b>255)return false;
+  orthoMaskKeep(I,{baseURL:data.baseURL,grid:data.grid,identity:data.identity,renderedURL:I.url,
+    enabled:data.enabled!==false,w:data.w,b:data.b,pixels:null,nativeID:null});
+  if(on)on.checked=data.enabled!==false;if(w)w.value=data.w;if(b)b.value=data.b;
+  return true;
+}
+function orthoMaskRefreshUI(I){
+  if(S.img!==I)return;
+  try{refreshUI();}catch(_){}
+  try{if(document.getElementById('imgModal')?.classList.contains('on'))openImgProps();}catch(_){}
+}
+async function applyOrthoMask(I=S.img,control={}){
+  if(!I||S.img!==I||!I.url)throw new Error('Nenhuma prévia da ortofoto disponível.');
+  const project=S.projectId,generation=window.GeoMineSessionAutosave?.state?.generation,
+    request=I._visualMaskRequest=(I._visualMaskRequest||0)+1;
+  const active=()=>S.img===I&&S.projectId===project&&window.GeoMineSessionAutosave?.state?.generation===generation&&I._visualMaskRequest===request&&(!control.isCurrent||control.isCurrent());
+  const abort=()=>{const e=new Error('A ortofoto mudou durante o recorte.');e.name='AbortError';throw e;};
+  if(I._legacyWarpPromise)await I._legacyWarpPromise;
+  if(!active())abort();
+  const inputURL=I.url,inputID=I._id,inputImage=I._img0,bounds=JSON.stringify([I.b,I._llbounds,I._warpWM]),
+    current=()=>active()&&I.url===inputURL&&I._id===inputID&&I._img0===inputImage&&JSON.stringify([I.b,I._llbounds,I._warpWM])===bounds;
+  const options=orthoMaskOptions();let m=orthoMaskState(I);
+  const identity=typeof projectNativePreview==='function'?projectNativePreview(I,'ortho'):String(inputURL.length);
+  if(!m||inputID&&m.nativeID!==inputID){
+    let baseURL=inputURL,grid=I._warpWM?'mercator':'source',pixels=null;
+    if(inputID){
+      const cv=document.createElement('canvas');cv.width=inputID.width||I._w;cv.height=inputID.height||I._h;
+      cv.getContext('2d').putImageData(inputID,0,0);baseURL=cv.toDataURL('image/png');cv.width=0;cv.height=0;
+      grid='source';pixels=inputID;
+    }
+    m={baseURL,grid,identity,renderedURL:inputURL,pixels,nativeID:inputID||null,...options};
+  }
+  let result;
+  if(inputID){
+    if(!current())abort();
+    result=applyImgNoData();
+  }else{
+    if(!m.pixels){
+      const cv=await orthoCanvasFromURL(m.baseURL);
+      if(!current())abort();
+      m.pixels=cv.getContext('2d').getImageData(0,0,cv.width,cv.height);cv.width=0;cv.height=0;
+    }
+    if(!current())abort();
+    const src=m.pixels,w=src.width,h=src.height,cv=document.createElement('canvas');cv.width=w;cv.height=h;
+    const ctx=cv.getContext('2d'),out=ctx.createImageData(w,h);out.data.set(src.data);let cut=0;
+    for(let k=0;k<w*h;k++){
+      const p=k*4,D=out.data;if(!D[p+3]){cut++;continue;}
+      if(options.enabled&&((D[p]>=options.w&&D[p+1]>=options.w&&D[p+2]>=options.w)||
+        (D[p]<=options.b&&D[p+1]<=options.b&&D[p+2]<=options.b))){D[p+3]=0;cut++;}
+    }
+    ctx.putImageData(out,0,0);
+    let url,workURL=null,ll=I._llbounds,warped=I._warpWM;
+    if(m.grid==='mercator'){
+      if(!Array.isArray(ll)||ll.length!==2)throw new Error('A prévia Mercator não possui limites geográficos válidos.');
+      // O bitmap já ocupa esses limites: um novo warp deslocaria os vetores.
+      url=options.enabled?cv.toDataURL('image/png'):m.baseURL;
+    }else{
+      const crs=orthoCRS(I),sourceURL=options.enabled?cv.toDataURL('image/png'):m.baseURL,
+        wp=warpCanvasWM(cv,I.b,crs),b=wp.b;
+      const sw=wp.wm?reproj('EPSG:3857','EPSG:4326',b[0],b[1]):toWGS(crs,b[0],b[1]),
+        ne=wp.wm?reproj('EPSG:3857','EPSG:4326',b[2],b[3]):toWGS(crs,b[2],b[3]);
+      ll=[[sw[1],sw[0]],[ne[1],ne[0]]];warped=!!wp.wm;
+      url=wp.wm?wp.cv.toDataURL('image/png'):sourceURL;workURL=crs===S.workCRS?sourceURL:null;
+    }
+    if(!current())abort();
+    if(I.overlay){I.overlay.setUrl(url);if(m.grid==='source')I.overlay.setBounds?.(ll);}
+    else{
+      const ov=L2.imageOverlay(url,ll,{opacity:Number(document.getElementById('imgOp')?.value??1),pane:'alagis_ortofoto'});
+      if(I.visible!==false)ov.addTo(map);I.overlay=ov;
+    }
+    Object.assign(I,{url,_workPreviewURL:workURL,_llbounds:ll,_warpWM:warped,_prevID:out,
+      _prevGrid:m.grid,_w:w,_h:h});
+    result={pct:100*cut/(w*h),cut};
+    try{zApply();}catch(_){}
+  }
+  Object.assign(m,options,{renderedURL:I.url});orthoMaskKeep(I,m);I._ndPct=result.pct;
+  delete I._prevDecode;I._cache?.clear?.();
+  try{orthoHDReset();syncOrthoTiles();}catch(_){}
+  try{layoutInvalidateOrtho('recorte visual da ortofoto');}catch(_){}
+  window.GeoMineSessionAutosave?.markDirty?.('recorte visual da ortofoto');
+  orthoMaskRefreshUI(I);return result;
 }
 
 /* Recorta as células sem dado da ortofoto (alfa do TIFF, GDAL_NODATA e bordas
@@ -1880,6 +2120,7 @@ function confereCRSraster(d, fname){
   return true;
 }
 async function addRasterFromTIFF(f, fname, fsize,control){
+  await window.GeoMineImportRecovery?.before(control);
   fname=fname||f.name||'raster'; fsize=fsize??(f.size||0);
   showLoad(`Abrindo ${fname} (${(fsize/1048576).toFixed(0)} MB)…`);
   const d=await parseTIFF(f,control);
@@ -1891,9 +2132,10 @@ async function addRasterFromTIFF(f, fname, fsize,control){
   const r={id:rid++, name:fname.replace(/\.[^.]+$/,''), d,
     src:{file:fname, size:fsize, at:new Date().toISOString()},
     style:{mode:'hipso_hs', opacity:0.8}, visible:true, overlay:null,
-    /* Computador e o alvo principal: use o GeoTIFF por tiles desde a
-       importacao. No tablet a opcao continua disponivel, mas inicia leve. */
-    demHD:!EH_MOVEL&&d.resampled>1, dispFull:false};
+    // The original always supplies native tiles. Import may hold that grid
+    // until its durable source and workspace have been committed.
+    demHD:true, dispFull:true};
+  if(control?.deferNative)Object.defineProperty(r,'_nativeCopyPending',{value:true,writable:true,configurable:true});
   /* Mantém a fonte intacta nesta sessão. Com a pasta configurada, o
      salvamento automático copia este GeoTIFF sem reamostrar seus pixels. */
   if(f instanceof Blob){
@@ -1901,10 +2143,10 @@ async function addRasterFromTIFF(f, fname, fsize,control){
     else r._projectSourceRaw=f;
   }
   S.rasters.push(r); renderRaster(r); refreshUI();
-  projectAutoSaveRaster(r);
+  if(!control?.deferNative)projectAutoSaveRaster(r);
   const b=r.overlay&&r.overlay.getBounds?r.overlay.getBounds():null;
   if(b) safeFit(b);
-  toast('Raster '+r.name+': '+d.nc+'×'+d.nr+' células');
+  toast('Raster '+r.name+': original '+d._W0+'×'+d._H0+' células · resolução nativa por tiles');
   return r;
 }
 
@@ -2201,13 +2443,11 @@ function openRasProps(r){
      pixel ela foi medida — 0,26 m e 30 m contam histórias diferentes sobre o
      mesmo terreno. Célula não quadrada aparece como "a × b" (csy perdido já
      deslocou MDT contra ortofoto antes) e grade reduzida é dita na hora. */
-  const _cs=+r.d.cs, _csy=+(r.d.csy||r.d.cs),
-    _n=v=>(+v).toLocaleString('pt-BR',{maximumFractionDigits:2}),
-    _cel=Math.abs(_cs-_csy)<1e-4? `${_n(_cs)} m` : `${_n(_cs)} × ${_n(_csy)} m`,
-    _resTxt=`<b>${r.d.nc}×${r.d.nr}</b> · <b>${_cel}</b>/célula`+
-      (rasterPrecisaFonteTela(r.d)
-        ?` <span style="color:var(--amber)">(tela${r.d.resampled>1?' ÷'+r.d.resampled:''}; original a vincular)</span>`
-        :' (nativa)');
+  const native=r.d._full||r.d,linked=!!r.d._img0||!rasterPrecisaFonteTela(native),nw=r.d._W0||native.nc,nh=r.d._H0||native.nr,
+    _cs=r.d._bb?(r.d._bb[2]-r.d._bb[0])/nw:native.cs,_csy=r.d._bb?(r.d._bb[3]-r.d._bb[1])/nh:(native.csy||native.cs),
+    _n=v=>(+v).toLocaleString('pt-BR',{maximumFractionDigits:3}),
+    _cel=Math.abs(_cs-_csy)<1e-4?`${_n(_cs)} m`:`${_n(_cs)} × ${_n(_csy)} m`,
+    _resTxt=`<b>${nw}×${nh}</b> · <b>${_cel}</b>/célula`+(linked?' (nativa; sem suavização)':' <span style="color:var(--amber)">(prévia; arquivo original indisponível)</span>');
   document.getElementById('rasInfo').innerHTML=tinTag+
     `${srcHTML(r.src,true)}<br>Resolução: ${_resTxt}<br>${rot}: <b>${st.mn.toFixed(1)}</b> – <b>${st.mx.toFixed(1)}</b>${un?' '+un:''} · X ${r.d.xll.toFixed(0)}–${(r.d.xll+r.d.nc*r.d.cs).toFixed(0)} · Y ${r.d.yll.toFixed(0)}–${(r.d.yll+r.d.nr*r.d.cs).toFixed(0)}`;
   { const b=document.querySelector('#rasInfo [data-open-src]');
@@ -2272,9 +2512,18 @@ async function abreLocalFonteRaster(r){
 }
 function rasResInfo(){
   const r=rasCur; if(!r) return;
+  window.GeoMineNativeRasterPanel?.refresh(r);
   const d=r.d, el=document.getElementById('rasRes'); if(!el) return;
   const cel=(dd)=>(Number.isFinite(+dd?.cs)
     ?(+dd.cs).toLocaleString('pt-BR',{maximumFractionDigits:2}):'—')+' m/célula';
+  if(r._nativeCopyPending){
+    const p=window.GeoMineOriginalSources?.persistence?.(r,'raster'),
+      percent=p?.total>0?Math.min(100,Math.floor(100*p.loaded/p.total)):0;
+    el.innerHTML=`Tela leve: ${d.nc}×${d.nr} · ${cel(d)}<br>`+
+      `<b style="color:var(--amber)">Preparando o original no iPad${percent?' — '+percent+'%':''}.</b> `+
+      'A prévia permanece visível e os tiles nativos entram automaticamente ao terminar.';
+    return;
+  }
   if(!rasterPrecisaFonteTela(d)&&!d._full){
     el.innerHTML=`Grade <b>nativa</b> ${d.nc}×${d.nr} · ${cel(d)} — nada foi reamostrado.`;
   } else if(d._full){
@@ -2291,8 +2540,9 @@ function rasResInfo(){
     el.innerHTML=`Tela leve: ${d.nc}×${d.nr} · ${cel(d)} (${d.previewMethod==='sampled'?'prévia amostrada':'média'} ÷${d.resampled})<br>`+
       (W0&&H0
         ?`Original: <b>${W0}×${H0}</b> · ${Number.isFinite(cs0)?cs0.toFixed(2):'—'} m/célula — `+
-          (fonte?`<b style="color:var(--ok)">arquivo vinculado</b>${r.demHD?' · tiles originais ativos':''}`:
-            'arquivo ainda não vinculado')
+          (fonte?`<b style="color:var(--ok)">arquivo vinculado</b>${r.demHD
+            ?(demTilesUsingFallback(r)?' · prévia temporária em tiles com falha':' · tiles do original conforme o zoom'):''}`:
+            'arquivo ainda não vinculado'+((r.demHD||r.dispFull)?' · resolução original selecionada, aguardando o GeoTIFF':''))
         :`Original: <b>grade nativa ainda não vinculada</b> — indique o GeoTIFF`);
   }
 }
@@ -2308,15 +2558,24 @@ function rasSyncResolutionControls(r){
   if(cHD){cHD.checked=!!r.demHD;cHD.disabled=false;}
   const inf=document.getElementById('rasDemHDInfo');
   if(inf){
-    if(fonte)inf.innerHTML=r.demHD
-      ?'<b style="color:var(--ok)">Ativo:</b> o GeoTIFF original é relido por janela conforme o zoom.'
+    if(r._nativeCopyPending)inf.innerHTML='<b style="color:var(--amber)">Preparando a cópia local do GeoTIFF.</b> A prévia fica visível; a resolução nativa será ativada automaticamente ao concluir.';
+    else if(fonte)inf.innerHTML=r.demHD
+      ?(demTilesUsingFallback(r)
+        ?'<b style="color:var(--amber)">Prévia temporária:</b> houve falha na leitura de alguns tiles. A resolução original continua selecionada. Use “Tentar novamente”; se a falha persistir, clique no nome do arquivo de origem para religar o GeoTIFF.'
+        :'<b style="color:var(--ok)">Ativo:</b> o GeoTIFF original é relido por janela conforme o zoom.')
       :'Arquivo original disponível. Ative para reler cada janela na densidade do zoom.';
     else if(mono)inf.innerHTML='A grade original já está em memória. Para usar tiles, marque a opção e selecione o GeoTIFF desta camada.';
-    else inf.innerHTML='<b>Arquivo original não vinculado.</b> Marque a opção para selecionar o GeoTIFF desta camada.';
+    else inf.innerHTML=(r.demHD||r.dispFull)
+      ?'<b style="color:var(--amber)">Resolução original selecionada, aguardando o GeoTIFF.</b> O mapa mostra a prévia. Use o botão acima para selecionar o original ou autorize a pasta do projeto e reabra o .ccmgis.'
+      :'<b>Arquivo original não vinculado.</b> Marque a opção para selecionar o GeoTIFF desta camada.';
   }
   const b=document.getElementById('rasLoadFull');
-  if(b)b.innerHTML=fonte?'✓ Mostrar o arquivo original em alta resolução':
-    (mono?'✓ Mostrar os pixels originais':'⤓ Selecionar o GeoTIFF original e mostrar');
+  if(b){
+    b.disabled=!!r._nativeCopyPending;
+    b.innerHTML=r._nativeCopyPending?'Guardando o original no iPad…':fonte?
+      (demTilesUsingFallback(r)?'↻ Tentar novamente em resolução original':'✓ Mostrar o arquivo original em alta resolução'):
+      (mono?'✓ Mostrar os pixels originais':'⤓ Selecionar o GeoTIFF original e mostrar');
+  }
   const t=document.getElementById('rasTeto');
   if(t)t.innerHTML=`Canvas nativo nesta máquina: até <b>${(DISP_MAX_CELLS/1e6).toFixed(0)} M células</b>. `+
     'Acima disso o GeoMine usa tiles do original, sem reduzir silenciosamente por média.';
@@ -2324,51 +2583,152 @@ function rasSyncResolutionControls(r){
 /* O botão de propriedades é um gesto direto do usuário. Se a grade plena não
    estiver mais em memória, abre imediatamente o seletor do sistema; cancelar
    simplesmente devolve false e preserva integralmente a camada atual. */
-async function rasEscolherNativoAgora(r){
-  if(!r)return false;
-  const projeto=S.projectId,grade=r.d;
-  const vigente=()=>S.projectId===projeto&&r.d===grade&&(S.rasters||[]).includes(r);
-  if(window.showOpenFilePicker&&fsApiOK()){
+function rasterNeedsStableLocalCopy(){
+  const n=typeof navigator==='object'?navigator:{};
+  return /iPad|iPhone|iPod/i.test(n.userAgent||'')||
+    (/Mac/i.test((n.platform||'')+' '+(n.userAgent||''))&&Number(n.maxTouchPoints)>1);
+}
+const rasNativeSelections=new WeakMap();
+function rasEscolherNativoAgora(r,options={}){
+  if(!r||!r.d||options.signal?.aborted)return Promise.resolve(false);
+  const pending=rasNativeSelections.get(r);
+  if(pending?.current())return pending.promise;
+  pending?.cancel();
+  const projeto=S.projectId,grade=r.d,geracao=window.GeoMineSessionAutosave?.state?.generation,
+    conta=window.GeoMineCloudProvider?.user?.uid;
+  const controller=new AbortController();
+  const mesmoProjeto=()=>S.projectId===projeto&&window.GeoMineSessionAutosave?.state?.generation===geracao&&
+    window.GeoMineCloudProvider?.user?.uid===conta&&(S.rasters||[]).includes(r);
+  const vigente=()=>!controller.signal.aborted&&mesmoProjeto()&&r.d===grade&&(!options.isCurrent||options.isCurrent())&&
+    (!job.loading||(S._rasterImportController===controller&&!S._loadCancel));
+  let committed=false;
+  const abort=()=>{
+    if(committed)return;
+    controller.abort();
+    if(job.loading&&mesmoProjeto()&&rasNativeSelections.get(r)===job)hideLoad();
+    job.loading=false;
+  };
+  options.signal?.addEventListener('abort',abort,{once:true});
+  const job={current:()=>committed?mesmoProjeto():vigente(),cancel:abort,promise:null,loading:false};
+  let inp=null;
+  async function ler(file,handle){
+    if(!file||!vigente())return false;
+    const sources=window.GeoMineOriginalSources,
+      cacheFirst=!handle&&rasterNeedsStableLocalCopy();
+    if(cacheFirst){
+      r._nativeCopyPending=true;
+      // If an earlier direct attempt left a tile layer alive, retire it before
+      // the sequential provider copy starts. The saved preview stays visible.
+      try{syncDemTiles(r);rasResInfo();rasSyncResolutionControls(r);}catch(_){}
+    }
     try{
-      const opt={id:'alagis-grade-nativa',multiple:false,
-        types:[{description:'GeoTIFF nativo',accept:{'image/tiff':['.tif','.tiff']}}]};
-      if(S._lastDir)opt.startIn=S._lastDir;
-      const hs=await window.showOpenFilePicker(opt);
-      if(!hs||!hs[0]||!vigente())return false;
-      const h=hs[0];lembraLocal(h);
-      const file=await h.getFile();
+      await window.GeoMineImportRecovery?.before({signal:controller.signal});
       if(!vigente())return false;
-      if(!await GeoMineImportHandoff.beforeRead({ownerId:'rasModal',message:'Lendo e conferindo a grade nativa…',current:vigente}))return false;
-      const ok=await religaFonte(r,file);
-      hideLoad();
-      if(ok)await lembraFonte(r,h);
-      return !!ok;
+      if(S._rasterImportController&&S._rasterImportController!==controller)S._rasterImportController.abort();
+      S._rasterImportController=controller;S._loadCancel=false;
+      job.loading=true;
+      if(!await GeoMineImportHandoff.beforeRead({ownerId:'rasModal',message:'Conferindo o MDT original…',current:vigente})||!vigente())return false;
+      const ok=await religaFonte(r,file,{isCurrent:vigente,signal:controller.signal});
+      if(!ok||!mesmoProjeto())return false;
+      committed=true;
+      if(S._rasterImportController===controller)S._rasterImportController=null;
+      if(job.loading&&rasNativeSelections.get(r)===job)hideLoad();
+      job.loading=false;
+      // The native link is already validated. On iPad a file-input File can
+      // be a Google Drive/iCloud proxy: persist it sequentially, then re-open
+      // the verified OPFS copy and attach THAT source before enabling tiles.
+      let remembered=false;
+      try{
+        if(handle){
+          remembered=await lembraFonte(r,handle);
+        }else if(typeof sources?.rememberFile==='function'){
+          remembered=await sources.rememberFile(r,'raster',file);
+        }
+        if(cacheFirst&&remembered&&mesmoProjeto()&&typeof sources?.resolve==='function'){
+          const local=await sources.resolve(r,'raster');
+          if(local?.file&&local.file!==file&&mesmoProjeto()){
+            const rebound=await projectAttachNativeRaster(r,local.file,{original:local,isCurrent:mesmoProjeto});
+            if(!rebound)console.warn('Cópia local concluída, mas a fonte nativa não pôde ser reaberta nesta sessão.');
+          }
+        }
+      }catch(e){console.warn('Local do MDT disponível apenas nesta sessão:',e);}
+      if(cacheFirst)delete r._nativeCopyPending;
+      if(mesmoProjeto()){
+        try{renderRaster(r,{sourceOnly:true});syncDemTiles(r);zApply();rasResInfo();rasSyncResolutionControls(r);}catch(e){console.warn('Ativação dos tiles nativos:',e);}
+      }
+      return mesmoProjeto()&&projectRasterReady(r);
     }catch(e){
-      hideLoad();
-      if(e&&e.name==='AbortError')return false;
-      /* Em file:// alguns navegadores bloqueiam a File System Access API.
-         O input abaixo abre o mesmo seletor sem exigir essa API. */
-      if(!(e&&e.name==='SecurityError'))
-        toast('Não foi possível abrir a grade nativa: '+((e&&e.message)||e));
+      if(e?.name!=='AbortError'&&mesmoProjeto())toast('Falha ao ler o GeoTIFF: '+(e?.message||e));
+      return false;
+    }finally{
+      if(cacheFirst&&r._nativeCopyPending){
+        delete r._nativeCopyPending;
+        if(mesmoProjeto())try{renderRaster(r,{sourceOnly:true});syncDemTiles(r);rasResInfo();rasSyncResolutionControls(r);}catch(_){}
+      }
+      if(S._rasterImportController===controller){
+        S._rasterImportController=null;
+        if(job.loading&&mesmoProjeto()&&rasNativeSelections.get(r)===job&&!controller.signal.aborted)hideLoad();
+      }
+      job.loading=false;
     }
   }
-  return await new Promise(resolve=>{
-    const inp=document.createElement('input');
-    inp.type='file';inp.accept='.tif,.tiff,application/octet-stream';inp.style.display='none';
-    document.body.appendChild(inp);
-    let terminou=false;
-    const fim=v=>{if(terminou)return;terminou=true;try{inp.remove();}catch(_){}resolve(v);};
-    inp.onchange=async()=>{
-      const f=inp.files&&inp.files[0];
-      if(!f||!vigente())return fim(false);
-      if(!await GeoMineImportHandoff.beforeRead({ownerId:'rasModal',message:'Lendo e conferindo a grade nativa…',current:vigente}))return fim(false);
-      try{fim(!!(await religaFonte(r,f)));}
-      catch(e){toast('Falha ao ler o GeoTIFF: '+((e&&e.message)||e));fim(false);}
-      finally{hideLoad();}
-    };
-    inp.addEventListener('cancel',()=>fim(false),{once:true});
-    abrirSeletorGeoTIFF(inp);
+  async function escolher(){
+    if(!vigente())return false;
+    if(window.showOpenFilePicker&&fsApiOK()){
+      let pickerReturned=false;
+      try{
+        const opt={id:'alagis-grade-nativa',multiple:false,
+          types:[{description:'GeoTIFF nativo',accept:{'image/tiff':['.tif','.tiff']}}]};
+        if(S._lastDir)opt.startIn=S._lastDir;
+        const hs=await window.showOpenFilePicker(opt);
+        pickerReturned=true;
+        if(!hs?.[0]||!vigente())return false;
+        const h=hs[0];lembraLocal(h);
+        const file=await h.getFile();
+        return vigente()?await ler(file,h):false;
+      }catch(e){
+        if(e?.name==='AbortError'||!vigente())return false;
+        // file:// may block this API. Only that restriction falls back to
+        // an input; a failed read must not open another picker unexpectedly.
+        if(e?.name!=='SecurityError'||pickerReturned){
+          toast('Não foi possível abrir a grade nativa: '+(e?.message||e));return false;
+        }
+      }
+    }
+    if(!vigente())return false;
+    return new Promise(resolve=>{
+      inp=document.createElement('input');
+      inp.type='file';inp.accept='.tif,.tiff,application/octet-stream';inp.style.display='none';
+      document.body.appendChild(inp);
+      let terminou=false,lendo=false;
+      const cancelou=()=>fim(false);
+      const fim=v=>{
+        if(terminou)return;terminou=true;
+        controller.signal.removeEventListener('abort',cancelou);
+        try{inp.remove();}catch(_){}resolve(!!v);
+      };
+      controller.signal.addEventListener('abort',cancelou,{once:true});
+      inp.onchange=async()=>{
+        if(terminou||lendo)return;
+        lendo=true;
+        const f=inp.files&&inp.files[0];
+        if(!f||!vigente())return fim(false);
+        fim(await ler(f,null));
+      };
+      inp.addEventListener('cancel',abort,{once:true});
+      try{abrirSeletorGeoTIFF(inp);}catch(e){
+        if(mesmoProjeto())toast('Não foi possível abrir o seletor: '+(e?.message||e));fim(false);
+      }
+    });
+  }
+  // Start now so the OS picker retains the user's click activation.
+  job.promise=escolher().finally(()=>{
+    options.signal?.removeEventListener('abort',abort);
+    try{inp?.remove();}catch(_){}
+    if(rasNativeSelections.get(r)===job)rasNativeSelections.delete(r);
   });
+  rasNativeSelections.set(r,job);
+  return job.promise;
 }
 function bindRasModal(){
   const close=()=>{document.getElementById('rasModal').classList.remove('on');rasClassDraft=null;rasClassDraftOk=true;};
@@ -2533,26 +2893,8 @@ function bindRasModal(){
       if(!await rasEscolherNativoAgora(r))return;
       d=r.d;
     }
-    /* Grade moderada: desenha o canvas nativo. Grade grande: nao tenta
-       materializar centenas de milhoes de amostras; os tiles leem o mesmo
-       original por janela e conservam o detalhe conforme o zoom. */
-    const [W,H]=rasterDimensoesOriginais(d),cabe=W*H<=DISP_MAX_CELLS&&W<=16000&&H<=16000;
-    let g=d;
-    if(d._full)g=d._full;
-    else if(d._img0&&rasterPrecisaFonteTela(d)&&cabe){try{g=await demFull(d);}catch(_){} }
-    const mono=rasterGradeOriginalCanvas(r);
-    r.demHD=!mono&&!!d._img0;
-    r.dispFull=!!mono||r.demHD;
-    if(!r.dispFull){
-      rasSyncResolutionControls(r);
-      toast('A grade original excede o limite do canvas e não possui um GeoTIFF vinculado para leitura por tiles.');
-      return;
-    }
-    try{renderRaster(r);syncDemTiles(r);zApply();}catch(e){toast('Falha ao mostrar o original: '+(e&&e.message||e));}
-    rasResInfo();
-    rasSyncResolutionControls(r);
-    if(mono)toast(`Resolução original ativa (${mono.nc}×${mono.nr})`);
-    else if(r.demHD)toast(`Resolução original ativa por tiles (${W}×${H}) — aproxime para ver cada detalhe`);
+    r.demHD=true;r.dispFull=true;renderRaster(r);syncDemTiles(r);rasResInfo();rasSyncResolutionControls(r);
+    toast('Arquivo original vinculado; exibição nativa por tiles.');
   };
   const cDF=document.getElementById('rasDispFull');
   // --- Reamostrar a superfície para X m/célula (bloco Resolução) ---
@@ -2681,7 +3023,7 @@ function bindRasModal(){
     try{ lines=contourGrid(g, iv); }catch(e){ hideLoad(); toast('Falha: '+e.message); return; }
     hideLoad();
     if(!lines.length){ toast('Nenhuma curva gerada — verifique o intervalo'); return; }
-    addLayer({name:rasCur.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
+    addLayer({sourceLayer:rasCur,name:rasCur.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
       features:lines.map(ln=>({geom:ln.pts, multi:false, props:{COTA:+ln.z.toFixed(2)}})),
       fields:[{name:'COTA',type:'N',length:12,decimal:2}], color:'#37c0aa'});
     toast(`${lines.length} polilinhas a cada ${iv} m (grade ${g.native?'nativa':'de tela'} ${g.cs.toFixed(2)} m)`);

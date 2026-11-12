@@ -139,6 +139,17 @@ async function resolve(r,options={}){
       progress('Abrindo a fonte original vinculada ao MDT…');
       const lease=await candidate(()=>open(raw));if(lease){check(true);return lease;}
     }
+    // iPad file-input imports persist their verified bytes in private browser
+    // storage rather than a directory handle. Use that same source as the 2D
+    // map, with a private read-only TIFF lease; never substitute the preview.
+    if(typeof root.GeoMineOriginalSources?.resolve==='function'){
+      progress('Procurando o MDT original guardado neste aparelho…');
+      const lease=await candidate(async()=>{
+        const source=await wait(()=>root.GeoMineOriginalSources.resolve(r,'raster'));
+        return source?.file?await open(source.file):null;
+      });
+      if(lease){check(true);return lease;}
+    }
     const descriptor=r.projectNativeSource,path=String(r.projectFile||''),match=/^ALAGIS\/rasters\/([^/\\]+\.tiff?)$/i.exec(path),
       usableName=match&&match[1]!=='.'&&match[1]!=='..'&&!/[\u0000-\u001f]/.test(match[1]);
     if(usableName&&descriptor?.v===1&&typeof root.projectNativeRestoreAllowed==='function'&&root.projectNativeRestoreAllowed(r,'raster')&&

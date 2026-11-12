@@ -1,0 +1,5 @@
+GeoMine uses clipper-lib 6.4.2 (unchanged JavaScript source).
+Copyright Angus Johnson 2010-2017; JavaScript port by Timo.
+https://github.com/junmer/clipper-lib
+Boost Software License 1.0: see CLIPPER-LICENSE.txt.
+The JSBN notices and license are also preserved in the distributed source.

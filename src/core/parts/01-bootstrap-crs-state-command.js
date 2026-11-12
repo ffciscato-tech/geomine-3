@@ -170,12 +170,27 @@ catch(e){ ALAGIS_NEW_PROJECT_BOOT=null; }
    um F5 posterior continuaria sendo tratado como criação de projeto e
    bloquearia a retomada automática da sessão recém-criada. */
 try{ sessionStorage.removeItem('ALAGIS_NEW_PROJECT'); }catch(e){}
-/* Adaptador legado: a instância permanece compartilhada com o projeto,
-   mas sua criação pertence ao módulo independente de estado. */
-const S = window.GeoMineProjectState.create({
-  projectMeta:ALAGIS_NEW_PROJECT_BOOT,
-  touch:!!(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches)
-});
+/* ---------- Estado global ---------- */
+const S = {
+  layers:[],           // ordem do array = ordem visual: índice 0 = TOPO (desenhado por cima)
+  groups:[],           // {id,name,collapsed}
+  touch:!!(window.matchMedia&&window.matchMedia('(pointer:coarse)').matches),
+  fullRes:true,        // produtos (perfil, curvas, Z, plotagem) na grade NATIVA
+  activeId:null,
+  tool:'select',
+  workCRS:(ALAGIS_NEW_PROJECT_BOOT&&ALAGIS_NEW_PROJECT_BOOT.crs)||'EPSG:31983',
+  projectMeta:ALAGIS_NEW_PROJECT_BOOT||null,
+  /* Identidade estável, independente do nome do arquivo. É persistida no
+     .ccmgis e permite associar sessão, autosave e handle ao projeto certo. */
+  projectId:'gm_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10),
+  collaboration:null, // metadados não sensíveis da sala de projeto na nuvem
+  img:null,            // {url,overlay,bounds}
+  stack:[],            // ordem unificada de desenho: 'L:1','R:2','I:0' (topo primeiro)
+  drawBuf:[],          // pontos sendo desenhados (WGS lat/lng)
+  drawLayer:null,
+  vtxLayer:null,
+  selFeat:null,        // {layer, idx}
+};
 let map, baseLayers={}, uid=1, gid=1;
 
 /* Ponto comum de proteção: congelamento manual e autorização cooperativa.
@@ -218,12 +233,47 @@ function setLayerFrozen(L,frozen){
 /* ---------- Pilha unificada: vetores + rasters (MDE) + ortofoto ----------
    S.stack guarda a ordem de exibição/desenho (topo primeiro) por chave 'L:3','R:1','I:0'.
    Assim qualquer nó — inclusive a ortofoto e o MDT — pode ser arrastado e agrupado. */
-/* Compatibilidade com os consumidores antigos; a regra da pilha vive
-   apenas em GeoMineLayerStore e recebe o estado explicitamente. */
-function nodeKey(t,id){return window.GeoMineLayerStore.nodeKey(t,id);}
-function nodeLayer(n){return window.GeoMineLayerStore.nodeLayer(n);}
-function allNodes(){return window.GeoMineLayerStore.allNodes(S);}
-function stackSync(){return window.GeoMineLayerStore.stackSync(S);}
+function nodeKey(t,id){ return t+':'+id; }
+function nodeLayer(n){ return n.t==='L' ? n.o.llayer : n.o.overlay; }
+function allNodes(){
+  const out=[];
+  S.layers.forEach(L=>out.push({t:'L', id:L.id, o:L}));
+  (S.rasters||[]).forEach(r=>out.push({t:'R', id:r.id, o:r}));
+  if(S.img && S.img.url) out.push({t:'I', id:0, o:S.img});
+  return out;
+}
+function stackSync(){
+  const items=buildLayerTree(allNodes(),S.stack||[]);
+  S.stack=items.map(treeItemKey);
+  return items.filter(it=>it.n).map(it=>it.n);
+}
+/* Produtos novos pertencem à posição da fonte usada no cálculo, inclusive
+   quando ela está em um subgrupo ou a seleção mudou durante um await.
+   Recebe o objeto original (ou uma chave tipada), nunca um nome/ID ambíguo.
+   Só é chamado na criação: arrastes posteriores continuam livres. */
+function placeProductAbove(product,source){
+  const nodes=allNodes(),resolve=ref=>{
+    if(typeof ref==='string')return nodes.find(n=>nodeKey(n.t,n.id)===ref);
+    return nodes.find(n=>n.o===ref||(ref&&ref.o===n.o&&ref.t===n.t));
+  };
+  const out=resolve(product),base=resolve(source);
+  if(!out||!base||out.o===base.o)return false;
+  stackSync();
+  const key=nodeKey(out.t,out.id),baseKey=nodeKey(base.t,base.id);
+  const stack=S.stack.filter(k=>k!==key),at=stack.indexOf(baseKey);
+  if(at<0)return false;
+  out.o.groupId=base.o.groupId??null;
+  stack.splice(at,0,key);S.stack=stack;stackSync();
+  /* Salvar ou sair do Layout devolve a pilha do mapa 2D. Inclua também nela
+     o produto novo, mantendo a ordem independente das camadas já existentes. */
+  const pre=S._view==='layout'?S._preLayoutMapState:null;
+  if(Array.isArray(pre?.stack)){
+    const saved=buildLayerTree(nodes,pre.stack).map(treeItemKey).filter(k=>k!==key);
+    const atBase=saved.indexOf(baseKey);
+    if(atBase>=0){saved.splice(atBase,0,key);pre.stack=saved;}
+  }
+  return true;
+}
 function nodeSetVis(n, vis){
   vis=!!vis;n.o.visible=vis;
   if(vis)window.GeoMineProjectOpening?.ensure(n);
@@ -283,14 +333,14 @@ function zApply(){
          espacamento de 2 entre os nos deixa esse +1 livre sem ultrapassar a
          camada imediatamente superior. */
       if(n.t==='R'){ const pt=map.getPane('demHD'+n.id); if(pt) pt.style.zIndex=z+1; }
-    } else if(lyr.setZIndex){            // imagem/ortofoto
+    } else if(lyr.setZIndex){            // imagem/ortofoto: same tree order as MDT
       lyr.setZIndex(z);
+      const pane=map.getPane('alagis_ortofoto');if(pane)pane.style.zIndex=z;
+      const native=map.getPane('orthoHD');if(native)native.style.zIndex=z+1;
     } else if(lyr.bringToFront){
       lyr.bringToFront();
     }
   });
-  // a ortofoto de fundo permanece abaixo de tudo
-  try{ const po=map.getPane('alagis_ortofoto'); if(po) po.style.zIndex=405; }catch(e){}
   // a régua fica sempre por cima: z calculado a partir do topo da pilha,
   // senão um projeto com muitas camadas voltaria a encobri-la
   try{ const pr=map.getPane('alagis_regua');

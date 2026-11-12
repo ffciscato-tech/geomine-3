@@ -173,7 +173,9 @@
         const geom=new T.BufferGeometry();geom.setAttribute('position',new T.BufferAttribute(positions,3));let object;
         if(role(L)==='surface'){
           geom.setIndex(new T.BufferAttribute(c.triangles.slice(),1));geom.computeVertexNormals();
-          const material=new T.MeshLambertMaterial({color:s.color,side:T.DoubleSide,opacity:s.opacity,transparent:s.opacity<1,depthWrite:s.opacity>=1,
+          // Face normals are evaluated per fragment; shared source vertices stay intact.
+          const material=new T.MeshPhongMaterial({flatShading:true,specular:0x000000,shininess:0,
+            color:s.color,side:T.DoubleSide,opacity:s.opacity,transparent:s.opacity<1,depthWrite:s.opacity>=1,
             polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});object=new T.Mesh(geom,material);
         }else{
           geom.setIndex(new T.BufferAttribute(c.edges.slice(),1));const material=new T.LineBasicMaterial({color:s.color,opacity:s.opacity,

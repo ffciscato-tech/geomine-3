@@ -27,6 +27,7 @@ function pickFeature(L, idx, latlng, op){
     try{cb(latlng);}catch(e){console.warn('pickPonto',e);}
     return;
   }
+  if(S.tool==='vertex' && String(L.id)!==String(S.activeId))return;
   closeFeatMenu();
   const fSelecionada=L.features[idx];
   let partIdx=Number.isInteger(op.partIdx)?op.partIdx:featParteMaisProxima(L,fSelecionada,latlng);
@@ -34,7 +35,7 @@ function pickFeature(L, idx, latlng, op){
   if(S.tool==='del'){
     apagarSelecao({layer:L,layerId:L.id,idx,partIdx},true);return;
   }
-  const oe=op.originalEvent||{},aditivo=!!(oe.ctrlKey||oe.metaKey||oe.shiftKey);
+  const oe=op.originalEvent||{},aditivo=op.properties!==true&&!!(oe.ctrlKey||oe.metaKey||oe.shiftKey||window.GeoMineTouchWorkspace?.additive);
   if(aditivo){
     const itens=S.msel.items||[];
     if(S.selFeat){
@@ -340,7 +341,10 @@ function zoomToSel(){
                       maxZoom: Math.max(map.getZoom(), 18), animate:true});
   }catch(e){ map.panTo(pts[0]); }
 }
-function clearVertices(){ window.GeoMinePolygonEdgeDrag?.clear(); window.GeoMineVertexGuides?.end(); S.vtxLayer.clearLayers(); if(selHL){map.removeLayer(selHL);selHL=null;}
+function clearVertices(){
+  S._vtxCtx?.dragFrames?.forEach(job=>job.cancel());
+  if(S._vtxCtx?.refreshVisible)map.off('moveend zoomend',S._vtxCtx.refreshVisible);
+  window.GeoMinePolygonEdgeDrag?.clear(); window.GeoMineVertexGuides?.end(); S.vtxLayer.clearLayers(); if(selHL){map.removeLayer(selHL);selHL=null;}
   /* ÓRFÃOS DE ARRASTO INTERROMPIDO: se um rebuild aconteceu no meio de um
      gesto (live-sync do limite dispara replay durante o arraste), o ícone
      antigo podia sobrar solto no pane, fora do grupo — os "pontos soltos
@@ -414,9 +418,35 @@ function resolveFeatureZRing(f,ring,ri,nested,aplicar){
   }
   return out;
 }
+/* Only the display is thinned: source indices/geometry remain untouched.
+   A small screen-space grid avoids thousands of overlapping DOM markers. */
+function vertexHandleDensity(spacing){
+  const cells=new Map(),distance2=spacing*spacing;
+  const cell=p=>[Math.floor(p.x/spacing),Math.floor(p.y/spacing)],key=(x,y)=>x+','+y;
+  const near=p=>{const [x,y]=cell(p);
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      const points=cells.get(key(x+dx,y+dy));if(!points)continue;
+      for(const q of points)if((q.x-p.x)**2+(q.y-p.y)**2<distance2)return true;
+    }
+    return false;
+  };
+  const reserve=p=>{const [x,y]=cell(p),k=key(x,y),points=cells.get(k);if(points)points.push(p);else cells.set(k,[p]);};
+  return {near,reserve,take(p,force=false){if(!force&&near(p))return false;reserve(p);return true;}};
+}
+function vertexIndicesInBounds(ctx,bounds){
+  const result=[],ring=ctx.ring,n=ctx.fechado?ring.length-1:ring.length;
+  // Box selection must include vertices whose overlapping glyph is hidden.
+  for(let vi=0;vi<n;vi++){
+    const p=ring[vi];if(!Array.isArray(p)||!Number.isFinite(p[0])||!Number.isFinite(p[1]))continue;
+    const w=toWGS(ctx.L.crs,p[0],p[1]);
+    if(Number.isFinite(w[0])&&Number.isFinite(w[1])&&bounds.contains([w[1],w[0]]))result.push(vi);
+  }
+  return result;
+}
 function showVertices(){
   clearVertices(); if(!S.selFeat){toast('Selecione uma feição (ferramenta ◈)');return;}
   const {layer:L,idx,partIdx}=S.selFeat; const f=L.features[idx]; if(!f) return;
+  if(String(L.id)!==String(S.activeId)||L.locked)return;
   if(!collabCanEditLayer(L,true))return;
   GeoMineVertexHandles.beginLegacy(L,f,idx);
   // Em multipartes, edita exatamente o anel clicado, não o primeiro por acaso.
@@ -509,7 +539,43 @@ function showVertices(){
   S._vtxSelDona={L,f};
   S._vtxSelPreserve=false;
   const sel=S._vtxSel,marks=[];
-  S._vtxCtx={L,f,ring,fechado,marks,sincronizaFecho};
+  const dragFrames=[];
+  S._vtxCtx={L,f,ring,fechado,marks,sincronizaFecho,dragFrames};
+  // Long drainage features may span kilometres. DOM handles outside the
+  // viewport cost layout/paint time without being usable; retain all source
+  // vertices and rebuild just their visible handles after pan/zoom.
+  const visibleBounds=ring.length>500?map.getBounds().pad(.15):null;
+  const handleVisible=w=>!visibleBounds||visibleBounds.contains([w[1],w[0]]);
+  const density=visibleBounds?vertexHandleDensity(S.touch?14:10):null,
+    midDensity=visibleBounds?vertexHandleDensity(S.touch?14:10):null,
+    positions=visibleBounds?new Map():null,retained=new Set();
+  const position=vi=>{
+    if(positions?.has(vi))return positions.get(vi);
+    const pt=ring[vi],w=Array.isArray(pt)&&Number.isFinite(pt[0])&&Number.isFinite(pt[1])?toWGS(L.crs,pt[0],pt[1]):null;
+    const value=w&&Number.isFinite(w[0])&&Number.isFinite(w[1])&&handleVisible(w)?{w,px:density?map.latLngToContainerPoint([w[1],w[0]]):null}:null;
+    positions?.set(vi,value);return value;
+  };
+  if(density){
+    // Seed selected vertices and open-line endpoints before other handles.
+    // Zooming in reveals every remaining vertex at its original location.
+    retained.add(0);if(L.gtype==='line'&&!fechado)retained.add(nVertices()-1);
+    for(const vi of sel)if(vi>=0&&vi<nVertices())retained.add(vi);
+    for(const vi of retained){const p=position(vi);if(p)density.reserve(p.px);}
+  }
+  if(visibleBounds){
+    const ctx=S._vtxCtx;
+    ctx.refreshVisible=()=>{
+      if(S._vtxCtx!==ctx||S._vtxDragging)return;
+      S._vtxSelPreserve=true;showVertices();
+    };
+    map.on('moveend zoomend',ctx.refreshVisible);
+  }
+  const frame=apply=>{
+    const job=GeoMineVertexHandles.dragFrame(ev=>{
+      if(S._vtxCtx?.f!==f||!S._vtxDragging||!collabCanEditLayer(L,false))return;
+      apply(ev);
+    });dragFrames.push(job);return job;
+  };
   /* Os "+" de inserir ficam no MEIO de cada segmento e eram calculados uma
      vez, na montagem. Arrastando um vértice, os dois "+" vizinhos continuavam
      no lugar antigo — sobrava um sinal solto atrás da linha. Agora eles somem
@@ -527,8 +593,8 @@ function showVertices(){
     if(dv)dv.className=sel.has(vi2)?'vtx-sel':'vtx';
   };
   ring.slice(0,nVertices()).forEach((pt,vi)=>{
-    const w=toWGS(L.crs,pt[0],pt[1]);
-    if(!Number.isFinite(w[0])||!Number.isFinite(w[1]))return;   // vértice ilegível: não derruba a edição
+    const p=position(vi);if(!p)return;
+    const w=p.w;if(density&&!retained.has(vi)&&!density.take(p.px))return;
     const mk=L2.marker([w[1],w[0]],{draggable:true,zIndexOffset:GeoMineVertexHandles.priority('vertex'),icon:GeoMineVertexHandles.icon('vertex',sel.has(vi))}).addTo(S.vtxLayer);
     marks.push({mk,vi});
     mk.on('click',ev=>{
@@ -560,8 +626,8 @@ function showVertices(){
       /* um vértice só: guias paralela/perpendicular a partir dos vizinhos */
       if(!grupo&&window.GeoMineVertexGuides)GeoMineVertexGuides.begin(L,ring,vi,fechado);
     });
-    mk.on('drag',ev=>{
-      let ll=ev.target.getLatLng();
+    const moveFrame=frame(ev=>{
+      let ll=ev.latlng;
       const ro={anchor:orthoOrigin,crs:L.crs,ignore:L,exclude:new Set([f]),snap:!grupo};
       ll=(!grupo&&window.GeoMineVertexGuides?GeoMineVertexGuides.resolve(ll,ro):GeoMineOrtho.resolve(ll,ro)).latlng;
       ev.target.setLatLng(ll);
@@ -583,14 +649,16 @@ function showVertices(){
         sincronizaFecho(vi);
       }
       if(typeof rb31PosEdicao==='function')rb31PosEdicao(L,f);
-      drawVertexFeature(L,f);
+      drawVertexFeature(L,f,grupo?undefined:{ring,indices:fechado&&vi===0?[0,ring.length-1]:[vi]});
       try{ if(selHL){map.removeLayer(selHL);selHL=null;} }catch(e){}
       /* Limites paramétricos, como o da cava, atualizam seus derivados
          durante o arraste (com debounce), não apenas depois de soltar. */
       if(typeof cavaLiveSync==='function')cavaLiveSync({sourceLayer:L,sourceFeature:f});
       if(typeof projecaoLiveSync==='function')projecaoLiveSync(false);
     });
+    mk.on('drag',ev=>moveFrame.push({target:ev.target,latlng:ev.target.getLatLng()}));
     mk.on('dragend',()=>{
+      moveFrame.flush();
       S._vtxDragging=false;
       orthoOrigin=null;
       window.GeoMineVertexGuides?.end();
@@ -640,6 +708,8 @@ function showVertices(){
       else if(a.length>2)mid.push(a[2]);
       else if(b.length>2)mid.push(b[2]);
       const w=toWGS(L.crs,mid[0],mid[1]);
+      if(!Number.isFinite(w[0])||!Number.isFinite(w[1])||!handleVisible(w))continue;
+      if(midDensity){const px=map.latLngToContainerPoint([w[1],w[0]]);if(density.near(px)||!midDensity.take(px))continue;}
       const mk=L2.marker([w[1],w[0]],{draggable:true,zIndexOffset:GeoMineVertexHandles.priority('mid'),
         title:'Inserir vértice aqui (toque) · arraste para já posicionar',
         icon:GeoMineVertexHandles.icon('mid')}).addTo(S.vtxLayer);
@@ -663,18 +733,22 @@ function showVertices(){
         if(fechado)ring[ring.length-1]=ring[0].slice();
       };
       mk.on('dragstart',()=>{S._vtxDragging=true;inserir();midsVisiveis(false);const el=mk.getElement();if(el)el.style.display='';});
-      mk.on('drag',ev=>{
+      const moveFrame=frame(ev=>{
         inserir();movido=true;
-        let ll=ev.target.getLatLng();
+        let ll=ev.latlng;
         ll=GeoMineOrtho.resolve(ll,{anchor:GeoMineOrtho.latlng(L.crs,mid),crs:L.crs,ignore:L,exclude:new Set([f])}).latlng;
         ev.target.setLatLng(ll);
         const c=fromWGS(L.crs,ll.lng,ll.lat);
         const zm=(ring[novoIdx]&&ring[novoIdx].length>2)?ring[novoIdx][2]:undefined;
         ring[novoIdx]=(zm!==undefined)?[c[0],c[1],zm]:[c[0],c[1]];
         if(fechado)ring[ring.length-1]=ring[0].slice();
-        atualizaEdicao(false);
+        drawVertexFeature(L,f,{ring,indices:[novoIdx]});
+        try{if(selHL){map.removeLayer(selHL);selHL=null;}}catch(_){}
+        if(typeof cavaLiveSync==='function')cavaLiveSync({sourceLayer:L,sourceFeature:f});
       });
+      mk.on('drag',ev=>moveFrame.push({target:ev.target,latlng:ev.target.getLatLng()}));
       mk.on('dragend',()=>{
+        moveFrame.flush();
         S._vtxDragging=false;
         if(!inserido)return;
         if(typeof rb31PosEdicao==='function')rb31PosEdicao(L,f);
@@ -722,9 +796,9 @@ function showVertices(){
       if(typeof rb31EmpilhaEdicao==='function')rb31EmpilhaEdicao(L,f);
       base={c0:[cx,cy],orig:pts.map(p=>p.slice())};
     });
-    mkM.on('drag',ev=>{
+    const moveFrame=frame(ev=>{
       if(!base) return;
-      const ll=GeoMineOrtho.resolve(ev.target.getLatLng(),{anchor:GeoMineOrtho.latlng(L.crs,base.c0),crs:L.crs,snap:false}).latlng;
+      const ll=GeoMineOrtho.resolve(ev.latlng,{anchor:GeoMineOrtho.latlng(L.crs,base.c0),crs:L.crs,snap:false}).latlng;
       ev.target.setLatLng(ll);
       const c2=fromWGS(L.crs,ll.lng,ll.lat);
       const dx=c2[0]-base.c0[0], dy=c2[1]-base.c0[1];
@@ -735,7 +809,9 @@ function showVertices(){
       if(typeof cavaLiveSync==='function')cavaLiveSync({sourceLayer:L,sourceFeature:f});
       if(typeof projecaoLiveSync==='function')projecaoLiveSync(false);
     });
+    mkM.on('drag',ev=>moveFrame.push({target:ev.target,latlng:ev.target.getLatLng()}));
     mkM.on('dragend',()=>{
+      moveFrame.flush();
       S._vtxDragging=false;
       const moveu=!!base; base=null;
       if(!moveu) return;
@@ -774,9 +850,7 @@ function rb17ArmaCaixaSelecao(){
     const ctx=S._vtxCtx;
     if(!ctx||!S._vtxSel)return;
     let n=0;
-    for(const m2 of ctx.marks){
-      if(b.contains(m2.mk.getLatLng())){S._vtxSel.add(m2.vi);n++;}
-    }
+    for(const vi of vertexIndicesInBounds(ctx,b)){S._vtxSel.add(vi);n++;}
     if(n){S._vtxSelPreserve=true;showVertices();
       toast(n+' vértice(s) na seleção — arraste qualquer um deles para mover o grupo');}
   };

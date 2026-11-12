@@ -1,0 +1,71 @@
+{
+  "file": "ortofoto_area10.tif",
+  "bytes": 1054550398,
+  "readBytes": 0,
+  "requests": 0,
+  "errors": [],
+  "physicalIpad": false,
+  "import": {
+    "native": [
+      62992,
+      46709
+    ],
+    "preview": [
+      1349,
+      1000
+    ],
+    "gsd": 0.039499999999996434,
+    "nativeSelected": true,
+    "exactNativeSamples": 80,
+    "stats": {
+      "hits": 2,
+      "misses": 1016,
+      "deduplicated": 0,
+      "evictions": 1011,
+      "reads": 3,
+      "aborted": 21,
+      "errors": 1,
+      "imagesPrepared": 2,
+      "sampledReads": 3,
+      "sampledBlocks": 1012,
+      "sampledValues": 5661072,
+      "memoryRejected": 0,
+      "bytes": 32251904,
+      "budgetBytes": 33554432,
+      "readBudgetBytes": 33554432,
+      "entries": 4,
+      "inFlight": 0,
+      "queued": 8,
+      "active": 1,
+      "activeBytes": 27243300,
+      "activeEstimatedBytes": 27243300,
+      "readBudgetIsEstimate": true,
+      "concurrency": 2,
+      "mobile": true,
+      "hardReadBudgetBytes": 33554432,
+      "hardBlockBytes": 8388608
+    },
+    "reader": {
+      "hits": 953,
+      "misses": 262,
+      "deduplicated": 0,
+      "physicalReads": 262,
+      "readBytes": 1087470714,
+      "maxActive": 2,
+      "blockBytes": 4194304,
+      "androidBlockBytes": 524288,
+      "maxBytes": 16777216,
+      "cacheBytes": 14363006,
+      "cacheBlocks": 4,
+      "pendingBlocks": 0,
+      "queued": 0,
+      "active": 0,
+      "maxConcurrent": 2,
+      "rangeBytes": 0,
+      "rangeBudgetBytes": 16777216,
+      "mobile": true
+    }
+  },
+  "elapsedMs": 967967,
+  "passed": true
+}

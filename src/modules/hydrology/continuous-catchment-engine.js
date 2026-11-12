@@ -1,0 +1,119 @@
+/* Native-grid least-cost drainage. Elevations are never filled or carved.
+   Process from known boundary outlets toward the interior in elevation order;
+   unresolved pits use the discovery path, while downhill cells use D8 slopes.
+   A point query expands its native window until the upstream mask is interior
+   and unchanged in a larger window. Never return a clipped, unstable basin. */
+(function(root){
+'use strict';
+const N=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+const abort=()=>Object.assign(Error('Cálculo cancelado.'),{name:'AbortError'});
+async function routeWindow(source,window,options={}){
+  const [left,top,right,bottom]=window,W=right-left,H=bottom-top,total=W*H,cs=source.cs,cy=source.csy||cs,
+    maxBytes=(options.maxMemoryMB||96)*1048576,cellBytes=source.float32?4:8;
+  if(total*(cellBytes+1.125)>maxBytes*.83)throw Error('A bacia ainda exige uma área maior de análise na resolução nativa. A memória disponível não permite concluí-la neste aparelho; nenhum resultado parcial foi salvo.');
+  const z=source.float32?new Float32Array(total):new Float64Array(total),state=new Uint8Array(total),
+    weight=N.map(([x,y])=>1/Math.hypot(x*cs,y*cy));
+  let last=Date.now(),lastProgress=0,processed=0,valid=0,heap=new Uint32Array(4096),size=0,peak=0;
+  const check=()=>{if(options.signal?.aborted||source.isCurrent&&source.isCurrent()===false)throw abort();};
+  const pause=async(phase,extra={})=>{check();const now=Date.now();if(now-lastProgress>100){lastProgress=now;options.onProgress?.({phase,processed,total,...extra});}
+    if(now-last>12){await new Promise(r=>setTimeout(r,0));last=Date.now();check();}};
+  const less=(a,b)=>z[a]<z[b]||(z[a]===z[b]&&a<b);
+  function push(i){
+    if(size===heap.length){const capacity=heap.length*2;if(total*(cellBytes+1.125)+capacity*4+heap.byteLength>maxBytes)throw Error('A continuidade do escoamento excedeu a memória disponível. Nenhuma área parcial foi salva.');const next=new Uint32Array(capacity);next.set(heap);heap=next;}
+    let p=size++;while(p){const parent=(p-1)>>1;if(!less(i,heap[parent]))break;heap[p]=heap[parent];p=parent;}heap[p]=i;peak=Math.max(peak,size);
+  }
+  function pop(){const first=heap[0],v=heap[--size];let p=0;while(p*2+1<size){let c=p*2+1;if(c+1<size&&less(heap[c+1],heap[c]))c++;if(!less(heap[c],v))break;heap[p]=heap[c];p=c;}if(size)heap[p]=v;return first;}
+  // Narrow native windows also keep uncompressed scanline TIFFs below mobile
+  // decoder budgets. No width/height request or overview is permitted.
+  for(let y=top;y<bottom;y+=32)for(let x=left;x<right;x+=4096){
+    const x1=Math.min(right,x+4096),y1=Math.min(bottom,y+32),values=await source.readWindow([x,y,x1,y1]);check();
+    if(values.length!==(x1-x)*(y1-y))throw Error('Bloco incompleto do MDT original.');
+    for(let r=y;r<y1;r++)for(let c=x;c<x1;c++){
+      const v=values[(r-y)*(x1-x)+c-x],i=(r-top)*W+c-left;
+      if(Number.isFinite(v)&&(source.noData==null||v!==source.noData)){
+        if(source.float32&&Math.fround(v)!==v)throw Error('A precisão das cotas não corresponde à fonte Float32.');z[i]=v;valid++;
+      }else{z[i]=NaN;state[i]=73;}
+    }
+    await pause('read',{readRows:y-top});
+  }
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const i=y*W+x;if(state[i]&64)continue;
+      let edge=x===0||y===0||x===W-1||y===H-1;
+      if(!edge)for(const [dx,dy]of N)if((state[(y+dy)*W+x+dx]&15)===9){edge=true;break;}
+      if(edge){state[i]=32;push(i);}
+    }
+    if((y&31)===0)await pause('outlets');
+  }
+  while(size){
+    const i=pop(),x=i%W,y=Math.floor(i/W),v=z[i];state[i]|=64;processed++;
+    let best=0,dir=state[i]&15;
+    // Only processed receivers are eligible, so even routed depressions form
+    // an acyclic graph. On ordinary slopes this is exactly steepest-descent D8.
+    for(let j=0;j<8;j++){
+      const [dx,dy]=N[j],a=x+dx,b=y+dy;if(a<0||b<0||a>=W||b>=H)continue;
+      const k=b*W+a;if((state[k]&15)===9)continue;
+      if(state[k]&64){const slope=(v-z[k])*weight[j];if(slope>best){best=slope;dir=j+1;}}
+    }
+    state[i]=(state[i]&~15)|dir;
+    for(let j=0;j<8;j++){
+      const [dx,dy]=N[j],a=x+dx,b=y+dy;if(a<0||b<0||a>=W||b>=H)continue;
+      const k=b*W+a;if(state[k]&(32|64))continue;
+      state[k]=32+((j+4)%8+1);push(k);
+    }
+    if((processed&16383)===0)await pause('routing');
+  }
+  check();
+  const seed=options.seed,x=seed.col-left,y=seed.row-top,start=y*W+x;
+  if(x<0||y<0||x>=W||y>=H||(state[start]&15)===9)throw Error('O ponto está fora da área válida do MDT original.');
+  const seedZ=z[start],queue=new Uint32Array(z.buffer,0,total),mask=new Uint8Array(Math.ceil(total/8));
+  let a=0,b=1,edge=false,noData=false,crop=false,hash1=0,hash2=0,bounds=[x,y,x,y];queue[0]=start;mask[start>>3]|=1<<(start&7);
+  while(a<b){
+    const i=queue[a++],x=i%W,y=Math.floor(i/W),gx=x+left,gy=y+top,k=gy*source.nc+gx;
+    hash1=(hash1+Math.imul(k^0x9e3779b9,0x85ebca6b))>>>0;hash2=(hash2^Math.imul(k^k>>>16,0xc2b2ae35))>>>0;
+    edge=edge||gx===0||gy===0||gx===source.nc-1||gy===source.nr-1;
+    crop=crop||(left>0&&x<=1)||(top>0&&y<=1)||(right<source.nc&&x>=W-2)||(bottom<source.nr&&y>=H-2);
+    bounds[0]=Math.min(bounds[0],x);bounds[1]=Math.min(bounds[1],y);bounds[2]=Math.max(bounds[2],x);bounds[3]=Math.max(bounds[3],y);
+    for(let j=0;j<8;j++){
+      const [dx,dy]=N[j],xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=W||yy>=H)continue;
+      const n=yy*W+xx,d=state[n]&15;if(d===9){noData=true;continue;}
+      if(d!==((j+4)%8+1)||(mask[n>>3]&(1<<(n&7))))continue;
+      mask[n>>3]|=1<<(n&7);queue[b++]=n;
+    }
+    if((a&16383)===0)await pause('upstream',{cells:b});
+  }
+  return {window,W,H,mask,cells:b,seedZ,hash:hash1+':'+hash2,crop,touchesEdge:edge,touchesNoData:noData,bounds,valid,
+    memoryBytes:total*(cellBytes+1)+mask.byteLength+heap.byteLength,heapPeak:peak};
+}
+async function analyze(source,options={}){
+  if(!Number.isSafeInteger(source.nc)||source.nc<1||!Number.isSafeInteger(source.nr)||source.nr<1||
+    ![source.cs,source.csy??source.cs,source.unitScale??1].every(v=>Number.isFinite(v)&&v>0)||
+    ![source.xll,source.yll].every(Number.isFinite))throw Error('Georreferenciamento do MDT inválido.');
+  const seed=options.seed;if(!seed||!Number.isInteger(seed.col)||!Number.isInteger(seed.row)||seed.col<0||seed.row<0||seed.col>=source.nc||seed.row>=source.nr)throw Error('O ponto está fora do MDT.');
+  let radius=Math.max(64,Math.ceil((options.initialRadiusM||64)/Math.min(source.cs,source.csy||source.cs)/(source.unitScale||1))),previous=null,round=0;
+  for(;;){
+    const w=[Math.max(0,seed.col-radius),Math.max(0,seed.row-radius),Math.min(source.nc,seed.col+radius+1),Math.min(source.nr,seed.row+radius+1)],full=w[0]===0&&w[1]===0&&w[2]===source.nc&&w[3]===source.nr;
+    const r=await routeWindow(source,w,{...options,onProgress:p=>options.onProgress?.({...p,round,window:w})});
+    const stable=previous&&previous.cells===r.cells&&previous.hash===r.hash;
+    if(!r.crop&&(full||stable)){
+      const g={...source,nc:r.W,nr:r.H,xll:source.xll+w[0]*source.cs,yll:source.yll+(source.nr-w[3])*(source.csy||source.cs)},
+        c=root.GeoMineNativeFloodEngine.createCellMask(g,options);
+      try{
+        for(let y=r.bounds[1];y<=r.bounds[3];y++){
+          for(let x=r.bounds[0];x<=r.bounds[2];x++){const i=y*r.W+x;if(r.mask[i>>3]&(1<<(i&7))){const p=c.address(x,y,true);c.setBit(c.mask(p.tile,'wet'),p.index);}}
+          if((y&31)===0)await c.checkpoint();
+        }
+        c.progress('contour',{cells:r.cells},true);const geometry=await root.GeoMineNativeFloodEngine.traceCellMask(c);c.abort();
+        return {...geometry,cells:r.cells,areaM2:r.cells*c.areaCell,seed:{...seed},seedZ:r.seedZ,
+          outlet:[source.xll+(seed.col+.5)*source.cs,source.yll+(source.nr-seed.row-.5)*(source.csy||source.cs)],
+          nativeResolution:true,filled:false,continuous:true,stable:true,rounds:round+1,window:w,
+          touchesEdge:r.touchesEdge,touchesNoData:r.touchesNoData,resolution:{x:c.cs*c.unitScale,y:c.csy*c.unitScale},memoryPeakBytes:r.memoryBytes+c.stats.memoryPeakBytes};
+      }finally{c.dispose();}
+    }
+    previous={cells:r.cells,hash:r.hash};r.mask=null;round++;radius=Math.ceil(radius*(r.crop?1.5:1.25));
+    options.onProgress?.({phase:'expand',round,cells:r.cells});
+    await new Promise(resolve=>setTimeout(resolve,0));
+  }
+}
+root.GeoMineContinuousCatchment={analyze,routeWindow};
+})(typeof window!=='undefined'?window:globalThis);

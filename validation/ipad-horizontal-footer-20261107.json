@@ -1,0 +1,12 @@
+{
+  "checks": [
+    "Visible horizontal thumb scrolls long titles all the way to their ending by finger drag",
+    "1366/1024/768px: one footer row, all tool icons fit, no command input or mode selector, automatic performance profile",
+    "Final layer can scroll completely above the footer and remains selectable",
+    "Icon-only theme toggle still changes the theme",
+    "Single small button below 2D completes polyline; another idle tap clears selection"
+  ],
+  "errors": [],
+  "physicalIpad": false,
+  "passed": true
+}

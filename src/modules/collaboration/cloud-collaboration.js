@@ -47,6 +47,7 @@ const LAYER_KEYS=[
   '_cavaMdtCutOf','_cavaMdtRasterId','_cavaMdtCutUp','_cava2Target','_cava2DesignId',
   '_cava2Kind','_cava2Engine','_cava2CutOf','_cava2MdtId','_cava2CutSnapshotOf',
   '_cava2CutSnapshotId','_cava2CutZ','_cava2SnapshotRole','_baciaTopoVersion',
+  '_cava2Role','_cava2CutFillOf','_cava2CutFinalized','_cava2IntersectionPreview','_cava2Managed',
   '_containerCount','_geology','_channelLink'
 ];
 

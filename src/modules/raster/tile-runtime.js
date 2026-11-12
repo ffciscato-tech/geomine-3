@@ -2,6 +2,9 @@
    GEOTIFF — REUTILIZAÇÃO LIMITADA DE BLOCOS E FILA DE LEITURA
 
    prepareImage(im) instala cache LRU externo de strips/tiles decodificados.
+   No tablet, também protege readRasters chamado diretamente: a biblioteca
+   aloca a janela nativa antes de pedir o primeiro bloco. Todas as leituras
+   da imagem preparada passam pelo mesmo orçamento e pela mesma fila.
    O orçamento é global: ortofotos e MDTs disputam o mesmo limite. Não usar
    im.tiles={}, pois o cache interno da biblioteca não tem limite e consulta
    a fonte antes de conferir o cache. A chave não inclui estilo/contraste.
@@ -16,8 +19,11 @@
    seus blocos completos. Downsampling suportado visita apenas os blocos e
    pixels usados pela saída, sem construir a janela em resolução nativa.
    canReadResampled(im,options) permite manter fallback limitado em loaders.
-   Essa estimativa não é teto de RAM total: buffers da
-   fonte e resultados ativos existem além das alocações estimadas.
+   No tablet, leituras acima de 32 MiB de trabalho são recusadas ANTES da
+   alocação, inclusive quando a fila está vazia. Cada bloco admite até
+   8 MiB decodificados/compactados e 32 MiB de trabalho (3×decode + 2×fonte).
+   Esses limites não são teto de RAM total: cache, imagens exibidas e outros
+   módulos continuam existentes. A resolução nunca é reduzida pelo guard.
    isCurrent=false ou AbortSignal abortado rejeita com AbortError, sem cancelar
    a leitura de um bloco compartilhado com outro tile ainda visível.
    control.nearestFloor=true conserva exclusivamente a amostragem floor do
@@ -35,15 +41,67 @@ if(window.GeoMineTileRuntime)return;
 const MiB=1024*1024;
 const nav=typeof navigator==='object'?navigator:{};
 const mobile=/Android|iPhone|iPad|iPod/i.test(nav.userAgent||'')||
-  (/Mac/i.test(nav.platform||'')&&Number(nav.maxTouchPoints)>1);
+  (/Mac/i.test((nav.platform||'')+' '+(nav.userAgent||''))&&Number(nav.maxTouchPoints)>1);
+const MOBILE_READ_BYTES=32*MiB,MOBILE_BLOCK_BYTES=8*MiB;
 let budgetBytes=(mobile?32:96)*MiB;
 let readBudgetBytes=(mobile?32:96)*MiB;
 let concurrency=2,bytes=0,active=0,activeBytes=0,imageSeq=0,jobSeq=0;
-const prepared=new WeakMap(),tiffs=new WeakMap(),resolved=new Map(),inFlight=new Map(),queue=[];
+const prepared=new WeakMap(),nativeReaders=new WeakMap(),memoryInfo=new WeakMap(),tiffs=new WeakMap(),resolved=new Map(),inFlight=new Map(),queue=[];
 const counters={hits:0,misses:0,deduplicated:0,evictions:0,reads:0,aborted:0,errors:0,imagesPrepared:0,
-  sampledReads:0,sampledBlocks:0,sampledValues:0};
+  sampledReads:0,sampledBlocks:0,sampledValues:0,memoryRejected:0};
 
 function abortError(){const error=new Error('Leitura de tile não é mais necessária.');error.name='AbortError';return error;}
+function checkMobileBytes(size,limit,part){
+  if(!mobile||Number.isSafeInteger(size)&&size>=0&&size<=limit)return;
+  counters.memoryRejected++;
+  const error=new RangeError('GeoTIFF: '+part+' excede o limite de '+(limit/MiB)+' MiB deste dispositivo. A leitura foi interrompida sem reduzir a resolução.');
+  error.code='RASTER_MEMORY_LIMIT';error.estimatedBytes=size;error.limitBytes=limit;throw error;
+}
+function sampleMemoryBytes(im,sample){
+  const fd=im.fileDirectory||{},bits=Number(fd.BitsPerSample?.[sample]??fd.BitsPerSample?.[0]??8),
+    format=Number(fd.SampleFormat?.[sample]??fd.SampleFormat?.[0]??1);
+  // Float16 and packed integers use expanded output arrays in readRasters.
+  let size=format===3&&bits===16?4:bits<=8?1:bits<=16?2:bits<=32?4:Math.ceil(bits/8);
+  try{size=Math.max(size,Number(im.getSampleByteSize?.(sample))||0);}catch(_){}
+  return size;
+}
+function mobileImageMemory(im){
+  if(!mobile)return null;
+  if(memoryInfo.has(im))return memoryInfo.get(im);
+  const fd=im.fileDirectory||{},tw=Number(im.getTileWidth()),th=Number(im.getTileHeight()),
+    width=Number(im.getWidth()),height=Number(im.getHeight()),count=Number(im.getSamplesPerPixel()),
+    planar=Number(im.planarConfiguration??fd.PlanarConfiguration??1);
+  if(![tw,th,width,height,count].every(n=>Number.isSafeInteger(n)&&n>0))throw new RangeError('Dimensões GeoTIFF inválidas.');
+  checkMobileBytes(count*1024,1024*1024,'número de bandas do cabeçalho');
+  let pixelBytes=0;
+  for(let i=0;i<count;i++)pixelBytes=planar===2?Math.max(pixelBytes,sampleMemoryBytes(im,i)):pixelBytes+sampleMemoryBytes(im,i);
+  const decoded=tw*(fd.StripOffsets?Math.min(th,height):th)*pixelBytes,counts=fd.TileByteCounts||fd.StripByteCounts;
+  checkMobileBytes(decoded,MOBILE_BLOCK_BYTES,'bloco decodificado');
+  let maxCompressed=0;
+  if(counts!=null)for(let i=0,n=typeof counts==='number'?1:counts.length;i<n;i++){
+    const size=Number(typeof counts==='number'?counts:counts[i]);
+    checkMobileBytes(size,MOBILE_BLOCK_BYTES,'bloco compactado');maxCompressed=Math.max(maxCompressed,size);
+  }
+  checkMobileBytes(3*decoded+2*maxCompressed,MOBILE_READ_BYTES,'memória de trabalho do bloco');
+  const info={tw,th,width,height,planar,across:Math.ceil(width/tw),down:Math.ceil(height/th),counts,maxCompressed};
+  memoryInfo.set(im,info);return info;
+}
+function compressedWindowBytes(info,win,samples,baseBytes){
+  if(!info?.counts)return 0;
+  const x0=Math.max(0,Math.floor(win[0]/info.tw)),x1=Math.min(info.across,Math.ceil(win[2]/info.tw)),
+    y0=Math.max(0,Math.floor(win[1]/info.th)),y1=Math.min(info.down,Math.ceil(win[3]/info.th)),
+    planes=info.planar===2?samples:[0],count=Math.max(0,x1-x0)*Math.max(0,y1-y0)*planes.length;
+  // Bound Promise/decoder fan-out as well as byte buffers. Large resampled
+  // reads use the sequential sampler instead of this native-window path.
+  checkMobileBytes(count*1024,4*MiB,'quantidade de blocos simultâneos');
+  let compressed=0;
+  for(const sample of planes)for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+    const index=sample*info.across*info.down+y*info.across+x;
+    compressed+=Number(typeof info.counts==='number'?info.counts:info.counts[index]);
+    checkMobileBytes(baseBytes+2*compressed,Math.min(readBudgetBytes,MOBILE_READ_BYTES),'janela de leitura');
+  }
+  return compressed;
+}
 function touch(key,entry){resolved.delete(key);resolved.set(key,entry);}
 function evictTo(limit){
   while(bytes>limit&&resolved.size){
@@ -76,6 +134,7 @@ function prepareImage(im){
     if(signal&&signal.aborted)return Promise.reject(abortError());
     const planar=Number(im.planarConfiguration??im.fileDirectory?.PlanarConfiguration??1);
     const sourceSample=planar===1?0:sample;
+    try{mobileImageMemory(im);}catch(error){return Promise.reject(error);}
     const key=id+':'+x+':'+y+':'+sourceSample;
     const cached=resolved.get(key);
     if(cached){counters.hits++;touch(key,cached);return callerResult(Promise.resolve(cached.data),x,y,sample,signal);}
@@ -98,6 +157,13 @@ function prepareImage(im){
     });
     return callerResult(promise,x,y,sample,signal);
   };
+  if(mobile&&typeof im.readRasters==='function'){
+    /* Guardar o método original impede recursão quando execute sai da fila.
+       Envolver só getTileOrStrip seria tarde: readRasters já teria criado
+       a matriz da janela inteira antes de consultar o primeiro tile. */
+    nativeReaders.set(im,im.readRasters);
+    im.readRasters=function readBoundedRasters(options={}){return read(im,options);};
+  }
   prepared.set(im,id);counters.imagesPrepared++;return im;
 }
 
@@ -176,7 +242,7 @@ function sampledPlan(im,options){
     if(win.length!==4||!Array.from(win).every(Number.isSafeInteger))return null;
     const sw=win[2]-win[0],sh=win[3]-win[1],width=options.width,height=options.height;
     if(![sw,sh,width,height].every(n=>Number.isSafeInteger(n)&&n>0)||
-      width>sw||height>sh||(width===sw&&height===sh))return null;
+      width>sw||height>sh||(!mobile&&width===sw&&height===sh))return null;
     const method=options.resampleMethod===undefined?'nearest':options.resampleMethod;
     if(typeof method!=='string'||!['nearest','bilinear','linear'].includes(method.toLowerCase()))return null;
     const fd=im.fileDirectory,planar=Number(im.planarConfiguration??fd?.PlanarConfiguration??1);
@@ -207,14 +273,29 @@ function sampledPlan(im,options){
        cancelamento entre blocos/linhas; acima disso, nunca ampliar os planos
        de pixels em comparação com a leitura nativa seguida de resample. */
     if(linear&&outputBytes>2*MiB&&4*width*height>sw*sh)return null;
-    const blockBytes=tw*th*Math.max(...strides);
+    const expandedPixel=planar===1?Array.from({length:count},(_,s)=>sampleMemoryBytes(im,s)).reduce((a,b)=>a+b,0)
+      :Math.max(...samples.map(s=>sampleMemoryBytes(im,s)));
+    const blockBytes=tw*th*Math.max(...strides,expandedPixel);
     const estimatedBytes=outputBytes*(linear?5:1)+blockBytes+(width+height)*(linear?160:80);
     if(!Number.isSafeInteger(estimatedBytes))return null;
     return {win:Array.from(win),iw,ih,tw,th,sw,sh,width,height,samples,interleave,types,strides,offsets,readers,
-      linear,planar,decoder,estimatedBytes};
+      linear,planar,decoder,estimatedBytes,blockBytes};
   }catch(_){return null;}
 }
 function canReadResampled(im,options={}){return !!sampledPlan(im,options);}
+/* Size only the display overview, before allocating its canvas/planes. Wide
+   RGBA strips can fit individually while their full preview exceeds 32 MiB. */
+function previewSize(im,width,height){
+ if(!mobile)return {width,height};const info=mobileImageMemory(im),samples=Array.from({length:Math.min(4,im.getSamplesPerPixel())},(_,i)=>i);
+ for(let i=0;i<40;i++){
+  const options={samples,window:[0,0,im.getWidth(),im.getHeight()],width,height,resampleMethod:'nearest'},plan=sampledPlan(im,options);
+  if(!plan)return {width,height};const estimated=estimateReadBytes(im,options,plan,info);
+  if(estimated<=Math.min(readBudgetBytes,MOBILE_READ_BYTES))return {width,height};
+  if(width<=2&&height<=2){checkMobileBytes(estimated,Math.min(readBudgetBytes,MOBILE_READ_BYTES),'prévia');}
+  width=Math.max(2,Math.floor(width*.9));height=Math.max(2,Math.floor(height*.9));
+ }
+ throw new RangeError('Não foi possível preparar uma prévia dentro do orçamento de memória.');
+}
 function sampledAxis(nativeSize,outSize,start,blockSize,imageSize,linear,nearestFloor){
   const groups=new Map(),fractions=linear?new Float64Array(outSize):null,scale=nativeSize/outSize;
   for(let out=0;out<outSize;out++){
@@ -315,16 +396,13 @@ async function readSampled(job){
   }
   result.width=p.width;result.height=p.height;return result;
 }
-function estimateReadBytes(im,options,sampled){
-  if(sampled)return sampled.estimatedBytes;
+function estimateReadBytes(im,options,sampled,info){
+  if(sampled)return sampled.estimatedBytes+(mobile?2*sampled.blockBytes+2*(info?.maxCompressed||0):0);
   const win=options.window||[0,0,im.getWidth?.()||0,im.getHeight?.()||0];
   const width=Math.max(0,Number(win[2])-Number(win[0])),height=Math.max(0,Number(win[3])-Number(win[1]));
   const fd=im.fileDirectory||{},count=Number(im.getSamplesPerPixel?.()||fd.SamplesPerPixel)||1;
   const samples=options.samples&&options.samples.length?options.samples:Array.from({length:count},(_,i)=>i);
-  const sampleBytes=samples.map(sample=>{
-    try{const n=Number(im.getSampleByteSize?.(sample));if(n>0)return n;}catch(_){}
-    return Math.ceil(Number(fd.BitsPerSample?.[sample]||fd.BitsPerSample?.[0]||8)/8);
-  });
+  const sampleBytes=samples.map(sample=>sampleMemoryBytes(im,sample));
   const pixelBytes=options.interleave?Math.max(...sampleBytes)*samples.length:sampleBytes.reduce((sum,n)=>sum+n,0);
   const raw=width*height*pixelBytes;
   const outWidth=Number(options.width)||width,outHeight=Number(options.height)||height;
@@ -344,17 +422,20 @@ function estimateReadBytes(im,options,sampled){
         const planar=Number(im.planarConfiguration??fd.PlanarConfiguration??1);
         let blockPixelBytes=sampleBytes.reduce((sum,n)=>sum+n,0);
         if(planar===1){
-          blockPixelBytes=Number(im.getBytesPerPixel?.())||0;
-          if(!(blockPixelBytes>0))for(let sample=0;sample<count;sample++){
-            blockPixelBytes+=Math.ceil(Number(fd.BitsPerSample?.[sample]||fd.BitsPerSample?.[0]||8)/8);
-          }
+          blockPixelBytes=0;
+          for(let sample=0;sample<count;sample++)blockPixelBytes+=sampleMemoryBytes(im,sample);
+          blockPixelBytes=Math.max(blockPixelBytes,Number(im.getBytesPerPixel?.())||0);
         }
         blocks=nx*ny*tw*th*blockPixelBytes;
       }
     }catch(_){blocks=0;}
   }
-  const total=raw+output+blocks;
-  return Number.isFinite(total)?Math.max(0,total):readBudgetBytes;
+  let total=raw+output+(mobile?3:1)*blocks;
+  if(mobile){
+    checkMobileBytes(total,Math.min(readBudgetBytes,MOBILE_READ_BYTES),'janela de leitura');
+    total+=2*compressedWindowBytes(info,win,samples,total);
+  }
+  return Number.isFinite(total)?Math.max(0,total):mobile?Infinity:readBudgetBytes;
 }
 function yieldToBrowser(){
   try{if(window.scheduler&&typeof window.scheduler.yield==='function')return window.scheduler.yield();}catch(_){}
@@ -371,7 +452,8 @@ async function execute(job){
     /* A leitura em voo pode compartilhar strips com outros tiles. Apenas
        descartamos seu resultado quando obsoleta; não abortamos esse trabalho. */
     const readOptions={...job.options};delete readOptions.signal;
-    const result=job.sampled?await readSampled(job):await job.im.readRasters(readOptions);
+    const nativeRead=nativeReaders.get(job.im)||job.im.readRasters;
+    const result=job.sampled?await readSampled(job):await nativeRead.call(job.im,readOptions);
     if(!current(job))throw abortError();
     job.resolve(result);
   }catch(error){
@@ -382,9 +464,14 @@ async function execute(job){
 function drain(){
   /* Tiles retirados durante pan/zoom não devem ocupar a fila esperando decode. */
   for(let i=queue.length-1;i>=0;i--){if(!current(queue[i]))stale(queue.splice(i,1)[0]);}
+  if(mobile)for(let i=queue.length-1;i>=0;i--){
+    try{checkMobileBytes(queue[i].bytes,Math.min(readBudgetBytes,MOBILE_READ_BYTES),'janela de leitura');}
+    catch(error){queue.splice(i,1)[0].reject(error);}
+  }
   queue.sort((a,b)=>priorityOf(a)-priorityOf(b)||b.id-a.id);
   while(active<concurrency&&queue.length){
-    const index=queue.findIndex(job=>active===0||activeBytes+job.bytes<=readBudgetBytes);
+    const limit=mobile?Math.min(readBudgetBytes,MOBILE_READ_BYTES):readBudgetBytes;
+    const index=queue.findIndex(job=>(!mobile&&active===0)||activeBytes+job.bytes<=limit);
     if(index<0)break;
     const job=queue.splice(index,1)[0];execute(job);
   }
@@ -394,9 +481,10 @@ function read(im,options={},control={}){
     let image;
     try{image=prepareImage(im);if(typeof image.readRasters!=='function')throw new TypeError('Imagem sem readRasters.');}
     catch(error){reject(error);return;}
-    const sampled=sampledPlan(image,options);
+    const info=mobileImageMemory(image),sampled=sampledPlan(image,options),estimated=estimateReadBytes(image,options,sampled,info);
+    checkMobileBytes(estimated,Math.min(readBudgetBytes,MOBILE_READ_BYTES),'janela de leitura');
     const job={id:++jobSeq,im:image,options:{...options},sampled,isCurrent:control.isCurrent,nearestFloor:control.nearestFloor===true,
-      priority:control.priority,onProgress:control.onProgress,onPreviewBlock:control.onPreviewBlock,resolve,reject,bytes:estimateReadBytes(image,options,sampled)};
+      priority:control.priority,onProgress:control.onProgress,onPreviewBlock:control.onPreviewBlock,resolve,reject,bytes:estimated};
     if(!current(job)){stale(job);return;}
     queue.push(job);drain();
   });
@@ -410,6 +498,7 @@ function configure(options={}){
 function clear(){resolved.clear();bytes=0;return true;}
 function resetStats(){for(const key of Object.keys(counters))counters[key]=0;}
 function stats(){return {...counters,bytes,budgetBytes,readBudgetBytes,entries:resolved.size,inFlight:inFlight.size,
-  queued:queue.length,active,activeBytes,activeEstimatedBytes:activeBytes,readBudgetIsEstimate:true,concurrency,mobile};}
-window.GeoMineTileRuntime={version:2,prepareImage,overview,read,canReadResampled,configure,clear,resetStats,stats};
+  queued:queue.length,active,activeBytes,activeEstimatedBytes:activeBytes,readBudgetIsEstimate:true,concurrency,mobile,
+  hardReadBudgetBytes:mobile?Math.min(readBudgetBytes,MOBILE_READ_BYTES):null,hardBlockBytes:mobile?MOBILE_BLOCK_BYTES:null};}
+window.GeoMineTileRuntime={version:3,prepareImage,overview,read,canReadResampled,previewSize,configure,clear,resetStats,stats};
 })();

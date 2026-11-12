@@ -1,4 +1,12 @@
 .DS_Store
 *.tmp
 *.tmp.html
+__pycache__/
+node_modules/
+firebase-debug.log
+.firebase/
 
+# Saídas geradas por tools/build.py e tools/preparar_hosting.py.
+# São reproduzíveis a partir de src/ e conferidas pelo SHA-256 de CURRENT_RELEASE.json.
+dist/GeoMine.html
+public/index.html

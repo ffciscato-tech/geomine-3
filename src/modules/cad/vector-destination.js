@@ -187,7 +187,7 @@ function save(q,{features,fields=[],crs,name,targets=[]}){
     if(T){T.features=next;T.fields=schema;if(q.replace)channelEntries=pauseEditedChannels(T,targets,outputs);}
     else{
       const base=name||'Resultado';let unique=base,k=2;while(S.layers.some(L=>L.name===unique))unique=base+' ('+(k++)+')';
-      out=addLayer({name:unique,gtype:q.gtype,crs:to,features:next,fields:schema,color:q.source?.color??q.color});
+      out=addLayer({sourceLayer:q.source,name:unique,gtype:q.gtype,crs:to,features:next,fields:schema,color:q.source?.color??q.color});
       if(!out)throw Error('Não foi possível criar a camada.');
       if(q.source&&q.gtype===q.source.gtype)for(const k of ['sym','weight','fill','groupId','labelField','labelFields','lbl'])if(q.source[k]!==undefined)out[k]=clone(q.source[k]);
     }

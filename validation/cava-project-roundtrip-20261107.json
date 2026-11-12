@@ -1,0 +1,159 @@
+{
+  "objects": [
+    {
+      "k": "cava",
+      "z0": 0,
+      "H": 30,
+      "range": [
+        -30,
+        -20,
+        -20,
+        -10,
+        -10,
+        0
+      ],
+      "vertices": 18
+    },
+    {
+      "k": "cava#1",
+      "z0": -30,
+      "H": 40,
+      "range": [
+        -70,
+        -60,
+        -60,
+        -50,
+        -50,
+        -40,
+        -40,
+        -30
+      ],
+      "vertices": 35
+    }
+  ],
+  "core": [],
+  "published": [
+    {
+      "n": 5087,
+      "closed": false,
+      "maxResidual": 0.0000021319815459719393,
+      "p95": 3.4350603073107777e-7,
+      "props": {
+        "TIPO": "Interseção cava × terreno",
+        "BANCO": null,
+        "COTA": null,
+        "CLASSE": "rb31-inter",
+        "METODO": "superfície de projeto × MDT — amostragem por célula",
+        "TOPOLOGIA": "aberta",
+        "FID": 37,
+        "DESENHO": "Cava 1",
+        "DESIGN_ID": "cava2-mw73yz16-1",
+        "PROJETO": "Cava",
+        "ELEMENTO": "Interseção",
+        "MDT": "MDT_MorroVerde_18Maio26",
+        "ORIGEM": "Área 2D · Cava2 · interseção MDT"
+      }
+    },
+    {
+      "n": 2127,
+      "closed": false,
+      "maxResidual": 0.0000015254670415743021,
+      "p95": 2.971322601297288e-7,
+      "props": {
+        "TIPO": "Interseção cava × terreno",
+        "BANCO": null,
+        "COTA": null,
+        "CLASSE": "rb31-inter",
+        "METODO": "superfície de projeto × MDT — amostragem por célula",
+        "TOPOLOGIA": "aberta",
+        "FID": 38,
+        "DESENHO": "Cava 1",
+        "DESIGN_ID": "cava2-mw73yz16-1",
+        "PROJETO": "Cava",
+        "ELEMENTO": "Interseção",
+        "MDT": "MDT_MorroVerde_18Maio26",
+        "ORIGEM": "Área 2D · Cava2 · interseção MDT"
+      }
+    },
+    {
+      "n": 114,
+      "closed": true,
+      "maxResidual": 3.726925115188351e-7,
+      "p95": 1.646153577894438e-7,
+      "props": {
+        "TIPO": "Interseção cava × terreno",
+        "BANCO": null,
+        "COTA": null,
+        "CLASSE": "rb31-inter",
+        "METODO": "superfície de projeto × MDT — amostragem por célula",
+        "TOPOLOGIA": "fechada",
+        "FID": 39,
+        "DESENHO": "Cava 1",
+        "DESIGN_ID": "cava2-mw73yz16-1",
+        "PROJETO": "Cava",
+        "ELEMENTO": "Interseção",
+        "MDT": "MDT_MorroVerde_18Maio26",
+        "ORIGEM": "Área 2D · Cava2 · interseção MDT"
+      }
+    },
+    {
+      "n": 718,
+      "closed": true,
+      "maxResidual": 0.000002075387328659417,
+      "p95": 3.0474734558083583e-7,
+      "props": {
+        "TIPO": "Interseção cava × terreno",
+        "BANCO": null,
+        "COTA": null,
+        "CLASSE": "rb31-inter",
+        "METODO": "superfície de projeto × MDT — amostragem por célula",
+        "TOPOLOGIA": "fechada",
+        "FID": 40,
+        "DESENHO": "Cava 1",
+        "DESIGN_ID": "cava2-mw73yz16-1",
+        "PROJETO": "Cava",
+        "ELEMENTO": "Interseção",
+        "MDT": "MDT_MorroVerde_18Maio26",
+        "ORIGEM": "Área 2D · Cava2 · interseção MDT"
+      }
+    }
+  ],
+  "layers": [
+    {
+      "name": "Interseção — Cava 1",
+      "features": 4,
+      "design": null,
+      "cut": "cava2-mw73yz16-1"
+    },
+    {
+      "name": "Cava — Cava 1",
+      "features": 38,
+      "design": "cava2-mw73yz16-1",
+      "cut": null
+    },
+    {
+      "name": "Cava — Cava 1 · preenchimento e rampas",
+      "features": 10,
+      "design": "cava2-mw73yz16-1",
+      "cut": null
+    }
+  ],
+  "errors": [],
+  "timings": [
+    {
+      "ms": 1724,
+      "stats": {
+        "visited": 358102,
+        "segments": 8042,
+        "components": 4,
+        "cell": 0.8185572021337462,
+        "tiles": 1061
+      }
+    }
+  ],
+  "projectRoundTrip": {
+    "geometryPreserved": true,
+    "H": 30,
+    "layers": 3
+  }
+}
