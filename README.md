@@ -50,6 +50,14 @@ Antes de publicar, confirme que o site no ar ainda corresponde ao
 `publishedSha256` de `CURRENT_RELEASE.json`. Se não corresponder, alguém
 publicou de outro lugar e este repositório está desatualizado.
 
+## Requisitos permanentes
+
+- **Resolução nativa por padrão.** Todo GeoTIFF importado, ortofoto ou MDT, deve
+  abrir já na resolução original, lido por tiles, sem exigir que a pessoa ative
+  essa opção. A prévia reduzida só pode aparecer enquanto o original não está
+  disponível. Qualquer mudança na importação precisa preservar esse padrão
+  (`S.orthoHD` e `S.orthoDispFull` na ortofoto; `demHD` e `dispFull` no MDT).
+
 ## Organização
 
 | Caminho | Conteúdo |
