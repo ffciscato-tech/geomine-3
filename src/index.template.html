@@ -621,7 +621,7 @@
             <div><label class="field">Preto ≤</label><input type="number" id="imgNDb" value="4" min="0" max="60" step="1"></div>
           </div>
           <label class="field">Opacidade da ortofoto <span id="imgOpv" class="tag">100%</span></label>
-          <input type="range" id="imgOp" min="0.1" max="1" step="0.05" value="1" style="width:100%;accent-color:var(--amber)">
+          <input type="range" id="imgOp" min="0" max="1" step="0.01" value="1" style="width:100%;accent-color:var(--amber)">
           <div class="hint" style="margin-top:6px">Aplica-se ao nodata do GeoTIFF (GDAL_NODATA), à banda alfa e às bordas brancas/pretas geradas na rotação do mosaico.</div>
 
           <button class="mini danger" id="btnDropImg" style="margin-top:8px">Remover imagem</button>
@@ -3193,7 +3193,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
       </div>
       <label class="field">Estilo</label>
       <label class="field" style="margin-top:4px">Opacidade <span id="imModOpv" class="tag">100%</span></label>
-      <input type="range" id="imModOp" min="0.1" max="1" step="0.05" value="1" style="width:100%;accent-color:var(--amber)">
+      <input type="range" id="imModOp" min="0" max="1" step="0.01" value="1" style="width:100%;accent-color:var(--amber)">
       <label class="field" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px">
         <input type="checkbox" id="imModND" checked style="width:auto;accent-color:var(--amber)"> Descartar células sem dado (transparente)</label>
       <div class="row2">
@@ -3201,7 +3201,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
         <div><label class="field">Preto ≤</label><input type="number" id="imModB" value="4" min="0" max="60" step="1"></div>
       </div>
       <button class="tbtn" id="imModApply" style="width:100%;justify-content:center;margin-top:8px;background:var(--amber);color:#1a1206;font-weight:600">Aplicar</button>
-      <div class="hint" style="margin-top:6px">A transparência pode ser ajustada na prévia salva e no TIFF original.</div>
+      <div class="hint" style="margin-top:6px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Transparência" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A transparência pode ser ajustada na prévia salva e no TIFF original.</span></button></div>
 
       <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
         <label class="field">Resolução</label>
@@ -3218,14 +3218,14 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <input type="checkbox" id="imModDispFull" style="accent-color:var(--amber)">
           <span>Mostrar o <b>mapa em resolução original</b> (sem suavização)</span>
         </label>
-        <div class="hint" id="imModTeto" style="margin-top:4px"></div>
+        <button type="button" class="gm-prop-info" data-help-from="imModTeto" aria-label="Ajuda: Resolução no mapa" aria-expanded="false"><span aria-hidden="true">i</span></button><div class="hint gm-prop-note" id="imModTeto" style="margin-top:4px"></div>
       </div>
 
       <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
         <label class="field">Arquivo na pasta de trabalho</label>
         <div class="lp-info" id="imModProjectStore" style="margin-bottom:6px">Verificando…</div>
         <button class="tbtn" id="imModSaveProject" style="width:100%;justify-content:center">💾 Salvar GeoTIFF da ortofoto na pasta de trabalho</button>
-        <div class="hint">Com a cópia em <b>ALAGIS/rasters</b>, o projeto reabre já com a resolução plena e os tiles — sem buscar o .tif de novo.</div>
+        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Arquivo na pasta" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Com a cópia em <b>ALAGIS/rasters</b>, o projeto reabre já com a resolução plena e os tiles — sem buscar o .tif de novo.</span></button></div>
       </div>
 
       <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
@@ -3237,14 +3237,14 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           </select>
           <button class="tbtn" id="btnImModExp" style="justify-content:center">⤓ Exportar</button>
         </div>
-        <div class="hint">O PNG sai com o arquivo de georreferência ao lado, pronto para o QGIS. O GeoTIFF original exige o .tif ligado nesta sessão.</div>
+        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Exportar" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O PNG sai com o arquivo de georreferência ao lado, pronto para o QGIS. O GeoTIFF original exige o .tif ligado nesta sessão.</span></button></div>
       </div>
 
       <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
         <label class="field">Esta ortofoto está em outro fuso/datum? (CRS de origem)</label>
         <select id="imModCRS"></select>
         <button class="tbtn" id="imModWarp" style="width:100%;justify-content:center;margin-top:6px">⇄ Interpretar os cantos neste CRS</button>
-        <div class="hint">Use quando a ortofoto caiu no lugar errado por ter sido lida com o fuso/datum incorreto. A prévia e os tiles passam a ser reprojetados a partir do CRS escolhido.</div>
+        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: CRS de origem" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Use quando a ortofoto caiu no lugar errado por ter sido lida com o fuso/datum incorreto. A prévia e os tiles passam a ser reprojetados a partir do CRS escolhido.</span></button></div>
       </div>
 
       <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
@@ -3345,7 +3345,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
         <option value="solida">Cor sólida (chapada)</option>
       </select>
       <div class="row2" id="rasSolidaBox" style="display:none;margin-top:6px;grid-template-columns:1fr 46px;align-items:end">
-        <div class="hint" style="margin:0">A superfície inteira sai nesta cor, sem relevo nem faixas — serve para usá-la como máscara ou fundo chapado.</div>
+        <div class="hint" style="margin:0"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Cor sólida" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A superfície inteira sai nesta cor, sem relevo nem faixas — serve para usá-la como máscara ou fundo chapado.</span></button></div>
         <input type="color" id="rasSolidaCor" value="#8d5524" style="height:30px;padding:1px">
       </div>
       <div id="rasTinFerr" style="display:none">
@@ -3369,7 +3369,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <button class="tbtn" id="btnTinCorta" style="justify-content:center;background:var(--amber);color:#1a1206;font-weight:600">✂ Aplicar corte</button>
           <button class="tbtn" id="btnTinCorteDesfaz" style="justify-content:center">⟲ Desfazer corte</button>
         </div>
-        <div class="hint" id="tinCorteInfo" style="margin-top:4px">Escolha UM dos cortes (limite ou superfície) e aplique — a malha já sai cortada no 2D, no 3D e nos cálculos.</div>
+        <div class="hint" id="tinCorteInfo" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Corte da malha" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Escolha UM dos cortes (limite ou superfície) e aplique — a malha já sai cortada no 2D, no 3D e nos cálculos.</span></button></div>
         <label class="field" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:10px">
           <input type="checkbox" id="tinCaixaOn" style="width:auto;accent-color:var(--amber)">
           Caixa do modelo (paredes e base sólida)
@@ -3384,7 +3384,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
       <div id="rasV3MdtBox" style="margin:0 0 7px">
         <label class="field" style="margin:0 0 3px">MDT/MDS já carregado para configurar</label>
         <select id="rasV3Mdt"></select>
-        <div class="hint" style="margin-top:3px">Escolha uma superfície que já está em <b>Camadas</b>. Nenhum MDT será carregado novamente.</div>
+        <div class="hint" style="margin-top:3px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Superfície 3D" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Escolha uma superfície que já está em <b>Camadas</b>. Nenhum MDT será carregado novamente.</span></button></div>
       </div>
         <div class="hout" id="rasTexImgInfo" style="display:none;margin:0 0 6px"></div>
       <select id="rasTex3D">
@@ -3393,7 +3393,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
         <option value="solida">Cor sólida</option>
       </select>
       <div class="row2" style="margin-top:6px;grid-template-columns:1fr 46px;align-items:end">
-        <div class="hint" style="margin:0">No 3D a malha sempre recebe luz real, qualquer que seja a textura.</div>
+        <div class="hint" style="margin:0"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Iluminação 3D" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>No 3D a malha sempre recebe luz real, qualquer que seja a textura.</span></button></div>
         <input type="color" id="rasTex3DCor" value="#8d5524" style="height:30px;padding:1px">
       </div>
       <div id="rasSlopeUnitBox" style="display:none;margin-top:6px">
@@ -3402,7 +3402,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <option value="pct">Porcentagem (%)</option>
           <option value="deg">Graus (°)</option>
         </select>
-        <div class="hint" style="margin-top:3px">A troca converte os valores do raster e atualiza as classes e a legenda.</div>
+        <div class="hint" style="margin-top:3px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Unidade da declividade" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A troca converte os valores do raster e atualiza as classes e a legenda.</span></button></div>
       </div>
       <div class="row2" id="rasClassBox" style="margin-top:6px">
         <div><label class="field">Número de classes</label><input type="number" id="rasClassN" value="7" min="2" max="15"></div>
@@ -3428,7 +3428,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
             <input type="number" id="rasResampleM" step="0.5" min="0" placeholder="ex.: 2">
             <button class="tbtn" id="rasResampleBtn" style="justify-content:center">↧ Reamostrar</button>
           </div>
-          <div class="hint" id="rasResampleOut" style="margin-top:3px">Alivia mapa, 3D e Hidro. Perfil e curvas seguem lendo o nativo.</div>
+          <div class="hint" id="rasResampleOut" style="margin-top:3px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Reamostragem" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Alivia mapa, 3D e Hidro. Perfil e curvas seguem lendo o nativo.</span></button></div>
         </div>
         <label style="display:flex;align-items:center;gap:7px;font-size:12px;margin:8px 0 0;cursor:pointer">
           <input type="checkbox" id="rasDemHD" style="accent-color:var(--amber)">
@@ -3439,10 +3439,10 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <input type="checkbox" id="rasDispFull" style="accent-color:var(--amber)">
           Mostrar o <b>mapa em resolução original</b> (sem suavização)
         </label>
-        <div class="hint" id="rasTeto" style="margin-top:4px"></div>
-        <div class="hint">A média de bloco vale só para desenhar; todo produto relê o nativo.
+        <button type="button" class="gm-prop-info" data-help-from="rasTeto" aria-label="Ajuda: Resolução no mapa" aria-expanded="false"><span aria-hidden="true">i</span></button><div class="hint gm-prop-note" id="rasTeto" style="margin-top:4px"></div>
+        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Grade de exibição" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A média de bloco vale só para desenhar; todo produto relê o nativo.
           Ela desloca o traço em terreno quase plano — é por isso que o sombreado às vezes
-          não casa com as curvas.</div>
+          não casa com as curvas.</span></button></div>
       </div>
 
       <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
@@ -3451,7 +3451,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
         <button class="tbtn" id="rasSaveProject" style="width:100%;justify-content:center">
           💾 Salvar GeoTIFF nativo na pasta de trabalho
         </button>
-        <div class="hint">Gravação é automática em <b>ALAGIS/rasters</b>; o botão só força.</div>
+        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Arquivo na pasta" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Gravação é automática em <b>ALAGIS/rasters</b>; o botão só força.</span></button></div>
       </div>
 
       <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
@@ -3460,7 +3460,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <input type="number" id="rasCInt" value="5" min="0.1" step="1" title="Equidistância (m)">
           <button class="tbtn" id="rasContour" style="justify-content:center">Gerar curvas</button>
         </div>
-        <div class="hint">Traçadas sobre a grade <b>nativa</b>.</div>
+        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Curvas de nível" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Traçadas sobre a grade <b>nativa</b>.</span></button></div>
       </div>
 
       <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
@@ -3477,17 +3477,17 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           </select>
         </div>
         <button class="tbtn" id="btnRasExp" style="width:100%;justify-content:center;margin-top:6px">⤓ Exportar</button>
-        <div class="hint">O GeoTIFF sai com o CRS de trabalho gravado nas GeoKeys e nodata −9999,
+        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Exportar" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O GeoTIFF sai com o CRS de trabalho gravado nas GeoKeys e nodata −9999,
           pronto para o QGIS. O ASCII Grid exige célula quadrada. O XYZ escreve uma linha por
-          célula com dado — arquivo grande em grade nativa.</div>
+          célula com dado — arquivo grande em grade nativa.</span></button></div>
       </div>
 
       <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
         <label class="field">Este raster está em outro fuso/datum? (CRS de origem)</label>
         <select id="rasCRS"></select>
         <button class="tbtn" id="rasWarp" style="width:100%;justify-content:center;margin-top:6px">⇄ Reprojetar para o CRS de trabalho</button>
-        <div class="hint">Reamostragem bilinear (warp). Use quando o raster caiu no lugar errado por
-          ter sido lido com o fuso/datum incorreto.</div>
+        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: CRS de origem" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Reamostragem bilinear (warp). Use quando o raster caiu no lugar errado por
+          ter sido lido com o fuso/datum incorreto.</span></button></div>
       </div>
       <div class="row2" style="margin-top:6px">
         <button class="tbtn" id="rasZoom" style="justify-content:center">Zoom</button>
@@ -3687,7 +3687,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <input type="text" id="lpRename" maxlength="60" placeholder="nome curto p/ a legenda">
           <button class="tbtn" id="lpRenameBtn" style="justify-content:center">Renomear</button>
         </div>
-        <div class="hint" style="margin-top:4px">Nomes longos de shapefile poluem a legenda — encurte aqui.</div>
+        <div class="hint" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Nome da camada" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Nomes longos de shapefile poluem a legenda — encurte aqui.</span></button></div>
       </div>
 
       <div class="lp-cls-ctrl">
@@ -3696,7 +3696,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <button class="tbtn" id="lpStyleCopy" style="justify-content:center">⧉ Copiar estilo</button>
           <button class="tbtn" id="lpStylePaste" style="justify-content:center">▣ Colar estilo</button>
         </div>
-        <div class="hint" style="margin-top:4px">Copia simbologia e rótulos; não altera geometria, atributos, filtro ou visibilidade.</div>
+        <div class="hint" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Transferir estilo" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Copia simbologia e rótulos; não altera geometria, atributos, filtro ou visibilidade.</span></button></div>
       </div>
 
       <div class="lp-cls-ctrl">
@@ -3705,11 +3705,11 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <input type="checkbox" id="lpVisReal" style="width:auto;accent-color:var(--amber)">
           Visibilidade real (por cota, contra o MDT)
         </label>
-        <div class="hint" style="margin:2px 0 8px">Desligado = desenho pela ordem das camadas. Ligado = trecho enterrado some ou esmaece conforme a opacidade do terreno.</div>
+        <div class="hint" style="margin:2px 0 8px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Visibilidade real" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Desligado = desenho pela ordem das camadas. Ligado = trecho enterrado some ou esmaece conforme a opacidade do terreno.</span></button></div>
         <div id="lpMdtBox" style="display:none;margin-top:6px">
           <label class="field">MDT do terreno (interseção e visibilidade real)</label>
           <select id="lpMdtSel"></select>
-          <div class="hint" style="margin-top:2px">Trocar aqui recalcula a linha de interseção da cava/pilha na hora e grava a escolha no projeto.</div>
+          <div class="hint" style="margin-top:2px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: MDT do terreno" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Trocar aqui recalcula a linha de interseção da cava/pilha na hora e grava a escolha no projeto.</span></button></div>
         </div>
       </div>
 
@@ -3739,8 +3739,8 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
             Cotar as mestras (rótulo com a cota)
           </label>
           <button class="mini" id="btnCnRun" style="margin-top:6px">Aplicar classificação</button>
-          <div class="hint">Mestra = cota múltipla do intervalo (ex.: 5 m ⇒ 450, 455…);
-            as demais viram secundárias, mais finas e claras. O rótulo usa só as mestras.</div>
+          <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Curvas mestras" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Mestra = cota múltipla do intervalo (ex.: 5 m ⇒ 450, 455…);
+            as demais viram secundárias, mais finas e claras. O rótulo usa só as mestras.</span></button></div>
         </div>
         <div id="lpClsOpts" style="display:none">
           <label class="field">Campo</label>
@@ -3762,7 +3762,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <button class="mini" id="btnLpClassify">Gerar / regerar classes</button>
           <div id="lpPointSymbolsBox" style="display:none">
             <button class="mini" id="btnLpPointSymbols" style="margin-top:6px;border-color:#d88900;background:#fff4d8" title="Associa cada valor a um símbolo conhecido e reutiliza as escolhas guardadas neste navegador">🛑 Aplicar biblioteca de símbolos</button>
-            <div class="hint">Cada valor recebe seu próprio símbolo. As associações aplicadas ficam memorizadas para outros projetos neste dispositivo.</div>
+            <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Biblioteca de símbolos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Cada valor recebe seu próprio símbolo. As associações aplicadas ficam memorizadas para outros projetos neste dispositivo.</span></button></div>
           </div>
         </div>
       </div>
@@ -3775,7 +3775,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
         </div>
         <label class="field" id="lpDipFieldLabel">Mergulho/caimento — campo (rótulo)</label>
         <select id="lpDipField"></select>
-        <div class="hint" id="lpOrientationHint">Planos usam direção e mergulho; lineações e eixos de dobra usam direção e caimento. Confira a convenção dos dados na ficha geológica.</div>
+        <button type="button" class="gm-prop-info" data-help-from="lpOrientationHint" aria-label="Ajuda: Orientação dos símbolos" aria-expanded="false"><span aria-hidden="true">i</span></button><div class="hint gm-prop-note" id="lpOrientationHint">Planos usam direção e mergulho; lineações e eixos de dobra usam direção e caimento. Confira a convenção dos dados na ficha geológica.</div>
       </div>
       <div class="lp-cls-ctrl" id="lpPtSizeBox" style="display:none">
         <label class="field">Tamanho geral dos ícones (px)</label>
@@ -3784,7 +3784,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <button type="button" class="mini" id="lpPtSizeAll">Aplicar a todos</button>
         </div>
         <div class="hint" id="lpPtSizeInfo"></div>
-        <div class="hint">Ao aplicar, todas as categorias passam a usar este tamanho. Para alterar somente uma placa, abra a categoria e marque <b>Tamanho próprio</b>.</div>
+        <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Tamanho dos ícones" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Ao aplicar, todas as categorias passam a usar este tamanho. Para alterar somente uma placa, abra a categoria e marque <b>Tamanho próprio</b>.</span></button></div>
       </div>
       <div id="lpClasses"></div>
       </div><!-- /lpPaneSym -->
@@ -3800,7 +3800,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
             <option value="traco">Na mesma linha, separados por —</option>
             <option value="espaco">Na mesma linha, separados por espaço</option>
           </select>
-          <div class="hint" style="margin-top:4px">Escreve o valor do atributo em cada feição, no mapa e na plotagem. Segure <b>Ctrl</b> (ou arraste) para escolher <b>vários campos</b> — por exemplo nome e área, que saem em linhas separadas. A ordem é a da lista.</div>
+          <div class="hint" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Rótulos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Escreve o valor do atributo em cada feição, no mapa e na plotagem. Segure <b>Ctrl</b> (ou arraste) para escolher <b>vários campos</b> — por exemplo nome e área, que saem em linhas separadas. A ordem é a da lista.</span></button></div>
           <div style="margin-top:10px;padding-top:9px;border-top:1px solid var(--line)">
             <label class="field">Fórmula do rótulo <span style="font-weight:400;color:var(--ink-dim)">(opcional)</span></label>
             <textarea id="lbFormula" rows="3" spellcheck="false" placeholder="ex.: 'Área: ' || formatar($AREA_HA, 2) || ' ha'" style="width:100%;resize:vertical;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px;font:12px/1.35 'Courier New',monospace"></textarea>
@@ -3816,13 +3816,13 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
               </select>
             </div>
             <div id="lbFormulaStatus" class="hint" style="margin-top:5px"></div>
-            <div class="hint" style="margin-top:3px">Campo: <b>"NOME"</b> · texto: <b>'texto'</b> · juntar: <b>||</b> · geometria: <b>$AREA_HA</b>, <b>$COMPRIM</b>, <b>$X</b>, <b>$Y</b>. A fórmula preenchida tem prioridade; ao apagá-la, voltam os campos escolhidos.</div>
+            <div class="hint" style="margin-top:3px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Fórmula do rótulo" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Campo: <b>"NOME"</b> · texto: <b>'texto'</b> · juntar: <b>||</b> · geometria: <b>$AREA_HA</b>, <b>$COMPRIM</b>, <b>$X</b>, <b>$Y</b>. A fórmula preenchida tem prioridade; ao apagá-la, voltam os campos escolhidos.</span></button></div>
           </div>
         </div>
 
-        <div class="hint" id="lbAviso" style="display:none;margin:6px 0;padding:6px 8px;border-radius:8px;background:var(--panel2,#0002)">
+        <div class="hint" id="lbAviso" style="display:none;margin:6px 0;padding:6px 8px;border-radius:8px;background:var(--panel2,#0002)"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Ativação dos controles de fonte" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>
           Escolha um campo acima para ativar os controles de fonte.
-        </div>
+        </span></button></div>
         <div id="lbOpts" style="display:none">
           <div class="lp-cls-ctrl">
             <label class="field">Fonte</label>
@@ -3854,7 +3854,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
               <div><label class="field">Espessura do halo</label>
                 <input type="number" id="lbHaloW" value="1.2" min="0" max="6" step="0.2"></div>
             </div>
-            <div class="hint" style="margin-top:4px">Halo 0 desliga o contorno. Ele é o que torna o rótulo legível sobre a ortofoto.</div>
+            <div class="hint" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Halo" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Halo 0 desliga o contorno. Ele é o que torna o rótulo legível sobre a ortofoto.</span></button></div>
           </div>
 
           <div class="lp-cls-ctrl">
@@ -3892,9 +3892,9 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
               <div><label class="field">&nbsp;</label>
                 <div id="lbFltInfo" class="hint" style="font-size:11px;padding-top:8px"></div></div>
             </div>
-            <div class="hint" style="font-size:11px;margin-top:2px">Vazio rotula todas.
+            <div class="hint" style="font-size:11px;margin-top:2px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Filtro de rótulos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Vazio rotula todas.
               Aceita vários valores separados por vírgula. <b>%50</b> rotula só as cotas
-              múltiplas de 50 — útil para curvas mestras sem campo de classe.</div>
+              múltiplas de 50 — útil para curvas mestras sem campo de classe.</span></button></div>
             <div id="lbCurvaBox" style="display:none">
               <div class="row2" style="margin-top:6px">
                 <div><label class="field">Repetir o rótulo a cada (m)</label>
@@ -3903,13 +3903,13 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
                 <div><label class="field">Girar com a linha</label>
                   <select id="lbRot"><option value="1" selected>Sim</option><option value="0">Não</option></select></div>
               </div>
-              <div class="hint" style="font-size:11px;margin-top:2px">Zero mantém um único rótulo
+              <div class="hint" style="font-size:11px;margin-top:2px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Repetição de rótulos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Zero mantém um único rótulo
                 na posição escolhida. Um valor maior que zero distribui os rótulos ao longo da
                 linha; <b>Acima, Abaixo e Deslocado</b> continuam respeitados. A distância é medida
                 no terreno, em metros.
                 <b>Enquanto você digita</b>, o espaçamento tem piso de 30% do comprimento da
                 feição (no máximo 3 rótulos), para a tela não travar num valor intermediário.
-                Ao parar de digitar, o valor informado passa a valer por inteiro.</div>
+                Ao parar de digitar, o valor informado passa a valer por inteiro.</span></button></div>
             </div>
           </div>
 
@@ -3933,9 +3933,9 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
               <input type="checkbox" id="lbMap" checked style="width:auto;accent-color:var(--amber)"> Mostrar também no mapa</label>
             <label class="field" id="lbUniqueRow" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
               <input type="checkbox" id="lbUnique" checked style="width:auto;accent-color:var(--amber)"> Mostrar nomes iguais somente uma vez</label>
-            <div class="hint" id="lbUniqueHint">A classificação e as cores das zonas não mudam. Somente o texto repetido é reunido, usando a maior feição como posição do nome.</div>
-            <div class="hint" id="lbPointUniqueHint" style="display:none">Em camadas de pontos, cada feição é uma observação e recebe seu próprio rótulo, inclusive quando o texto se repete.</div>
-            <div class="hint">Casas decimais −1 = não formatar. Prefixo e sufixo entram junto ao valor do atributo.</div>
+            <div class="hint" id="lbUniqueHint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Nomes repetidos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A classificação e as cores das zonas não mudam. Somente o texto repetido é reunido, usando a maior feição como posição do nome.</span></button></div>
+            <div class="hint" id="lbPointUniqueHint" style="display:none"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Rótulos de pontos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Em camadas de pontos, cada feição é uma observação e recebe seu próprio rótulo, inclusive quando o texto se repete.</span></button></div>
+            <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Formato do texto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Casas decimais −1 = não formatar. Prefixo e sufixo entram junto ao valor do atributo.</span></button></div>
           </div>
 
           <div class="lp-cls-ctrl">
@@ -3982,7 +3982,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
             <button class="tbtn" id="lpFltApply" style="justify-content:center;background:var(--amber);color:#1a1206;font-weight:700">✓ Aplicar filtro</button>
             <button class="tbtn" id="lpFltClear" style="justify-content:center">× Limpar filtro</button>
           </div>
-          <div class="hint" style="margin-top:7px">O filtro não apaga feições. Ele controla o que aparece no mapa 2D, no 3D, no Layout, nos rótulos, nos cálculos e nas exportações.</div>
+          <div class="hint" style="margin-top:7px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Filtro de feições" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O filtro não apaga feições. Ele controla o que aparece no mapa 2D, no 3D, no Layout, nos rótulos, nos cálculos e nas exportações.</span></button></div>
         </div>
       </div><!-- /lpPaneFlt -->
     </div>

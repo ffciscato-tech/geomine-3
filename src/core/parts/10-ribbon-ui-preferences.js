@@ -3160,7 +3160,7 @@ function ppGeomHTML(L){
     '<label class="field">Geometria'+rot+'</label>'+
     '<div style="font-size:11.5px;line-height:1.5;margin-top:3px">'+linhas+'</div>'+
     (L.features.length>1 && !(S.selFeat&&S.selFeat.layerId===L.id)?
-      '<div class="hint" style="margin-top:4px">Toque numa feição no mapa (◈) para ver a geometria dela.</div>':'')+
+      '<div class="hint" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Geometria" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Toque numa feição no mapa (◈) para ver a geometria dela.</span></button></div>':'')+
     '</div>';
 }
 function ppAttrHTML(L){
@@ -3221,7 +3221,7 @@ function ppAttrFilterHTML(L){
       '<div class="row2" style="margin-top:6px"><button class="tbtn" id="ppFltApply" style="justify-content:center;background:var(--amber);color:#1a1206;font-weight:700">✓ Aplicar filtro</button>'+
       '<button class="tbtn" id="ppFltClear" style="justify-content:center" '+(active?'':'disabled')+'>× Limpar</button></div>':
       '<div class="hint">Esta camada não possui campos de atributos.</div>')+
-    '<div class="hint" style="margin-top:5px">O filtro não apaga dados e também é aplicado ao 3D, Layout, rótulos e exportações.</div></div>';
+    '<div class="hint" style="margin-top:5px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Filtro de atributos" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O filtro não apaga dados e também é aplicado ao 3D, Layout, rótulos e exportações.</span></button></div></div>';
 }
 function attrFilterSuggestions(L,field){
   const dl=document.getElementById('ppFltSuggestions');if(!dl)return;const vals=new Set();
@@ -3352,7 +3352,7 @@ function ppImageHTML(I){
     '<div style="border-top:1px dashed var(--line);padding-top:8px">'+
     '<label class="field">Geometria da imagem</label>'+
     '<div style="font-size:11.5px;line-height:1.5;margin-top:3px">'+linhas+'</div>'+
-    '<div class="hint" style="margin-top:6px">Estilo, resolução, pasta de trabalho, exportação e CRS: ⚙ da ortofoto na árvore.</div></div>';
+    '<div class="hint" style="margin-top:6px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Opções da ortofoto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Estilo, resolução, pasta de trabalho, exportação e CRS: ⚙ da ortofoto na árvore.</span></button></div></div>';
 }
 function propRefresh(){
   const d=document.getElementById('propDockContent')||document.getElementById('propDock');if(!d||!acadOn())return;
@@ -3360,7 +3360,7 @@ function propRefresh(){
   if(S.selRaster&&S.img&&S.selRaster===S.img&&!S.activeId){d.innerHTML=ppImageHTML(S.img);return;}
   const L=(typeof activeLayer==='function')?activeLayer():null;
   if(!L){
-    d.innerHTML='<label class="field">Propriedades</label><div class="hint">Nenhuma camada ativa.<br>Toque numa camada ou superfície na lista para consultar suas propriedades.</div>';
+    d.innerHTML='<label class="field">Propriedades</label><div class="hint">Nenhuma camada ativa. <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Selecionar camada" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Toque numa camada ou superfície na lista para consultar suas propriedades.</span></button></div>';
     return;
   }
   const s=L.sym||{},q=L.attrFilter||{},temFlt=!!(q.enabled!==false&&q.field),nFlt=temFlt?attrFilterCount(L):L.features.length,

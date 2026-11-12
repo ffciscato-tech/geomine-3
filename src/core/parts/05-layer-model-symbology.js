@@ -1677,7 +1677,10 @@ function drawLayer(L,options){
     !(labelAtivo(L)&&labelCfg(L).unique)&&
     options.previousFeatures.every((f,i)=>L.features[i]===f));
   if(L){delete L._vertexRenderPending;delete L._vertexSnapCache;delete L._vertexEditedFeature;delete L._vertexLastFeature;if(!append||!L._vertexPaths)L._vertexPaths=new WeakMap();}
-  if(L)delete L._projectDrawDeferred;
+  if(L){
+    delete L._projectDrawDeferred;
+    map.getPane(panelDaCamada('L'+L.id)).style.opacity=String(L.sym?.opacity??1);
+  }
   /* Todo redesenho causado por edição atualiza primeiro os atributos de área.
      Isso cobre vértices, movimento da feição, undo, clip, união e dissolve. */
   if(L&&L.gtype==='polygon'){

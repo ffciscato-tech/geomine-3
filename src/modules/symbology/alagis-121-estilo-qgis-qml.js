@@ -772,8 +772,8 @@ function qsInjetaBotao(L){
         '<button class="tbtn" type="button" id="lpQsImp">⇧ Importar .qml</button>'+
         '<button class="tbtn" type="button" id="lpQsExp">⇩ Exportar .qml</button>'+
       '</div>'+
-      '<div class="hint" style="margin-top:4px">O mesmo arquivo que o QGIS grava em Camada › Propriedades › Estilo › Salvar. '+
-      'Traz símbolo, classes por atributo, rótulos e opacidade.</div>';
+      '<div class="hint" style="margin-top:4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Estilo QGIS" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>O mesmo arquivo que o QGIS grava em Camada › Propriedades › Estilo › Salvar. '+
+      'Traz símbolo, classes por atributo, rótulos e opacidade.</span></button></div>';
     pane.insertBefore(box,pane.firstChild);
   }
   const imp=document.getElementById('lpQsImp'), exp=document.getElementById('lpQsExp');

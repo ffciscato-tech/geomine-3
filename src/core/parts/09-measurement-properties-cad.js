@@ -213,7 +213,7 @@ function ppSelectedFeature(L){
 }
 function ppLayerGeomHTML(L){
   const indices=ppSelectedIndices(L),selected=new Set(indices),single=ppSelectedFeature(L);
-  const note='<div class="hint" style="margin-top:5px">Medições no CRS do projeto: '+esc(String(S.workCRS))+'; furos são descontados e partes desconectadas são somadas.</div>';
+  const note='<div class="hint" style="margin-top:5px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Medições" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Medições no CRS do projeto: '+esc(String(S.workCRS))+'; furos são descontados e partes desconectadas são somadas.</span></button></div>';
   let h=single?featureDimensionsHTML(L,single.f):selectedDimensionsHTML(L);
   if(indices.length){
     h+='<div data-prop-selection="geometry">'+ppMetricBlock(L,indices.length===1?
@@ -979,7 +979,7 @@ function clsEditor(idx, item, label, count, layer){
       ${ptGaleriaHTML(shp, item.color, item.stroke||item.color, item.weight??s.weight)}
       ${ptParamEditorHTML(shp,pparams)}
       <div class="row2">
-        <div>${s.mode!=='single'?`<label class="field" style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" class="ce-size-own" ${ownSize?'checked':''} style="width:auto;accent-color:var(--amber)"> Tamanho próprio</label>`:'<label class="field">Tamanho (px)</label>'}<input type="number" class="ce-size" value="${ownSize?ptSizePx(item.size,pcfg.size):ptSizePx(pcfg.size,14)}" min="6" max="96" step="1" ${s.mode!=='single'&&!ownSize?'disabled':''}>${s.mode!=='single'?`<div class="hint" style="margin-top:3px">Desmarcado: usa ${ptSizePx(pcfg.size,14)} px da camada.</div>`:''}</div>
+        <div>${s.mode!=='single'?`<label class="field" style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" class="ce-size-own" ${ownSize?'checked':''} style="width:auto;accent-color:var(--amber)"> Tamanho próprio</label>`:'<label class="field">Tamanho (px)</label>'}<input type="number" class="ce-size" value="${ownSize?ptSizePx(item.size,pcfg.size):ptSizePx(pcfg.size,14)}" min="6" max="96" step="1" ${s.mode!=='single'&&!ownSize?'disabled':''}>${s.mode!=='single'?`<div class="hint" style="margin-top:3px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Tamanho herdado" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Desmarcado: usa ${ptSizePx(pcfg.size,14)} px da camada.</span></button></div>`:''}</div>
         <div><label class="field">Espessura</label><input type="number" class="ce-weight" value="${item.weight??s.weight}" min="0" step="0.1"></div>
       </div>`:''}
       <div class="row2">
@@ -987,7 +987,7 @@ function clsEditor(idx, item, label, count, layer){
         <div><label class="field">Contorno</label><button type="button" class="ce-stroke ce-color-pick" data-target="stroke" value="${item.stroke||item.color}" style="background:${item.stroke||item.color}" aria-pressed="false" title="Selecionar contorno"></button></div>
       </div>
       <div class="ce-pal" data-for="fill" data-palette-pending="1" tabindex="0" aria-label="Paleta de cores com rolagem"></div>
-      <div class="hint" style="margin:-2px 0 4px">Escolha <b>Preenchimento</b> ou <b>Contorno</b> acima e toque em uma cor abaixo.</div>
+      <div class="hint" style="margin:-2px 0 4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Paleta de cores" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Escolha <b>Preenchimento</b> ou <b>Contorno</b> acima e toque em uma cor abaixo.</span></button></div>
       ${isPoly?`<label class="field">Hachura</label><select class="ce-hatch">${hSel}</select>
       <div class="ce-hatch-spacing-row" style="${['solid','none',''].includes(item.hatch??s.hatch)?'display:none':''}">
         <label class="field">Espaçamento da hachura (×)</label>
@@ -1122,7 +1122,7 @@ function renderLpClasses(){
         <option value="open" ${a.arrowEnd==='open'?'selected':''}>Seta aberta →</option>
         <option value="filled" ${a.arrowEnd==='filled'?'selected':''}>Seta preenchida ➤</option>
       </select></div><div><label class="field">Comprimento da ponta (mm na plotagem)</label><input class="lp-arrow-size" type="number" min="0.5" max="20" step="0.5" value="${a.arrowSize}"></div></div>
-      <div class="hint">A ponta coincide sempre com o último vértice de cada linha, seguindo o sentido do desenho. Não muda a geometria. Categorias podem usar uma configuração própria.</div></div>`;
+      <div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Direção da seta" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A ponta coincide sempre com o último vértice de cada linha, seguindo o sentido do desenho. Não muda a geometria. Categorias podem usar uma configuração própria.</span></button></div></div>`;
   }
   if(s.mode==='grad' && s.classes.length){
     html+='<label class="field">Classes (toque para personalizar cada uma)</label>';
@@ -1134,7 +1134,7 @@ function renderLpClasses(){
     html+='<label class="field">Símbolo único</label>';
     html+=clsEditor(0,{color:s.color,stroke:s.stroke,hatch:s.hatch,weight:s.weight,fill:s.fill,dash:s.dash},L.name,null,L);
   } else {
-    html+='<div class="hint">Escolha o campo e toque em "Gerar / regerar classes".</div>';
+    html+='<div class="hint"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Gerar classes" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Escolha o campo e toque em "Gerar / regerar classes".</span></button></div>';
   }
   box.innerHTML=html;
   box.querySelectorAll('.cls-h').forEach(h=>h.onclick=()=>h.parentElement.classList.toggle('open'));
@@ -1207,7 +1207,7 @@ function srcHTML(o,clicavel){
 }
 function lpInfoHTML(L){
   const s=L.sym; const t=layerTotals(L);
-  let info=`${srcHTML(L.src,true)}<br>CRS: <b>${CRS_LABELS[L.crs]||L.crs}</b><br>Campos: ${L.fields.map(f=>f.name).join(', ')||'—'}<br>`;
+  let info=`${srcHTML(L.src,true)}<br>CRS: <b>${CRS_LABELS[L.crs]||L.crs}</b><br>Campos: ${L.fields.map(f=>esc(f.name)).join(', ')||'—'}<br>`;
   if(L.gtype==='polygon') info+=`Área total: <b>${fmtArea(t.area)}</b> (medida em ${S.workCRS})<br>`;
   if(L.gtype==='line') info+=`Comprimento total: <b>${fmtLen(t.comp)}</b><br>`;
   info+=`Classificação: <b>${s.mode==='single'?'símbolo único':s.mode==='grad'?'graduada por "'+s.field+'"':'categorizada por "'+s.field+'"'}</b>`;
@@ -1608,7 +1608,7 @@ function openClassProps(L,ci){
         <label class="field" for="cpNome">Nome da classe</label>
         <div style="display:flex;gap:8px;margin-bottom:8px"><input type="text" id="cpNome" maxlength="120" value="${esc(rotulo)}" autocomplete="off" style="flex:1">
           <button class="tbtn" id="cpRenomear" title="Troca o valor no campo “${esc(s.field)}” de todas as feições desta classe">Renomear</button></div>
-        <div class="hint" style="margin:-4px 0 8px">Renomear troca o valor do campo “${esc(s.field)}” nas ${c.count??''} feição(ões) desta classe; legenda, rótulos e tabela acompanham.</div>`:''}
+        <div class="hint" style="margin:-4px 0 8px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Nome da classe" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Renomear troca o valor do campo “${esc(s.field)}” nas ${c.count??''} feição(ões) desta classe; legenda, rótulos e tabela acompanham.</span></button></div>`:''}
         ${clsEditor(ci,c,rotulo,c.count,L)}</div>
       <div style="padding:10px 12px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap;flex:none">
         <button class="tbtn" id="cpPadrao" title="Tira as exceções desta classe (contorno, espessura, hachura, linha…); a cor continua">Usar o padrão da camada</button>

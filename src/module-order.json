@@ -173,6 +173,7 @@
         "modules/cad/command-selection.js",
         "modules/cad/line-join.js",
         "core/parts/09-measurement-properties-cad.js",
+        "core/parts/09b-properties-help.js",
         "modules/cad/ruler-elevation.js",
         "core/parts/10-ribbon-ui-preferences.js",
         "core/parts/11-geotiff-project-workspace.js",

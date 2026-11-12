@@ -1153,7 +1153,11 @@ async function buildLayout(options){
          visível quando a posição manual é central. O par inteiro permanece na
          posição da camada e ainda é encoberto por qualquer raster superior. */
       const fragment=ob.gtype==='point'?svgRotulosDaCamada(ob)+svgDaCamada(ob,true):svgDaCamada(ob,false)+svgRotulosDaCamada(ob);
-      if(fragment){svg+=fragment;plotCatalog.keys.add(nodeKey(nd.t,nd.id));}
+      if(fragment){
+        const opacity=Number(ob.sym?.opacity??1);
+        svg+=Number.isFinite(opacity)&&opacity<1?'<g opacity="'+Math.max(0,opacity)+'">'+fragment+'</g>':fragment;
+        plotCatalog.keys.add(nodeKey(nd.t,nd.id));
+      }
       continue;
     }
 
@@ -2639,8 +2643,8 @@ function openImgProps(){
     cogTxt=`<br>Estrutura: blocos internos <b>${okT?(c.tw+'×'+c.th+' ✔'):'NÃO (strips) ✗'}</b>`+
            ` · pirâmides <b>${okO?(c.nOv+' níveis ✔'):'NENHUMA ✗'}</b>`;
     if(!okT || !okO)
-      cogTxt+=`<br><span style="color:var(--amber)">Tiles dinâmicos ficarão lentos no zoom afastado. `+
-        `Converta para COG no notebook:<br><code style="font-size:10.5px">gdal_translate entrada.tif saida.tif -of COG -co COMPRESS=JPEG -co QUALITY=90</code></span>`;
+      cogTxt+=`<br><span style="color:var(--amber)"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Estrutura do TIFF" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Tiles dinâmicos ficarão lentos no zoom afastado. `+
+        `Converta para COG no notebook:<br><code style="font-size:10.5px">gdal_translate entrada.tif saida.tif -of COG -co COMPRESS=JPEG -co QUALITY=90</code></span></button></span>`;
   }
   g('imModInfo').innerHTML=
     `${srcHTML(S.img.src)}<br>CRS: <b>${CRS_LABELS[S.workCRS]||S.workCRS}</b>`+
@@ -2650,7 +2654,7 @@ function openImgProps(){
   // espelha os controles do painel lateral
   g('imModND').checked=g('imgND').checked;
   g('imModW').value=g('imgNDw').value; g('imModB').value=g('imgNDb').value;
-  const op=+g('imgOp').value||1; g('imModOp').value=op; g('imModOpv').textContent=Math.round(op*100)+'%';
+  const op=orthoOpacidade(); g('imModOp').value=op; g('imModOpv').textContent=Math.round(op*100)+'%';
   // O filtro é visual: a prévia salva também tem pixels para tratar.
   ['imModND','imModW','imModB'].forEach(id=>g(id).disabled=!S.img.url);
   { const ap=g('imModApply');
@@ -2675,9 +2679,9 @@ function openImgProps(){
           `Prévia da tela: ${I._w||I._W0}×${I._h||I._H0} px (${gsdP.toFixed(1)} cm/px)`+
           (I._cog&&I._cog.nOv?` · pirâmide com ${I._cog.nOv} nível(is)`:' · sem pirâmide (mais lento)');
       }else{
-        est.innerHTML='<b>Sem o GeoTIFF de origem:</b> o projeto guarda só a prévia da ortofoto, '+
+        est.innerHTML='<b>Sem o GeoTIFF de origem:</b> <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Resolução da ortofoto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>o projeto guarda só a prévia da ortofoto, '+
           'então o zoom não passa dela. Toque em <b>Buscar a ortofoto original</b> abaixo e indique o .tif '+
-          'para voltar à resolução plena e ligar os tiles.';
+          'para voltar à resolução plena e ligar os tiles.</span></button>';
       }
     }
   }
@@ -2709,9 +2713,9 @@ function imgModalSyncExtras(){
   }
   const hd=g('imModHDInfo');
   if(hd) hd.innerHTML= temArq
-    ? (S.orthoHD?'<b style="color:var(--ok)">Ativo:</b> o GeoTIFF original é relido por janela conforme o zoom.'
-                :'Arquivo original disponível. Ative para reler cada janela na densidade do zoom.')
-    : '<b>Arquivo original não vinculado.</b> Use o botão acima para selecionar o GeoTIFF desta ortofoto.';
+    ? (S.orthoHD?'<b style="color:var(--ok)">Ativo:</b> <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original da ortofoto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>o GeoTIFF original é relido por janela conforme o zoom.</span></button>'
+                :'Arquivo original disponível. <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original da ortofoto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Ative para reler cada janela na densidade do zoom.</span></button>')
+    : '<b>Arquivo original não vinculado.</b> <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original da ortofoto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Use o botão acima para selecionar o GeoTIFF desta ortofoto.</span></button>';
   const df=g('imModDispFull'); if(df){ df.checked=!!S.orthoDispFull; df.disabled=!temArq; }
   const bt=g('btnOrtoReligar');
   if(bt) bt.innerHTML= temArq?'✓ Mostrar o arquivo original em alta resolução':'⤓ Selecionar o GeoTIFF original e mostrar';
@@ -2730,7 +2734,7 @@ function imgModalSyncExtras(){
     }else{
       st.innerHTML= temRaw
         ? '<span style="color:var(--amber)"><b>Somente na memória desta sessão.</b></span> Ainda não existe cópia do GeoTIFF desta ortofoto na pasta de trabalho.'
-        : '<span style="color:var(--amber)"><b>Somente a prévia.</b></span> Religue o GeoTIFF original para poder gravá-lo na pasta de trabalho.';
+        : '<span style="color:var(--amber)"><b>Somente a prévia.</b></span> <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original da ortofoto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Religue o GeoTIFF original para poder gravá-lo na pasta de trabalho.</span></button>';
       if(sb) sb.textContent='💾 Salvar GeoTIFF da ortofoto na pasta de trabalho';
     }
     if(sb) sb.disabled=!temRaw;

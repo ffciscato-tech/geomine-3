@@ -6,8 +6,8 @@
   "originalGeoMineSourcesPreserved": true,
   "originalBlastPalPreserved": true,
   "publishedUrl": "https://geomine-3.web.app/",
-  "distSha256": "24afcc3e67e705d38be7ea0ce037eef6857ad7cb5fa5ac7184692d1f3f81a848",
-  "publishedSha256": "bdaef92045f3c324d591dee76fa03a3187d28f13a2273eb9be28146e7f8becf1",
+  "distSha256": "1ed165eaf310aea13787fa5595d1c4bafe70a727fb63d1af8e3e84042ee1898f",
+  "publishedSha256": "24f494ea94ffeca131949c378639ec43f321d34e368cbac83b1ffd7c7cc8a21c",
   "exampleDriveFolder": "https://drive.google.com/drive/folders/1yClXkqWnNSkoabTkp1Y2YbtTK_aqdm7R",
   "exampleProjectId": "19TOHxlxMcT2QpExd59VpHr9kYSMWZbhF",
   "exampleTerrainId": "1Wrf_Qbiy-dTTVtkKke5nIPuzdzI9z0vi",
@@ -19,11 +19,11 @@
     "Layout"
   ],
   "notes": "This development copy is the source of the published Blasting integration. Build further Blasting changes here to retain the integrated module. The parent GeoMine sources were preserved as requested.",
-  "releaseNotes": "Restaurados o importador de ortofoto, o vínculo com o original e a renderização nativa por tiles de 9 de novembro. Cópias de ortofotos já verificadas podem ser reutilizadas com pouco espaço.",
-  "previousDistSha256": "49ba134684ec7d367dea03abc56e636eb55f2cc4f5c2fdc9e371b122cd5f61c7",
-  "preparedPublicSha256": "bdaef92045f3c324d591dee76fa03a3187d28f13a2273eb9be28146e7f8becf1",
+  "releaseNotes": "Propriedades restauradas conforme a versão das 11h27 de 12/11/2026, com os nomes, a ordem e as dimensões originais dos controles. Somente os textos explicativos ficam nos botões de informação.",
+  "previousDistSha256": "6993cb70392a1cb65d3f3710c7968d7ac6e2f0de33f2f2d60ff7ff25e065e418",
+  "preparedPublicSha256": "24f494ea94ffeca131949c378639ec43f321d34e368cbac83b1ffd7c7cc8a21c",
   "publicationStatus": "published",
-  "sourceUpdatedAt": "2026-11-08T14:52:51.764337+00:00",
+  "sourceUpdatedAt": "2026-11-12T18:12:33.271459+00:00",
   "pendingReleaseNotes": "",
   "pendingSourceChanges": [],
   "pendingTileValidation": {
@@ -174,22 +174,18 @@
     "subgroupsIncluded": true,
     "deployment": "Published hosting geomine-3 on 2026-10-24; previous functional validation limitations remain as recorded."
   },
-  "previousPublishedSha256": "3c59afd336778b11a8cf8cde8eb5c4ec34b5f39b0f9f7b11dd17a4cd9443796c",
+  "previousPublishedSha256": "608059ebdbf7c8b9bc1e1223a6442f2c9ee8788730b319c0f54331d05597ccf7",
   "previousReleaseNotes": "Retomada persistente por conta após descarte da aba no iPad, inclusive navegação nova sem sessionStorage; ponteiro alternativo em IndexedDB, vista leve persistida e captura logo após abrir. Congelar camada aparece depois do nome. Seletores compatíveis usam o arquivo/pasta do projeto como âncora para abrir/importar/exportar; o seletor nativo do iPad continua controlado pelo sistema.",
   "includedSourceChanges": [
-    "src/modules/geology/geological-meshes.js",
-    "src/modules/geology/mesh-section-engine.js",
-    "src/modules/geology/surpac-reader.js",
-    "src/modules/geology/mesh-simplification.js",
-    "src/modules/geology/mesh-simplification.test.cjs",
-    "src/styles/modules/geological-meshes.css",
-    "src/vendor/meshopt-simplifier.js",
-    "src/vendor/meshopt-simplifier.source.txt",
-    "src/vendor/meshopt-simplifier.LICENSE.md",
-    "src/module-order.json",
-    "src/index.template.html"
+    "src/core/parts/09-measurement-properties-cad.js",
+    "src/core/parts/10-ribbon-ui-preferences.js",
+    "src/core/parts/17-layout-printing.js",
+    "src/core/parts/20-raster-dem.js",
+    "src/styles/app.css",
+    "src/index.template.html",
+    "src/modules/symbology/alagis-121-estilo-qgis-qml.js"
   ],
-  "publishedAt": "2026-11-12T14:27:26.404Z",
+  "publishedAt": "2026-11-12T18:12:26.175Z",
   "publicationVerification20261024": {
     "sourceManifestEntries": 139,
     "sourceMatchesBuiltDist": true,
@@ -388,17 +384,17 @@
     "published": true
   },
   "latestPublicationVerification": {
-    "checkedAt": "2026-11-12T14:27:35.039351+00:00",
+    "checkedAt": "2026-11-12T18:12:33.271459+00:00",
     "httpStatus": 200,
     "matchesPrepared": true,
-    "sha256": "bdaef92045f3c324d591dee76fa03a3187d28f13a2273eb9be28146e7f8becf1",
+    "sha256": "24f494ea94ffeca131949c378639ec43f321d34e368cbac83b1ffd7c7cc8a21c",
     "hostingLive": {
       "name": "projects/geomine-3/sites/geomine-3/channels/live",
       "url": "https://geomine-3.web.app",
       "release": {
-        "name": "projects/geomine-3/sites/geomine-3/channels/live/releases/1794493646404000",
+        "name": "projects/geomine-3/sites/geomine-3/channels/live/releases/1794507146175000",
         "version": {
-          "name": "projects/geomine-3/sites/geomine-3/versions/0c27b97da82587dd",
+          "name": "projects/geomine-3/sites/geomine-3/versions/e92752a6380f6502",
           "status": "FINALIZED",
           "config": {
             "headers": [
@@ -414,23 +410,23 @@
           "labels": {
             "deployment-tool": "cli-firebase"
           },
-          "createTime": "2026-11-12T14:27:17.274853Z",
+          "createTime": "2026-11-12T18:12:13.055927Z",
           "createUser": {
             "email": "ffciscato@ccmeng.net"
           },
-          "finalizeTime": "2026-11-12T14:27:26.567942Z",
+          "finalizeTime": "2026-11-12T18:12:26.323655Z",
           "finalizeUser": {
             "email": "ffciscato@ccmeng.net"
           }
         },
         "type": "DEPLOY",
-        "releaseTime": "2026-11-12T14:27:26.404Z",
+        "releaseTime": "2026-11-12T18:12:26.175Z",
         "releaseUser": {
           "email": "ffciscato@ccmeng.net"
         }
       },
       "createTime": "2026-09-09T23:40:20.036867856Z",
-      "updateTime": "2026-11-12T14:27:26.404Z",
+      "updateTime": "2026-11-12T18:12:26.175Z",
       "retainedReleaseCount": 2147483647
     }
   },
@@ -4897,8 +4893,8 @@
       }
     }
   ],
-  "firebaseVersion": "projects/geomine-3/sites/geomine-3/versions/0c27b97da82587dd",
-  "firebaseRelease": "projects/geomine-3/sites/geomine-3/channels/live/releases/1794493646404000",
+  "firebaseVersion": "projects/geomine-3/sites/geomine-3/versions/e92752a6380f6502",
+  "firebaseRelease": "projects/geomine-3/sites/geomine-3/channels/live/releases/1794507146175000",
   "publicationVerification20261106": {
     "date": "2026-11-06",
     "publishedAt": "2026-11-06T10:25:54.537Z",
@@ -5345,7 +5341,7 @@
     "publishedSha256": "3c59afd336778b11a8cf8cde8eb5c4ec34b5f39b0f9f7b11dd17a4cd9443796c",
     "releaseNotes": "Reabertura nativa: originais verificados guardados no navegador são religados pela identidade exata dos bytes, inclusive quando o TIFF foi importado sob outra camada ou prévia; dimensões nativas na árvore. Vista 3D/amostrador: consulta a mesma cópia local verificada do iPad, sem pedir novamente o TIFF nem aceitar a prévia. Android: projetos grandes usam um fluxo sequencial com recuperação por faixas, cancelamento e progresso limitado. Abertura evita cópia duplicada da geometria geológica, usa codec binário nativo quando disponível e consulta a biblioteca de símbolos uma vez por classificação; rasters ocultos não são redesenhados apenas porque falta o original. Inclui as funções da versão anterior."
   },
-  "publicationVerifiedAt": "2026-11-12T14:27:35.039351+00:00",
+  "publicationVerifiedAt": "2026-11-12T18:12:33.271459+00:00",
   "cavaTerrainAndContinuationValidation": {
     "verifiedAt": "2026-11-08T02:54:14.819838+00:00",
     "unitTestsPassed": 6,
@@ -20146,5 +20142,45 @@
     },
     "physicalIPadTested": false,
     "userProjectFilesModified": false
+  },
+  "previousReleaseBeforePropertiesPanels": {
+    "distSha256": "24afcc3e67e705d38be7ea0ce037eef6857ad7cb5fa5ac7184692d1f3f81a848",
+    "publishedSha256": "bdaef92045f3c324d591dee76fa03a3187d28f13a2273eb9be28146e7f8becf1",
+    "releaseNotes": "Restaurados o importador de ortofoto, o vínculo com o original e a renderização nativa por tiles de 9 de novembro. Cópias de ortofotos já verificadas podem ser reutilizadas com pouco espaço.",
+    "firebaseVersion": "projects/geomine-3/sites/geomine-3/versions/0c27b97da82587dd",
+    "firebaseRelease": "projects/geomine-3/sites/geomine-3/channels/live/releases/1794493646404000",
+    "publishedAt": "2026-11-12T14:27:26.404Z"
+  },
+  "propertiesPanelsValidation": {
+    "browser": "Chrome Windows e emulação de iPad",
+    "physicalIPadTested": false,
+    "originalRasterRegressionTests": 61
+  },
+  "previousReleaseBeforeClassicProperties": {
+    "distSha256": "71180d01b3ac42126cecb892d3b2e89e3dbe9025f331a5928b0288eabbfb3e4d",
+    "publishedSha256": "bace243388253e605905bdfe336167b86f9a47d3a4bc67f9979efade763cbf32",
+    "releaseNotes": "Novos painéis de propriedades de camadas vetoriais, feições, MDT e ortofoto. Controles compactos, ajuda flutuante, dados técnicos recolhíveis e acesso ao TIFF original.",
+    "firebaseVersion": "projects/geomine-3/sites/geomine-3/versions/803821148dc5d9b2",
+    "firebaseRelease": "projects/geomine-3/sites/geomine-3/channels/live/releases/1794499532410000",
+    "publishedAt": "2026-11-12T16:05:32.410Z"
+  },
+  "classicPropertiesValidation": {
+    "browser": "Chrome Windows e emulação de iPad",
+    "physicalIPadTested": false,
+    "originalRasterRegressionTests": 61
+  },
+  "previousReleaseBeforeOriginalProperties": {
+    "distSha256": "6993cb70392a1cb65d3f3710c7968d7ac6e2f0de33f2f2d60ff7ff25e065e418",
+    "publishedSha256": "608059ebdbf7c8b9bc1e1223a6442f2c9ee8788730b319c0f54331d05597ccf7",
+    "releaseNotes": "Restauradas as janelas clássicas de propriedades de camadas, feições, MDT e ortofoto. As explicações ficam nos botões de informação e as ações ficaram mais compactas.",
+    "firebaseVersion": "projects/geomine-3/sites/geomine-3/versions/f3a90abd0037728d",
+    "firebaseRelease": "projects/geomine-3/sites/geomine-3/channels/live/releases/1794506245212000",
+    "publishedAt": "2026-11-12T17:57:25.212Z"
+  },
+  "originalPropertiesValidation": {
+    "referenceHtmlSha256": "bdaef92045f3c324d591dee76fa03a3187d28f13a2273eb9be28146e7f8becf1",
+    "browser": "Chrome Windows e emulação de iPad",
+    "physicalIPadTested": false,
+    "originalRasterRegressionTests": 79
   }
 }

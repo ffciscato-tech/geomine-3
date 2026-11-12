@@ -1786,3 +1786,13 @@ body.alagis3 #propDock{
 body.gm-panel-resizing,body.gm-panel-resizing *{cursor:col-resize!important;user-select:none!important;-webkit-user-select:none!important}
 body.gm-panel-resizing #right,body.gm-panel-resizing #propDock{transition:none!important}
 @media(pointer:coarse){.gm-panel-resizer{width:18px}}
+
+/* Ajuda nas propriedades */
+button.gm-prop-info{display:inline-grid;place-items:center;width:24px!important;height:24px;min-width:24px;padding:0!important;border:none!important;background:transparent!important;color:var(--ink-dim);font:600 12px/1 Georgia,serif;cursor:pointer;vertical-align:middle}
+button.gm-prop-info>span{display:grid;place-items:center;width:16px;height:16px;border:1px solid currentColor;border-radius:50%}
+button.gm-prop-info:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+button.gm-prop-info[aria-expanded=true]{color:var(--ink)}
+#gmPropertyExplanation{position:fixed;inset:auto;margin:0;box-sizing:border-box;width:max-content;max-width:min(300px,calc(100vw - 16px));max-height:60vh;overflow:auto;z-index:2147483647;padding:8px 11px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);box-shadow:0 3px 14px #0003;font:13px/1.45 "Segoe UI",sans-serif;overflow-wrap:anywhere}
+button.gm-prop-info>span[hidden]{display:none!important}
+.gm-prop-note{display:none!important}
+@media(pointer:coarse){button.gm-prop-info{min-height:32px}}

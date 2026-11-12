@@ -2438,7 +2438,7 @@ function openRasProps(r){
       }
     }
   }
-  const tinTag=ehTIN?`<b style="color:#7fe0a8">▲ Superfície TIN</b> · ${((r.d.tin.tri.length/3)|0).toLocaleString('pt-BR')} triângulos · ${r.d.tin.xs.length.toLocaleString('pt-BR')} vértices — os cálculos amostram o triângulo exato; a grade abaixo é só a exibição 2D · <button class="mini" id="btnTinExpObj" style="vertical-align:middle">⬇ Exportar OBJ</button><br>`:'';
+  const tinTag=ehTIN?`<b style="color:#7fe0a8">▲ Superfície TIN</b> · ${((r.d.tin.tri.length/3)|0).toLocaleString('pt-BR')} triângulos · ${r.d.tin.xs.length.toLocaleString('pt-BR')} vértices — <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Superfície TIN" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>os cálculos amostram o triângulo exato; a grade abaixo é só a exibição 2D</span></button> · <button class="mini" id="btnTinExpObj" style="vertical-align:middle">⬇ Exportar OBJ</button><br>`:'';
   /* Resolução junto da origem: quem lê a faixa de cotas precisa saber em que
      pixel ela foi medida — 0,26 m e 30 m contam histórias diferentes sobre o
      mesmo terreno. Célula não quadrada aparece como "a × b" (csy perdido já
@@ -2558,16 +2558,16 @@ function rasSyncResolutionControls(r){
   if(cHD){cHD.checked=!!r.demHD;cHD.disabled=false;}
   const inf=document.getElementById('rasDemHDInfo');
   if(inf){
-    if(r._nativeCopyPending)inf.innerHTML='<b style="color:var(--amber)">Preparando a cópia local do GeoTIFF.</b> A prévia fica visível; a resolução nativa será ativada automaticamente ao concluir.';
+    if(r._nativeCopyPending)inf.innerHTML='<b style="color:var(--amber)">Preparando a cópia local do GeoTIFF.</b> <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original do MDT" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A prévia fica visível; a resolução nativa será ativada automaticamente ao concluir.</span></button>';
     else if(fonte)inf.innerHTML=r.demHD
       ?(demTilesUsingFallback(r)
-        ?'<b style="color:var(--amber)">Prévia temporária:</b> houve falha na leitura de alguns tiles. A resolução original continua selecionada. Use “Tentar novamente”; se a falha persistir, clique no nome do arquivo de origem para religar o GeoTIFF.'
-        :'<b style="color:var(--ok)">Ativo:</b> o GeoTIFF original é relido por janela conforme o zoom.')
-      :'Arquivo original disponível. Ative para reler cada janela na densidade do zoom.';
-    else if(mono)inf.innerHTML='A grade original já está em memória. Para usar tiles, marque a opção e selecione o GeoTIFF desta camada.';
+        ?'<b style="color:var(--amber)">Prévia temporária:</b> houve falha na leitura de alguns tiles. <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original do MDT" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A resolução original continua selecionada. Use “Tentar novamente”; se a falha persistir, clique no nome do arquivo de origem para religar o GeoTIFF.</span></button>'
+        :'<b style="color:var(--ok)">Ativo:</b> <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original do MDT" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>o GeoTIFF original é relido por janela conforme o zoom.</span></button>')
+      :'Arquivo original disponível. <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original do MDT" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Ative para reler cada janela na densidade do zoom.</span></button>';
+    else if(mono)inf.innerHTML='A grade original já está em memória. <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original do MDT" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Para usar tiles, marque a opção e selecione o GeoTIFF desta camada.</span></button>';
     else inf.innerHTML=(r.demHD||r.dispFull)
-      ?'<b style="color:var(--amber)">Resolução original selecionada, aguardando o GeoTIFF.</b> O mapa mostra a prévia. Use o botão acima para selecionar o original ou autorize a pasta do projeto e reabra o .ccmgis.'
-      :'<b>Arquivo original não vinculado.</b> Marque a opção para selecionar o GeoTIFF desta camada.';
+      ?'<b style="color:var(--amber)">Resolução original selecionada, aguardando o GeoTIFF.</b> O mapa mostra a prévia. <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original do MDT" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Use o botão acima para selecionar o original ou autorize a pasta do projeto e reabra o .ccmgis.</span></button>'
+      :'<b>Arquivo original não vinculado.</b> <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Original do MDT" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Marque a opção para selecionar o GeoTIFF desta camada.</span></button>';
   }
   const b=document.getElementById('rasLoadFull');
   if(b){
