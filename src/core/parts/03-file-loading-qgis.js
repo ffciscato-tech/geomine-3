@@ -643,9 +643,24 @@ async function handleFiles(fileList){
           await ensureGeoTIFF();
           // Inspect just the TIFF header before considering an Android copy.
           // RGB imports can draw progressively from ranges of the original.
-          const localSource=await window.GeoMineOriginalSources?.stageFile?.(f,control)||f;
-          const header=await rasterImportOpen(localSource,control);
-          const headerImage=await rasterImportWait(header.getImage(0),control);
+          // The header is read from the chosen file first: an orthophoto is
+          // then drawn by tile windows without a full device copy, while a
+          // single-band grid keeps its staged local source.
+          const probe=await rasterImportOpen(f,control);
+          let header=probe,headerImage,localSource=f;
+          try{
+            headerImage=await rasterImportWait(probe.getImage(0),control);
+            localSource=await window.GeoMineOriginalSources?.stageFile?.(f,
+              headerImage.getSamplesPerPixel()>=3?{...control,sourceKind:'ortho'}:control)||f;
+            if(localSource!==f){
+              header=await rasterImportOpen(localSource,control);
+              headerImage=await rasterImportWait(header.getImage(0),control);
+            }
+          }catch(error){
+            if(globalThis.GeoMineRasterImport){GeoMineRasterImport.release(probe);if(header!==probe)GeoMineRasterImport.release(header);}
+            throw error;
+          }
+          if(header!==probe&&globalThis.GeoMineRasterImport)GeoMineRasterImport.release(probe);
           const rgb=headerImage.getSamplesPerPixel()>=3,previousImage=S.img,
             previousPreview=rgb?legacyOrthoPreviewForImport(previousImage,f,headerImage):null;
           let _t=header,target,relinked=false;
