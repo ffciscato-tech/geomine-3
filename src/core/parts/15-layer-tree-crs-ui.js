@@ -514,26 +514,28 @@ function refreshUI(){
         else { if(!confirm('Remover a ortofoto/imagem de fundo?')) return;
                if(o.overlay) map.removeLayer(o.overlay); S.img=null; refreshUI(); } };
       const ms=el.querySelector('.lmsel');if(ms)ms.onclick=e=>layerMultiHandle(key,e);
-      el.onclick=e=>{ if(layerMultiHandle(key,e))return; const now=Date.now();
-        const dbl = now-((S._tapT&&S._tapT[key])||0)<350;
-        (S._tapT=S._tapT||{})[key]= dbl?0:now;
-        if(dbl){
-          // duplo-clique: abre o modal de propriedades da superfície/imagem
-          isRas? openRasProps(o) : openImgProps();
-        } else {
-          // clique simples: ativa a superfície na paleta (rápido, cacheado)
+      /* Um clique seleciona, dois abrem as propriedades, três dão zoom: a
+         mesma regra das camadas vetoriais. */
+      const existe=()=>isRas?(S.rasters||[]).includes(o):S.img===o;
+      const acoes={
+        props:()=>{ if(existe()) isRas?openRasProps(o):openImgProps(); },
+        zoom:()=>{ if(existe()&&o.overlay&&o.overlay.getBounds) safeFit(o.overlay.getBounds());
+          else toast('Sem extensão no mapa para aproximar'); }
+      };
+      el.title='Um clique: selecionar · Dois cliques: propriedades · Três cliques: zoom';
+      el.onclick=e=>{ if(layerMultiHandle(key,e))return;
+        // clique simples: ativa a superfície na paleta (rápido, cacheado)
+        if(S.selRaster!==o||S.activeId!=null){
           S.selRaster=o; S.activeId=null;
           try{ if(typeof propRefresh==='function') propRefresh(); }catch(e){}
         }
+        treeClicks(key,e,acoes);
       };
-      /* Evento nativo para mouse/caneta; o relógio acima permanece como
-         fallback de duplo toque. Não reconstrói a árvore no primeiro clique,
-         então o segundo continua incidindo sobre o mesmo elemento. */
       el.ondblclick=e=>{
+        if(e.target.closest('.eye,.gset,.gdel,.lmsel'))return;
         if(layerMultiHandle(key,e))return;
         e.preventDefault(); e.stopPropagation();
-        (S._tapT=S._tapT||{})[key]=0;
-        isRas?openRasProps(o):openImgProps();
+        treeDblClick(key,acoes);
       };
       bindDrag(el,'node',key);
       list.appendChild(el);
@@ -580,7 +582,10 @@ function refreshUI(){
       S.activeId=L.id; refreshUI(); openLayerProps(L); };
     if(classed) el.querySelector('.cchev').onclick=e=>{e.stopPropagation();L.clsOpen=!L.clsOpen;refreshUI();};
     const msL=el.querySelector('.lmsel');if(msL)msL.onclick=e=>layerMultiHandle(keyL,e);
-    let propsClickTimer;
+    const acoesL={
+      props:()=>{ if(S.activeId===L.id&&S.layers.includes(L))openLayerProps(L); },
+      zoom:()=>{ if(S.layers.includes(L))fitLayer(L); }
+    };
     el.title='Um clique: selecionar · Dois cliques: propriedades · Três cliques: zoom';
     el.onclick=e=>{ if(layerMultiHandle(keyL,e))return;
       S.selRaster=null;                                  // sai do modo raster na paleta
@@ -592,17 +597,15 @@ function refreshUI(){
         list.querySelectorAll('.layer.active').forEach(x=>x.classList.remove('active'));
         el.classList.add('active');
         try{ if(typeof propRefresh==='function') propRefresh(); }catch(e){}
-        clearTimeout(propsClickTimer);
-        if(e.detail===3)fitLayer(L);
-        else if(e.detail===2) propsClickTimer=setTimeout(()=>{
-          if(el.isConnected&&S.activeId===L.id)openLayerProps(L);
-        },400);
+        treeClicks(keyL,e,acoesL);
     };
     el.ondblclick=e=>{
       if(e.target.closest('button,.eye,.lcfg,.ldel,.cchev,.lmsel'))return;
       if(layerMultiHandle(keyL,e))return;
       e.preventDefault(); e.stopPropagation();
-      // O clique de detail=2 já agendou as propriedades; o terceiro cancela.
+      // O segundo clique já agendou as propriedades; isto cobre o navegador
+      // que entrega o segundo toque só como dblclick.
+      treeDblClick(keyL,acoesL);
     };
     el.querySelector('.lstyle').onclick=e=>{e.stopPropagation();window.GeoMineStyleTransfer?.menu(L,e.currentTarget);};
     el.oncontextmenu=e=>{e.preventDefault();window.GeoMineStyleTransfer?.menu(L,el);};
@@ -619,32 +622,33 @@ function refreshUI(){
         row.innerHTML=`<span class="eye ${on?'on':''}">${on?'◉':'○'}</span>
           ${swatchHTML(L,c)}
           <span class="nm" title="Um clique: selecionar · Dois cliques: propriedades · Três cliques: zoom nas feições da classe" style="cursor:pointer">${esc(label)}</span><span class="cnt">${c.count??''}</span>`;
-        let classClickTimer;
+        const keyC=keyL+':classe:'+ci;
+        const acoesC={
+          props:()=>{ if(S.activeId===L.id&&S.layers.includes(L)&&typeof openClassProps==='function')openClassProps(L,ci); },
+          zoom:()=>{
+            const features=L.features.filter(f=>classOf(L,f)===c);
+            const bounds=layerBounds({...L,features});
+            if(bounds.isValid())safeFit(bounds.pad(0.1));
+            else toast('Nenhuma feição visível nesta classe para aproximar');
+          }
+        };
         row.querySelector('.eye').onclick=e=>{e.stopPropagation();
-          clearTimeout(classClickTimer);
+          clearTimeout(TREE_CLICKS.timer);
           c.vis=!on; drawLayer(L); refreshUI();};
         // Aguarda o terceiro clique antes de abrir o modal que cobriria a árvore.
         row.onclick=e=>{
           e.stopPropagation();S.activeId=L.id;S.selRaster=null;
-          clearTimeout(classClickTimer);
           if(S.selFeat&&S.selFeat.layer!==L)S.selFeat=null;
           if(window.ED&&ED.sel&&ED.sel.L!==L){ED.sel=null;try{edRedraw();edPainelSync();}catch(_){}}
           list.querySelectorAll('.layer.active').forEach(x=>x.classList.remove('active'));
           el.classList.add('active');
           try{if(typeof propRefresh==='function')propRefresh();}catch(_){}
-          if(e.detail===3){
-            const features=L.features.filter(f=>classOf(L,f)===c);
-            const bounds=layerBounds({...L,features});
-            if(bounds.isValid())safeFit(bounds.pad(0.1));
-            else toast('Nenhuma feição visível nesta classe para aproximar');
-          }else if(e.detail===2)classClickTimer=setTimeout(()=>{
-            if(row.isConnected&&S.activeId===L.id&&typeof openClassProps==='function')openClassProps(L,ci);
-          },400);
+          treeClicks(keyC,e,acoesC);
         };
         row.ondblclick=e=>{
           if(e.target.closest('.eye')) return;
           e.preventDefault(); e.stopPropagation(); S.activeId=L.id;
-          // Mantém o temporizador do segundo clique até confirmar ou cancelar.
+          treeDblClick(keyC,acoesC);
         };
         list.appendChild(row);
       });
@@ -858,6 +862,31 @@ function layerBounds(L){
       if(w&&Number.isFinite(w[0])&&Number.isFinite(w[1]))b.extend([w[1],w[0]]);
     }); });
   return b;
+}
+/* Cliques nas linhas da árvore: 1 seleciona, 2 abre as propriedades, 3 dá zoom.
+   A contagem é própria. Não depende de e.detail, porque no iPad cada toque pode
+   chegar como clique simples, nem do elemento da linha, que refreshUI recria a
+   qualquer momento: o estado fica aqui, guardado pela chave da linha. */
+const TREE_CLICKS={key:null,n:0,at:0,timer:0,janela:450};
+function treeClicks(key,e,acoes,minimo){
+  const agora=Date.now(), mesma=TREE_CLICKS.key===key, seguido=mesma&&agora-TREE_CLICKS.at<TREE_CLICKS.janela;
+  let n=seguido?TREE_CLICKS.n+1:1;
+  if(mesma&&e&&e.detail>n&&e.detail<=3)n=e.detail;   // duplo clique lento que o sistema ainda contou
+  if(minimo&&n<minimo)n=minimo;
+  if(n>3)n=1;
+  clearTimeout(TREE_CLICKS.timer);
+  TREE_CLICKS.key=key;TREE_CLICKS.n=n;TREE_CLICKS.at=agora;
+  if(n===3)acoes.zoom();
+  // Espera o possível terceiro clique antes de abrir a janela de propriedades.
+  else if(n===2)TREE_CLICKS.timer=setTimeout(()=>{
+    if(TREE_CLICKS.key===key&&TREE_CLICKS.n===2)acoes.props();
+  },TREE_CLICKS.janela);
+  return n;
+}
+/* Navegadores que entregam o segundo toque só como dblclick, sem click. */
+function treeDblClick(key,acoes){
+  if(TREE_CLICKS.key===key&&TREE_CLICKS.n>=2&&Date.now()-TREE_CLICKS.at<TREE_CLICKS.janela)return;
+  treeClicks(key,null,acoes,2);
 }
 function fitLayer(L){ const b=layerBounds(L); if(b.isValid()) safeFit(b.pad(0.1)); }
 function fitAll(){ const b=L2.latLngBounds([]);
