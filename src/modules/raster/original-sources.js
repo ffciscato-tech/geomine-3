@@ -35,12 +35,6 @@ function quickContext(item,kind){
  return ()=>S.projectId===project&&generation()===gen&&owner()===account&&
   (kind==='ortho'?S.img===item:(S.rasters||[]).includes(item))&&(kind==='ortho'?sameOrthoView(item,data,bound):item.d===data);
 }
-// On iPad/iPhone a large orthophoto is drawn by bounded tile windows read
-// straight from the chosen File. Writing a full second copy to the browser
-// storage first kept multi-gigabyte imports on the loading screen.
-const DIRECT_ORTHO_MIN=64*1024*1024;
-function iosDevice(){const n=root.navigator||{};return /iPad|iPhone|iPod/i.test(n.userAgent||'')||/Mac/i.test((n.platform||'')+' '+(n.userAgent||''))&&n.maxTouchPoints>1;}
-function directOrtho(kind,file){return kind==='ortho'&&iosDevice()&&Number.isSafeInteger(file?.size)&&file.size>=DIRECT_ORTHO_MIN;}
 function storageFailure(name,message){const e=new Error(message);e.name=name;return e;}
 function checkCopy(current){if(!current())throw storageFailure('AbortError','Projeto alterado durante a cópia do original.');}
 function storageState(item,kind,state,extra={}){const value={kind,state,...extra};storageStates.set(item,value);
@@ -280,11 +274,6 @@ async function rememberOwned(item,kind,handle,file,location={}){
  // small descriptors go through IndexedDB; never put this File in the record.
  if(!isFile(record.handle)){
   sessionFiles.set(sourceKey,file);memory.set(sourceKey,record);memory.set(layerKey,record);volatileRecords.add(sourceKey);
-  if(!record.cache&&directOrtho(kind,file)){
-   // The session keeps reading the chosen File. Reopening the project asks
-   // for the TIFF again instead of holding the tiles behind a full copy.
-   storageState(item,kind,'session-only',{reason:'Ortofoto lida direto do TIFF escolhido, sem cópia no aparelho. Ao reabrir o projeto, selecione o TIFF novamente.'});
-  }else{
   storageState(item,kind,'queued',{loaded:0,total:file.size});
   const copying=cacheQueue.then(()=>cacheOriginal(item,kind,file,record,quick,current));
   cacheQueue=copying.catch(()=>{});
@@ -292,7 +281,6 @@ async function rememberOwned(item,kind,handle,file,location={}){
    if(e?.name==='AbortError'||!quick()){storageState(item,kind,'cancelled');return false;}
    const reason=storageMessage(e);storageState(item,kind,'session-only',{reason});
    storageNotice(item,'Original aberto nesta sessão. '+reason);
-  }
   }
  }
  // A changed cell can keep the same data object; recheck its full fingerprint
@@ -576,20 +564,10 @@ async function stageFile(file,control={}){
    if(!Number.isFinite(available)||available<file.size+CACHE_MARGIN)return file;
   }catch(e){checkCopy(current);return file;}
  }
- let fingerprint;
- try{fingerprint=await wait(projectNativeFingerprint(file));}
- catch(e){checkCopy(current);if(control.sourceKind==='ortho')return file;throw e;}
- checkCopy(current);
+ const fingerprint=await wait(projectNativeFingerprint(file));checkCopy(current);
  const stageKey=base()+'staged:'+fingerprint+':'+file.size,prior=stagedFiles.get(file)||await get(stageKey);checkCopy(current);
  const descriptor={name:file.name||'original.tif',size:file.size,lastModified:+file.lastModified||0,fingerprint},
   record={v:1,projectId,ownerUid,descriptor,handle:null,...(prior?.projectId===projectId&&prior.ownerUid===ownerUid&&prior.descriptor?.fingerprint===fingerprint?{cache:prior.cache}:{})};
- if(control.sourceKind==='ortho'){
-  // Only an already verified device copy is reused. A new orthophoto goes
-  // straight to bounded tile reads of the chosen File.
-  const reusable=record.cache?await cachedFile(record,current):null;checkCopy(current);
-  if(!reusable)return file;
-  stableFiles.set(reusable,{project:projectId,owner:ownerUid});stagedFiles.set(file,record);return reusable;
- }
  const item={name:descriptor.name,_stageProgress:p=>{if(current()&&p.total)showLoad('Preparando TIFF neste aparelho — '+Math.floor(100*p.loaded/p.total)+'% ('+Math.floor(p.loaded/1048576)+' de '+Math.ceil(p.total/1048576)+' MB)');}};
  const copying=cacheQueue.then(()=>cacheOriginal(item,'ortho',file,record,current,current));cacheQueue=copying.catch(()=>{});
  try{record.cache=await copying;checkCopy(current);const local=await cachedFile(record,current);checkCopy(current);if(!local)throw Error('A cópia local não pôde ser conferida.');
