@@ -3,20 +3,24 @@
 Código-fonte do GeoMine, o GIS web da CCM publicado em https://geomine-3.web.app/
 (projeto Firebase `geomine-3`).
 
-A base deste repositório é a versão publicada em 12/11/2026 às 15h12 (horário
-de Brasília), trazida da pasta `GeoMine/atual` do Google Drive. Sobre ela está
-uma mudança **ainda não publicada no site**: as novas janelas de propriedades da
-ortofoto, da camada vetorial e do MDT (veja "Janelas de propriedades" abaixo).
+A raiz deste repositório corresponde à versão publicada em 12/11/2026 às 17h34
+(horário de Brasília), e a montagem feita a partir daqui reproduz o site byte a
+byte:
 
-| Arquivo gerado | No site (15h12) | Este repositório |
-|---|---|---|
-| `dist/GeoMine.html` | `1ed165eaf310aea13787fa5595d1c4bafe70a727fb63d1af8e3e84042ee1898f` | `abd89de437d5e9ca8645d75afc3eef13c7d1e09df3124436c3b2927ea91988fb` |
-| `public/index.html` | `24f494ea94ffeca131949c378639ec43f321d34e368cbac83b1ffd7c7cc8a21c` | `aec4f0f6b8122f360635967c6deefa1f30dff9f0114d71b7d373dc4cb93b6969` |
+| Arquivo gerado | SHA-256 |
+|---|---|
+| `dist/GeoMine.html` | `abd89de437d5e9ca8645d75afc3eef13c7d1e09df3124436c3b2927ea91988fb` |
+| `public/index.html` | `aec4f0f6b8122f360635967c6deefa1f30dff9f0114d71b7d373dc4cb93b6969` |
 
-`CURRENT_RELEASE.json` descreve a versão que está no site (`distSha256` e
-`publishedSha256`), com o histórico de publicações e validações. O commit
-`3d24d76` reproduz o site byte a byte. Ao publicar esta versão, atualize o
-`CURRENT_RELEASE.json` com os valores da coluna da direita.
+Os mesmos valores estão em `CURRENT_RELEASE.json` (`distSha256` e
+`publishedSha256`), junto com o histórico de publicações e validações.
+
+Esta versão parte da publicada às 15h12 (commit `3d24d76`, vinda da pasta
+`GeoMine/atual` do Google Drive) e acrescenta as novas janelas de propriedades
+(veja "Janelas de propriedades" abaixo). **A pasta `GeoMine/atual` do Drive
+ainda não tem essa mudança**: antes de publicar a partir dela, traga os
+arquivos alterados deste repositório, senão a publicação desfaz as janelas
+novas.
 
 ## Montar
 
