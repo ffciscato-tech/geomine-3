@@ -10,3 +10,7 @@ firebase-debug.log
 # São reproduzíveis a partir de src/ e conferidas pelo SHA-256 de CURRENT_RELEASE.json.
 dist/GeoMine.html
 public/index.html
+
+# Chaves de conta de serviço nunca entram no repositório.
+*firebase-adminsdk*.json
+*service-account*.json

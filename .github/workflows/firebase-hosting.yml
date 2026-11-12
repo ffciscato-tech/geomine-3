@@ -1,12 +1,15 @@
 # Publica o GeoMine no Firebase Hosting (projeto geomine-3).
 #
 # Requisito único: o segredo FIREBASE_SERVICE_ACCOUNT_GEOMINE_3 no repositório
-# (Settings → Secrets and variables → Actions), contendo o JSON de uma conta de
-# serviço do projeto geomine-3 com o papel "Firebase Hosting Admin".
+# (Settings → Secrets and variables → Actions), com o conteúdo do JSON de uma
+# conta de serviço do projeto (Console do Firebase → Configurações do projeto →
+# Contas de serviço → Gerar nova chave privada).
 #
-# - push na branch main: deploy no canal live (https://geomine-3.web.app)
-# - pull request: deploy num canal de prévia temporário, com o link comentado no PR
-# - execução manual (workflow_dispatch): deploy no canal live a partir da branch escolhida
+# - push na branch main: publica no site no ar (https://geomine-3.web.app)
+# - pull request: publica num canal de prévia temporário (link no resumo da execução)
+# - execução manual (workflow_dispatch): publica no site no ar a partir da branch escolhida
+#
+# Sem o segredo, a montagem roda normalmente e a publicação é apenas pulada.
 
 name: Firebase Hosting
 
@@ -17,13 +20,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  checks: write
   contents: read
-  pull-requests: write
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    env:
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_GEOMINE_3 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -40,10 +43,16 @@ jobs:
       - name: Registrar os SHA-256 gerados
         run: sha256sum dist/GeoMine.html public/index.html | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Deploy (prévia em PR, live em push/manual)
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_GEOMINE_3 }}
-          projectId: geomine-3
-          channelId: ${{ github.event_name == 'pull_request' && '' || 'live' }}
+      - name: Publicar (prévia em PR, site no ar em push/manual)
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::notice::Segredo FIREBASE_SERVICE_ACCOUNT_GEOMINE_3 ausente; publicação pulada."
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 -I -X utf8 tools/publicar_firebase.py --canal "pr-${{ github.event.number }}" \
+              --expira 604800s --mensagem "PR #${{ github.event.number }} (${{ github.sha }})" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            python3 -I -X utf8 tools/publicar_firebase.py --live \
+              --mensagem "GitHub ${{ github.ref_name }} ${{ github.sha }}" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi

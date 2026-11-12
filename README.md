@@ -29,13 +29,22 @@ sha256sum dist/GeoMine.html public/index.html
 ## Publicar
 
 ```bash
-firebase deploy --only hosting --project geomine-3
+python3 -I -X utf8 tools/publicar_firebase.py --canal previa   # canal de prévia temporário
+python3 -I -X utf8 tools/publicar_firebase.py --live           # site no ar
 ```
 
-O workflow `.github/workflows/firebase-hosting.yml` faz a montagem e a
-publicação automaticamente a cada push na branch `main`, e gera um link de
-prévia em pull requests. Ele precisa do segredo
-`FIREBASE_SERVICE_ACCOUNT_GEOMINE_3` cadastrado no repositório.
+`tools/publicar_firebase.py` publica a pasta `public/` pela API do Firebase
+Hosting, sem o Firebase CLI, e confere os hashes dos arquivos depois de
+publicar. A credencial é a chave JSON de uma conta de serviço do projeto,
+informada por `--credencial`, por `GOOGLE_APPLICATION_CREDENTIALS` ou por
+`FIREBASE_SERVICE_ACCOUNT`. A chave padrão do projeto (`firebase-adminsdk`)
+funciona com este script; com o Firebase CLI ela é recusada por falta de uma
+permissão de consulta de serviços.
+
+O workflow `.github/workflows/firebase-hosting.yml` monta e publica
+automaticamente a cada push na branch `main`, e gera um canal de prévia em
+pull requests. Ele precisa do segredo `FIREBASE_SERVICE_ACCOUNT_GEOMINE_3`
+cadastrado no repositório; sem ele, só a montagem roda.
 
 Antes de publicar, confirme que o site no ar ainda corresponde ao
 `publishedSha256` de `CURRENT_RELEASE.json`. Se não corresponder, alguém
@@ -50,7 +59,7 @@ publicou de outro lugar e este repositório está desatualizado.
 | `src/core/parts/` | Núcleo legado dividido em partes ordenadas |
 | `src/modules/` | Recursos por domínio (blasting, cad, environmental, mining, raster, ui...) |
 | `src/styles/`, `src/assets/`, `src/vendor/`, `src/services/` | Estilos, imagens, bibliotecas embarcadas e serviços auxiliares |
-| `tools/` | `build.py`, `preparar_hosting.py` e utilitários |
+| `tools/` | `build.py`, `preparar_hosting.py`, `publicar_firebase.py` e utilitários |
 | `web/` | Portão de login (`gate.template.html`), configuração do Firebase e logotipos |
 | `public/` | Licenças servidas junto com o site; `index.html` é gerado |
 | `validation/` | Relatórios e testes das validações de cada entrega |
