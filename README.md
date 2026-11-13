@@ -71,7 +71,13 @@ publicou de outro lugar e este repositório está desatualizado.
   recolhidos dentro desse painel e só aparecem no **i** ao lado do nome. Os
   textos de cada seção ficam no **i** ao lado do título. Na janela ficam só os
   controles, com botões do tamanho do texto (nada de largura total) e as seções
-  pouco usadas recolhidas. Layout aprovado em 12/11/2026.
+  pouco usadas recolhidas. Layout aprovado em 12/11/2026 e compactado em
+  seguida a pedido: fonte de 12 px, controles de 28 px de altura e espaços
+  rentes ao texto. Não voltar a aumentar.
+- **Lixeira com grupos.** Na seleção múltipla da árvore de camadas, grupos
+  inteiros também podem ser marcados (chave `G:`+id em `S._layerMulti`).
+  Excluir um grupo marcado exclui o grupo, os subgrupos e tudo o que está
+  dentro, depois de uma confirmação que lista o que será apagado.
 - **Caixa de comandos discreta.** No rodapé, a caixa tem altura automática:
   barra, andamento do carregamento (quando há), as últimas linhas do histórico
   e o campo de comando. Minimizada (botão ▾), mostra só a barra e o andamento

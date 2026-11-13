@@ -3718,7 +3718,7 @@ document.getElementById('btnLayerMulti').onclick=e=>{
   e.stopPropagation();S._layerMultiOn=!S._layerMultiOn;
   if(!S._layerMultiOn)S._layerMulti.clear();
   refreshUI();layerMultiSync();
-  toast(S._layerMultiOn?'Toque nas camadas que deseja marcar':'Seleção múltipla de camadas encerrada');
+  toast(S._layerMultiOn?'Toque nas camadas ou nos grupos que deseja marcar':'Seleção múltipla de camadas encerrada');
 };
 document.getElementById('btnLayerMultiDel').onclick=e=>{e.stopPropagation();layerMultiDelete();};
 (function(){

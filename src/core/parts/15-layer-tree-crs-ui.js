@@ -314,19 +314,35 @@ function renameCategorizedClass(L, ci){
 }
 /* Seleção múltipla da ÁRVORE (independente da seleção de feições do mapa). */
 S._layerMultiOn=false; S._layerMulti=new Set();
-function layerMultiKeysValidas(){return new Set(allNodes().map(n=>nodeKey(n.t,n.id)));}
+/* Camadas são marcadas pela chave do nó (L:, R:, I:) e GRUPOS inteiros por
+   'G:'+id. Marcar um grupo vale para tudo o que está dentro dele, inclusive
+   subgrupos. */
+function layerMultiKeysValidas(){return new Set([...allNodes().map(n=>nodeKey(n.t,n.id)),...(S.groups||[]).map(g=>'G:'+g.id)]);}
+function layerMultiGrupos(){
+  const ids=new Set((S.groups||[]).filter(g=>S._layerMulti.has('G:'+g.id)).map(g=>g.id));
+  for(let mudou=true;mudou;){mudou=false;
+    for(const g of S.groups||[])if(g.parentId!=null&&ids.has(g.parentId)&&!ids.has(g.id)){ids.add(g.id);mudou=true;}}
+  return ids;
+}
+function layerMultiAlvos(){
+  const grupos=layerMultiGrupos();
+  return {grupos,nos:allNodes().filter(n=>S._layerMulti.has(nodeKey(n.t,n.id))||n.o.groupId!=null&&grupos.has(n.o.groupId))};
+}
 function layerMultiSync(){
   const validas=layerMultiKeysValidas();
   [...S._layerMulti].forEach(k=>{if(!validas.has(k))S._layerMulti.delete(k);});
-  const b=document.getElementById('btnLayerMulti'),d=document.getElementById('btnLayerMultiDel'),n=S._layerMulti.size;
-  if(b){b.style.color=S._layerMultiOn?'var(--amber)':'';b.title=S._layerMultiOn?'Sair da seleção múltipla':'Selecionar várias camadas para excluir';}
-  if(d){d.style.display=S._layerMultiOn?'':'none';d.textContent='🗑'+(n?' '+n:'');d.disabled=!n;}
+  const b=document.getElementById('btnLayerMulti'),d=document.getElementById('btnLayerMultiDel'),alvos=layerMultiAlvos(),n=alvos.nos.length+alvos.grupos.size;
+  if(b){b.style.color=S._layerMultiOn?'var(--amber)':'';b.title=S._layerMultiOn?'Sair da seleção múltipla':'Selecionar várias camadas ou grupos para excluir';}
+  if(d){d.style.display=S._layerMultiOn?'':'none';d.textContent='🗑'+(n?' '+n:'');d.disabled=!n;
+    d.title=n?`Excluir ${alvos.nos.length} camada(s)`+(alvos.grupos.size?` e ${alvos.grupos.size} grupo(s)`:''):'Marque camadas ou grupos para excluir';}
 }
-function layerMultiHTML(key){
+function layerMultiHTML(key,herdado){
   if(!S._layerMultiOn)return '';
-  const on=S._layerMulti.has(key);
-  return `<span class="lmsel ${on?'on':''}" title="${on?'Desmarcar':'Marcar'} camada">${on?'✓':'·'}</span>`;
+  const on=S._layerMulti.has(key)||!!herdado,alvo=String(key).startsWith('G:')?'grupo inteiro':'camada';
+  return `<span class="lmsel ${on?'on':''}${herdado?' herdado':''}" title="${herdado?'Incluída pelo grupo marcado':(on?'Desmarcar ':'Marcar ')+alvo}">${on?'✓':'·'}</span>`;
 }
+/* A linha está dentro de um grupo marcado? */
+function layerMultiHerdado(it){return !!S._layerMultiOn&&(it.ancestors||[]).some(id=>S._layerMulti.has('G:'+id));}
 function layerMultiHandle(key,e){
   if(!S._layerMultiOn)return false;
   if(e){e.preventDefault();e.stopPropagation();}
@@ -334,10 +350,17 @@ function layerMultiHandle(key,e){
   refreshUI();return true;
 }
 function layerMultiDelete(){
-  const escolhidas=allNodes().filter(n=>S._layerMulti.has(nodeKey(n.t,n.id)));
-  if(!escolhidas.length){toast('Marque uma ou mais camadas');return;}
-  const nomes=escolhidas.map(n=>n.o.name||'Imagem de fundo');
-  if(!confirm(`Excluir ${escolhidas.length} camada(s)?\n\n${nomes.map(n=>'• '+n).join('\n')}\n\nA exclusão poderá ser desfeita individualmente com Ctrl+Z.`))return;
+  const {grupos,nos:escolhidas}=layerMultiAlvos();
+  if(!escolhidas.length&&!grupos.size){toast('Marque uma ou mais camadas ou grupos');return;}
+  const nomesGrupos=(S.groups||[]).filter(g=>grupos.has(g.id)).map(g=>g.name||'Grupo'),
+    nomes=escolhidas.map(n=>n.o.name||'Imagem de fundo'),lista=(a,limite)=>a.slice(0,limite).map(n=>'• '+n).join('\n')+(a.length>limite?`\n… e mais ${a.length-limite}`:'');
+  if(!confirm(`Excluir ${escolhidas.length} camada(s)`+(grupos.size?` e ${grupos.size} grupo(s)`:'')+'?\n\n'+
+    (grupos.size?'Grupos (com tudo o que está dentro):\n'+lista(nomesGrupos,10)+'\n\n':'')+
+    (escolhidas.length?'Camadas:\n'+lista(nomes,18)+'\n\n':'')+
+    'As camadas poderão ser desfeitas individualmente com Ctrl+Z'+(grupos.size?'; os grupos não voltam.':'.')))return;
+  // Uma camada desfeita depois volta para o grupo acima dos que foram excluídos.
+  const sobrevivente=id=>{const vistos=new Set();while(id!=null&&grupos.has(id)&&!vistos.has(id)){vistos.add(id);id=(S.groups||[]).find(g=>g.id===id)?.parentId??null;}return id;};
+  escolhidas.forEach(n=>{if(n.o.groupId!=null&&grupos.has(n.o.groupId))n.o.groupId=sobrevivente(n.o.groupId);});
   S._layerMulti.clear();S._layerMultiOn=false;
   escolhidas.forEach(n=>{
     if(n.t==='L')deleteVectorLayer(n.o);
@@ -348,7 +371,15 @@ function layerMultiDelete(){
       S.img=null;S.stack=(S.stack||[]).filter(k=>k!=='I:0');
     }
   });
-  refreshUI();layerMultiSync();toast(`${escolhidas.length} camada(s) excluída(s)`);
+  if(grupos.size){
+    S.groups=(S.groups||[]).filter(g=>!grupos.has(g.id));
+    const chaves=new Set([...grupos].map(id=>'G:'+id));
+    S.stack=(S.stack||[]).filter(k=>!chaves.has(String(k)));
+    try{zApply();}catch(_){}
+    if(typeof layoutSeVisivel==='function')layoutSeVisivel();
+  }
+  refreshUI();layerMultiSync();
+  toast(`${escolhidas.length} camada(s)`+(grupos.size?` e ${grupos.size} grupo(s)`:'')+' excluída(s)');
 }
 function containerCountLayerRole(L){
   if(!L)return '';
@@ -453,16 +484,19 @@ function refreshUI(){
     if(it.kind==='group'){
       const g=it.g; const members=groupMembers(g.id);
       const allVis=members.some(n=>n.o.visible!==false);
-      const el=document.createElement('div'); el.className='grp'; treeRowData(el,it,di);
+      const keyG='G:'+g.id,herdadoG=layerMultiHerdado(it);
+      const el=document.createElement('div'); el.className='grp'+(S._layerMulti.has(keyG)||herdadoG?' multi-selected':''); treeRowData(el,it,di);
       if(it.depth>0){
         el.classList.add('subgrp');el.style.setProperty('--subgroup-hue',groupTreeHue(g));
       }
-      el.innerHTML=`<span class="drag" title="Arrastar">⠿</span>
+      el.innerHTML=`<span class="drag" title="Arrastar">⠿</span>${layerMultiHTML(keyG,herdadoG)}
         <span class="gchev" role="button" aria-label="${g.collapsed?'Expandir grupo':'Recolher grupo'}" aria-expanded="${!g.collapsed}">${g.collapsed?'▸':'▾'}</span>
         <span class="eye ${allVis?'on':''}">${allVis?'◉':'○'}</span>
         <span class="nm">${esc(g.name)}</span><span class="cnt">${members.length}</span>
         <span class="gdel" title="Desfazer grupo">✕</span>`;
-      el.querySelector('.gchev').onclick=()=>{g.collapsed=!g.collapsed;refreshUI();};
+      el.querySelector('.gchev').onclick=e=>{e.stopPropagation();g.collapsed=!g.collapsed;refreshUI();};
+      // Na seleção múltipla, tocar na linha do grupo marca o grupo inteiro.
+      if(S._layerMultiOn)el.onclick=e=>{if(e.target.closest('.gchev,.eye,.gdel,.drag'))return;if(herdadoG){toast('Este subgrupo já está incluído pelo grupo marcado acima');return;}layerMultiHandle(keyG,e);};
       el.querySelector('.eye').onclick=e=>{e.stopPropagation();
         toggleGroupVisibility(g);};
       el.querySelector('.gdel').onclick=e=>{e.stopPropagation();
@@ -496,8 +530,9 @@ function refreshUI(){
         sizeTitle=isTIN?'Triângulos da superfície':nativeReady?`Original nativo: ${nativeSize} · prévia: ${previewSize}`:isRas&&projectRasterReady(o)?'Grade nativa':!isRas&&window.GeoMineOriginalSources?.needsOrtho?.(o)===false?`Imagem completa: ${previewSize}`:`Prévia salva: ${previewSize} · TIFF nativo ainda não disponível`,
         cnt = isTIN ? (nTri?`▲ ${nTri.toLocaleString('pt-BR')}`:'TIN'):(nativeSize||previewSize);
       const el=document.createElement('div');
-      el.className='layer tree-column-row'+(gg?' ingrp':'')+(S._layerMulti.has(key)?' multi-selected':''); treeRowData(el,it,di);
-      el.innerHTML=`<span class="tree-label"><span class="drag" title="Arrastar">⠿</span>${layerMultiHTML(key)}
+      const herdado=layerMultiHerdado(it);
+      el.className='layer tree-column-row'+(gg?' ingrp':'')+(S._layerMulti.has(key)||herdado?' multi-selected':''); treeRowData(el,it,di);
+      el.innerHTML=`<span class="tree-label"><span class="drag" title="Arrastar">⠿</span>${layerMultiHTML(key,herdado)}
         <span class="eye ${vis?'on':''}" title="Visibilidade">${vis?'◉':'○'}</span>
         ${isTIN
           ?`<span class="swatch" title="Superfície TIN — cálculos pelos triângulos" style="background:#123024;display:flex;align-items:center;justify-content:center;color:#7fe0a8;font-size:10px;font-weight:700">▲</span>`
@@ -549,12 +584,12 @@ function refreshUI(){
     const collabLocked=typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false,true);
     const classed=(s.mode==='grad'&&s.classes.length)||(s.mode==='cat'&&s.cats.length);
     const keyL=nodeKey('L',L.id);
-    const el=document.createElement('div'); el.className='layer tree-column-row'+(L.id===S.activeId?' active':'')+(g?' ingrp':'')+(S._layerMulti.has(keyL)?' multi-selected':'');
+    const el=document.createElement('div'); el.className='layer tree-column-row'+(L.id===S.activeId?' active':'')+(g?' ingrp':'')+(S._layerMulti.has(keyL)||layerMultiHerdado(it)?' multi-selected':'');
     treeRowData(el,it,di);
     let extra='';
     if(!meshInfo && L.gtype!=='point' && L.features.length<=2000){ const t=layerTotals(L);
       extra = L.gtype==='polygon' ? `<span class="area">${fmtArea(t.area)}</span>` : `<span class="area">${fmtLen(t.comp)}</span>`; }
-    el.innerHTML=`<span class="tree-label"><span class="drag" title="Arrastar">⠿</span>${layerMultiHTML(keyL)}`+
+    el.innerHTML=`<span class="tree-label"><span class="drag" title="Arrastar">⠿</span>${layerMultiHTML(keyL,layerMultiHerdado(it))}`+
       (classed?`<span class="gchev cchev">${L.clsOpen?'▾':'▸'}</span>`:'')+
       `<span class="eye ${L.visible?'on':''}" title="Visibilidade">${L.visible?'◉':'○'}</span>
       ${L._cavaLimiteDin
