@@ -10,8 +10,8 @@ panel.innerHTML=`<h2>Área contribuinte no ponto</h2>
 <div class="hint">Marque o exutório: um ponto da linha de fluxo ou qualquer ponto do MDT. O resultado é toda a área que drena até ele.</div>
 <label class="field" for="pointCatchmentRaster">MDT</label><select id="pointCatchmentRaster"></select>
 <label class="field" for="pointCatchmentMethod">Método</label><select id="pointCatchmentMethod">
-<option value="d8">D8 — direção e acumulação de fluxo (grade do projeto)</option>
-<option value="nativo">MDT original em resolução nativa (arquivo .tif)</option></select>
+<option value="nativo">MDT original — resolução nativa (D8)</option>
+<option value="d8">Grade do projeto — rápido, resolução menor (D8)</option></select>
 <div class="hint" id="pointCatchmentInfo" style="margin:7px 0"></div>
 <button class="mini" id="pointCatchmentLocate" hidden style="margin:0 0 8px">Localizar MDT original…</button>
 <button class="tbtn" id="pointCatchmentMark" style="width:100%;justify-content:center;background:var(--amber);color:#1a1206;font-weight:700">◎ Marcar ponto</button>
@@ -31,13 +31,19 @@ function scale(s){const p=proj4(s.sourceCRS).oProj,k=Number(p.to_meter??1);if(p.
 /* Memória para a análise: aparelhos móveis fecham a aba bem antes de um
    computador. Bacias que não cabem na resolução nativa são recalculadas numa
    grade agregada (média das cotas), e o resultado diz qual grade foi usada. */
-const METHOD_KEY='geomine.catchment.method.v1';
-const method=()=>$('pointCatchmentMethod').value==='nativo'?'nativo':'d8';
+/* O cálculo é feito na RESOLUÇÃO NATIVA do MDT carregado (o padrão). A grade
+   guardada no projeto, de resolução menor, só é usada se a pessoa escolher
+   esse método: nunca por conta própria. */
+const METHOD_KEY='geomine.catchment.method.v2';
+const method=()=>$('pointCatchmentMethod').value==='d8'?'d8':'nativo';
 /* Direção e acumulação D8 da última grade usada: os pontos seguintes no mesmo
    MDT não recalculam nada. Vale enquanto a grade e as cotas forem as mesmas. */
 let routed=null;
 const gridKey=(r,g)=>JSON.stringify([r.id,g.nc,g.nr,g.cs,g.csy,g.xll,g.yll]);
-const memoryMB=()=>root.GeoMineImportHandoff?.mobile?.()||navigator.maxTouchPoints>1?96:navigator.deviceMemory>=8?512:256;
+const memoryMB=()=>root.GeoMineImportHandoff?.mobile?.()||navigator.maxTouchPoints>1?256:navigator.deviceMemory>=8?768:384;
+/* Quando a bacia não cabe na memória na resolução nativa, a célula cresce o
+   mínimo possível: 2×, 3×, 4×… em vez de dobrar a cada tentativa. */
+const FACTORS=[1,2,3,4,6,8,12,16,24,32,48,64];
 function coarsen(base,factor){
   const nc=Math.ceil(base.nc/factor),nr=Math.ceil(base.nr/factor),cy=base.csy||base.cs;
   return {...base,nc,nr,cs:base.cs*factor,csy:cy*factor,yll:base.yll+base.nr*cy-nr*cy*factor,float32:true,noData:null,
@@ -71,10 +77,10 @@ async function describe(){
   const d8=method()==='d8';
   try{s=await root.GeoMineChannelDEM.prepare(r,{workCRS:S.workCRS,isCurrent:current,allowPreview:true,gridOnly:d8});if(!current())return;
     const k=scale(s),size=fmt(s.grid.cs*k,4)+' × '+fmt(s.grid.csy*k,4)+' m';
-    $('pointCatchmentInfo').textContent=d8?'Grade do projeto: '+size+' ('+fmt(s.grid.nc,0)+' × '+fmt(s.grid.nr,0)+' células). Não precisa do arquivo .tif.'
-      :s.preview?'O TIFF original deste MDT não está acessível nesta sessão; a área será calculada na grade do projeto ('+size+'). Localize o original para usar a resolução nativa.'
-      :'Resolução nativa: '+size+' · '+s.sourceCRS;
-    $('pointCatchmentLocate').hidden=d8||!s.preview||!root.GeoMineMissingOriginals?.request;
+    $('pointCatchmentInfo').textContent=d8?'Grade do projeto: '+size+' ('+fmt(s.grid.nc,0)+' × '+fmt(s.grid.nr,0)+' células).'+(s.preview?' É mais grossa que o MDT original: use só para uma estimativa rápida.':'')
+      :s.preview?'O arquivo .tif original deste MDT não está aberto nesta sessão. Toque em Localizar MDT original e escolha o arquivo para calcular na resolução nativa. A grade guardada no projeto tem '+size+'.'
+      :'Resolução do cálculo: '+size+' (nativa do MDT) · '+s.sourceCRS;
+    $('pointCatchmentLocate').hidden=d8||!s.preview;
   }catch(e){if(current()&&e.name!=='AbortError'){$('pointCatchmentInfo').textContent=e.message;$('pointCatchmentLocate').hidden=true;}}
   finally{s?.close();}
 }
@@ -109,7 +115,12 @@ async function click(latlng){
     status('Ponto marcado. Lendo o MDT…');
     timer=setInterval(()=>{if(!current())q.controller.abort();},200);
     const useD8=method()==='d8';
-    sampler=await root.GeoMineChannelDEM.prepare(r,{workCRS:q.crs,signal:q.controller.signal,isCurrent:current,allowPreview:true,gridOnly:useD8});check();
+    try{sampler=await root.GeoMineChannelDEM.prepare(r,{workCRS:q.crs,signal:q.controller.signal,isCurrent:current,allowPreview:useD8,gridOnly:useD8});}
+    catch(e){
+      if(e.code!=='CHANNEL_NATIVE_MISSING')throw e;
+      throw Error('O arquivo .tif original deste MDT não está aberto nesta sessão, então o cálculo na resolução nativa não pode ser feito.\nToque em Localizar MDT original e escolha o arquivo. Para uma estimativa rápida na grade do projeto, troque o método.');
+    }
+    check();
     const k=scale(sampler),tap=fromWGS(q.crs,latlng.lng,latlng.lat),screen=map.latLngToContainerPoint(latlng),
       side=map.containerPointToLatLng([screen.x+10,screen.y]),sideXY=fromWGS(q.crs,side.lng,side.lat),
       tolerance=Math.min(10,Math.max(sampler.resolution,Math.hypot(sideXY[0]-tap[0],sideXY[1]-tap[1]))),
@@ -126,10 +137,11 @@ async function click(latlng){
       // e, com linha vetorial, ao menos 3 m de folga entre a linha e o MDT.
       searchM=Math.min(40,Math.max(1.4*Math.hypot(sideXY[0]-tap[0],sideXY[1]-tap[1]),3*nativeRes,snap?3:0));
     let source=native,factor=1,start={col:seed.col,row:seed.row},adjust=0,result,reached=0,wholeGrid=false;
-    // MÉTODO D8 NA GRADE INTEIRA: direção e acumulação de fluxo de toda a grade
-    // do projeto, calculadas uma vez e reaproveitadas nos pontos seguintes.
-    if(useD8&&native.nc*native.nr*18<=memory*1048576*.8){
-      wholeGrid=true;
+    // GRADE INTEIRA, quando cabe na memória (MDT nativo ou grade do projeto):
+    // direção e acumulação de fluxo D8 de todas as células, calculadas uma vez
+    // e reaproveitadas nos pontos seguintes. MDT maior que isso segue pela
+    // janela que cresce a montante, mais abaixo.
+    if(native.nc*native.nr*18<=memory*1048576*.8)try{
       const key=gridKey(r,native),phase=v=>{check();status((v.phase==='read'?'Lendo as cotas da grade':v.phase==='outlets'?'Preparando as saídas da grade':v.phase==='accumulation'?'Calculando a acumulação de fluxo D8':v.phase==='contour'?'Traçando o contorno':v.phase==='upstream'?'Delimitando a montante':'Calculando a direção de fluxo D8')+'…'+
         (v.cells?'\n'+fmt(v.cells,0)+' células · '+fmt(v.cells*native.cs*(native.csy||native.cs)*k*k/10000,4)+' ha':''));};
       if(!routed||routed.key!==key||routed.d!==d||routed.z!==(d._full?.z||d.z)){
@@ -138,10 +150,14 @@ async function click(latlng){
         routed={key,d,z:d._full?.z||d.z,routing};
       }
       result=await engine.analyzeRouted(native,routed.routing,start,{searchCells:Math.ceil(searchM/nativeRes),signal:q.controller.signal,decodedCacheMB:12,tileSize:128,onProgress:phase});check();
-      adjust=result.moved?result.snapDistance:0;
+      adjust=result.moved?result.snapDistance:0;wholeGrid=true;
       const at=toWGS(q.crs,...sampler.toWork(result.outlet));pointMarker.setLatLng([at[1],at[0]]);
+    }catch(e){
+      // Faltou memória para a grade inteira: segue pela janela a montante.
+      if(e.code!=='memory'&&!(e instanceof RangeError))throw e;
+      check();routed=null;result=null;
     }
-    else for(;;){
+    if(!wholeGrid)for(;;){
       const res=Math.min(source.cs,source.csy||source.cs)*k;
       status(factor>1?'Bacia grande: calculando em grade de '+fmt(res,2)+' m…':'Ajustando o exutório ao talvegue do MDT…');
       // O exutório é procurado em cada grade: a média das cotas pode deslocar o talvegue.
@@ -157,8 +173,9 @@ async function click(latlng){
         });check();break;
       }catch(e){
         // Não coube na memória nesta resolução: repete numa grade com o dobro da célula.
-        if(e.code!=='memory'||factor>=64||Math.ceil(native.nc/factor)<64)throw e;
-        check();factor*=2;source=coarsen(native,factor);
+        const next=FACTORS[FACTORS.indexOf(factor)+1];
+        if(e.code!=='memory'&&!(e instanceof RangeError)||!next||Math.ceil(native.nc/next)<64)throw e;
+        check();factor=next;source=coarsen(native,factor);
         start={col:Math.min(source.nc-1,Math.floor(seed.col/factor)),row:Math.min(source.nr-1,Math.floor(seed.row/factor))};
       }
     }
@@ -169,7 +186,7 @@ async function click(latlng){
         E_TOQUE:tap[0],N_TOQUE:tap[1],AJUSTE_M:snap?.distance||0,LINHA:snap?.layer.name||'',E_PONTO:p[0],N_PONTO:p[1],AJUSTE_MDT:adjust,E_CELULA:outlet[0],N_CELULA:outlet[1],COTA_M:result.seedZ,
         RES_X_M:result.resolution.x,RES_Y_M:result.resolution.y,RES_MDT_M:nativeRes,MDT:r.name,
         ACUM_CEL:result.cellsAtOutlet??result.cells,
-        METODO:(wholeGrid?'D8 — direção e acumulação de fluxo, grade do projeto':'Fluxo contínuo D8 — '+(sampler.preview?'grade do projeto':'cotas originais'))+(factor>1?', grade agregada '+factor+'× (média das cotas)':''),LIMITE_DADOS:partial?'Sim':'Não'},
+        METODO:(wholeGrid?'D8 — direção e acumulação de fluxo da grade inteira':'D8 — fluxo contínuo em janela a montante')+' · '+(sampler.preview?'grade do projeto':'cotas originais do MDT')+(factor>1?', grade agregada '+factor+'× (média das cotas)':''),LIMITE_DADOS:partial?'Sim':'Não'},
       fields=Object.entries(props).map(([name,value])=>({name,type:typeof value==='number'?'N':'C',length:typeof value==='number'?20:100,decimal:['CELULAS','ACUM_CEL'].includes(name)?0:6}));
     check();
     const layer=addLayer({sourceLayer:'R:'+r.id,name:'Área contribuinte — '+fmt(props.AREA_HA,4)+' ha',gtype:'polygon',crs:q.crs,
@@ -179,21 +196,37 @@ async function click(latlng){
     const text='Área contribuinte: '+fmt(props.AREA_HA,4)+' ha\n'+fmt(props.AREA_M2,4)+' m² · '+fmt(props.CELULAS,0)+' células'+
       (partial?'\nA área toca a borda ou células sem dados do MDT; pode haver contribuição fora dos dados disponíveis.':'')+
       (snap?'\nPonto na linha: '+snap.layer.name+' · ajuste '+fmt(snap.distance,2)+' m':'')+
-      (wholeGrid?'\nMétodo D8: direção e acumulação de fluxo na grade do projeto ('+fmt(nativeRes,2)+' m). Acumulação no exutório: '+fmt(result.cellsAtOutlet,0)+' células.':'')+
+      (sampler.preview?'\nResolução do cálculo: '+fmt(nativeRes,2)+' m (grade do projeto, mais grossa que o MDT original).'
+        :factor===1?'\nResolução do cálculo: '+fmt(nativeRes,2)+' m (nativa do MDT).':'')+
+      (wholeGrid?'\nDireção e acumulação de fluxo D8 de toda a grade. Acumulação no exutório: '+fmt(result.cellsAtOutlet,0)+' células.':'')+
       (adjust?'\nExutório ajustado ao talvegue do MDT: '+fmt(adjust,2)+' m do ponto.':'\nExutório na célula do ponto marcado.')+
-      (factor>1?'\nBacia grande: calculada em grade de '+fmt(result.resolution.x,2)+' m (MDT de '+fmt(nativeRes,2)+' m), por limite de memória deste aparelho.':'')+
-      (!wholeGrid&&sampler.preview?'\nCalculada na grade do projeto ('+fmt(nativeRes,2)+' m): o TIFF original deste MDT não está acessível nesta sessão. Use Localizar MDT original para refazer na resolução nativa.':'');
+      (factor>1?'\nATENÇÃO: bacia grande demais para a memória deste aparelho na resolução nativa. Calculada em grade de '+fmt(result.resolution.x,2)+' m (MDT de '+fmt(nativeRes,2)+' m). Para a resolução nativa, use um computador.':'')+
+'';
     status(text);cmdLog(text.replaceAll('\n',' · '),'ok');
   }catch(e){if(q.project===S.projectId&&q.generation===gen()){status(e.name==='AbortError'?'Consulta cancelada.':e.message);if(e.name!=='AbortError')cmdLog('Área contribuinte: '+e.message,'warn');}}
   finally{clearInterval(timer);sampler?.close();if(job===q)job=null;controls();describe();}
 }
 $('pointCatchmentRaster').onchange=()=>{cancel();describe();controls();};
-try{if(localStorage.getItem(METHOD_KEY)==='nativo')$('pointCatchmentMethod').value='nativo';}catch(_){}
+try{if(localStorage.getItem(METHOD_KEY)==='d8')$('pointCatchmentMethod').value='d8';}catch(_){}
 $('pointCatchmentMethod').onchange=()=>{try{localStorage.setItem(METHOD_KEY,method());}catch(_){}cancel();describe();controls();};
 $('pointCatchmentMark').onclick=arm;
 // Abre a janela que localiza os TIFFs originais; ao voltar, o painel confere de novo.
-$('pointCatchmentLocate').onclick=()=>{cancel();root.GeoMineMissingOriginals?.request();
-  const watch=setInterval(()=>{if(!document.getElementById('gmMissingOriginals')){clearInterval(watch);describe();}},700);};
+$('pointCatchmentLocate').onclick=async()=>{
+  cancel();const r=selected();if(!r)return;
+  try{
+    if(typeof rasEscolherNativoAgora==='function'){
+      status('Escolha o arquivo .tif original de “'+r.name+'”.');
+      const ok=await rasEscolherNativoAgora(r);
+      status(ok?'MDT original vinculado. Toque em Marcar ponto.':'O arquivo não foi vinculado. Confira se é o mesmo .tif usado para criar este MDT; a mensagem na tela diz o motivo.');
+    }else root.GeoMineMissingOriginals?.request();
+  }catch(e){if(e.name!=='AbortError')status(e.message);}
+  finally{
+    // No iPad a leitura do arquivo fecha os painéis para mostrar o mapa:
+    // reabre este, já com o MDT vinculado, para a pessoa marcar o ponto.
+    if(!panel.getClientRects().length&&selected()===r){const text=$('pointCatchmentResult').textContent;open();status(text);}
+    describe();controls();
+  }
+};
 $('pointCatchmentRain').onclick=()=>{cancel();ribbonOpen($('secHidroMancha'),anchor||$('pointCatchmentRain'),'Chuva e inundação');};
 const category=CATS.find(c=>c.id==='hidrologia');
 for(const group of category?.grupos||[])for(const item of group.it||[]){

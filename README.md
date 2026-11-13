@@ -128,14 +128,17 @@ O comando **Área Contribuinte** (faixa Hidrologia, também aberto pelo ícone d
 mancha de inundação) delimita toda a área que drena até um exutório marcado no
 mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
 
-- **Método padrão: D8 na grade do projeto.** A ferramenta calcula a direção e
-  a acumulação de fluxo D8 de toda a grade do MDT que já está na memória
-  (`routeGrid`), sem precisar do arquivo `.tif`, e delimita a bacia a montante
-  do exutório (`analyzeRouted`). O roteamento fica guardado: os pontos
-  seguintes no mesmo MDT saem em frações de segundo. O outro método, **MDT
-  original em resolução nativa**, lê o `.tif` por janelas e continua
-  disponível no seletor do painel. A ferramenta nunca deve se recusar a
-  calcular por falta do `.tif`.
+- **Resolução nativa é a regra.** O método padrão calcula com as cotas
+  originais do MDT carregado (0,5 m, 0,8 m… a que o arquivo tiver). Se a grade
+  inteira cabe na memória, roteia tudo de uma vez (`routeGrid` e
+  `analyzeRouted`: direção e acumulação de fluxo D8, reaproveitadas nos pontos
+  seguintes); senão, usa a janela que cresce a montante (`analyze`). A grade
+  guardada no projeto, mais grossa, só é usada quando a pessoa escolhe o
+  método **Grade do projeto** no painel. A ferramenta nunca troca a resolução
+  nativa por uma mais grossa sem avisar.
+- **Sem o `.tif` nesta sessão.** No método padrão a ferramenta não calcula:
+  explica o motivo e oferece **Localizar MDT original**, que abre o seletor de
+  arquivo daquele MDT e reabre o painel depois de vincular.
 - **Exutório no talvegue.** O toque, ou o ponto projetado numa linha vetorial,
   quase nunca cai na célula exata por onde o escoamento passa no MDT, e uma
   célula de encosta ao lado devolve só alguns metros quadrados. Por isso
@@ -143,17 +146,10 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   (o dedo, ao menos 3 células, no máximo 40 m), a linha de escoamento dominante
   e move o ponto para a célula **mais próxima** dela, sem descer o rio. O
   marcador e o resultado mostram o exutório usado e o ajuste em metros.
-- **Bacias grandes.** A análise é feita na resolução nativa. Se a bacia não
-  couber na memória do aparelho, ela é refeita numa grade agregada (2×, 4×…,
-  média das cotas) e o resultado informa a grade usada (`coarsen` em
-  `point-catchment.js`). Nunca devolver erro de memória sem tentar a grade
-  agregada.
-
-- **Sem o TIFF original.** Projeto reaberto só com a prévia do MDT (caso comum
-  no iPad): a ferramenta calcula na grade guardada no projeto, avisa isso no
-  painel e no resultado e oferece o botão **Localizar MDT original**. Ela não
-  deve se recusar a calcular (`allowPreview` em `channel-dem-sampler.js`; as
-  demais ferramentas continuam exigindo o original).
+- **Bacias grandes.** Só quando a bacia não cabe na memória do aparelho na
+  resolução nativa ela é refeita numa grade agregada, com a menor célula
+  possível (2×, 3×, 4×…, média das cotas), e o resultado traz um aviso em
+  destaque com a grade usada (`coarsen` em `point-catchment.js`).
 
 Testes do motor: `node src/modules/hydrology/continuous-catchment.test.cjs` e
 `node src/modules/hydrology/point-catchment.test.cjs`.
