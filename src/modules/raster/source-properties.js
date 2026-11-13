@@ -24,6 +24,10 @@ async function preferLocal(I,valid=current(I,'ortho')){
  return false;
 }
 function selectFile(item){
+ // iPad sem o original: busca no Google Drive / seletor na pasta do projeto.
+ const drive=root.GeoMineDriveOriginals;let viaDrive=false;
+ try{viaDrive=!!drive?.shouldLocate?.()&&drive.missing().some(row=>row.item===item);}catch(_){}
+ if(viaDrive)return drive.locate(item,'ortho').then(found=>found?.file?{file:found.file}:null);
  if(root.showOpenFilePicker&&typeof fsApiOK==='function'&&fsApiOK()){
   const startIn=root.GeoMineOriginalSources?.startIn?.(item,'ortho')||root.GeoMineProjectTabSession?.pickerStartIn?.();
   return root.showOpenFilePicker({id:'geomine-ortho-original',multiple:false,...(startIn?{startIn}:{}),types:[{description:'GeoTIFF original',accept:{'image/tiff':['.tif','.tiff']}}]}).then(async hs=>hs?.[0]?{file:await hs[0].getFile(),handle:hs[0]}:null);

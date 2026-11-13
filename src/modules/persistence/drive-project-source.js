@@ -23,21 +23,40 @@ function isSource(s){
   return s?.kind==='drive' && typeof s.id==='string' && /^[\w-]{1,200}$/.test(s.id);
 }
 /* O seletor abre na pasta do último projeto aberto pelo Drive (ou na pasta
-   indicada por quem chama), em vez de começar sempre na raiz. */
-const FOLDER_KEY='geomine.drive.pasta.v1';
-function lastFolder(){try{const id=localStorage.getItem(FOLDER_KEY)||'';return /^[\w-]{1,200}$/.test(id)?id:'';}catch(_){return '';}}
-function rememberFolder(id){if(id&&/^[\w-]{1,200}$/.test(id))try{localStorage.setItem(FOLDER_KEY,id);}catch(_){}}
+   indicada por quem chama), em vez de começar sempre na raiz. As pastas ficam
+   guardadas por projeto: a do arquivo .ccmgis e a dos TIFF originais. */
+const FOLDER_KEY='geomine.drive.pasta.v1',FOLDERS_KEY='geomine.drive.pastas.v2',FOLDER_ID=/^[\w-]{1,200}$/;
+function lastFolder(){try{const id=localStorage.getItem(FOLDER_KEY)||'';return FOLDER_ID.test(id)?id:'';}catch(_){return '';}}
+function rememberFolder(id){if(id&&FOLDER_ID.test(id))try{localStorage.setItem(FOLDER_KEY,id);}catch(_){}}
+function folders(){try{const map=JSON.parse(localStorage.getItem(FOLDERS_KEY)||'{}');return map&&typeof map==='object'&&!Array.isArray(map)?map:{};}catch(_){return {};}}
+function folderFor(projectId,kind){const id=projectId?folders()[projectId]?.[kind]||'':'';return FOLDER_ID.test(id)?id:'';}
+function rememberFolderFor(projectId,kind,id){
+  if(!projectId||typeof projectId!=='string'||!id||!FOLDER_ID.test(id)||(kind!=='project'&&kind!=='originals'))return;
+  const map=folders();map[projectId]={...(map[projectId]||{}),[kind]:id,at:Date.now()};
+  const keys=Object.keys(map);
+  if(keys.length>60)keys.sort((a,b)=>(map[a]?.at||0)-(map[b]?.at||0)).slice(0,keys.length-60).forEach(key=>delete map[key]);
+  try{localStorage.setItem(FOLDERS_KEY,JSON.stringify(map));}catch(_){}
+}
+/* A pasta indicada vem primeiro; Meu Drive e Drives compartilhados ficam ao
+   lado, para quem precisar sair dela (o seletor não sobe de uma pasta). */
 async function pick(options={}){
   const provider=drive(),token=await provider.driveAccess(true);
   await pickerReady();
   const {appId,key}=provider.drivePickerConfig;
   return new Promise((resolve,reject)=>{
     const api=google.picker;
-    const view=new api.DocsView().setIncludeFolders(true).setSelectFolderEnabled(false);
-    const parent=options.parent||lastFolder();
-    if(parent&&/^[\w-]{1,200}$/.test(parent)&&typeof view.setParent==='function')view.setParent(parent);
+    const make=label=>{const view=new api.DocsView().setIncludeFolders(true).setSelectFolderEnabled(false);
+      if(label&&typeof view.setLabel==='function')try{view.setLabel(label);}catch(_){}
+      return view;};
+    const parent=options.parent===''?'':(options.parent||lastFolder());
     const builder=new api.PickerBuilder().setAppId(appId).setDeveloperKey(key).setOAuthToken(token)
-      .setOrigin(location.origin).setLocale('pt-BR').setTitle(options.title||'Abrir projeto GeoMine').addView(view);
+      .setOrigin(location.origin).setLocale('pt-BR').setTitle(options.title||'Abrir projeto GeoMine');
+    const inFolder=parent&&FOLDER_ID.test(parent)&&typeof api.DocsView.prototype.setParent==='function';
+    if(inFolder)builder.addView(make(options.parentLabel||'Pasta do projeto').setParent(parent));
+    try{
+      const mine=make('Meu Drive');if(inFolder)mine.setParent('root');builder.addView(mine);
+      if(typeof api.DocsView.prototype.setEnableDrives==='function')builder.addView(make('Drives compartilhados').setEnableDrives(true));
+    }catch(_){if(!inFolder)builder.addView(make());}
     if(api.Feature.SUPPORT_DRIVES)builder.enableFeature(api.Feature.SUPPORT_DRIVES);
     const picker=builder.setCallback(data=>{
       if(data.action===api.Action.CANCEL){picker.dispose();reject(abort());}
@@ -129,6 +148,48 @@ async function latest(source,projectId,signal){
   }
   return null;
 }
-root.GeoMineDriveProject={pick,isSource,metadata,read,latest};
+/* Pasta do Drive onde está o arquivo do projeto aberto. Quando o projeto veio
+   pelo seletor do aparelho não há vínculo com o Drive: procura-se o arquivo
+   pelo nome e confere-se o projectId no começo de cada candidato. Devolve ''
+   quando não acha ou quando a conta não autorizou a leitura do Drive. */
+async function projectFolder(options={}){
+  const projectId=typeof options.projectId==='string'?options.projectId:'',signal=options.signal;
+  const known=folderFor(projectId,'project');if(known)return known;
+  let parent='';
+  if(isSource(options.source)){
+    try{parent=(await (await request(options.source,{fields:'id,parents'},signal)).json()).parents?.[0]||'';}
+    catch(error){if(error.name==='AbortError')throw error;}
+  }
+  if(!parent&&projectId){
+    const provider=drive(),token=await provider.driveAccess(false),name=String(options.name||'').trim(),found=new Map();
+    const list=async q=>{
+      const url=new URL('https://www.googleapis.com/drive/v3/files');
+      url.search=new URLSearchParams({q:q+' and trashed = false',orderBy:'modifiedTime desc',pageSize:'25',
+        fields:'files(id,name,parents,resourceKey,modifiedTime)',supportsAllDrives:'true',includeItemsFromAllDrives:'true',corpora:'allDrives'});
+      const response=await fetch(url,{headers:{Authorization:'Bearer '+token},signal,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+      if(!response.ok)return;
+      for(const file of (await response.json()).files||[])if(PROJECT_FILE.test(file.name||'')&&!found.has(file.id))found.set(file.id,file);
+    };
+    const quoted=text=>"'"+text.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+"'";
+    try{
+      if(name)await list('name = '+quoted(PROJECT_FILE.test(name)?name:name+'.ccmgis'));
+      const stem=name.replace(PROJECT_FILE,'').split(/[_\s]+/).filter(Boolean).slice(0,2).join(' ');
+      if(stem)await list('name contains '+quoted(stem));
+      await list("name contains 'ccmgis'");
+    }catch(error){if(error.name==='AbortError')throw error;}
+    for(const file of [...found.values()].slice(0,12)){
+      const candidate={kind:'drive',id:file.id,resourceKey:file.resourceKey||''};
+      if(!isSource(candidate))continue;
+      let text='';
+      try{text=await head(candidate,4096,signal);}catch(error){if(error.name==='AbortError')throw error;continue;}
+      const match=/"projectId"\s*:\s*"([^"\\]{1,200})"/.exec(text);
+      if(match&&match[1]===projectId){parent=file.parents?.[0]||'';if(parent)break;}
+    }
+  }
+  if(!parent||!FOLDER_ID.test(parent))return '';
+  rememberFolderFor(projectId,'project',parent);
+  return parent;
+}
+root.GeoMineDriveProject={pick,isSource,metadata,read,latest,lastFolder,folderFor,rememberFolderFor,projectFolder};
 })(window);
 

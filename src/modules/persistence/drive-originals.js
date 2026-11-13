@@ -45,22 +45,46 @@ async function search(name,signal){
   return (await (await call(API+'?'+query,{signal})).json()).files||[];
 }
 async function find(item,signal){
-  const size=expectedSize(item),folder=projectFolder();let found=[];
+  const size=expectedSize(item),preferred=[originalsFolder(),projectFolder()].filter(Boolean);let found=[];
   for(const name of names(item)){
     const files=(await search(name,signal)).filter(f=>ID.test(f.id||'')&&Number(f.size)>0&&(!size||Number(f.size)===size));
     found=found.concat(files);if(files.length&&size)break;
   }
   const unique=[...new Map(found.map(f=>[f.id,f])).values()];
   if(!unique.length)return {status:'not-found'};
+  const rank=f=>{const i=preferred.findIndex(id=>(f.parents||[]).includes(id));return i<0?preferred.length:i;};
+  unique.sort((a,b)=>rank(a)-rank(b)||Date.parse(b.modifiedTime||0)-Date.parse(a.modifiedTime||0));
   // Com o tamanho gravado, qualquer cópia de mesmo nome e mesmos bytes serve;
-  // prefere a que está na pasta do projeto. Sem tamanho, só aceita candidato único.
-  if(!size&&unique.length>1)return {status:'ambiguous',count:unique.length};
-  unique.sort((a,b)=>Number((b.parents||[]).includes(folder))-Number((a.parents||[]).includes(folder))||Date.parse(b.modifiedTime||0)-Date.parse(a.modifiedTime||0));
+  // prefere a que está na pasta dos originais ou do projeto. Sem tamanho, só
+  // aceita candidato único, ou o único que está numa dessas pastas.
+  if(!size&&unique.length>1){
+    const inside=unique.filter(f=>rank(f)<preferred.length);
+    if(inside.length!==1)return {status:'ambiguous',count:unique.length,parent:(unique[0].parents||[])[0]||''};
+    return {status:'found',file:inside[0]};
+  }
   return {status:'found',file:unique[0]};
 }
-function projectFolder(){try{return localStorage.getItem('geomine.drive.pasta.v1')||'';}catch(_){return '';}}
-function rememberFolder(id){if(id&&ID.test(id))try{localStorage.setItem(FOLDER_KEY,id);}catch(_){}}
-function lastFolder(){try{return localStorage.getItem(FOLDER_KEY)||projectFolder();}catch(_){return '';}}
+/* Pastas lembradas por projeto (drive-project-source.js). */
+const driveProject=()=>root.GeoMineDriveProject;
+function projectFolder(){try{return driveProject()?.folderFor?.(S.projectId,'project')||'';}catch(_){return '';}}
+function originalsFolder(){try{return driveProject()?.folderFor?.(S.projectId,'originals')||'';}catch(_){return '';}}
+function rememberFolder(id){
+  if(!id||!ID.test(id))return;
+  try{driveProject()?.rememberFolderFor?.(S.projectId,'originals',id);localStorage.setItem(FOLDER_KEY,id);}catch(_){}
+}
+/* Pasta em que o seletor do Drive deve abrir para ESTE projeto: a do último
+   original encontrado; senão a do arquivo do projeto (descoberta no Drive se
+   o projeto veio pelo seletor do aparelho); senão a última usada. */
+async function startFolder(signal){
+  const own=originalsFolder()||projectFolder();if(own)return own;
+  try{
+    const record=root.GeoMineProjectTabSession?.state?.()?.record;
+    const bound=record&&record.projectId===S.projectId?record:null;
+    const folder=await driveProject()?.projectFolder?.({projectId:S.projectId,source:bound?.source,name:bound?.name||S.currentProjectName||'',signal});
+    if(folder)return folder;
+  }catch(e){if(e?.name==='AbortError')throw e;}
+  try{const last=localStorage.getItem(FOLDER_KEY)||'';return ID.test(last)?last:(driveProject()?.lastFolder?.()||'');}catch(_){return '';}
+}
 
 /* Gravação no armazenamento do aparelho. createWritable onde existe; no
    iPad (WebKit) a escrita síncrona só existe dentro de um Worker. */
@@ -147,15 +171,8 @@ async function one(item,kind,options={}){
   if(located.status!=='found')return {...located,label};
   const file=located.file;
   if(!options.interactive&&!options.file&&Number(file.size)>AUTO_LIMIT)return {status:'large',label,name:file.name,size:Number(file.size)};
-  log('Baixando do Google Drive: '+file.name+' ('+megabytes(Number(file.size)||0)+')…','etapa');
-  let shown=-1;
-  const local=await download(file,{signal:options.signal,onProgress:(loaded,total)=>{
-    const percent=total?Math.floor(100*loaded/total):0;if(percent===shown)return;shown=percent;
-    try{root.GeoMineLoadProgress?.show('Baixando '+file.name+' do Google Drive — '+percent+'%');}catch(_){}
-  }});
-  try{root.GeoMineLoadProgress?.end();}catch(_){}
+  const local=await fetchLocal(file,options.signal);
   if(!current())return {status:'stale',label};
-  rememberFolder((file.parents||[])[0]);
   const ok=await attach(item,kind,local);
   return {status:ok?'linked':'refused',label,name:file.name};
 }
@@ -169,6 +186,10 @@ function restore(options={}){
     try{await token(!!options.interactive);}
     catch(e){
       if(options.interactive)throw e;
+      // Sem autorização do Drive nesta visita (ela vale 50 minutos e só pode
+      // ser pedida a partir de um toque): diz onde tocar, em vez de calar.
+      log(rows.length+(rows.length===1?' original não está neste aparelho':' originais não estão neste aparelho')+
+        '. Toque em “Buscar no Google Drive” no aviso para baixá-lo'+(rows.length===1?'':'s')+' sem procurar a pasta.','avisa');
       return {linked:0,rows:[],needsSession:true};
     }
     const results=[];
@@ -195,13 +216,125 @@ function restore(options={}){
   running=job.finally(()=>{if(running===wrapped)running=null;});
   const wrapped=running;return wrapped;
 }
-/* Escolha manual, já na pasta onde o último original foi encontrado. */
+/* Metadados do arquivo escolhido no seletor do Drive. */
+async function pickedFile(picked,signal){
+  const meta=await (await call(API+'/'+encodeURIComponent(picked.id)+'?fields=id,name,size,parents,modifiedTime,resourceKey&supportsAllDrives=true',{signal})).json();
+  return {...meta,resourceKey:meta.resourceKey||picked.resourceKey||''};
+}
+/* Escolha manual, já na pasta do projeto (ou do último original encontrado). */
 async function choose(item,kind){
-  if(!root.GeoMineDriveProject?.pick)throw Error('Seletor do Google Drive indisponível.');
-  const picked=await root.GeoMineDriveProject.pick({title:'Escolher o arquivo original',parent:lastFolder()});
-  await token(false);
-  const meta=await (await call(API+'/'+encodeURIComponent(picked.id)+'?fields=id,name,size,parents,modifiedTime,resourceKey&supportsAllDrives=true')).json();
-  return restore({item,kind,interactive:false,file:{...meta,resourceKey:meta.resourceKey||picked.resourceKey||''}});
+  if(!driveProject()?.pick)throw Error('Seletor do Google Drive indisponível.');
+  await token(true);
+  const picked=await driveProject().pick({title:'Original de “'+(item.name||'camada')+'”',parent:await startFolder(),parentLabel:'Pasta do projeto'});
+  return restore({item,kind,interactive:false,file:await pickedFile(picked)});
+}
+/* LOCALIZAR O ORIGINAL A PARTIR DE UM TOQUE
+   O seletor de arquivos do iPad (inclusive o "Google Drive" do Chrome) abre
+   sempre na raiz e não aceita pasta inicial. Por isso, onde ele seria o único
+   caminho, o toque em Localizar faz o trabalho pela pessoa:
+     1. procura o arquivo no Drive pelo nome e tamanho gravados no projeto;
+     2. não achando, abre o seletor do Google Drive do próprio GeoMine, já na
+        pasta do projeto;
+     3. baixa o arquivo e o devolve a quem chamou, que faz a conferência de
+        sempre. O seletor do aparelho continua disponível na janela de apoio.
+   Devolve {file}, {linked:true} (outra busca já vinculou) ou null (desistiu). */
+function shouldLocate(){
+  if(!available()||!provider()?.drivePickerConfig?.key||!driveProject()?.pick)return false;
+  // No computador o seletor do sistema já abre na pasta certa e guarda o vínculo.
+  try{if(root.showOpenFilePicker&&typeof fsApiOK==='function'&&fsApiOK())return false;}catch(_){}
+  return true;
+}
+function friendly(error){
+  const code=String(error?.code||'');
+  if(code==='auth/popup-blocked')return 'O navegador bloqueou a janela de autorização do Google. Permita pop-ups para o GeoMine e toque de novo.';
+  if(code==='auth/popup-closed-by-user'||code==='auth/cancelled-popup-request'||code==='auth/user-cancelled')return 'A autorização do Google Drive não foi concluída.';
+  if(code.startsWith('auth/'))return 'Não foi possível conectar ao Google Drive ('+code.slice(5)+').';
+  return error?.message||String(error);
+}
+function localFile(){
+  return new Promise(resolve=>{
+    const input=document.createElement('input');input.type='file';input.accept='.tif,.tiff,image/tiff,application/octet-stream';input.style.display='none';
+    document.body.appendChild(input);let done=false;
+    const finish=file=>{if(done)return;done=true;input.remove();resolve(file||null);};
+    input.onchange=()=>finish(input.files?.[0]);input.addEventListener('cancel',()=>finish(null),{once:true});
+    try{typeof abrirSeletorGeoTIFF==='function'?abrirSeletorGeoTIFF(input):input.click();}catch(_){finish(null);}
+  });
+}
+/* Janela de apoio: aparece quando o Drive não resolveu sozinho. Cada botão é
+   um toque novo, necessário para abrir o seletor do aparelho ou a autorização. */
+function ask(label,message,signal){
+  return new Promise(resolve=>{
+    const box=document.createElement('div');box.className='modal-bg on';box.id='gmLocateOriginal';box.setAttribute('role','dialog');box.setAttribute('aria-label','Localizar o arquivo original');
+    box.style.zIndex='1300';
+    const safe=text=>String(text).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    box.innerHTML='<div class="modal" style="width:min(420px,94vw)"><div class="modal-h"><b>Original de “'+safe(label)+'”</b></div>'+
+      '<div class="modal-b"><p data-locate-message style="margin:0 0 10px;white-space:pre-line">'+safe(message)+'</p>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+      '<button class="tbtn primary" type="button" data-locate="drive">Escolher no Google Drive</button>'+
+      '<button class="tbtn" type="button" data-locate="local">Do aparelho…</button>'+
+      '<button class="tbtn" type="button" data-locate="cancel">Cancelar</button></div></div></div>';
+    const finish=value=>{signal?.removeEventListener('abort',cancel);box.remove();resolve(value);},cancel=()=>finish('cancel');
+    box.addEventListener('click',e=>{const b=e.target.closest?.('[data-locate]');if(b)finish(b.dataset.locate);});
+    signal?.addEventListener('abort',cancel,{once:true});
+    document.body.appendChild(box);
+  });
+}
+const progress=text=>{try{text?root.GeoMineLoadProgress?.show(text):root.GeoMineLoadProgress?.end();}catch(_){}};
+async function fetchLocal(file,signal){
+  log('Baixando do Google Drive: '+file.name+' ('+megabytes(Number(file.size)||0)+')…','etapa');
+  let shown=-1;
+  try{
+    const local=await download(file,{signal,onProgress:(loaded,total)=>{
+      const percent=total?Math.floor(100*loaded/total):0;if(percent===shown)return;shown=percent;
+      progress('Baixando '+file.name+' do Google Drive — '+percent+'%');
+    }});
+    rememberFolder((file.parents||[])[0]);
+    return local;
+  }finally{progress('');}
+}
+async function locate(item,kind,options={}){
+  const label=item?.name||'original',signal=options.signal,project=S.projectId,gen=generation();
+  const current=()=>!signal?.aborted&&S.projectId===project&&generation()===gen;
+  // A autorização do Google tem de ser pedida ainda dentro do toque.
+  let access=token(true).then(()=>null,error=>error);
+  if(running){try{await running;}catch(_){}
+    if(!current())return null;
+    if(!missing().some(row=>row.item===item))return {linked:true};}
+  let step='search',message='';
+  for(;;){
+    if(!current())return null;
+    try{
+      if(step==='local'){const file=await localFile();return file&&current()?{file,local:true}:null;}
+      const failed=await access;if(failed)throw failed;
+      let file=null,parent='';
+      if(step==='search'){
+        progress('Procurando o original de “'+label+'” no Google Drive…');
+        const located=names(item).length?await find(item,signal):{status:'no-name'};
+        if(located.status==='found')file=located.file;else parent=located.parent||'';
+        progress('');
+      }
+      if(!current())return null;
+      if(!file){
+        if(!parent){progress('Abrindo a pasta do projeto no Google Drive…');try{parent=await startFolder(signal);}finally{progress('');}}
+        if(!current())return null;
+        if(step==='search')log('Original de “'+label+'” não foi encontrado no Google Drive pelo nome: escolha o arquivo na pasta do projeto.','avisa');
+        file=await pickedFile(await driveProject().pick({title:'Original de “'+label+'”',parent,parentLabel:'Pasta do projeto'}),signal);
+      }
+      if(!current())return null;
+      const local=await fetchLocal(file,signal);
+      return current()?{file:local,name:file.name}:null;
+    }catch(error){
+      progress('');
+      if(!current())return null;
+      message=error?.name==='AbortError'?'Nenhum arquivo foi escolhido no Google Drive.':friendly(error);
+      if(error?.name!=='AbortError')log('Original de “'+label+'” no Google Drive: '+message,'avisa');
+    }
+    const answer=await ask(label,message+'\nDe onde quer trazer o arquivo .tif original?',signal);
+    if(answer==='cancel'||!current())return null;
+    step=answer==='local'?'local':'pick';
+    // Novo toque: pode pedir a autorização de novo se ela falhou ou venceu.
+    if(step==='pick')access=token(true).then(()=>null,error=>error);
+  }
 }
 /* Ao abrir ou retomar um projeto, depois da procura no próprio aparelho. */
 function install(){
@@ -216,5 +349,5 @@ function install(){
   sources.restoreAll._drive=true;return true;
 }
 if(!install())document.addEventListener('DOMContentLoaded',install,{once:true});
-root.GeoMineDriveOriginals={restore,choose,available,missing};
+root.GeoMineDriveOriginals={restore,choose,locate,shouldLocate,available,missing};
 })(window);

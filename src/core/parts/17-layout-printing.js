@@ -2822,15 +2822,18 @@ function imgSecStatusSync(){
   {
     const bt=g('btnOrtoReligar'), fi=g('ortoReligarFile');
     if(bt&&fi){
-      bt.onclick=()=>abrirSeletorGeoTIFF(fi);
+      const usar=async f=>{
+        const image=S.img;
+        if(!await GeoMineImportHandoff.beforeRead({ownerId:'imgModal',message:'Lendo a ortofoto original…',current:()=>S.img===image}))return false;
+        const ok=await ortoReligarTIFF(f);
+        if(ok){ try{ if(GeoMineImportHandoff.mobile())imgModalSyncExtras();else openImgProps(); }catch(_){}}
+        return ok; };
+      bt.onclick=()=>{ if(!ortoLocalizarPeloDrive(bt,usar)) abrirSeletorGeoTIFF(fi); };
       fi.onchange=async e=>{
         const f=e.target.files&&e.target.files[0];
         e.target.value='';
         if(!f) return;
-        const image=S.img;
-        if(!await GeoMineImportHandoff.beforeRead({ownerId:'imgModal',message:'Lendo a ortofoto original…',current:()=>S.img===image}))return;
-        const ok=await ortoReligarTIFF(f);
-        if(ok){ try{ if(GeoMineImportHandoff.mobile())imgModalSyncExtras();else openImgProps(); }catch(_){}} };
+        await usar(f); };
     }
   }
   /* ---- seções espelhadas da caixa do MDT ---- */
@@ -2965,18 +2968,44 @@ function imgResInfoSync(){
     toast(cb.checked?'Ortofoto por TILES: resolução acompanha o zoom':'Ortofoto: usando a prévia fixa');
   };
   if(bt&&fi){
-    bt.onclick=()=>abrirSeletorGeoTIFF(fi);
-    fi.onchange=async e=>{
-      const f=e.target.files&&e.target.files[0]; e.target.value='';
-      if(!f) return;
+    const usar=async f=>{
       const image=S.img;
-      if(!await GeoMineImportHandoff.beforeRead({ownerId:'imgModal',message:'Lendo a ortofoto original…',current:()=>S.img===image}))return;
+      if(!await GeoMineImportHandoff.beforeRead({ownerId:'imgModal',message:'Lendo a ortofoto original…',current:()=>S.img===image}))return false;
       const ok=await ortoReligarTIFF(f);
       try{ imgResInfoSync(); }catch(_){}
       if(ok){ try{ syncImgPanel(); }catch(_){} }
+      return ok;
+    };
+    bt.onclick=()=>{ if(!ortoLocalizarPeloDrive(bt,usar)) abrirSeletorGeoTIFF(fi); };
+    fi.onchange=async e=>{
+      const f=e.target.files&&e.target.files[0]; e.target.value='';
+      if(!f) return;
+      await usar(f);
     };
   }
 })();
+/* No iPad o seletor do sistema abre sempre na raiz do Drive. Quando falta o
+   original da ortofoto, o toque busca o arquivo no Google Drive e, se não
+   achar, abre o seletor do GeoMine já na pasta do projeto (drive-originals.js).
+   Devolve false quando o seletor do aparelho é o caminho certo; a decisão é
+   síncrona para o seletor do sistema ainda abrir dentro do toque. */
+function ortoLocalizarPeloDrive(bt,usar){
+  const drive=window.GeoMineDriveOriginals,image=S.img;
+  let pelo=false;
+  try{pelo=!!image&&!!drive?.shouldLocate?.()&&drive.missing().some(row=>row.item===image);}catch(_){}
+  if(!pelo)return false;
+  (async()=>{
+    if(bt)bt.disabled=true;
+    try{
+      const achado=await drive.locate(image,'ortho');
+      if(!achado?.file||S.img!==image)return;
+      const ok=await usar(achado.file);
+      if(ok&&S.img===image)try{await window.GeoMineOriginalSources?.rememberFile?.(image,'ortho',achado.file);}catch(_){}
+    }catch(e){if(e?.name!=='AbortError')toast('Google Drive: '+(e?.message||e));}
+    finally{if(bt)bt.disabled=false;}
+  })();
+  return true;
+}
 
 /* ---- nome e origem da ortofoto ---- */
 function syncImgPanel(){
@@ -3641,7 +3670,8 @@ document.querySelectorAll('#tabBar .tbtn').forEach(b=>{
     const session=window.GeoMineProjectTabSession;
     if(session && window.GeoMineCloudProvider?.drivePickerConfig?.key){
       const cat={nome:'Início'},grp={label:'Projeto'};
-      a.push({cat,grp,cmd:{nome:'Abrir do Google Drive'},run:session.openDrive});
+      a.push({cat,grp,cmd:{nome:'Abrir do Google Drive'},run:()=>session.openDrive()});
+      a.push({cat,grp,cmd:{nome:'Abrir dos arquivos deste aparelho'},run:()=>session.open({local:true})});
       if(window.GeoMineDriveProject?.isSource(session.state().record?.source)){
         a.push({cat,grp,cmd:{nome:'Atualizar do Google Drive'},run:()=>session.reopen()});
       }

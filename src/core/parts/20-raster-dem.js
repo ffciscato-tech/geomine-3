@@ -2733,7 +2733,21 @@ function rasEscolherNativoAgora(r,options={}){
   // Start now so the OS picker retains the user's click activation.
   // options.file: o arquivo já está em mãos (baixado do Google Drive, por
   // exemplo) e segue pela mesma conferência, sem abrir o seletor.
-  job.promise=(options.file?ler(options.file,null):escolher()).finally(()=>{
+  // No iPad o seletor do sistema abre sempre na raiz do Drive e não aceita
+  // pasta inicial: ali o toque busca o original no Google Drive sozinho e, se
+  // não achar, abre o seletor do GeoMine já na pasta do projeto
+  // (drive-originals.js). options.local força o seletor do aparelho.
+  async function peloDrive(){
+    if(!vigente())return false;
+    let achado=null;
+    try{achado=await window.GeoMineDriveOriginals.locate(r,'raster',{signal:controller.signal});}
+    catch(e){if(e?.name!=='AbortError'&&mesmoProjeto())toast('Google Drive: '+(e?.message||e));return false;}
+    if(achado?.linked)return mesmoProjeto()&&projectRasterReady(r);
+    return achado?.file&&vigente()?ler(achado.file,null):false;
+  }
+  let usarDrive=false;
+  try{const D=window.GeoMineDriveOriginals;usarDrive=!options.file&&!options.local&&!!(options.drive?D?.available?.():D?.shouldLocate?.());}catch(_){}
+  job.promise=(options.file?ler(options.file,null):usarDrive?peloDrive():escolher()).finally(()=>{
     options.signal?.removeEventListener('abort',abort);
     try{inp?.remove();}catch(_){}
     if(rasNativeSelections.get(r)===job)rasNativeSelections.delete(r);
