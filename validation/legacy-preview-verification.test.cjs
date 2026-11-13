@@ -128,9 +128,21 @@ test('Float32 comparison tolerates two representable steps but preserves tiny no
  assert.equal(f.c.rasterLegacyFloatMatches(0,1e-12),false);assert.equal(f.c.rasterLegacyFloatMatches(NaN,0),false);
 });
 
-test('wrong size, native dimensions, CRS or csy/extent reject before pixel reads',async()=>{
- const changes=[f=>f.r.src.size++,f=>f.r.d.srcDims=[98,145],f=>f.base.getGeoKeys=()=>({ProjectedCSTypeGeoKey:31983}),f=>f.r.d.csy+=.01];
+test('wrong size, native dimensions, CRS or another area reject before pixel reads',async()=>{
+ // Outra área: a extensão difere em mais de uma célula da prévia.
+ const changes=[f=>f.r.src.size++,f=>f.r.d.srcDims=[98,145],f=>f.base.getGeoKeys=()=>({ProjectedCSTypeGeoKey:31983}),f=>f.r.d.xll+=f.r.d.cs*2,f=>f.r.d.csy*=1.2];
  for(const change of changes){const f=fixture();change(f);assert.equal((await f.verify()).status,'mismatch');assert.equal(f.calls.reads.length,0);}
+});
+
+test('a saved grid that lost csy or decimals (within one preview cell) is the same area; elevations still prove identity',async()=>{
+ // csy deixava de ser gravado quando diferia de cs em até 0,1 mm: a borda norte desloca nr × 0,1 mm.
+ for(const change of [f=>f.r.d.csy+=.0001,f=>f.r.d.csy+=.01,f=>{f.r.d.xll=Math.round(f.r.d.xll*100)/100+.01;}]){
+  const f=fixture();change(f);const result=await f.verify();
+  assert.equal(result.status,'verified');assert(f.calls.reads.length>0);
+ }
+ // A mesma folga não aceita cotas diferentes.
+ const f=fixture();f.r.d.csy+=.01;f.r.d.z[f.r.d.z.findIndex(Number.isFinite)]+=.1;
+ assert.equal((await f.verify()).status,'mismatch');
 });
 
 test('legacy proof attaches the already-open native source once and retains every saved preview value',async()=>{
@@ -182,9 +194,24 @@ function enlarge(f,width,height,factor){
 }
 test('missing overview or oversized proof windows in a large source never fall back to parseTIFF',async()=>{
  for(const absent of [true,false]){
-  const f=fixture();enlarge(f,10000,10000,1000);f.r.d.ovr=absent?6:0;
-  const result=await f.verify();assert.equal(result.status,'unsupported');assert.equal(result.safeFallback,false);assert.equal(f.calls.reads.length,0);
+  // Sem prova pelas cotas e sem tamanho gravado: a pessoa decide. Recusando, nada muda.
+  const f=fixture();enlarge(f,10000,10000,1000);f.r.d.ovr=absent?6:0;f.r.src.size=0;
+  const asked=[];f.c.confirm=message=>{asked.push(message);return false;};
+  const result=await f.verify();assert.equal(result.status,'unsupported');assert.equal(result.safeFallback,false);assert.equal(result.confirmable,true);assert.equal(f.calls.reads.length,0);
   const snapshot=before(f);assert.equal(await f.c.religaFonte(f.r,f.file),false);preserved(f,snapshot);assert.equal(f.calls.parse,0);assert.equal(f.calls.close,1);
+  assert.equal(asked.length,1);assert.match(asked[0],/mesma área/);
+ }
+});
+
+test('when the automatic proof cannot run, the user or the recorded byte size attaches the original without parseTIFF',async()=>{
+ for(const mode of ['confirm','size']){
+  const f=fixture();enlarge(f,10000,10000,1000);f.r.d.ovr=6;
+  let asked=0;f.c.confirm=()=>{asked++;return true;};
+  if(mode==='confirm')f.r.src.size=0;
+  const z=f.r.d.z;
+  assert.equal(await f.c.religaFonte(f.r,f.file),true);
+  assert.equal(asked,mode==='confirm'?1:0);assert.equal(f.calls.parse,0);
+  assert.equal(f.r.d.z,z);assert.equal(f.r.d._img0,f.base);assert.equal(f.r._projectSourceRaw,f.file);
  }
 });
 

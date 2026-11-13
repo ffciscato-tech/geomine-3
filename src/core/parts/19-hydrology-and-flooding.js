@@ -1213,13 +1213,26 @@ async function rasterVerifyLegacyPreview(r,file,tiff,control={}){
   if(dimensions&&dimensions.length===2&&dimensions.every(value=>Number.isSafeInteger(value)&&value>0)&&
      (dimensions[0]!==W||dimensions[1]!==H))return rasterLegacyMismatch('as dimensões nativas não conferem com a superfície gravada');
   if(actualCRS&&expectedCRS&&actualCRS!==expectedCRS)return rasterLegacyMismatch('o CRS do TIFF não confere com o CRS da superfície');
-  const stored=[d.xll,d.yll,d.xll+d.nc*d.cs,d.yll+d.nr*(d.csy||d.cs)],
-    nativeStep=Math.max((bb[2]-bb[0])/W,(bb[3]-bb[1])/H),tolerance=Math.max(.000001,nativeStep*.00001);
-  if(stored.some(value=>!Number.isFinite(value))||stored.some((value,index)=>Math.abs(value-bb[index])>tolerance))
-    return rasterLegacyMismatch('a extensão georreferenciada do TIFF não confere com a superfície gravada');
+  /* EXTENSÃO. A grade guardada no projeto não reproduz a do TIFF ao mícron: a
+     altura da célula (csy) deixava de ser gravada quando diferia da largura em
+     até 0,1 mm, e isso desloca a borda norte em até nr × 0,1 mm; coordenadas
+     regravadas também perdem casas. Recusar por isso impedia religar o arquivo
+     certo. Agora: diferença de até UMA CÉLULA DA PRÉVIA é a mesma área, e quem
+     prova que é o mesmo levantamento é a conferência das cotas, mais abaixo.
+     Acima disso o arquivo é de outra área, e a mensagem diz quanto difere. */
+  const stored=[d.xll,d.yll,d.xll+d.nc*d.cs,d.yll+d.nr*(d.csy||d.cs)];
+  if(stored.some(value=>!Number.isFinite(value)))return rasterLegacyMismatch('a superfície gravada não tem extensão válida');
+  const extentDiff=Math.max(...stored.map((value,index)=>Math.abs(value-bb[index]))),
+    sameArea=Math.max(d.cs,d.csy||d.cs);
+  if(extentDiff>sameArea)
+    return rasterLegacyMismatch('a área do TIFF difere da superfície gravada em até '+extentDiff.toLocaleString('pt-BR',{maximumFractionDigits:2})+
+      ' m (TIFF: X '+bb[0].toFixed(1)+'–'+bb[2].toFixed(1)+', Y '+bb[1].toFixed(1)+'–'+bb[3].toFixed(1)+
+      '; superfície: X '+stored[0].toFixed(1)+'–'+stored[2].toFixed(1)+', Y '+stored[1].toFixed(1)+'–'+stored[3].toFixed(1)+')');
   const whole=W*H<=L.fallbackPixels?rasterLegacyWindowCost(layout0,[0,0,W,H],4096):null,
     safeFallback=!!whole&&whole.working<=L.workingBytes;
-  const limited=reason=>rasterLegacyUnsupported(reason,safeFallback);
+  /* Área, dimensões e CRS conferem, mas a prova automática pelas cotas não pôde
+     ser feita: a pessoa decide se este é o original (confirmable). */
+  const limited=reason=>({...rasterLegacyUnsupported(reason,safeFallback),confirmable:true,extentDiff,width:W,height:H});
   if(!actualCRS||!expectedCRS||!dimensions||dimensions.length!==2)return limited('faltam metadados para conferir CRS e dimensões nativas');
   const transform=fd.ModelTransformation;
   if((transform&&(Number(transform[1])!==0||Number(transform[4])!==0))||(fd.Orientation!=null&&Number(fd.Orientation)!==1))
@@ -1326,6 +1339,27 @@ async function religaFonte(r, file,options={}){
         toast('“'+r.name+'” conferida e ligada ao original, mantendo a grade e as coordenadas do projeto.');
       }
       return ok;
+    }
+    if(verification.status!=='mismatch'&&!verification.safeFallback&&verification.confirmable){
+      // Sem prova automática, mas a área, as dimensões e o CRS conferem: quem
+      // conhece o levantamento decide. Nada do projeto é alterado ao recusar.
+      // Mesmo tamanho em bytes do original gravado, mais área, dimensões e CRS
+      // iguais: é o arquivo. Só pergunta quando o projeto não guardou o tamanho.
+      const mesmoTamanho=Number(r.src?.size)>0&&file.size===Number(r.src.size);
+      const aceito=mesmoTamanho||confirm('Não foi possível conferir automaticamente se “'+file.name+'” é o original de “'+r.name+'”:\n'+verification.reason+'.\n\n'+
+        'O arquivo cobre a mesma área da superfície'+(verification.extentDiff>0.001?' (diferença máxima de '+verification.extentDiff.toLocaleString('pt-BR',{maximumFractionDigits:3})+' m)':'')+
+        ' e tem '+verification.width.toLocaleString('pt-BR')+' × '+verification.height.toLocaleString('pt-BR')+' células.\n\nVincular este arquivo como o original?');
+      if(!unchanged())return false;
+      if(aceito){
+        const ready=temporary;temporary=null;
+        const ok=await projectAttachNativeRaster(r,file,{...control,tiff:ready});
+        if(ok){
+          window.GeoMineOriginalSources?.validated(r,'raster',previousPreview);
+          toast('“'+r.name+'” ligada ao original escolhido, mantendo a grade e as coordenadas do projeto.');
+        }
+        return ok;
+      }
+      toast('“'+file.name+'” não foi vinculado. O projeto foi mantido.');return false;
     }
     if(verification.status==='mismatch'||!verification.safeFallback){
       toast('“'+file.name+'”: '+verification.reason+'. A leitura foi interrompida sem alterar o projeto.');return false;

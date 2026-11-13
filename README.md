@@ -142,6 +142,16 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   guardada no projeto, mais grossa, só é usada quando a pessoa escolhe o
   método **Grade do projeto** no painel. A ferramenta nunca troca a resolução
   nativa por uma mais grossa sem avisar.
+- **Religar o `.tif` original não pode recusar o arquivo certo.** A grade
+  guardada no projeto não reproduz a do TIFF ao mícron (a altura da célula
+  deixava de ser gravada quando diferia da largura em até 0,1 mm). Em
+  `rasterVerifyLegacyPreview`, diferença de extensão de até uma célula da
+  prévia é a mesma área; quem prova a identidade é a conferência das cotas.
+  Quando essa prova não pode rodar (prévia amostrada, caso do iPad), vale o
+  tamanho em bytes gravado no projeto ou, sem ele, a confirmação da pessoa.
+  Outra área, outras dimensões ou outro CRS continuam recusados, com a
+  diferença em metros na mensagem. Teste:
+  `node validation/legacy-preview-verification.test.cjs`.
 - **Sem o `.tif` nesta sessão.** No método padrão a ferramenta não calcula:
   explica o motivo e oferece **Localizar MDT original**, que abre o seletor de
   arquivo daquele MDT e reabre o painel depois de vincular.

@@ -216,8 +216,10 @@ $('pointCatchmentLocate').onclick=async()=>{
   try{
     if(typeof rasEscolherNativoAgora==='function'){
       status('Escolha o arquivo .tif original de “'+r.name+'”.');
-      const ok=await rasEscolherNativoAgora(r);
-      status(ok?'MDT original vinculado. Toque em Marcar ponto.':'O arquivo não foi vinculado. Confira se é o mesmo .tif usado para criar este MDT; a mensagem na tela diz o motivo.');
+      const antes=CMD.linhas.length,ok=await rasEscolherNativoAgora(r);
+      // O motivo de uma recusa aparece só num aviso rápido: repete aqui, onde fica.
+      const motivo=CMD.linhas.slice(antes).reverse().find(l=>/não confere|difere|não foi vinculado|não é o arquivo|não tem o tamanho|interrompida|alterada desde/i.test(l.msg))?.msg;
+      status(ok?'MDT original vinculado. Toque em Marcar ponto.':'O arquivo não foi vinculado.'+(motivo?'\n'+motivo:'\nConfira se é o mesmo .tif usado para criar este MDT.'));
     }else root.GeoMineMissingOriginals?.request();
   }catch(e){if(e.name!=='AbortError')status(e.message);}
   finally{
