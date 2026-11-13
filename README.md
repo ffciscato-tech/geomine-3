@@ -197,6 +197,17 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   SDK guardava e repetia. As falhas chegam com mensagem em português e não
   contam como recusa da permissão de leitura. Não dá para testar fora do site
   oficial: confirmar no iPad a cada mudança aqui.
+- **Reamostragem por escolha na área contribuinte (pedido do usuário,
+  13/11/2026).** O painel tem o interruptor "Reamostrar o MDT para o cálculo"
+  (padrão `.gmp-sw`) e a lista de células (fatores inteiros da célula nativa).
+  Desligado, vale a regra de sempre: cotas do TIFF nativo. Ligado, o cálculo
+  usa `coarsen(native,fator)` (média das cotas) e, cabendo na memória, a
+  direção e a acumulação D8 da grade inteira, guardadas para os pontos
+  seguintes. O resultado e o atributo `METODO` dizem "REAMOSTRADO por
+  escolha". A escolha fica em `geomine.hidro.reamostragem.v1`. `coarsen` lê o
+  TIFF em pedaços de até 2.048 colunas: janelas largas estouravam o limite de
+  32 MiB do leitor no iPad. Teste de referência (terreno sintético de 0,25 m,
+  ponto no talvegue): 64,0 ha na grade de 0,5 m e 66,0 ha na de 1 m.
 - **Snap na linha de fluxo segue o ímã.** Com o ímã ligado (`S.snapOn`), o
   toque gruda na linha visível mais próxima a até a tolerância do snap das
   outras ferramentas (`SNAP_PX` = 15 px; 24 px no toque), em qualquer zoom; o
