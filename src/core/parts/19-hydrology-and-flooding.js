@@ -1171,7 +1171,12 @@ async function rasterVerifyLegacyPreview(r,file,tiff,control={}){
   const L=RASTER_LEGACY_VERIFY_LIMITS,d=r.d,expectedSize=Number(r.src?.size),
     unsupported=reason=>rasterLegacyUnsupported(reason,false);
   rasterImportCheck(control);
-  if(expectedSize>0&&file.size!==expectedSize)return rasterLegacyMismatch('o tamanho do arquivo não confere com o original gravado');
+  /* control.otherFile: a pessoa escolheu um .tif que não é o arquivo gravado
+     no projeto (outro tamanho em bytes). CRS e área continuam obrigatórios;
+     com as mesmas dimensões, as cotas são conferidas como sempre; com outra
+     resolução não há prova automática e quem chamou pergunta à pessoa. */
+  const otherFile=control.otherFile===true;
+  if(!otherFile&&expectedSize>0&&file.size!==expectedSize)return rasterLegacyMismatch('o tamanho do arquivo não confere com o original gravado');
   if(!Number.isSafeInteger(file.size)||file.size<=0)return unsupported('o tamanho do arquivo não está disponível');
   const images=[],layouts=[];let headerBlocks=0,headerBytes=0;
   for(let index=0;index<=L.images;index++){
@@ -1209,8 +1214,9 @@ async function rasterVerifyLegacyPreview(r,file,tiff,control={}){
     sig=control.expectedSignature||d._sig||r.src?.sig,
     dimensions=d.srcDims||sig?.srcDims||sig?.dims;
   if(!bb||bb.length!==4||bb.some(value=>!Number.isFinite(value))||!(bb[2]>bb[0]&&bb[3]>bb[1]))return unsupported('a extensão do TIFF não é válida');
-  if(dimensions&&dimensions.length===2&&dimensions.every(value=>Number.isSafeInteger(value)&&value>0)&&
-     (dimensions[0]!==W||dimensions[1]!==H))return rasterLegacyMismatch('as dimensões nativas não conferem com a superfície gravada');
+  const otherDims=!!(dimensions&&dimensions.length===2&&dimensions.every(value=>Number.isSafeInteger(value)&&value>0)&&
+     (dimensions[0]!==W||dimensions[1]!==H));
+  if(otherDims&&!otherFile)return rasterLegacyMismatch('as dimensões nativas não conferem com a superfície gravada');
   if(actualCRS&&expectedCRS&&actualCRS!==expectedCRS)return rasterLegacyMismatch('o CRS do TIFF não confere com o CRS da superfície');
   /* EXTENSÃO. A grade guardada no projeto não reproduz a do TIFF ao mícron: a
      altura da célula (csy) deixava de ser gravada quando diferia da largura em
@@ -1232,6 +1238,9 @@ async function rasterVerifyLegacyPreview(r,file,tiff,control={}){
   /* Área, dimensões e CRS conferem, mas a prova automática pelas cotas não pôde
      ser feita: a pessoa decide se este é o original (confirmable). */
   const limited=reason=>({...rasterLegacyUnsupported(reason,safeFallback),confirmable:true,extentDiff,width:W,height:H});
+  if(otherDims)return {...limited('o arquivo tem '+W.toLocaleString('pt-BR')+' × '+H.toLocaleString('pt-BR')+' células e a superfície foi criada de um arquivo de '+
+    dimensions[0].toLocaleString('pt-BR')+' × '+dimensions[1].toLocaleString('pt-BR')),safeFallback:false,otherDims:true,expectedDims:[dimensions[0],dimensions[1]],
+    cell:[(bb[2]-bb[0])/W,(bb[3]-bb[1])/H]};
   if(!actualCRS||!expectedCRS||!dimensions||dimensions.length!==2)return limited('faltam metadados para conferir CRS e dimensões nativas');
   const transform=fd.ModelTransformation;
   if((transform&&(Number(transform[1])!==0||Number(transform[4])!==0))||(fd.Orientation!=null&&Number(fd.Orientation)!==1))
@@ -1295,8 +1304,19 @@ async function religaFonte(r, file,options={}){
   const unchanged=()=>current()&&projectNativePreview(r,'raster')===previousPreview;
   const control={...options,isCurrent:current};
   let temporary=null,committed=false;
+  /* Toda recusa fica registrada na camada: o aviso rápido some em segundos e a
+     pessoa ficava sem saber por que o MDT continuava "não aberto". As janelas
+     (propriedades do MDT, área contribuinte) mostram este motivo. */
+  const recusa=mensagem=>{try{Object.defineProperty(r,'_recusaOriginal',{value:{mensagem,arquivo:file.name,em:Date.now()},configurable:true,enumerable:false,writable:true});}catch(_){}
+    toast(mensagem);return false;};
+  const megas=bytes=>(bytes/1048576).toLocaleString('pt-BR',{maximumFractionDigits:bytes<104857600?1:0})+' MB';
+  /* outro: o arquivo escolhido NÃO é o gravado no projeto (ou o projeto perdeu
+     o vínculo antigo). Em vez de recusar e deixar a pessoa sem MDT, segue para
+     a conferência de CRS, área e cotas; sem prova automática, ela decide. */
+  let outro='';
   try{
     if(!current())return false;
+    try{delete r._recusaOriginal;}catch(_){}
     const descriptors=[
       originalSource?.v===1&&!originalSource.invalidated&&originalSource.kind==='raster'&&originalSource.preview===previousPreview?originalSource:null,
       nativeSource?.v===1&&!nativeSource.invalidated&&!r.projectSavePending&&nativeSource.preview===previousPreview?nativeSource:null
@@ -1304,8 +1324,10 @@ async function religaFonte(r, file,options={}){
     if(!descriptors.length&&(
       originalSource?.v===1&&(originalSource.invalidated||originalSource.kind!=='raster'||originalSource.preview!==previousPreview)||
       nativeSource?.v===1&&(nativeSource.invalidated||nativeSource.preview!==previousPreview))){
-      toast('A superfície foi alterada desde o vínculo com este original. A prévia foi preservada; importe o original como uma nova camada.');
-      return false;
+      // A prévia foi regravada depois do vínculo (por exemplo, o projeto salvo
+      // em outra resolução): o vínculo antigo não vale, mas o arquivo pode ser
+      // conferido de novo contra a prévia atual.
+      outro='A superfície foi regravada ou editada depois do último vínculo com o original, e “'+file.name+'” precisa ser confirmado de novo (se você editou cotas desta superfície, o arquivo original não contém essas edições)';
     }
     if(descriptors.length){
       // File inputs on iPad supply bytes, not reusable filesystem handles.
@@ -1314,21 +1336,26 @@ async function religaFonte(r, file,options={}){
       const fingerprint=candidates.length?await rasterImportWait(projectNativeFingerprint(file),control):null;
       if(!unchanged())return false;
       const matched=candidates.find(d=>d.fingerprint===fingerprint);
-      if(!matched){toast('“'+file.name+'” não confere com o original gravado desta superfície. O projeto foi mantido.');return false;}
-      const ok=await projectAttachNativeRaster(r,file,{...control,descriptor:matched===nativeSource?nativeSource:null});
-      if(ok)toast('“'+r.name+'” religada ao original; prévia preservada e resolução nativa disponível.');
-      return ok;
+      if(matched){
+        const ok=await projectAttachNativeRaster(r,file,{...control,descriptor:matched===nativeSource?nativeSource:null});
+        if(ok)toast('“'+r.name+'” religada ao original; prévia preservada e resolução nativa disponível.');
+        return ok;
+      }
+      const gravado=descriptors[0];
+      outro='“'+file.name+'” não é o mesmo arquivo gravado no projeto (“'+(gravado.name||'original')+'”, '+megas(gravado.size)+'; o escolhido tem '+megas(file.size)+')';
     }
     // A legacy project has no confirmed byte identity. Prove its mean preview
     // from bounded windows before attaching the original, without rebuilding Z.
     const sigGuardada=options.expectedSignature||gradeAnterior._sig||(r.src&&r.src.sig)||null;
-    if(Number(r.src?.size)>0&&file.size!==Number(r.src.size)){
-      toast('“'+file.name+'” não tem o tamanho do original gravado desta superfície. O projeto foi mantido.');return false;
-    }
+    if(!outro&&Number(r.src?.size)>0&&file.size!==Number(r.src.size))
+      outro='“'+file.name+'” não tem o tamanho do arquivo gravado no projeto ('+megas(Number(r.src.size))+'; o escolhido tem '+megas(file.size)+')';
     await rasterImportWait(ensureGeoTIFF(),control);rasterImportCheck(control);
     temporary=await rasterImportOpen(file,control);rasterImportCheck(control);
-    const verification=await rasterVerifyLegacyPreview(r,file,temporary,control);
+    const verification=await rasterVerifyLegacyPreview(r,file,temporary,{...control,otherFile:!!outro});
     if(!unchanged())return false;
+    // Outro arquivo aceito: a camada passa a declarar as dimensões dele, para
+    // as leituras nativas (Hidro, perfis) reconhecerem a fonte ao reabrir.
+    const adotaDimensoes=()=>{if(outro&&verification.otherDims&&r.d)try{r.d.srcDims=[verification.width,verification.height];}catch(_){}};
     if(verification.status==='verified'){
       // projectAttachNativeRaster owns this TIFF, including an early abort.
       const ready=temporary;temporary=null;
@@ -1339,29 +1366,37 @@ async function religaFonte(r, file,options={}){
       }
       return ok;
     }
-    if(verification.status!=='mismatch'&&!verification.safeFallback&&verification.confirmable){
+    if(verification.status!=='mismatch'&&verification.confirmable&&(outro||!verification.safeFallback)){
       // Sem prova automática, mas a área, as dimensões e o CRS conferem: quem
       // conhece o levantamento decide. Nada do projeto é alterado ao recusar.
       // Mesmo tamanho em bytes do original gravado, mais área, dimensões e CRS
       // iguais: é o arquivo. Só pergunta quando o projeto não guardou o tamanho.
-      const mesmoTamanho=Number(r.src?.size)>0&&file.size===Number(r.src.size);
-      const aceito=mesmoTamanho||confirm('Não foi possível conferir automaticamente se “'+file.name+'” é o original de “'+r.name+'”:\n'+verification.reason+'.\n\n'+
-        'O arquivo cobre a mesma área da superfície'+(verification.extentDiff>0.001?' (diferença máxima de '+verification.extentDiff.toLocaleString('pt-BR',{maximumFractionDigits:3})+' m)':'')+
-        ' e tem '+verification.width.toLocaleString('pt-BR')+' × '+verification.height.toLocaleString('pt-BR')+' células.\n\nVincular este arquivo como o original?');
+      const mesmoTamanho=!outro&&Number(r.src?.size)>0&&file.size===Number(r.src.size);
+      const area='O arquivo cobre a mesma área da superfície'+(verification.extentDiff>0.001?' (diferença máxima de '+verification.extentDiff.toLocaleString('pt-BR',{maximumFractionDigits:3})+' m)':'')+
+        ' e está no mesmo CRS.';
+      const celula=verification.cell?' ('+verification.cell[0].toLocaleString('pt-BR',{maximumFractionDigits:3})+' × '+verification.cell[1].toLocaleString('pt-BR',{maximumFractionDigits:3})+' m por célula)':'';
+      const pergunta=outro
+        ?outro+'.\n\n'+area+'\nEle tem '+verification.width.toLocaleString('pt-BR')+' × '+verification.height.toLocaleString('pt-BR')+' células'+celula+
+          (verification.otherDims?'; a superfície foi criada de um arquivo de '+verification.expectedDims[0].toLocaleString('pt-BR')+' × '+verification.expectedDims[1].toLocaleString('pt-BR')+' células':'')+'.\n\n'+
+          'Usar ESTE arquivo como o original de “'+r.name+'”? As cotas lidas no mapa e os cálculos do Hidro passam a vir dele.'
+        :'Não foi possível conferir automaticamente se “'+file.name+'” é o original de “'+r.name+'”:\n'+verification.reason+'.\n\n'+area+
+          '\nEle tem '+verification.width.toLocaleString('pt-BR')+' × '+verification.height.toLocaleString('pt-BR')+' células.\n\nVincular este arquivo como o original?';
+      const aceito=mesmoTamanho||confirm(pergunta);
       if(!unchanged())return false;
       if(aceito){
         const ready=temporary;temporary=null;
         const ok=await projectAttachNativeRaster(r,file,{...control,tiff:ready});
         if(ok){
+          adotaDimensoes();
           window.GeoMineOriginalSources?.validated(r,'raster',previousPreview);
           toast('“'+r.name+'” ligada ao original escolhido, mantendo a grade e as coordenadas do projeto.');
         }
         return ok;
       }
-      toast('“'+file.name+'” não foi vinculado. O projeto foi mantido.');return false;
+      return recusa('“'+file.name+'” não foi vinculado (você respondeu que não). O projeto foi mantido.');
     }
-    if(verification.status==='mismatch'||!verification.safeFallback){
-      toast('“'+file.name+'”: '+verification.reason+'. A leitura foi interrompida sem alterar o projeto.');return false;
+    if(verification.status==='mismatch'||!verification.safeFallback||outro){
+      return recusa('“'+file.name+'” não é o original de “'+r.name+'”: '+verification.reason+'. O projeto foi mantido.');
     }
     // Small files without reproducible overview metadata keep the established
     // validation path, only after the whole native read passed the hard budget.
@@ -1374,7 +1409,7 @@ async function religaFonte(r, file,options={}){
                    `${g.yll.toFixed(0)}–${(g.yll+g.nr*(g.csy||g.cs)).toFixed(0)}`;
       const motivo=!areaOK?'cobre outra área ('+fmt(nova)+' vs '+fmt(gradeAnterior)+')'
                           :'o conteúdo não confere com a superfície gravada';
-      toast('“'+file.name+'” '+motivo+' — não é o arquivo desta superfície');return false;
+      return recusa('“'+file.name+'” '+motivo+' — não é o arquivo desta superfície');
     }
     nova._sig=sigNova;
     const staged={d:nova};projectNativeBindRasterSource(staged,file);

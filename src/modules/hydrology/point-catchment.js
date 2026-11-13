@@ -17,7 +17,7 @@ panel.innerHTML=`<h2>Área contribuinte no ponto</h2>
 </div>
 <button class="tbtn" id="pointCatchmentMark" style="width:100%;justify-content:center;background:var(--amber);color:#1a1206;font-weight:700">◎ Marcar ponto</button>
 <div class="hout" id="pointCatchmentResult" role="status" aria-live="polite" style="white-space:pre-line;margin-top:8px">A área será informada em m² e hectares.</div>
-<div class="hint" style="margin-top:8px">O ponto é ajustado ao talvegue mais próximo (maior acumulação de fluxo ao lado do toque), sem descer o rio; o marcador mostra o exutório usado. As cotas não são alteradas.</div>
+<div class="hint" style="margin-top:8px">Com o ímã (snap) ligado, o toque gruda na linha de fluxo mais próxima. Depois o ponto é ajustado ao talvegue (maior acumulação de fluxo ao lado), sem descer o rio; o marcador mostra o exutório usado. As cotas não são alteradas.</div>
 <button class="mini" id="pointCatchmentRain" style="margin-top:12px">Chuva e inundação…</button>`;
 ($('secHidroBacia')?.parentElement||document.body).appendChild(panel);
 const status=t=>{$('pointCatchmentResult').textContent=t;};
@@ -81,7 +81,9 @@ async function describe(){
   }catch(e){
     if(!current()||e.name==='AbortError')return;
     const semTiff=e.code==='CHANNEL_NATIVE_MISSING';
-    $('pointCatchmentInfo').textContent=semTiff?'O arquivo .tif deste MDT não está aberto nesta sessão. O cálculo só é feito no TIFF nativo: traga o arquivo por um dos botões abaixo.':e.message;
+    const recusa=semTiff&&r._recusaOriginal?.mensagem;
+    $('pointCatchmentInfo').textContent=semTiff?(recusa?'O último arquivo escolhido não foi vinculado: '+recusa+'\n':'')+
+      'O arquivo .tif deste MDT não está aberto nesta sessão. O cálculo só é feito no TIFF nativo: traga o arquivo por um dos botões abaixo.':e.message;
     $('pointCatchmentLocate').style.display=(!semTiff)?'none':'flex';
     // Sem o Google Drive nesta sessão, só o arquivo do aparelho faz sentido.
     const temDrive=!!root.GeoMineDriveOriginals?.available();
@@ -127,9 +129,15 @@ async function click(latlng){
     check();
     const k=scale(sampler),tap=fromWGS(q.crs,latlng.lng,latlng.lat),screen=map.latLngToContainerPoint(latlng),
       side=map.containerPointToLatLng([screen.x+10,screen.y]),sideXY=fromWGS(q.crs,side.lng,side.lat),
-      tolerance=Math.min(10,Math.max(sampler.resolution,Math.hypot(sideXY[0]-tap[0],sideXY[1]-tap[1]))),
+      // Ímã ligado: gruda na linha que estiver a até a distância do snap das
+      // outras ferramentas (15 px; 24 px no toque), em qualquer zoom. Antes o
+      // limite era de 10 m no terreno, cerca de 2 px na vista geral: o dedo
+      // nunca acertava. Ímã desligado: vale o ponto tocado.
+      metersPerPixel=Math.hypot(sideXY[0]-tap[0],sideXY[1]-tap[1])/10,
+      snapPixels=(typeof SNAP_PX==='number'?SNAP_PX:15)*(S.touch?1.6:1),
+      tolerance=S.snapOn===false?0:Math.max(sampler.resolution,metersPerPixel*snapPixels),
       lines=S.layers.filter(l=>l.visible!==false&&l.llayer&&map.hasLayer(l.llayer)),
-      snap=root.GeoMineCatchmentSnap.nearest(lines,tap,{tolerance,selected:S.sel,
+      snap=tolerance<=0?null:root.GeoMineCatchmentSnap.nearest(lines,tap,{tolerance,selected:S.sel,
         visible:(l,f)=>featureVisible(l,f),project:(p,l)=>!l.crs||l.crs===q.crs?p:proj4(l.crs,q.crs,p)}),
       p=snap?snap.point:tap,seed=sampler.locate(p);
     const ll=toWGS(q.crs,...p);pointMarker.setLatLng([ll[1],ll[0]]).setStyle({color:'#1b3560'});
@@ -206,7 +214,8 @@ async function click(latlng){
     refreshUI();
     const text='Área contribuinte: '+fmt(props.AREA_HA,4)+' ha\n'+fmt(props.AREA_M2,4)+' m² · '+fmt(props.CELULAS,0)+' células'+
       (partial?'\nA área toca a borda ou células sem dados do MDT; pode haver contribuição fora dos dados disponíveis.':'')+
-      (snap?'\nPonto na linha: '+snap.layer.name+' · ajuste '+fmt(snap.distance,2)+' m':'')+
+      (snap?'\nPonto na linha: '+snap.layer.name+' · ajuste '+fmt(snap.distance,2)+' m':
+        S.snapOn===false?'\nÍmã (snap) desligado: usado o ponto tocado.':'\nNenhuma linha a até '+fmt(tolerance,1)+' m do toque: usado o ponto tocado.')+
       (factor===1?'\nCalculado nas cotas do TIFF nativo: '+fmt(nativeRes,2)+' m.':'')+
       (wholeGrid?'\nDireção e acumulação de fluxo D8 de toda a grade. Acumulação no exutório: '+fmt(result.cellsAtOutlet,0)+' células.':'')+
       (adjust?'\nExutório ajustado ao talvegue do MDT: '+fmt(adjust,2)+' m do ponto.':'\nExutório na célula do ponto marcado.')+
@@ -241,7 +250,7 @@ async function locate(how){
   }catch(e){if(e.name!=='AbortError')status(e.message);}
   finally{
     // O motivo de uma recusa aparece só num aviso rápido: repete aqui, onde fica.
-    const motivo=CMD.linhas.slice(antes).reverse().find(l=>/não confere|difere|não foi vinculado|não é o arquivo|não tem o tamanho|interrompida|alterada desde|não passou|não há espaço|incompleto/i.test(l.msg))?.msg;
+    const motivo=CMD.linhas.slice(antes).reverse().find(l=>/não confere|difere|não foi vinculado|não é o arquivo|não é o original|não tem o tamanho|interrompida|alterada desde|não passou|não há espaço|incompleto/i.test(l.msg))?.msg;
     if(ok)status('MDT original vinculado. Toque em Marcar ponto.');
     else if(motivo)status('O arquivo não foi vinculado.\n'+motivo);
     // No iPad a leitura do arquivo fecha os painéis para mostrar o mapa:

@@ -3,11 +3,10 @@
    the chosen point and displacement are returned for display and auditing. */
 (function(root){
 'use strict';
-function nearest(layers,point,{tolerance=3,project=p=>p,selected=null,visible=()=>true}={}){
+function scan(layers,point,tolerance,project,visible,accept){
   let best=null;
   for(const layer of layers){
-    if(layer.visible===false||layer.gtype!=='line')continue;
-    if(!/fluxo|dren|talveg|rio|curso|hidro/i.test(layer.name||'')&&layer!==selected)continue;
+    if(layer.visible===false||layer.gtype!=='line'||!accept(layer))continue;
     for(let index=0;index<(layer.features||[]).length;index++){
       const f=layer.features[index];if(!visible(layer,f))continue;
       const parts=f.multi?f.geom:[f.geom];
@@ -26,6 +25,15 @@ function nearest(layers,point,{tolerance=3,project=p=>p,selected=null,visible=()
     }
   }
   return best;
+}
+/* Linhas de drenagem (pelo nome) e a camada selecionada têm preferência: uma
+   curva de nível mais perto do dedo não rouba o ponto. Não havendo nenhuma
+   delas ao alcance, vale a linha visível mais próxima, qualquer que seja o
+   nome da camada. */
+const DRAINAGE=/fluxo|dren|talveg|rio|curso|hidro|flow|stream|canal|c[oó]rrego/i;
+function nearest(layers,point,{tolerance=3,project=p=>p,selected=null,visible=()=>true}={}){
+  const preferred=layer=>layer===selected||DRAINAGE.test(layer.name||'');
+  return scan(layers,point,tolerance,project,visible,preferred)||scan(layers,point,tolerance,project,visible,layer=>!preferred(layer));
 }
 root.GeoMineCatchmentSnap={nearest};
 })(typeof window!=='undefined'?window:globalThis);

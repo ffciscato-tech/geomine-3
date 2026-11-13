@@ -151,9 +151,30 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   prévia é a mesma área; quem prova a identidade é a conferência das cotas.
   Quando essa prova não pode rodar (prévia amostrada, caso do iPad), vale o
   tamanho em bytes gravado no projeto ou, sem ele, a confirmação da pessoa.
-  Outra área, outras dimensões ou outro CRS continuam recusados, com a
-  diferença em metros na mensagem. Teste:
-  `node validation/legacy-preview-verification.test.cjs`.
+  Outra área ou outro CRS continuam recusados, com a diferença em metros na
+  mensagem. Teste: `node validation/legacy-preview-verification.test.cjs`.
+- **Quem escolhe um `.tif` compatível não pode ficar sem MDT (requisito
+  permanente).** Três situações faziam `religaFonte` recusar o arquivo com um
+  aviso de segundos, e o Hidro continuava dizendo que o MDT "não está aberto":
+  o arquivo não era o mesmo gravado no projeto (há MDTs de mesmo nome e
+  resoluções diferentes no Drive); o tamanho em bytes diferia do gravado; ou o
+  projeto tinha sido regravado depois do último vínculo. Agora, nesses casos,
+  o arquivo passa pela conferência de CRS e área
+  (`rasterVerifyLegacyPreview` com `otherFile`) e a pessoa responde a uma
+  pergunta que mostra os dois tamanhos e resoluções. Aceitando, o arquivo vira
+  o original da camada (`srcDims` passa a ser o dele) e o Hidro o reconhece;
+  recusando, nada muda. Nada é vinculado em silêncio. Toda recusa fica em
+  `r._recusaOriginal` (não é gravada no projeto) e aparece escrita na janela
+  do MDT e no painel da área contribuinte. Teste:
+  `node validation/mdt-native-relink.test.cjs`.
+- **Snap na linha de fluxo segue o ímã.** Com o ímã ligado (`S.snapOn`), o
+  toque gruda na linha visível mais próxima a até a tolerância do snap das
+  outras ferramentas (`SNAP_PX` = 15 px; 24 px no toque), em qualquer zoom; o
+  limite antigo de 10 m no terreno dava ~2 px na vista geral e o dedo nunca
+  acertava. Linhas de drenagem (pelo nome) e a camada selecionada têm
+  preferência, mas qualquer linha visível serve
+  (`point-catchment-snap.js`). Ímã desligado: vale o ponto tocado. O
+  resultado diz qual linha foi usada ou por que não houve snap.
 - **Exutório no talvegue.** O toque, ou o ponto projetado numa linha vetorial,
   quase nunca cai na célula exata por onde o escoamento passa no MDT, e uma
   célula de encosta ao lado devolve só alguns metros quadrados. Por isso

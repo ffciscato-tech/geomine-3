@@ -95,19 +95,33 @@ test('confirmed original and native-copy Files attach headers once, retain previ
  }
 });
 
-test('known byte mismatch rejects before opening TIFF and preserves all project references',async()=>{
- const f=fixture();await f.identify();const before=snapshot(f);
+/* Regra desde 12/11/2026: um arquivo que não é o gravado no projeto, ou um
+   vínculo antigo que deixou de valer, não é mais recusado de saída (a pessoa
+   ficava sem MDT e sem saber por quê). O TIFF passa pela conferência de CRS e
+   área, e quem decide é a pessoa. Recusar não altera nada do projeto e o
+   motivo fica registrado na camada. Nada é vinculado em silêncio. */
+const asks=(f,answer)=>{f.calls.questions=[];f.c.confirm=message=>{f.calls.questions.push(message);return answer;};};
+test('a file other than the recorded original is attached only if the person confirms; declining preserves all project references',async()=>{
+ const f=fixture();await f.identify();const before=snapshot(f);asks(f,false);
  assert.equal(await f.c.religaFonte(f.r,original([9,8,7,6,5,4,3,2])),false);unchanged(f,before);
- assert.equal(f.calls.opens,0);assert.equal(f.calls.parse,0);
+ assert.equal(f.calls.questions.length,1);assert.match(f.calls.questions[0],/não é o mesmo arquivo gravado no projeto/);
+ assert.equal(f.calls.parse,0);assert.equal(f.calls.close,f.calls.opens,'the header opened for the check is closed');
+ assert.match(f.r._recusaOriginal.mensagem,/não foi vinculado/);
+ assert.equal(Object.keys(f.r).includes('_recusaOriginal'),false,'the refusal note is never serialized with the layer');
+ const g=fixture();await g.identify();asks(g,true);const other=original([9,8,7,6,5,4,3,2]),preview=g.r.d.z;
+ assert.equal(await g.c.religaFonte(g.r,other),true);
+ assert.equal(g.calls.questions.length,1);assert.equal(g.r.d._img0,g.image);assert.equal(g.r.d.z,preview,'the saved preview is kept');
+ assert.equal(g.r._recusaOriginal,undefined);assert.equal(g.calls.parse,0);
 });
 
-test('edited or invalidated source identities cannot fall back to an old elevation signature',async()=>{
+test('edited or invalidated source identities ask the person instead of trusting an old elevation signature',async()=>{
  for(const kind of ['original','native'])for(const edit of ['cells','invalidated']){
   const f=fixture(),descriptor=await f.identify(kind);
   if(edit==='cells')f.r.d.z[0]=999;else descriptor.invalidated=true;
-  const before=snapshot(f);
+  const before=snapshot(f);asks(f,false);
   assert.equal(await f.c.religaFonte(f.r,f.file),false);unchanged(f,before);
-  assert.equal(f.calls.opens,0);assert.equal(f.calls.parse,0);assert.equal(f.calls.close,0);
+  assert.equal(f.calls.questions.length,1);assert.match(f.calls.questions[0],/regravada ou editada depois do último vínculo/);
+  assert.equal(f.calls.parse,0);assert.equal(f.calls.close,f.calls.opens);
  }
  const f=fixture();await f.identify();f.r.originalSource.invalidated=true;await f.identify('native');
  const preview=f.r.d.z;

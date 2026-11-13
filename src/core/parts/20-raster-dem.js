@@ -2902,7 +2902,11 @@ function bindRasModal(){
     let d=r.d;
     if(rasterPrecisaFonteTela(d) && !d._full && !d._img0){
       /* Não mostra primeiro uma mensagem de erro: abre o Finder/seletor. */
-      if(!await rasEscolherNativoAgora(r))return;
+      if(!await rasEscolherNativoAgora(r)){
+        // O motivo da recusa fica escrito no aviso da janela, não só no aviso rápido.
+        try{if(rasCur===r)window.GeoMineNativeRasterPanel?.refresh(r);}catch(_){}
+        return;
+      }
       d=r.d;
     }
     r.demHD=true;r.dispFull=true;renderRaster(r);syncDemTiles(r);rasResInfo();rasSyncResolutionControls(r);

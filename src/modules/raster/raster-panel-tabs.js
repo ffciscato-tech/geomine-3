@@ -19,7 +19,9 @@
   if(religar) religar.onclick=()=>document.getElementById('rasLoadFull').click();
   window.GeoMineNativeRasterPanel={refresh(r){
     const d=r.d,g=d._full||d,linked=!!d._img0||!rasterPrecisaFonteTela(g);
-    if(status) status.textContent=linked?'':'O arquivo original não está acessível na pasta vinculada. A imagem disponível é uma prévia; localize o original para recuperar o detalhe.';
+    const recusa=!linked&&r._recusaOriginal?.mensagem;
+    if(status) status.textContent=linked?'':recusa?'Último arquivo escolhido não foi vinculado: '+recusa+' Escolha outro arquivo.'
+      :'O arquivo original não está acessível na pasta vinculada. A imagem disponível é uma prévia; localize o original para recuperar o detalhe.';
     if(aviso) aviso.hidden=linked;
   }};
 
