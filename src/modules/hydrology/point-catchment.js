@@ -6,10 +6,11 @@ const panel=document.createElement('div'),$=id=>document.getElementById(id),gen=
 const fmt=(v,d=2)=>Number(v).toLocaleString('pt-BR',{maximumFractionDigits:d});
 let job=null,armed=null,context=null,describing=0,anchor=null,pointMarker=null;
 panel.id='secPointCatchment';panel.className='hsec';panel.style.display='none';
-panel.innerHTML=`<h2>Área contribuinte no ponto <span class="tag">MDT original</span></h2>
+panel.innerHTML=`<h2>Área contribuinte no ponto</h2>
 <div class="hint">Marque o exutório: um ponto da linha de fluxo ou qualquer ponto do MDT. O resultado é toda a área que drena até ele.</div>
 <label class="field" for="pointCatchmentRaster">MDT</label><select id="pointCatchmentRaster"></select>
 <div class="hint" id="pointCatchmentInfo" style="margin:7px 0"></div>
+<button class="mini" id="pointCatchmentLocate" hidden style="margin:0 0 8px">Localizar MDT original…</button>
 <button class="tbtn" id="pointCatchmentMark" style="width:100%;justify-content:center;background:var(--amber);color:#1a1206;font-weight:700">◎ Marcar ponto</button>
 <div class="hout" id="pointCatchmentResult" role="status" aria-live="polite" style="white-space:pre-line;margin-top:8px">A área será informada em m² e hectares.</div>
 <div class="hint" style="margin-top:8px">Fluxo contínuo no MDT nativo, sem alterar cotas. O ponto é ajustado ao talvegue mais próximo no MDT, sem descer o rio; o marcador mostra o exutório usado.</div>
@@ -34,7 +35,7 @@ function coarsen(base,factor){
     readWindow:async([x0,y0,x1,y1])=>{
       const W=x1-x0,H=y1-y0,sum=new Float64Array(W*H),n=new Uint16Array(W*H),out=new Float32Array(W*H),
         X0=x0*factor,X1=Math.min(base.nc,x1*factor),Y0=y0*factor,Y1=Math.min(base.nr,y1*factor),
-        step=Math.max(factor,Math.floor(1500000/Math.max(1,X1-X0)/factor)*factor);
+        step=Math.max(1,Math.floor(900000/Math.max(1,X1-X0)));   // o leitor aceita até 1 milhão de células por janela
       for(let y=Y0;y<Y1;y+=step){
         const yEnd=Math.min(Y1,y+step),values=await base.readWindow([X0,y,X1,yEnd]),width=X1-X0;
         if(values.length!==width*(yEnd-y))throw Error('Bloco incompleto do MDT original.');
@@ -56,11 +57,14 @@ function resetContext(){const key=String(S.projectId)+'|'+String(gen());if(conte
 async function describe(){
   const r=selected(),token=++describing,project=S.projectId,generation=gen();let s;
   const current=()=>token===describing&&selected()===r&&project===S.projectId&&generation===gen()&&!job;
-  if(!r){$('pointCatchmentInfo').textContent='Selecione o MDT original.';return;}
-  $('pointCatchmentInfo').textContent='Conferindo a resolução nativa…';
-  try{s=await root.GeoMineChannelDEM.prepare(r,{workCRS:S.workCRS,isCurrent:current});if(!current())return;
-    const k=scale(s);$('pointCatchmentInfo').textContent='Resolução nativa: '+fmt(s.grid.cs*k,4)+' × '+fmt(s.grid.csy*k,4)+' m · '+s.sourceCRS;
-  }catch(e){if(current()&&e.name!=='AbortError')$('pointCatchmentInfo').textContent=e.message;}
+  if(!r){$('pointCatchmentInfo').textContent='Selecione o MDT.';$('pointCatchmentLocate').hidden=true;return;}
+  $('pointCatchmentInfo').textContent='Conferindo a resolução…';
+  try{s=await root.GeoMineChannelDEM.prepare(r,{workCRS:S.workCRS,isCurrent:current,allowPreview:true});if(!current())return;
+    const k=scale(s),size=fmt(s.grid.cs*k,4)+' × '+fmt(s.grid.csy*k,4)+' m';
+    $('pointCatchmentInfo').textContent=s.preview?'Prévia do projeto: '+size+'. O TIFF original deste MDT não está acessível; a área será calculada na prévia. Localize o original para usar a resolução nativa.'
+      :'Resolução nativa: '+size+' · '+s.sourceCRS;
+    $('pointCatchmentLocate').hidden=!s.preview||!root.GeoMineMissingOriginals?.request;
+  }catch(e){if(current()&&e.name!=='AbortError'){$('pointCatchmentInfo').textContent=e.message;$('pointCatchmentLocate').hidden=true;}}
   finally{s?.close();}
 }
 function refresh(){
@@ -91,9 +95,9 @@ async function click(latlng){
     // Acknowledge the tap before opening a potentially slow original file.
     pointMarker?.remove();
     pointMarker=L.circleMarker(latlng,{pane:'markerPane',radius:6,color:'#b76514',weight:2,fillColor:'#fff',fillOpacity:1,interactive:false}).addTo(map);
-    status('Ponto marcado. Lendo o MDT original em tiles…');
+    status('Ponto marcado. Lendo o MDT…');
     timer=setInterval(()=>{if(!current())q.controller.abort();},200);
-    sampler=await root.GeoMineChannelDEM.prepare(r,{workCRS:q.crs,signal:q.controller.signal,isCurrent:current});check();
+    sampler=await root.GeoMineChannelDEM.prepare(r,{workCRS:q.crs,signal:q.controller.signal,isCurrent:current,allowPreview:true});check();
     const k=scale(sampler),tap=fromWGS(q.crs,latlng.lng,latlng.lat),screen=map.latLngToContainerPoint(latlng),
       side=map.containerPointToLatLng([screen.x+10,screen.y]),sideXY=fromWGS(q.crs,side.lng,side.lat),
       tolerance=Math.min(10,Math.max(sampler.resolution,Math.hypot(sideXY[0]-tap[0],sideXY[1]-tap[1]))),
@@ -137,7 +141,7 @@ async function click(latlng){
       props={AREA_M2:result.areaM2,AREA_HA:result.areaM2/10000,CELULAS:result.cells,
         E_TOQUE:tap[0],N_TOQUE:tap[1],AJUSTE_M:snap?.distance||0,LINHA:snap?.layer.name||'',E_PONTO:p[0],N_PONTO:p[1],AJUSTE_MDT:adjust,E_CELULA:outlet[0],N_CELULA:outlet[1],COTA_M:result.seedZ,
         RES_X_M:result.resolution.x,RES_Y_M:result.resolution.y,RES_MDT_M:nativeRes,MDT:r.name,
-        METODO:factor>1?'Fluxo contínuo D8 — grade agregada '+factor+'× (média das cotas)':'Fluxo contínuo D8 — cotas originais',LIMITE_DADOS:partial?'Sim':'Não'},
+        METODO:'Fluxo contínuo D8 — '+(sampler.preview?'prévia do projeto':'cotas originais')+(factor>1?', grade agregada '+factor+'× (média das cotas)':''),LIMITE_DADOS:partial?'Sim':'Não'},
       fields=Object.entries(props).map(([name,value])=>({name,type:typeof value==='number'?'N':'C',length:typeof value==='number'?20:100,decimal:['CELULAS'].includes(name)?0:6}));
     check();
     const layer=addLayer({sourceLayer:'R:'+r.id,name:'Área contribuinte — '+fmt(props.AREA_HA,4)+' ha',gtype:'polygon',crs:q.crs,
@@ -148,13 +152,17 @@ async function click(latlng){
       (partial?'\nA área toca a borda ou células sem dados do MDT; pode haver contribuição fora dos dados disponíveis.':'')+
       (snap?'\nPonto na linha: '+snap.layer.name+' · ajuste '+fmt(snap.distance,2)+' m':'')+
       (adjust?'\nExutório ajustado ao talvegue do MDT: '+fmt(adjust,2)+' m do ponto.':'\nExutório na célula do ponto marcado.')+
-      (factor>1?'\nBacia grande: calculada em grade de '+fmt(result.resolution.x,2)+' m (MDT nativo de '+fmt(nativeRes,2)+' m), por limite de memória deste aparelho.':'');
+      (factor>1?'\nBacia grande: calculada em grade de '+fmt(result.resolution.x,2)+' m (MDT de '+fmt(nativeRes,2)+' m), por limite de memória deste aparelho.':'')+
+      (sampler.preview?'\nCalculada na prévia do projeto (grade de '+fmt(nativeRes,2)+' m): o TIFF original deste MDT não está acessível. Use Localizar MDT original para refazer na resolução nativa.':'');
     status(text);cmdLog(text.replaceAll('\n',' · '),'ok');
   }catch(e){if(q.project===S.projectId&&q.generation===gen()){status(e.name==='AbortError'?'Consulta cancelada.':e.message);if(e.name!=='AbortError')cmdLog('Área contribuinte: '+e.message,'warn');}}
-  finally{clearInterval(timer);sampler?.close();if(job===q)job=null;controls();}
+  finally{clearInterval(timer);sampler?.close();if(job===q)job=null;controls();describe();}
 }
 $('pointCatchmentRaster').onchange=()=>{cancel();describe();controls();};
 $('pointCatchmentMark').onclick=arm;
+// Abre a janela que localiza os TIFFs originais; ao voltar, o painel confere de novo.
+$('pointCatchmentLocate').onclick=()=>{cancel();root.GeoMineMissingOriginals?.request();
+  const watch=setInterval(()=>{if(!document.getElementById('gmMissingOriginals')){clearInterval(watch);describe();}},700);};
 $('pointCatchmentRain').onclick=()=>{cancel();ribbonOpen($('secHidroMancha'),anchor||$('pointCatchmentRain'),'Chuva e inundação');};
 const category=CATS.find(c=>c.id==='hidrologia');
 for(const group of category?.grupos||[])for(const item of group.it||[]){

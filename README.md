@@ -141,6 +141,12 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   `point-catchment.js`). Nunca devolver erro de memória sem tentar a grade
   agregada.
 
+- **Sem o TIFF original.** Projeto reaberto só com a prévia do MDT (caso comum
+  no iPad): a ferramenta calcula na grade guardada no projeto, avisa isso no
+  painel e no resultado e oferece o botão **Localizar MDT original**. Ela não
+  deve se recusar a calcular (`allowPreview` em `channel-dem-sampler.js`; as
+  demais ferramentas continuam exigindo o original).
+
 Testes do motor: `node src/modules/hydrology/continuous-catchment.test.cjs` e
 `node src/modules/hydrology/point-catchment.test.cjs`.
 

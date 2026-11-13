@@ -1,5 +1,8 @@
 /* Native DEM samples for channel sections. Never promote a display preview to
-   a measurement source and never allocate a complete copy of the DEM. */
+   a measurement source and never allocate a complete copy of the DEM.
+   Única exceção, pedida de forma explícita por quem chama (allowPreview): sem
+   o TIFF original acessível, a grade guardada no projeto é usada e o resultado
+   sai marcado com preview:true, para a ferramenta avisar o usuário. */
 (function(root){
   'use strict';
   const PAGE=128, CACHE_BYTES=4*1024*1024, BATCH=1024, WINDOW_MAX_CELLS=1e6;
@@ -101,7 +104,7 @@
     if(!d)throw new Error('Selecione uma camada raster de MDT.');
     if(!isElevation(r))throw new Error('Esta camada contém declividade, orientação ou outro índice, não cotas de terreno. Selecione um MDT com altitudes em metros.');
     const original=d._img0,baseShape=shape(d),f=d._full,fs=fullGrid(f);
-    let grid=d,g=fullGrid(d),image=null;
+    let grid=d,g=fullGrid(d),image=null,preview=false;
     // A full cache must be demonstrably at native dimensions, not merely larger
     // than the preview. Explicit native generated grids are also accepted.
     const cache=d._projectNativeFullCache,
@@ -115,7 +118,7 @@
       !(g.nc===Number(dims[0])&&g.nr===Number(dims[1])))){
       if(!original)recovered=await root.GeoMineChannelNativeSource?.resolve(r,options);
       image=original||recovered?.image;
-      if(!image)throw missing();
+      if(!image){if(options.allowPreview&&g)preview=true;else throw missing();}
     }
     // An original attachment may no longer represent an edited preview.
     if(image&&r._projectNativeBinding&&typeof root.projectNativeRasterSourceCurrent==='function'&&
@@ -146,7 +149,7 @@
     const float32=image?Number(first(fd.SampleFormat))===3&&Number(first(fd.BitsPerSample))===32:grid.z instanceof Float32Array;
     if(!g)throw new Error('Grade do MDT inválida.');
     const crs=recovered?.sourceCRS||grid.crs||d.crs||r.crs||grid.srcCRS||d.srcCRS||r.srcCRS||
-        (!image&&!original&&generatedInWorkCRS(r)?workCRS:null),
+        (!image&&!original&&(preview||generatedInWorkCRS(r))?workCRS:null),
       proj=projection(workCRS,crs),resolution=metricResolution(g,proj.toWork),
       clip=r._exactClipRings||grid.clip||grid.tin?.clip||d.clip||d.tin?.clip||null,
       nodata=[grid,d,r].flatMap(v=>[v.noData,v.nodata,v._nd]).map(number).filter(Number.isFinite);
@@ -290,7 +293,7 @@
       const result=tail.then(()=>runWindow(request));tail=result.catch(()=>{});return result;
     }
     try{check();}catch(e){close();throw e;}
-    return Object.freeze({resolution,label:String(r.name||'MDT')+' — resolução nativa',native:true,
+    return Object.freeze({resolution,label:String(r.name||'MDT')+(preview?' — prévia do projeto':' — resolução nativa'),native:!preview,preview,
       float32,sourceKey:'R:'+String(r.id??'')+':channel:'+String(++serial),sample,close,sourceCRS:crs,
       grid:Object.freeze({...g}),locate,cells,readWindow,toRaster:proj.toRaster,toWork:proj.toWork,isCurrent:current});
     }catch(e){recovered?.close();throw e;}
