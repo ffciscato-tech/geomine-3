@@ -100,7 +100,25 @@ test('confirmed original and native-copy Files attach headers once, retain previ
    ficava sem MDT e sem saber por quê). O TIFF passa pela conferência de CRS e
    área, e quem decide é a pessoa. Recusar não altera nada do projeto e o
    motivo fica registrado na camada. Nada é vinculado em silêncio. */
-const asks=(f,answer)=>{f.calls.questions=[];f.c.confirm=message=>{f.calls.questions.push(message);return answer;};};
+// asks(): a conferência automática das cotas fica inconclusiva (janelas sem
+// dados), para o teste exercitar a pergunta. cotas(): o TIFF devolve, em cada
+// janela, a cota da célula da prévia que ela cobre, mais um desvio.
+const asks=(f,answer)=>{f.calls.questions=[];f.c.confirm=message=>{f.calls.questions.push(message);return answer;};
+ f.image.readRasters=async()=>{f.calls.reads++;return [new Float32Array(0)];};};
+const cotas=(f,desvio)=>{f.calls.questions=[];f.c.confirm=message=>{f.calls.questions.push(message);return true;};const z=Array.from(f.r.d.z);
+ f.image.readRasters=async({window:[left,top,right,bottom]=[0,0,2,4]}={})=>{f.calls.reads++;
+  return [new Float32Array((right-left)*(bottom-top)).fill(z[Math.floor(top/4)*2+Math.floor(left/2)]+desvio)];};};
+test('a different file of the same area whose elevations match the saved surface is attached without asking',async()=>{
+ const f=fixture();await f.identify();cotas(f,0.2);const preview=f.r.d.z;
+ assert.equal(await f.c.religaFonte(f.r,original([9,8,7,6,5,4,3,2])),true);
+ assert.equal(f.calls.questions.length,0,'same terrain: no question');assert.ok(f.calls.reads>=8);
+ assert.equal(f.r.d._img0,f.image);assert.equal(f.r.d.z,preview,'the saved preview is kept');assert.equal(f.calls.parse,0,'the file is not decoded again');
+ // Cotas diferentes: é outro MDT, e a pessoa é avisada antes de continuar.
+ const g=fixture();await g.identify();cotas(g,50);
+ g.c.parseTIFF=async()=>{g.calls.parse++;return {...grid(),z:new Float32Array([150,151,152,153]),_tiff:g.tiff,_img0:g.image,_W0:4,_H0:8,_bb:g.image.getBoundingBox(),_nd:-9999};};
+ assert.equal(await g.c.religaFonte(g.r,original([9,8,7,6,5,4,3,2])),true);
+ assert.equal(g.calls.questions.length,1);assert.match(g.calls.questions[0],/cotas dele diferem[\s\S]*Quer continuar\?/);assert.equal(g.calls.parse,1);assert.equal(g.r.d.z[0],150,'the layer now shows the chosen file');
+});
 test('a file other than the recorded original is attached only if the person confirms; declining preserves all project references',async()=>{
  const f=fixture();await f.identify();const before=snapshot(f);asks(f,false);
  assert.equal(await f.c.religaFonte(f.r,original([9,8,7,6,5,4,3,2])),false);unchanged(f,before);

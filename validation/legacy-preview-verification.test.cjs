@@ -128,9 +128,15 @@ test('Float32 comparison tolerates two representable steps but preserves tiny no
  assert.equal(f.c.rasterLegacyFloatMatches(0,1e-12),false);assert.equal(f.c.rasterLegacyFloatMatches(NaN,0),false);
 });
 
-test('wrong size, native dimensions, CRS or another area reject before pixel reads',async()=>{
+test('other native dimensions over the same area are not a mismatch: the caller compares elevations or asks',async()=>{
+ const f=fixture();f.r.d.srcDims=[98,145];const result=await f.verify();
+ assert.equal(result.status,'unsupported');assert.equal(result.confirmable,true);assert.equal(result.otherDims,true);
+ assert.equal(typeof result.terrain,'function');assert.equal(f.calls.reads.length,0);
+});
+
+test('wrong size, CRS or another area reject before pixel reads',async()=>{
  // Outra área: a extensão difere em mais de uma célula da prévia.
- const changes=[f=>f.r.src.size++,f=>f.r.d.srcDims=[98,145],f=>f.base.getGeoKeys=()=>({ProjectedCSTypeGeoKey:31983}),f=>f.r.d.xll+=f.r.d.cs*2,f=>f.r.d.csy*=1.2];
+ const changes=[f=>f.r.src.size++,f=>f.base.getGeoKeys=()=>({ProjectedCSTypeGeoKey:31983}),f=>f.r.d.xll+=f.r.d.cs*2,f=>f.r.d.csy*=1.2];
  for(const change of changes){const f=fixture();change(f);assert.equal((await f.verify()).status,'mismatch');assert.equal(f.calls.reads.length,0);}
 });
 

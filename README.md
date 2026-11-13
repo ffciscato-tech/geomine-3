@@ -179,6 +179,15 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   (imagem de várias bandas, sem georreferência, ilegível) — e o motivo fica
   escrito em `r._recusaOriginal`. O programa não pode dizer que "não há MDT
   nativo" depois de a pessoa ter carregado um.
+- **Mesmo terreno vincula sem pergunta.** Quando o projeto não guardou a
+  identidade do arquivo (projeto convertido do QGIS, prévia feita de outra
+  resolução, cópia com outro tamanho), `rasterVerifyLegacyPreview` devolve
+  `terrain()`: lê do TIFF só as janelas que cobrem 36 células da prévia e
+  compara as cotas. Mesma área, mesmo CRS e diferença mediana de até 1 m (80 %
+  dos pontos a até 3 m): o arquivo é vinculado direto, mantendo a prévia, sem
+  reler o arquivo inteiro. Cotas diferentes: é outro MDT, e vale a pergunta do
+  item anterior. Sem amostras suficientes: pergunta simples com as duas
+  resoluções.
 - **Snap na linha de fluxo segue o ímã.** Com o ímã ligado (`S.snapOn`), o
   toque gruda na linha visível mais próxima a até a tolerância do snap das
   outras ferramentas (`SNAP_PX` = 15 px; 24 px no toque), em qualquer zoom; o

@@ -44,7 +44,7 @@ async function search(name,signal){
     fields:'files(id,name,size,parents,modifiedTime,resourceKey,driveId)',supportsAllDrives:'true',includeItemsFromAllDrives:'true',corpora:'allDrives'});
   return (await (await call(API+'?'+query,{signal})).json()).files||[];
 }
-async function find(item,signal){
+async function find(item,signal,largest){
   const size=expectedSize(item),folder=projectFolder();let found=[];
   for(const name of names(item)){
     const files=(await search(name,signal)).filter(f=>ID.test(f.id||'')&&Number(f.size)>0&&(!size||Number(f.size)===size));
@@ -54,7 +54,16 @@ async function find(item,signal){
   if(!unique.length)return {status:'not-found'};
   // Com o tamanho gravado, qualquer cópia de mesmo nome e mesmos bytes serve;
   // prefere a que está na pasta do projeto. Sem tamanho, só aceita candidato único.
-  if(!size&&unique.length>1)return {status:'ambiguous',count:unique.length};
+  // Quando é a pessoa que pede a busca (largest), várias cópias de mesmo nome
+  // não param a busca: a maior é a de resolução nativa (as menores são cópias
+  // reduzidas, como as de ALAGIS/rasters) e cópias de mesmo tamanho são o
+  // mesmo arquivo. Na busca automática, ao abrir o projeto, continua sem
+  // baixar nada quando há dúvida.
+  if(!size&&unique.length>1){
+    if(!largest)return {status:'ambiguous',count:unique.length};
+    const biggest=Math.max(...unique.map(f=>Number(f.size)));
+    unique.splice(0,unique.length,...unique.filter(f=>Number(f.size)===biggest));
+  }
   unique.sort((a,b)=>Number((b.parents||[]).includes(folder))-Number((a.parents||[]).includes(folder))||Date.parse(b.modifiedTime||0)-Date.parse(a.modifiedTime||0));
   return {status:'found',file:unique[0]};
 }
@@ -142,7 +151,7 @@ function missing(){
 async function one(item,kind,options={}){
   const label=item.name||'original',project=S.projectId,gen=generation(),current=()=>S.projectId===project&&generation()===gen;
   if(!names(item).length)return {status:'no-name',label};
-  const located=options.file?{status:'found',file:options.file}:await find(item,options.signal);
+  const located=options.file?{status:'found',file:options.file}:await find(item,options.signal,!!options.interactive&&kind==='raster');
   if(!current())return {status:'stale',label};
   if(located.status!=='found')return {...located,label};
   const file=located.file;

@@ -1216,7 +1216,6 @@ async function rasterVerifyLegacyPreview(r,file,tiff,control={}){
   if(!bb||bb.length!==4||bb.some(value=>!Number.isFinite(value))||!(bb[2]>bb[0]&&bb[3]>bb[1]))return unsupported('a extensão do TIFF não é válida');
   const otherDims=!!(dimensions&&dimensions.length===2&&dimensions.every(value=>Number.isSafeInteger(value)&&value>0)&&
      (dimensions[0]!==W||dimensions[1]!==H));
-  if(otherDims&&!otherFile)return rasterLegacyMismatch('as dimensões nativas não conferem com a superfície gravada');
   if(actualCRS&&expectedCRS&&actualCRS!==expectedCRS)return rasterLegacyMismatch('o CRS do TIFF não confere com o CRS da superfície');
   /* EXTENSÃO. A grade guardada no projeto não reproduz a do TIFF ao mícron: a
      altura da célula (csy) deixava de ser gravada quando diferia da largura em
@@ -1237,7 +1236,44 @@ async function rasterVerifyLegacyPreview(r,file,tiff,control={}){
     safeFallback=!!whole&&whole.working<=L.workingBytes;
   /* Área, dimensões e CRS conferem, mas a prova automática pelas cotas não pôde
      ser feita: a pessoa decide se este é o original (confirmable). */
-  const limited=reason=>({...rasterLegacyUnsupported(reason,safeFallback),confirmable:true,extentDiff,width:W,height:H});
+  /* MESMO TERRENO. Quando não há prova exata (o projeto não guardou a
+     identidade do arquivo, ou a prévia veio de outra resolução), compara as
+     cotas: lê do TIFF só as janelinhas que cobrem 36 células da prévia,
+     espalhadas pela área, e compara a média de cada uma com a cota guardada.
+     Mesma área, mesmo CRS e cotas iguais: é o levantamento desta camada, e o
+     arquivo é vinculado sem pergunta. Lê poucos kB; não relê o arquivo. */
+  const terrain=async()=>{
+    const z=d.z,nc=d.nc,nr=d.nr,csx=d.cs,csy=d.csy||d.cs;
+    if(!z||z.length!==nc*nr||!(csx>0)||!(csy>0))return null;
+    let nd=base.getGDALNoData?.();if(nd==null&&fd.GDAL_NODATA!=null)nd=parseFloat(fd.GDAL_NODATA);
+    const runtime=globalThis.GeoMineTileRuntime,north=d.yll+nr*csy,sx=W/(bb[2]-bb[0]),sy=H/(bb[3]-bb[1]),
+      clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),side=64,diffs=[];let pixels=0;
+    for(let gy=0;gy<6;gy++)for(let gx=0;gx<6;gx++){
+      rasterImportCheck(control);
+      const row=Math.min(nr-1,Math.floor((gy+.5)*nr/6)),start=Math.min(nc-1,Math.floor((gx+.5)*nc/6)),reach=Math.max(1,Math.floor(nc/12));
+      let col=-1;for(let k=0;k<reach&&start+k<nc;k++)if(Number.isFinite(z[row*nc+start+k])){col=start+k;break;}
+      if(col<0)continue;
+      let left=Math.floor((d.xll+col*csx-bb[0])*sx),right=Math.ceil((d.xll+(col+1)*csx-bb[0])*sx),
+        top=Math.floor((bb[3]-(north-row*csy))*sy),bottom=Math.ceil((bb[3]-(north-(row+1)*csy))*sy);
+      if(right-left>side){left=Math.floor((left+right-side)/2);right=left+side;}
+      if(bottom-top>side){top=Math.floor((top+bottom-side)/2);bottom=top+side;}
+      left=clamp(left,0,W-1);top=clamp(top,0,H-1);right=clamp(right,left+1,W);bottom=clamp(bottom,top+1,H);
+      const window=[left,top,right,bottom],cost=rasterLegacyWindowCost(layout0,window);
+      if(!cost||cost.working>L.workingBytes||pixels+cost.pixels>L.totalPixels)continue;
+      pixels+=cost.pixels;
+      const options={samples:[0],window,signal:control.signal},
+        bands=await rasterImportWait(runtime?runtime.read(base,options,{isCurrent:control.isCurrent,priority:-100}):base.readRasters(options),control),band=bands?.[0];
+      if(!band)continue;
+      let sum=0,count=0;
+      for(let k=0;k<band.length;k++){const value=band[k];if((nd!=null&&value===nd)||!Number.isFinite(value)||value<-1e30)continue;sum+=value;count++;}
+      if(count)diffs.push(Math.abs(sum/count-z[row*nc+col]));
+    }
+    if(diffs.length<8)return null;
+    diffs.sort((a,b)=>a-b);
+    const median=diffs[Math.floor(diffs.length/2)],near=diffs.filter(v=>v<=3).length/diffs.length;
+    return {ok:median<=1&&near>=.8,median,samples:diffs.length};
+  };
+  const limited=reason=>({...rasterLegacyUnsupported(reason,safeFallback),confirmable:true,extentDiff,width:W,height:H,terrain,cell:[(bb[2]-bb[0])/W,(bb[3]-bb[1])/H]});
   if(otherDims)return {...limited('o arquivo tem '+W.toLocaleString('pt-BR')+' × '+H.toLocaleString('pt-BR')+' células e a superfície foi criada de um arquivo de '+
     dimensions[0].toLocaleString('pt-BR')+' × '+dimensions[1].toLocaleString('pt-BR')),safeFallback:false,otherDims:true,expectedDims:[dimensions[0],dimensions[1]],
     cell:[(bb[2]-bb[0])/W,(bb[3]-bb[1])/H]};
@@ -1412,7 +1448,7 @@ async function religaFonte(r, file,options={}){
     if(!unchanged())return false;
     // Outro arquivo aceito: a camada passa a declarar as dimensões dele, para
     // as leituras nativas (Hidro, perfis) reconhecerem a fonte ao reabrir.
-    const adotaDimensoes=()=>{if(outro&&verification.otherDims&&r.d)try{r.d.srcDims=[verification.width,verification.height];}catch(_){}};
+    const adotaDimensoes=()=>{if(verification.otherDims&&r.d)try{r.d.srcDims=[verification.width,verification.height];}catch(_){}};
     if(verification.status==='verified'){
       // projectAttachNativeRaster owns this TIFF, including an early abort.
       const ready=temporary;temporary=null;
@@ -1436,7 +1472,19 @@ async function religaFonte(r, file,options={}){
           'Quer continuar? Este arquivo passa a ser o original de “'+r.name+'”: as cotas lidas no mapa e os cálculos do Hidro vêm dele, na resolução dele.'
         :'Não foi possível conferir automaticamente se “'+file.name+'” é o original de “'+r.name+'”:\n'+verification.reason+'.\n\n'+area+
           '\n'+comparaGrades(verification.width,verification.height,verification.cell)+'\n\nQuer continuar e usar este arquivo como o original?';
-      const aceito=mesmoTamanho||confirm(pergunta);
+      // Antes de perguntar, tenta provar pelas cotas que é o mesmo terreno.
+      let provado=null;
+      if(!mesmoTamanho&&typeof verification.terrain==='function'){
+        if(typeof showLoad==='function')showLoad('Conferindo as cotas de “'+file.name+'”…');
+        try{provado=await verification.terrain();}catch(error){if(error?.name==='AbortError')throw error;provado=null;}
+        if(!unchanged())return false;
+      }
+      // Mesma área mas outras cotas: é outro MDT. Pergunta e, continuando,
+      // troca também a prévia, para mapa e cálculo mostrarem o mesmo terreno.
+      if(provado&&!provado.ok)
+        return await substitui('as cotas dele diferem das da superfície do projeto (diferença mediana de '+
+          provado.median.toLocaleString('pt-BR',{maximumFractionDigits:2})+' m em '+provado.samples+' pontos conferidos)',null);
+      const aceito=mesmoTamanho||provado?.ok||confirm(pergunta);
       if(!unchanged())return false;
       if(aceito){
         const ready=temporary;temporary=null;
@@ -1444,7 +1492,9 @@ async function religaFonte(r, file,options={}){
         if(ok){
           adotaDimensoes();
           window.GeoMineOriginalSources?.validated(r,'raster',previousPreview);
-          toast('“'+r.name+'” ligada ao original escolhido, mantendo a grade e as coordenadas do projeto.');
+          toast(provado?.ok
+            ?'“'+r.name+'” ligada a “'+file.name+'” ('+celulas(verification.width,verification.height,verification.cell?.[0]||0,verification.cell?.[1]||0)+'): mesma área e mesmas cotas da superfície do projeto.'
+            :'“'+r.name+'” ligada ao original escolhido, mantendo a grade e as coordenadas do projeto.');
         }
         return ok;
       }
