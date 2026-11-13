@@ -514,7 +514,7 @@ async function projectAutoSaveRaster(r,askPermission,queued=false){
     if(fonteConfirmada&&r._projectSourceRaw instanceof Blob) arquivoNativo=r._projectSourceRaw;
     if(arquivoNativo&&r.d&&r.d._W0&&r.d._H0&&r.d._bb){
       const bb=r.d._bb,cs=(bb[2]-bb[0])/r.d._W0,csy=(bb[3]-bb[1])/r.d._H0;
-      grade={nc:r.d._W0,nr:r.d._H0,cs,csy:(Math.abs(csy-cs)>1e-4?csy:undefined),
+      grade={nc:r.d._W0,nr:r.d._H0,cs,csy:(csy!==cs?csy:undefined),
         xll:bb[0],yll:bb[1]};
     }
     if(!arquivoNativo){

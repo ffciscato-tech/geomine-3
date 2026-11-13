@@ -825,12 +825,11 @@ async function parseTIFF(src,control){
               : (gk.GeographicTypeGeoKey && gk.GeographicTypeGeoKey!==32767) ? gk.GeographicTypeGeoKey : null;
     if(cod) srcCRS='EPSG:'+cod;
   }catch(e){}
-  /* csy é SEMPRE guardado quando difere de csx acima de 0,1 mm/célula. Antes o
-     limiar 1e-9 parecia seguro, mas grades reduzidas às vezes zeravam a
-     diferença e o csy virava undefined — a altura real do MDT se perdia e a
-     imagem saía comprimida na vertical (deslocamento crescente do topo p/ a
-     base). 1e-4 m preserva a distinção real de pixel não-quadrado.          */
-  const csyGuardar = (Math.abs(csy-csx)>1e-4) ? csy : undefined;
+  /* csy é guardado SEMPRE que difere de csx, sem limiar. Um limiar de 0,1 mm
+     por célula fazia a altura da grade deixar de reproduzir a do TIFF: a borda
+     norte ficava deslocada em até nr × 0,1 mm, e o próprio arquivo original
+     era depois recusado na conferência de área ao ser religado. */
+  const csyGuardar = csy!==csx ? csy : undefined;   // sem limiar: a extensão da grade reproduz a do TIFF
   const declarados=geotiffDeclaredStats(img0),observados=
     Number.isFinite(fonteMn)&&Number.isFinite(fonteMx)?{mn:fonteMn,mx:fonteMx,exact:lvl===0&&!sampled}:null;
   /* Mesmo metadado declarado pode estar desatualizado. Inclua sempre o que
@@ -879,7 +878,7 @@ async function demFull(d, linhas){
   }
   hideLoad();
   const cs=(bb[2]-bb[0])/W, csyN=(bb[3]-bb[1])/H;
-  d._full={nc:W, nr:H, cs, csy:(Math.abs(csyN-cs)>1e-4?csyN:undefined),
+  d._full={nc:W, nr:H, cs, csy:(csyN!==cs?csyN:undefined),
            xll:bb[0], yll:bb[1], z, native:true};
   if(typeof projectNativeMarkFullCache==='function')projectNativeMarkFullCache(d,d._full,img);
   return d._full;
@@ -966,7 +965,7 @@ async function demTrecho(d, linhas){
     const r=Math.floor(i/W), c=i-r*W, b=blocos.get(Math.floor(r/B)*nbx+Math.floor(c/B));
     return b? b.v[(r-b.t)*b.w+(c-b.l)] : NaN;
   }});
-  return {nc:W, nr:H, cs, csy:(Math.abs(csy-cs)>1e-4?csy:undefined), xll:bb[0], yll:bb[1], z,
+  return {nc:W, nr:H, cs, csy:(csy!==cs?csy:undefined), xll:bb[0], yll:bb[1], z,
           native:true, _trecho:true, crs:d.crs, srcCRS:d.srcCRS, _nd:nd};
 }
 /* ---------------------------------------------------------------------------

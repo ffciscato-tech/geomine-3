@@ -134,14 +134,16 @@ O comando **Área Contribuinte** (faixa Hidrologia, também aberto pelo ícone d
 mancha de inundação) delimita toda a área que drena até um exutório marcado no
 mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
 
-- **Resolução nativa é a regra.** O método padrão calcula com as cotas
-  originais do MDT carregado (0,5 m, 0,8 m… a que o arquivo tiver). Se a grade
-  inteira cabe na memória, roteia tudo de uma vez (`routeGrid` e
+- **Sempre o TIFF nativo.** O cálculo usa só as cotas e o georreferenciamento
+  do `.tif` do MDT, célula por célula: nenhuma grade reduzida, média de cotas
+  ou arredondamento entra no resultado. A grade guardada no projeto serve para
+  desenhar o mapa, nunca para medir. Não existe método alternativo no painel.
+  Se o TIFF inteiro cabe na memória, é roteado de uma vez (`routeGrid` e
   `analyzeRouted`: direção e acumulação de fluxo D8, reaproveitadas nos pontos
-  seguintes); senão, usa a janela que cresce a montante (`analyze`). A grade
-  guardada no projeto, mais grossa, só é usada quando a pessoa escolhe o
-  método **Grade do projeto** no painel. A ferramenta nunca troca a resolução
-  nativa por uma mais grossa sem avisar.
+  seguintes); senão, usa a janela que cresce a montante (`analyze`).
+- **Sem o `.tif` aberto na sessão a ferramenta não calcula.** Explica o motivo
+  e oferece **Localizar MDT original**, que abre o seletor de arquivo daquele
+  MDT e reabre o painel depois de vincular.
 - **Religar o `.tif` original não pode recusar o arquivo certo.** A grade
   guardada no projeto não reproduz a do TIFF ao mícron (a altura da célula
   deixava de ser gravada quando diferia da largura em até 0,1 mm). Em
@@ -152,9 +154,6 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   Outra área, outras dimensões ou outro CRS continuam recusados, com a
   diferença em metros na mensagem. Teste:
   `node validation/legacy-preview-verification.test.cjs`.
-- **Sem o `.tif` nesta sessão.** No método padrão a ferramenta não calcula:
-  explica o motivo e oferece **Localizar MDT original**, que abre o seletor de
-  arquivo daquele MDT e reabre o painel depois de vincular.
 - **Exutório no talvegue.** O toque, ou o ponto projetado numa linha vetorial,
   quase nunca cai na célula exata por onde o escoamento passa no MDT, e uma
   célula de encosta ao lado devolve só alguns metros quadrados. Por isso
@@ -162,10 +161,14 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   (o dedo, ao menos 3 células, no máximo 40 m), a linha de escoamento dominante
   e move o ponto para a célula **mais próxima** dela, sem descer o rio. O
   marcador e o resultado mostram o exutório usado e o ajuste em metros.
-- **Bacias grandes.** Só quando a bacia não cabe na memória do aparelho na
-  resolução nativa ela é refeita numa grade agregada, com a menor célula
-  possível (2×, 3×, 4×…, média das cotas), e o resultado traz um aviso em
-  destaque com a grade usada (`coarsen` em `point-catchment.js`).
+- **Bacias grandes.** Se a bacia não cabe na memória do aparelho no TIFF
+  nativo, a ferramenta pergunta antes de fazer qualquer outra coisa. Só com o
+  aceite explícito ela calcula numa grade com média das cotas (`coarsen` em
+  `point-catchment.js`), e o resultado e o atributo `METODO` saem marcados como
+  NÃO NATIVO. Recusando, nada é calculado.
+- **Grade do projeto sem arredondamento.** Na importação, a altura da célula
+  (`csy`) é guardada sempre que difere da largura, sem limiar, para a extensão
+  da grade reproduzir a do TIFF.
 
 Testes do motor: `node src/modules/hydrology/continuous-catchment.test.cjs` e
 `node src/modules/hydrology/point-catchment.test.cjs`.
