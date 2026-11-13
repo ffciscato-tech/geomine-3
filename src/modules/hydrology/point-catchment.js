@@ -144,6 +144,24 @@ function arm(){
   armed={r,project:S.projectId,generation:gen()};setTool('basin');controls();
   status('Toque no exutório: na linha de fluxo ou em qualquer ponto do MDT. O marcador mostrará o ponto usado.');
 }
+/* O MESMO SNAP DO TOQUE, MOSTRADO ANTES DO TOQUE. Com a marcação armada, o
+   cursor do ímã (a mira verde das outras ferramentas) aparece sobre a linha
+   de fluxo em que o ponto vai grudar. Usa a mesma busca e a mesma tolerância
+   de click(): o que a mira mostra é o que o toque usa. */
+function snapPreview(latlng){
+  if(!armed||S.tool!=='basin'||S.snapOn===false||job)return null;
+  try{
+    const crs=S.workCRS,tap=fromWGS(crs,latlng.lng,latlng.lat),screen=map.latLngToContainerPoint(latlng),
+      side=map.containerPointToLatLng([screen.x+10,screen.y]),sideXY=fromWGS(crs,side.lng,side.lat),
+      tolerance=Math.hypot(sideXY[0]-tap[0],sideXY[1]-tap[1])/10*(typeof SNAP_PX==='number'?SNAP_PX:15)*(S.touch?1.6:1),
+      lines=S.layers.filter(l=>l.visible!==false&&l.llayer&&map.hasLayer(l.llayer)),
+      snap=tolerance>0?root.GeoMineCatchmentSnap.nearest(lines,tap,{tolerance,selected:S.sel,
+        visible:(l,f)=>featureVisible(l,f),project:(p,l)=>!l.crs||l.crs===crs?p:proj4(l.crs,crs,p)}):null;
+    if(!snap)return null;
+    const ll=toWGS(crs,...snap.point);
+    return {latlng:L.latLng(ll[1],ll[0]),snapped:true,kind:'linha de fluxo',layer:snap.layer};
+  }catch(_){return null;}
+}
 async function click(latlng){
   if(job)return;
   const a=armed;armed=null;setTool('select');controls();
@@ -182,6 +200,8 @@ async function click(latlng){
     // Diz na hora se o toque grudou numa linha: o cálculo pode demorar.
     const grudou=snap?'Ponto grudado na linha “'+snap.layer.name+'” (ajuste de '+fmt(snap.distance,2)+' m).':S.snapOn===false?'Ímã (snap) desligado: usado o ponto tocado.':'Nenhuma linha a até '+fmt(tolerance,1)+' m do toque: usado o ponto tocado.';
     statusHead=grudou;status('Lendo o MDT…');
+    // A mira do ímã fica um instante no ponto em que o toque grudou (no dedo não há cursor antes do toque).
+    if(snap)try{mostraCursorSnap({latlng:L.latLng(ll[1],ll[0]),snapped:true,kind:'linha de fluxo'});setTimeout(()=>{try{if(S.tool!=='basin')limpaCursorSnap();}catch(_){}} ,2500);}catch(_){}
     if(!seed)throw Error('O ponto está fora do MDT.');
     const engine=root.GeoMineContinuousCatchment,memory=memoryMB(),
       native={...sampler.grid,float32:sampler.float32,unitScale:k,readWindow:sampler.readWindow,isCurrent:current},
@@ -322,5 +342,5 @@ for(const group of category?.grupos||[])for(const item of group.it||[]){
   if(item.ic==='mancha-inundacao')item.act=open;
 }
 $('btnBasin').onclick=()=>{refresh();arm();};
-root.GeoMinePointCatchment={open,refresh,arm,click,cancel,projectChanged:()=>{cancel();pointMarker?.remove();pointMarker=null;context=null;routed=null;}};
+root.GeoMinePointCatchment={open,refresh,arm,click,cancel,snapPreview,projectChanged:()=>{cancel();pointMarker?.remove();pointMarker=null;context=null;routed=null;}};
 })(window);

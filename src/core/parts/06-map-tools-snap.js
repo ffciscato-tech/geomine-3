@@ -977,6 +977,15 @@ function atualizaCursorSnap(latlng){
     if(alvo.snapped) mostraCursorSnap(alvo); else limpaCursorSnap();
     return;
   }
+  /* Área contribuinte: com a marcação armada, a mira mostra a linha de fluxo
+     em que o ponto vai grudar (a mesma busca que o toque usa). Sem isto o ímã
+     parecia desligado nesta ferramenta, embora o toque grudasse. */
+  if(S.tool==='basin'&&window.GeoMinePointCatchment?.snapPreview){
+    const alvo=GeoMinePointCatchment.snapPreview(latlng);
+    S._cursorSnapHit=null; el.classList.remove('cursor-snap');
+    if(alvo) mostraCursorSnap(alvo); else limpaCursorSnap();
+    return;
+  }
   limpaCursorSnap();
   if(S.tool!=='select'){
     el.classList.remove('cursor-snap'); S._cursorSnapHit=null; return;
