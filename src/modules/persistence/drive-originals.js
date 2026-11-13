@@ -13,9 +13,11 @@
 if(root.GeoMineDriveOriginals)return;
 const API='https://www.googleapis.com/drive/v3/files',TEMP='geomine-originais-do-drive',FOLDER_KEY='geomine.drive.pasta.originais.v1';
 const ID=/^[\w-]{1,200}$/,TIFF=/\.tiff?$/i,MiB=1048576,BLOCK=4*MiB;
-/* Sem a pessoa pedir, não se baixa um arquivo enorme: acima disto, o original
-   só vem do Drive quando ela toca em Buscar no Google Drive. */
-const AUTO_LIMIT=1536*MiB;
+/* O trabalho é sempre no original: ao abrir o projeto, o arquivo vem do Drive
+   sozinho, qualquer que seja o tamanho usual de um MDT ou ortofoto. Só acima
+   disto espera o toque em Buscar no Google Drive. Falta de espaço no aparelho
+   é conferida antes de baixar. */
+const AUTO_LIMIT=6144*MiB;
 const provider=()=>root.GeoMineCloudProvider,generation=()=>root.GeoMineSessionAutosave?.state?.generation;
 const log=(message,type)=>{try{cmdLog(message,type);}catch(_){}} ,say=message=>{try{toast(message);}catch(_){}};
 const megabytes=bytes=>(bytes/MiB).toLocaleString('pt-BR',{maximumFractionDigits:bytes<100*MiB?1:0})+' MB';
@@ -38,7 +40,7 @@ function names(item){
   return [...new Set([item.originalSource?.name,item.src?.file,item.srcName,item.src?.path,item.name&&item.name+'.tif',item.name&&item.name+'.tiff']
     .map(base).filter(name=>name&&TIFF.test(name)))];
 }
-const expectedSize=item=>Number(item.originalSource?.size)||Number(item.src?.size)||0;
+const expectedSize=item=>Number(item.originalSource?.size)||Number(item.projectNativeSource?.size)||Number(item.src?.size)||0;
 async function search(name,signal){
   const query=new URLSearchParams({q:"name = '"+name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+"' and trashed = false",pageSize:'50',
     fields:'files(id,name,size,parents,modifiedTime,resourceKey,driveId)',supportsAllDrives:'true',includeItemsFromAllDrives:'true',corpora:'allDrives'});

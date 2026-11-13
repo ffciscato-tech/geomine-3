@@ -186,13 +186,18 @@ ortofoto ficam no Drive. Para a pessoa não ter de procurá-los a cada aparelho,
   caminho de conferência e vínculo de quem escolhe à mão
   (`rasEscolherNativoAgora(r,{file})`, `ortoReligarTIFF`). O módulo não decide
   que um arquivo "serve";
-- não baixa sozinho arquivos acima de 1,5 GB nem quando falta espaço; aí o
-  botão **Buscar no Google Drive** faz isso a pedido;
+- baixa sozinho qualquer original até 6 GB (o trabalho é sempre no original,
+  nunca na prévia); só não baixa quando falta espaço no aparelho;
 - sem o tamanho gravado e com mais de um arquivo de mesmo nome, não escolhe:
   pede o arquivo.
 
-Depende da sessão do Drive (cerca de 50 minutos depois da última autorização)
-e do escopo `drive.readonly`. Nada é gravado, movido ou apagado no Drive.
+Depende da sessão do Drive e do escopo `drive.readonly`. A autorização vale
+cerca de 50 minutos, só pode ser pedida a partir de um toque e fica guardada
+no aparelho (`localStorage`), para recarregar a página dentro do prazo sem
+novo toque; pedidos simultâneos compartilham a mesma janela (`driveAccess` em
+`web/gate.template.html`). Sem autorização válida ao abrir o projeto, o aviso
+de originais ausentes traz **Buscar no Google Drive** (um toque para todos).
+Nada é gravado, movido ou apagado no Drive.
 
 **Nunca o seletor do iPad na raiz (requisito permanente).** O seletor de
 arquivos do sistema (iPad, inclusive o "Google Drive" embutido do Chrome) abre
