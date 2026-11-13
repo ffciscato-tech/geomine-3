@@ -3291,9 +3291,15 @@ function ppRasterHTML(r){
     '<span style="color:var(--ink-dim)">'+k+'</span><b style="font-family:var(--mono);font-size:11px">'+v+'</b></div>'; };
   if(g && g.nVal){
     const d=r.d,dims=d.srcDims||(d._W0&&d._H0?[d._W0,d._H0]:null);
+    /* A grade em memória pode ser a PRÉVIA reduzida que desenha o mapa. A
+       resolução dela não é a do TIFF: o rótulo diz qual é qual, para ninguém
+       tomar a célula da prévia pela resolução nativa do levantamento. */
+    const semDimensoes=!dims&&typeof rasterPrecisaFonteTela==='function'&&rasterPrecisaFonteTela(d)&&!d._full,
+      previa=dims?.length===2?(dims[0]!==g.nc||dims[1]!==g.nr):semDimensoes;
     if(dims?.length===2){li('Resolução nativa',fmtNum(g.nc*g.csx/dims[0],4)+' × '+fmtNum(g.nr*g.csy/dims[1],4)+' m');li('Fonte nativa',projectRasterReady(r)?'disponível':'localizar TIFF');}
-    li('Grade', g.nc+' × '+g.nr);
-    li('Resolução', fmtNum(g.csx,3)+(Math.abs(g.csx-g.csy)>1e-6?' × '+fmtNum(g.csy,3):'')+' m');
+    else if(semDimensoes){li('Resolução nativa','a do TIFF original');li('Fonte nativa','localizar TIFF');}
+    li(previa?'Grade da prévia (mapa)':'Grade', g.nc+' × '+g.nr);
+    li(previa?'Resolução da prévia (não nativa)':'Resolução', fmtNum(g.csx,3)+(Math.abs(g.csx-g.csy)>1e-6?' × '+fmtNum(g.csy,3):'')+' m');
     li('Células c/ dado', g.nVal.toLocaleString('pt-BR'));
     li('Área 2D', fmtNum(g.area2D,2)+' m²');
     li('Área 2D (ha)', fmtNum(g.area2D/1e4,4));
