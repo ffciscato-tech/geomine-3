@@ -11,7 +11,8 @@ panel.innerHTML=`<h2>Área contribuinte no ponto</h2>
 <label class="field" for="pointCatchmentRaster">MDT</label><select id="pointCatchmentRaster"></select>
 <div class="hint" id="pointCatchmentInfo" style="margin:7px 0"></div>
 <div id="pointCatchmentLocate" style="display:none;flex-wrap:wrap;gap:5px;margin:0 0 8px">
-<button class="mini" id="pointCatchmentDrive" style="width:auto;margin:0;background:var(--amber);color:#1a1206;font-weight:700" title="Procura o arquivo no Google Drive pelo nome gravado no projeto; se não achar, abre o Drive já na pasta do projeto">Buscar no Google Drive</button>
+<button class="mini" id="pointCatchmentDrive" style="width:auto;margin:0;background:var(--amber);color:#1a1206;font-weight:700" title="Procura o arquivo no Google Drive pelo nome gravado no projeto, baixa e vincula">Buscar no Google Drive</button>
+<button class="mini" id="pointCatchmentDrivePick" style="width:auto;margin:0" title="Abre o Google Drive já na pasta dos originais">Escolher no Drive…</button>
 <button class="mini" id="pointCatchmentLocal" style="width:auto;margin:0" title="Escolher o arquivo no armazenamento deste aparelho">Do aparelho…</button>
 </div>
 <button class="tbtn" id="pointCatchmentMark" style="width:100%;justify-content:center;background:var(--amber);color:#1a1206;font-weight:700">◎ Marcar ponto</button>
@@ -84,7 +85,7 @@ async function describe(){
     $('pointCatchmentLocate').style.display=(!semTiff)?'none':'flex';
     // Sem o Google Drive nesta sessão, só o arquivo do aparelho faz sentido.
     const temDrive=!!root.GeoMineDriveOriginals?.available();
-    $('pointCatchmentDrive').style.display=temDrive?'':'none';
+    $('pointCatchmentDrive').style.display=$('pointCatchmentDrivePick').style.display=temDrive?'':'none';
   }
   finally{s?.close();}
 }
@@ -224,15 +225,18 @@ async function locate(how){
   cancel();const r=selected();if(!r)return;
   const antes=CMD.linhas.length,drive=root.GeoMineDriveOriginals;let ok=false;
   try{
-    if(typeof rasEscolherNativoAgora!=='function')throw Error('Vínculo do original indisponível nesta sessão.');
     if(how==='local'){
       status('Escolha o arquivo .tif original de “'+r.name+'”.');
-      ok=await rasEscolherNativoAgora(r,{local:true});
+      ok=typeof rasEscolherNativoAgora==='function'&&await rasEscolherNativoAgora(r);
     }else{
       if(!drive?.available())throw Error('O Google Drive não está disponível nesta sessão. Use “Do aparelho…”.');
-      // Busca pelo nome; não achando, abre o Drive já na pasta do projeto.
-      status('Procurando “'+r.name+'” no Google Drive…');
-      ok=await rasEscolherNativoAgora(r,{drive:true});
+      status(how==='drive'?'Procurando “'+r.name+'” no Google Drive…':'Escolha o arquivo .tif no Google Drive.');
+      const result=how==='drive'?await drive.restore({item:r,kind:'raster',interactive:true}):await drive.choose(r,'raster');
+      ok=result.linked>0;
+      const row=result.rows?.[0];
+      if(!ok&&row?.status==='not-found')status('Não encontrei no Google Drive um arquivo com o nome e o tamanho gravados no projeto. Toque em Escolher no Drive… e indique o arquivo.');
+      if(!ok&&row?.status==='ambiguous')status('Há '+row.count+' arquivos com esse nome no Google Drive. Toque em Escolher no Drive… e indique o certo.');
+      if(!ok&&row?.status==='no-name')status('O projeto não gravou o nome do arquivo original deste MDT. Toque em Escolher no Drive… e indique o arquivo.');
     }
   }catch(e){if(e.name!=='AbortError')status(e.message);}
   finally{
@@ -247,6 +251,7 @@ async function locate(how){
   }
 }
 $('pointCatchmentDrive').onclick=()=>locate('drive');
+$('pointCatchmentDrivePick').onclick=()=>locate('pick');
 $('pointCatchmentLocal').onclick=()=>locate('local');
 $('pointCatchmentRain').onclick=()=>{cancel();ribbonOpen($('secHidroMancha'),anchor||$('pointCatchmentRain'),'Chuva e inundação');};
 const category=CATS.find(c=>c.id==='hidrologia');

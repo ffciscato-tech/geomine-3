@@ -40,10 +40,7 @@ async function pickOrtho(I){
  const project=S.projectId,gen=generation(),owner=dialog,
   valid=()=>dialog===owner&&current()&&S.projectId===project&&generation()===gen&&S.img===I;
  let file,handle=null;
- const drive=root.GeoMineDriveOriginals;
- // iPad: busca no Google Drive e, se preciso, seletor já na pasta do projeto.
- if(drive?.shouldLocate?.()){const found=await drive.locate(I,'ortho');if(!found?.file||!valid())return false;file=found.file;}
- else if(root.showOpenFilePicker&&typeof fsApiOK==='function'&&fsApiOK()){
+ if(root.showOpenFilePicker&&typeof fsApiOK==='function'&&fsApiOK()){
   const handles=await root.showOpenFilePicker({id:'geomine-missing-ortho',multiple:false,types:[{description:'GeoTIFF original',accept:{'image/tiff':['.tif','.tiff']}}]});
   if(!handles?.[0]||!valid())return false;handle=handles[0];file=await handle.getFile();
  }else file=await new Promise(resolve=>{const input=document.createElement('input');input.type='file';input.accept='.tif,.tiff';input.style.display='none';document.body.appendChild(input);const finish=f=>{input.remove();resolve(f)};input.onchange=()=>finish(input.files?.[0]||null);input.addEventListener('cancel',()=>finish(null),{once:true});abrirSeletorGeoTIFF(input);});

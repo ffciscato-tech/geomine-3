@@ -194,39 +194,11 @@ ortofoto ficam no Drive. Para a pessoa não ter de procurá-los a cada aparelho,
 Depende da sessão do Drive (cerca de 50 minutos depois da última autorização)
 e do escopo `drive.readonly`. Nada é gravado, movido ou apagado no Drive.
 
-**Nunca o seletor do iPad na raiz (requisito permanente).** O seletor de
-arquivos do sistema (iPad, inclusive o "Google Drive" embutido do Chrome) abre
-sempre na raiz e não aceita pasta inicial vinda de uma página. Onde ele seria o
-único caminho (`GeoMineDriveOriginals.shouldLocate()`: há Drive configurado e o
-navegador não tem o seletor com pasta do computador), todo botão de localizar
-original passa por `GeoMineDriveOriginals.locate(item, kind)`:
-
-1. procura o arquivo no Drive pelo nome e tamanho gravados no projeto e baixa;
-2. não achando, abre o seletor do Google Drive do próprio GeoMine já na pasta
-   do projeto (`pick({parent})`, com as abas Meu Drive e Drives compartilhados
-   ao lado, porque o seletor não sobe de uma pasta);
-3. se o Drive falhar ou a pessoa cancelar, uma janela de apoio oferece
-   **Escolher no Google Drive** e **Do aparelho…** (cada botão é um toque novo,
-   exigido pelo navegador para abrir o seletor do sistema).
-
-O arquivo obtido segue pela conferência de sempre. Estão ligados a isso:
-`rasEscolherNativoAgora` (todos os botões do MDT; `{local:true}` força o
-aparelho, `{drive:true}` força o Drive), o botão da ortofoto
-(`ortoLocalizarPeloDrive`), o nome da ortofoto nas propriedades e a janela de
-originais ausentes. Não ligar um botão novo de localizar direto a
-`<input type=file>`.
-
-As pastas ficam guardadas **por projeto** em `localStorage`
-(`geomine.drive.pastas.v2`: pasta do `.ccmgis` e pasta do último original). Se
-o projeto veio pelo seletor do aparelho, `GeoMineDriveProject.projectFolder`
-descobre a pasta procurando o arquivo do projeto no Drive e conferindo o
-`projectId`.
-
-**Abrir projeto.** No iPad, **Abrir** vai direto ao seletor do Google Drive do
-GeoMine, na pasta do projeto atual ou do último projeto lido pelo Drive
-(`open()` → `openDrive(false,{fallback:true})` em `project-tab-session.js`).
-Cancelar ou falhar mostra um aviso com **Arquivos deste aparelho**. No
-computador nada muda: o seletor do sistema já abre na pasta e guarda o vínculo.
+**Seletor já na pasta.** O seletor de arquivos do sistema (iPad, Chrome) não
+aceita pasta inicial vinda de uma página. O seletor do Google Drive do próprio
+GeoMine aceita: `pick({parent})` em `drive-project-source.js` abre na pasta do
+último projeto aberto pelo Drive, e **Escolher no Drive…** abre na pasta onde
+o último original foi encontrado.
 
 ## Janelas de propriedades
 

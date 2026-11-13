@@ -161,54 +161,13 @@ function updateSourceButton(){
   button.title=label;button.setAttribute('aria-label',label);
   button.onclick=()=>linked?reopen():openDrive(true);
 }
-/* O seletor do Google Drive do GeoMine abre na pasta do projeto atual (ou do
-   último projeto lido pelo Drive). Com fallback, um seletor cancelado ou que
-   falhou deixa à mão o caminho pelos arquivos do aparelho. */
-async function openDrive(bindCurrent=false,options){
+async function openDrive(bindCurrent=false){
   const token=++operation,owner=account,gen=generation(),version=session?.state?.version;
-  const fresh=()=>token===operation&&owner===account&&current()&&gen===generation()&&version===session?.state?.version;
-  closeOpenChoice();
   try{
-    const drive=window.GeoMineDriveProject,parent=drive.folderFor?.(S.projectId,'project')||undefined;
-    const source=await drive.pick({parent,parentLabel:'Pasta do projeto'});
-    if(!fresh())return false;
+    const source=await window.GeoMineDriveProject.pick();
+    if(token!==operation||owner!==account||!current()||gen!==generation()||version!==session?.state?.version)return false;
     return reopen({source,expectedProject:bindCurrent===true?S.projectId:null});
-  }catch(error){
-    const cancelled=error.name==='AbortError',code=String(error?.code||'');
-    const message=cancelled?'Nenhum projeto foi escolhido no Google Drive.':
-      code==='auth/popup-blocked'?'O navegador bloqueou a janela de autorização do Google. Permita pop-ups para o GeoMine.':
-      code.startsWith('auth/')?'A autorização do Google Drive não foi concluída.':error.message;
-    if(options?.fallback===true&&fresh())openChoice(message);
-    else if(!cancelled)notify(message);
-    return false;
-  }
-}
-/* No iPad o seletor de arquivos do sistema (inclusive o "Google Drive" do
-   Chrome) abre sempre na raiz e não aceita pasta inicial; o seletor do Google
-   Drive do próprio GeoMine aceita. Onde o sistema não guarda a pasta, Abrir
-   vai direto a ele. */
-function drivePreferred(){
-  if(!window.GeoMineCloudProvider?.drivePickerConfig?.key||!window.GeoMineDriveProject?.pick)return false;
-  try{
-    if(window.showOpenFilePicker&&typeof fsApiOK==='function'&&fsApiOK()&&!/Android/i.test(navigator.userAgent)&&
-      (typeof fsHandlesOK!=='function'||fsHandlesOK()))return false;
-  }catch(_){}
-  return true;
-}
-let openChoiceTimer=0;
-function closeOpenChoice(){clearTimeout(openChoiceTimer);document.getElementById('gmOpenChoice')?.remove();}
-function openChoice(message){
-  closeOpenChoice();
-  const bar=document.createElement('div');bar.id='gmOpenChoice';bar.setAttribute('role','status');
-  bar.style.cssText='position:fixed;bottom:44px;left:50%;transform:translateX(-50%);z-index:1250;display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:min(620px,94vw);box-sizing:border-box;padding:9px 12px;border:1px solid var(--line,#888);border-radius:8px;background:var(--panel,#fff);color:var(--ink,#222);box-shadow:0 6px 20px rgba(0,0,0,.28);font-size:13px';
-  const text=document.createElement('span');text.style.flex='1 1 180px';text.textContent=message;
-  const button=(label,run,primary)=>{const b=document.createElement('button');b.type='button';b.className='tbtn'+(primary?' primary':'');b.textContent=label;b.onclick=run;return b;};
-  bar.append(text,
-    button('Google Drive',()=>{closeOpenChoice();void openDrive(false,{fallback:true});},true),
-    button('Arquivos deste aparelho',()=>{closeOpenChoice();void open({local:true});}),
-    button('✕',closeOpenChoice));
-  document.body.append(bar);
-  openChoiceTimer=setTimeout(closeOpenChoice,20000);
+  }catch(error){if(error.name!=='AbortError')notify(error.message);return false;}
 }
 function showResumeIssue(){
   const issue=resumeIssue;resumeIssue=null;
@@ -233,16 +192,14 @@ function showResumeIssue(){
   box.append(title,description,keep,load);box.addEventListener('close',()=>box.remove(),{once:true});
   document.body.append(box);box.showModal();
 }
-function open(options){
+function open(){
   if(current()&&pending&&needsPermission&&isHandle(record?.handle))return reopen();
   if(typeof baseOpen!=='function')return false;
-  if(options?.local!==true&&drivePreferred())return openDrive(false,{fallback:true});
-  closeOpenChoice();
   operation++;busy=false;
   // Only the project handle from THIS tab is eligible. Export images and
   // generic lembraLocal() must not decide the project's opening directory.
   const previous=S._lastDir,anchor=pickerStartIn();S._lastDir=anchor;
-  try{return Promise.resolve(baseOpen.call(this)).finally(()=>{if(S._lastDir===anchor)S._lastDir=previous;});}
+  try{return Promise.resolve(baseOpen.apply(this,arguments)).finally(()=>{if(S._lastDir===anchor)S._lastDir=previous;});}
   catch(e){if(S._lastDir===anchor)S._lastDir=previous;throw e;}
 }
 async function reopen(options){
