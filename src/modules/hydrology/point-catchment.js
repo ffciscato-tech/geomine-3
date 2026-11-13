@@ -23,7 +23,7 @@ panel.innerHTML=`<h2>Área contribuinte no ponto</h2>
 </div>
 <button class="tbtn" id="pointCatchmentMark" style="width:100%;justify-content:center;background:var(--amber);color:#1a1206;font-weight:700">◎ Marcar ponto</button>
 <div class="hout" id="pointCatchmentResult" role="status" aria-live="polite" style="white-space:pre-line;margin-top:8px">A área será informada em m² e hectares.</div>
-<div class="hint" style="margin-top:8px">Com o ímã (snap) ligado, o toque gruda na linha de fluxo mais próxima, e o painel avisa na hora. Depois o ponto é ajustado ao talvegue do MDT ao lado da linha; o marcador mostra o exutório usado. A área é toda a que drena até ele.</div>
+<div class="hint" style="margin-top:8px">Com o ímã (snap) ligado, o toque gruda na linha de fluxo mais próxima, e o painel avisa na hora. Depois o ponto é ajustado ao talvegue do MDT (maior acumulação de fluxo ao lado), sem descer o rio; o marcador mostra o exutório usado. A área é toda a que drena até ele.</div>
 <button class="mini" id="pointCatchmentRain" style="margin-top:12px">Chuva e inundação…</button>`;
 ($('secHidroBacia')?.parentElement||document.body).appendChild(panel);
 // statusHead: primeira linha fixa durante um cálculo (o aviso do snap).
@@ -189,10 +189,10 @@ async function click(latlng){
       // Raio de busca do talvegue: o dedo (14 px no terreno), ao menos 3 células
       // e, com linha vetorial, ao menos 3 m de folga entre a linha e o MDT.
       chosen=resampleFactor({nc:native.nc,nr:native.nr,res:nativeRes}),byChoice=chosen>1,workRes=nativeRes*chosen,
-      // Com o ponto grudado numa linha, a linha manda: o talvegue do MDT é
-      // procurado só ao lado dela (4 células ou 8 m), para não pular para o
-      // rio principal perto de uma confluência. Sem linha, vale o raio do dedo.
-      searchM=snap?Math.max(4*workRes,8):Math.min(40,Math.max(1.4*Math.hypot(sideXY[0]-tap[0],sideXY[1]-tap[1]),3*workRes));
+      // Raio de busca do talvegue, a regra da versão que funcionou (12/11): o
+      // dedo (14 px no terreno), ao menos 3 células e, com linha vetorial, ao
+      // menos 3 m de folga entre a linha e o MDT; no máximo 40 m.
+      searchM=Math.min(40,Math.max(1.4*Math.hypot(sideXY[0]-tap[0],sideXY[1]-tap[1]),3*workRes,snap?3:0));
     let source=native,factor=1,start={col:seed.col,row:seed.row},adjust=0,result,reached=0,wholeGrid=false;
     if(byChoice){factor=chosen;source=coarsen(native,factor);
       start={col:Math.min(source.nc-1,Math.floor(seed.col/factor)),row:Math.min(source.nr-1,Math.floor(seed.row/factor))};}

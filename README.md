@@ -206,7 +206,10 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   seguintes. O resultado e o atributo `METODO` dizem "REAMOSTRADO por
   escolha". A escolha fica em `geomine.hidro.reamostragem.v1`. `coarsen` lê o
   TIFF em pedaços de até 2.048 colunas: janelas largas estouravam o limite de
-  32 MiB do leitor no iPad. Teste de referência (terreno sintético de 0,25 m,
+  32 MiB do leitor no iPad. O raio de busca do talvegue é o da versão que
+  funcionou em 12/11 (dedo, 3 células, 3 m com linha; até 40 m): uma redução
+  para 8 m junto à linha foi publicada às 09h34 e desfeita a pedido do
+  usuário. Não mexer nessa regra sem um caso reproduzido. Teste de referência (terreno sintético de 0,25 m,
   ponto no talvegue): 64,0 ha na grade de 0,5 m e 66,0 ha na de 1 m.
 - **Snap na linha de fluxo segue o ímã.** Com o ímã ligado (`S.snapOn`), o
   toque gruda na linha visível mais próxima a até a tolerância do snap das
