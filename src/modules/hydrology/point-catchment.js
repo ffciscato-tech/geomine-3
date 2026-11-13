@@ -10,10 +10,11 @@ panel.innerHTML=`<h2>Área contribuinte no ponto</h2>
 <div class="hint">Marque o exutório: um ponto da linha de fluxo ou qualquer ponto do MDT. O resultado é toda a área que drena até ele.</div>
 <label class="field" for="pointCatchmentRaster">MDT</label><select id="pointCatchmentRaster"></select>
 <div class="hint" id="pointCatchmentInfo" style="margin:7px 0"></div>
-<div id="pointCatchmentLocate" style="display:none;flex-wrap:wrap;gap:5px;margin:0 0 8px">
-<button class="mini" id="pointCatchmentDrive" style="width:auto;margin:0;background:var(--amber);color:#1a1206;font-weight:700" title="Procura o arquivo no Google Drive pelo nome gravado no projeto, baixa e vincula">Buscar no Google Drive</button>
-<button class="mini" id="pointCatchmentDrivePick" style="width:auto;margin:0" title="Abre o Google Drive já na pasta dos originais">Escolher no Drive…</button>
-<button class="mini" id="pointCatchmentLocal" style="width:auto;margin:0" title="Escolher o arquivo no armazenamento deste aparelho">Do aparelho…</button>
+<div id="pointCatchmentLocate" style="display:none;align-items:center;gap:6px;margin:0 0 8px">
+<span class="hint" style="margin:0 2px 0 0">Trazer o .tif:</span>
+<button class="mini" id="pointCatchmentDrive" style="width:38px;min-width:38px;height:34px;min-height:34px;margin:0;padding:0;display:inline-flex;align-items:center;justify-content:center;background:var(--amber);color:#1a1206" title="Buscar no Google Drive: procura o arquivo pelo nome gravado no projeto, baixa e vincula" aria-label="Buscar no Google Drive"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 10.5 3.8 3.8 0 0 1 17.5 18"/><path d="M12 11.5v7"/><path d="m9 15.8 3 3 3-3"/></svg></button>
+<button class="mini" id="pointCatchmentDrivePick" style="width:38px;min-width:38px;height:34px;min-height:34px;margin:0;padding:0;display:inline-flex;align-items:center;justify-content:center" title="Escolher no Google Drive: abre o Drive na pasta dos originais" aria-label="Escolher no Google Drive"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5V18a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9.5a2 2 0 0 0-2-2h-7L10 5H5a2 2 0 0 0-2 2.5Z"/><path d="M8.5 16.5 12 11l3.5 5.5Z"/></svg></button>
+<button class="mini" id="pointCatchmentLocal" style="width:38px;min-width:38px;height:34px;min-height:34px;margin:0;padding:0;display:inline-flex;align-items:center;justify-content:center" title="Do aparelho: escolher o arquivo no armazenamento deste aparelho" aria-label="Escolher no aparelho"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2.2"/><path d="M10.5 18.5h3"/></svg></button>
 </div>
 <button class="tbtn" id="pointCatchmentMark" style="width:100%;justify-content:center;background:var(--amber);color:#1a1206;font-weight:700">◎ Marcar ponto</button>
 <div class="hout" id="pointCatchmentResult" role="status" aria-live="polite" style="white-space:pre-line;margin-top:8px">A área será informada em m² e hectares.</div>
@@ -83,11 +84,11 @@ async function describe(){
     const semTiff=e.code==='CHANNEL_NATIVE_MISSING';
     const recusa=semTiff&&r._recusaOriginal?.mensagem;
     $('pointCatchmentInfo').textContent=semTiff?(recusa?'O último arquivo escolhido não foi vinculado: '+recusa+'\n':'')+
-      'O arquivo .tif deste MDT não está aberto nesta sessão. O cálculo só é feito no TIFF nativo: traga o arquivo por um dos botões abaixo.':e.message;
+      'O arquivo .tif deste MDT não está aberto nesta sessão. O cálculo só é feito no TIFF nativo: traga o arquivo pelos ícones abaixo (nuvem: buscar no Drive · pasta: escolher no Drive · tablet: do aparelho).':e.message;
     $('pointCatchmentLocate').style.display=(!semTiff)?'none':'flex';
     // Sem o Google Drive nesta sessão, só o arquivo do aparelho faz sentido.
     const temDrive=!!root.GeoMineDriveOriginals?.available();
-    $('pointCatchmentDrive').style.display=$('pointCatchmentDrivePick').style.display=temDrive?'':'none';
+    $('pointCatchmentDrive').style.display=$('pointCatchmentDrivePick').style.display=temDrive?'inline-flex':'none';
   }
   finally{s?.close();}
 }
@@ -124,7 +125,7 @@ async function click(latlng){
     try{sampler=await root.GeoMineChannelDEM.prepare(r,{workCRS:q.crs,signal:q.controller.signal,isCurrent:current});}
     catch(e){
       if(e.code!=='CHANNEL_NATIVE_MISSING')throw e;
-      throw Error('O arquivo .tif deste MDT não está aberto nesta sessão. O cálculo só é feito no TIFF nativo.\nTraga o arquivo por um dos botões acima (Buscar no Google Drive).');
+      throw Error('O arquivo .tif deste MDT não está aberto nesta sessão. O cálculo só é feito no TIFF nativo.\nTraga o arquivo pelos ícones acima (nuvem: buscar no Google Drive).');
     }
     check();
     const k=scale(sampler),tap=fromWGS(q.crs,latlng.lng,latlng.lat),screen=map.latLngToContainerPoint(latlng),
@@ -238,14 +239,14 @@ async function locate(how){
       status('Escolha o arquivo .tif original de “'+r.name+'”.');
       ok=typeof rasEscolherNativoAgora==='function'&&await rasEscolherNativoAgora(r);
     }else{
-      if(!drive?.available())throw Error('O Google Drive não está disponível nesta sessão. Use “Do aparelho…”.');
+      if(!drive?.available())throw Error('O Google Drive não está disponível nesta sessão. Use o ícone do aparelho (tablet).');
       status(how==='drive'?'Procurando “'+r.name+'” no Google Drive…':'Escolha o arquivo .tif no Google Drive.');
       const result=how==='drive'?await drive.restore({item:r,kind:'raster',interactive:true}):await drive.choose(r,'raster');
       ok=result.linked>0;
       const row=result.rows?.[0];
-      if(!ok&&row?.status==='not-found')status('Não encontrei no Google Drive um arquivo com o nome e o tamanho gravados no projeto. Toque em Escolher no Drive… e indique o arquivo.');
-      if(!ok&&row?.status==='ambiguous')status('Há '+row.count+' arquivos com esse nome no Google Drive. Toque em Escolher no Drive… e indique o certo.');
-      if(!ok&&row?.status==='no-name')status('O projeto não gravou o nome do arquivo original deste MDT. Toque em Escolher no Drive… e indique o arquivo.');
+      if(!ok&&row?.status==='not-found')status('Não encontrei no Google Drive um arquivo com o nome e o tamanho gravados no projeto. Toque no ícone da pasta e indique o arquivo.');
+      if(!ok&&row?.status==='ambiguous')status('Há '+row.count+' arquivos com esse nome no Google Drive. Toque no ícone da pasta e indique o certo.');
+      if(!ok&&row?.status==='no-name')status('O projeto não gravou o nome do arquivo original deste MDT. Toque no ícone da pasta e indique o arquivo.');
     }
   }catch(e){if(e.name!=='AbortError')status(e.message);}
   finally{
