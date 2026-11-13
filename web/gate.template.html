@@ -261,32 +261,20 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
     return formato === 'text' ? texto : JSON.parse(texto);
   }
 
-  let driveSession=null,drivePending=null;
+  let driveSession=null;
   const api = {
     kind:'firebase', version:1, ready:true,
     capabilities:{ rooms:true, invitations:true, roles:['owner','editor','viewer'], presence:true, leases:true,
       snapshots:true, operations:['layer.replace'], maxUploadBytes:MAX_ARQUIVO },
     get user(){ return perfil(); },
     get drivePickerConfig(){return {appId:firebaseConfig.messagingSenderId,key:firebaseConfig.pickerBrowserKey};},
-    clearDriveAccess(){driveSession=null;try{sessionStorage.removeItem('geomine.drive.access.v2');localStorage.removeItem('geomine.drive.access.v2');}catch(_){}},
-    /* A autorização do Drive vale 50 minutos e só pode ser pedida a partir de
-       um toque. Fica guardada neste aparelho (e não só na aba) para que
-       recarregar a página ou reabrir o Chrome dentro desse prazo não exija
-       outro toque antes de buscar o projeto e os TIFF originais. Pedidos
-       simultâneos compartilham a mesma janela de autorização. */
-    driveAccess(interactive){
-      const storageKey='geomine.drive.access.v2';
-      let user;try{user=usuario();}catch(error){return Promise.reject(error);}
+    clearDriveAccess(){driveSession=null;try{sessionStorage.removeItem('geomine.drive.access.v2');}catch(_){}},
+    async driveAccess(interactive){
+      const user=usuario(),storageKey='geomine.drive.access.v2';
       let saved=driveSession;
-      try{saved=saved||JSON.parse(sessionStorage.getItem(storageKey)||'null')||JSON.parse(localStorage.getItem(storageKey)||'null');}catch(_){}
-      if(saved?.owner===user.uid&&saved.until>Date.now()&&saved.token)return Promise.resolve(saved.token);
-      if(!interactive)return Promise.reject(Error('Toque em ↻ ao lado do nome do projeto para reconectar ao Drive.'));
-      if(drivePending?.owner===user.uid)return drivePending.promise;
-      const pending={owner:user.uid};
-      pending.promise=api.driveAuthorize(user,storageKey).finally(()=>{if(drivePending===pending)drivePending=null;});
-      drivePending=pending;return pending.promise;
-    },
-    async driveAuthorize(user,storageKey){
+      try{saved=saved||JSON.parse(sessionStorage.getItem(storageKey)||'null');}catch(_){}
+      if(saved?.owner===user.uid&&saved.until>Date.now()&&saved.token)return saved.token;
+      if(!interactive)throw Error('Toque em ↻ ao lado do nome do projeto para reconectar ao Drive.');
       const provider=new GoogleAuthProvider();
       provider.addScope('https://www.googleapis.com/auth/drive.file');
       /* Leitura do Drive: permite achar, na pasta do projeto, a versão mais
@@ -314,7 +302,6 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
       if(!token)throw Error('A conta Google não autorizou a leitura do arquivo.');
       driveSession={owner:user.uid,until:Date.now()+50*60000,token};
       try{sessionStorage.setItem(storageKey,JSON.stringify(driveSession));}catch(_){}
-      try{localStorage.setItem(storageKey,JSON.stringify(driveSession));}catch(_){}
       return token;
     },
 

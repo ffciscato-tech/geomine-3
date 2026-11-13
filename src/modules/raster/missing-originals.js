@@ -86,7 +86,7 @@ function request(options={}){
  if(options.automatic){
   notice=document.createElement('div');notice.id='gmMissingOriginalsNotice';notice.setAttribute('role','status');
   notice.style.cssText='position:fixed;bottom:44px;left:50%;transform:translateX(-50%);z-index:1200;display:flex;align-items:center;gap:8px;width:min(700px,94vw);box-sizing:border-box;padding:9px 12px;border:1px solid var(--line,#888);border-radius:8px;background:var(--panel,#fff);color:var(--ink,#222);box-shadow:0 2px 10px #0003;font-size:12px;';
-  notice.innerHTML='<span data-missing-notice style="flex:1"></span><button class="tbtn primary" type="button" data-missing-drive style="display:none">Buscar no Google Drive</button><button class="tbtn" type="button" data-missing-open>Localizar originais</button><button class="tbtn" type="button" data-missing-close aria-label="Fechar aviso dos originais">×</button>';
+  notice.innerHTML='<span data-missing-notice style="flex:1"></span><button class="tbtn" type="button" data-missing-drive style="display:none">Buscar no Google Drive</button><button class="tbtn" type="button" data-missing-open>Localizar originais</button><button class="tbtn" type="button" data-missing-close aria-label="Fechar aviso dos originais">×</button>';
   document.body.appendChild(notice);
   notice.querySelector('[data-missing-open]').onclick=()=>{if(current())request();};
   // Procura pelo nome no Google Drive, baixa e vincula, sem a pessoa abrir pastas.
