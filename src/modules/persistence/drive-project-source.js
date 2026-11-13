@@ -2,6 +2,7 @@
 (function(root){
 'use strict';
 const drive = () => root.GeoMineCloudProvider;
+const PROJECT_NAME=/\.(ccmgis|alagis|geocampo)$/i;
 const abort = () => new DOMException('Seleção cancelada.', 'AbortError');
 let pickerLibrary;
 function pickerReady(){
@@ -21,15 +22,22 @@ function pickerReady(){
 function isSource(s){
   return s?.kind==='drive' && typeof s.id==='string' && /^[\w-]{1,200}$/.test(s.id);
 }
-async function pick(){
+/* O seletor abre na pasta do último projeto aberto pelo Drive (ou na pasta
+   indicada por quem chama), em vez de começar sempre na raiz. */
+const FOLDER_KEY='geomine.drive.pasta.v1';
+function lastFolder(){try{const id=localStorage.getItem(FOLDER_KEY)||'';return /^[\w-]{1,200}$/.test(id)?id:'';}catch(_){return '';}}
+function rememberFolder(id){if(id&&/^[\w-]{1,200}$/.test(id))try{localStorage.setItem(FOLDER_KEY,id);}catch(_){}}
+async function pick(options={}){
   const provider=drive(),token=await provider.driveAccess(true);
   await pickerReady();
   const {appId,key}=provider.drivePickerConfig;
   return new Promise((resolve,reject)=>{
     const api=google.picker;
     const view=new api.DocsView().setIncludeFolders(true).setSelectFolderEnabled(false);
+    const parent=options.parent||lastFolder();
+    if(parent&&/^[\w-]{1,200}$/.test(parent)&&typeof view.setParent==='function')view.setParent(parent);
     const builder=new api.PickerBuilder().setAppId(appId).setDeveloperKey(key).setOAuthToken(token)
-      .setOrigin(location.origin).setLocale('pt-BR').setTitle('Abrir projeto GeoMine').addView(view);
+      .setOrigin(location.origin).setLocale('pt-BR').setTitle(options.title||'Abrir projeto GeoMine').addView(view);
     if(api.Feature.SUPPORT_DRIVES)builder.enableFeature(api.Feature.SUPPORT_DRIVES);
     const picker=builder.setCallback(data=>{
       if(data.action===api.Action.CANCEL){picker.dispose();reject(abort());}
@@ -55,9 +63,10 @@ async function request(source,query,signal,extraHeaders){
   return response;
 }
 async function metadata(source,signal){
-  const response=await request(source,{fields:'id,name,version,modifiedTime,size,trashed,resourceKey'},signal);
+  const response=await request(source,{fields:'id,name,version,modifiedTime,size,trashed,resourceKey,parents'},signal);
   const file=await response.json();
   if(file.trashed||file.id!==source.id||!file.version)throw Error('O projeto vinculado está indisponível no Drive.');
+  if(PROJECT_NAME.test(file.name||''))rememberFolder(file.parents?.[0]);
   return {kind:'drive',id:file.id,resourceKey:file.resourceKey||source.resourceKey||'',name:file.name,
     version:String(file.version),lastModified:Date.parse(file.modifiedTime)||0,size:Number(file.size)||0};
 }

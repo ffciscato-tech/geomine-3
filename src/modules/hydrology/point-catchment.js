@@ -10,7 +10,11 @@ panel.innerHTML=`<h2>Área contribuinte no ponto</h2>
 <div class="hint">Marque o exutório: um ponto da linha de fluxo ou qualquer ponto do MDT. O resultado é toda a área que drena até ele.</div>
 <label class="field" for="pointCatchmentRaster">MDT</label><select id="pointCatchmentRaster"></select>
 <div class="hint" id="pointCatchmentInfo" style="margin:7px 0"></div>
-<button class="mini" id="pointCatchmentLocate" hidden style="margin:0 0 8px">Localizar MDT original…</button>
+<div id="pointCatchmentLocate" style="display:none;flex-wrap:wrap;gap:5px;margin:0 0 8px">
+<button class="mini" id="pointCatchmentDrive" style="width:auto;margin:0;background:var(--amber);color:#1a1206;font-weight:700" title="Procura o arquivo no Google Drive pelo nome gravado no projeto, baixa e vincula">Buscar no Google Drive</button>
+<button class="mini" id="pointCatchmentDrivePick" style="width:auto;margin:0" title="Abre o Google Drive já na pasta dos originais">Escolher no Drive…</button>
+<button class="mini" id="pointCatchmentLocal" style="width:auto;margin:0" title="Escolher o arquivo no armazenamento deste aparelho">Do aparelho…</button>
+</div>
 <button class="tbtn" id="pointCatchmentMark" style="width:100%;justify-content:center;background:var(--amber);color:#1a1206;font-weight:700">◎ Marcar ponto</button>
 <div class="hout" id="pointCatchmentResult" role="status" aria-live="polite" style="white-space:pre-line;margin-top:8px">A área será informada em m² e hectares.</div>
 <div class="hint" style="margin-top:8px">O ponto é ajustado ao talvegue mais próximo (maior acumulação de fluxo ao lado do toque), sem descer o rio; o marcador mostra o exutório usado. As cotas não são alteradas.</div>
@@ -68,17 +72,20 @@ function resetContext(){const key=String(S.projectId)+'|'+String(gen());if(conte
 async function describe(){
   const r=selected(),token=++describing,project=S.projectId,generation=gen();let s;
   const current=()=>token===describing&&selected()===r&&project===S.projectId&&generation===gen()&&!job;
-  if(!r){$('pointCatchmentInfo').textContent='Selecione o MDT.';$('pointCatchmentLocate').hidden=true;return;}
+  if(!r){$('pointCatchmentInfo').textContent='Selecione o MDT.';$('pointCatchmentLocate').style.display=(true)?'none':'flex';return;}
   $('pointCatchmentInfo').textContent='Conferindo a resolução…';
   try{s=await root.GeoMineChannelDEM.prepare(r,{workCRS:S.workCRS,isCurrent:current});if(!current())return;
     const k=scale(s);
     $('pointCatchmentInfo').textContent='TIFF nativo: '+fmt(s.grid.cs*k,4)+' × '+fmt(s.grid.csy*k,4)+' m · '+fmt(s.grid.nc,0)+' × '+fmt(s.grid.nr,0)+' células · '+s.sourceCRS;
-    $('pointCatchmentLocate').hidden=true;
+    $('pointCatchmentLocate').style.display=(true)?'none':'flex';
   }catch(e){
     if(!current()||e.name==='AbortError')return;
     const semTiff=e.code==='CHANNEL_NATIVE_MISSING';
-    $('pointCatchmentInfo').textContent=semTiff?'O arquivo .tif deste MDT não está aberto nesta sessão. O cálculo só é feito no TIFF nativo: toque em Localizar MDT original e escolha o arquivo.':e.message;
-    $('pointCatchmentLocate').hidden=!semTiff;
+    $('pointCatchmentInfo').textContent=semTiff?'O arquivo .tif deste MDT não está aberto nesta sessão. O cálculo só é feito no TIFF nativo: traga o arquivo por um dos botões abaixo.':e.message;
+    $('pointCatchmentLocate').style.display=(!semTiff)?'none':'flex';
+    // Sem o Google Drive nesta sessão, só o arquivo do aparelho faz sentido.
+    const temDrive=!!root.GeoMineDriveOriginals?.available();
+    $('pointCatchmentDrive').style.display=$('pointCatchmentDrivePick').style.display=temDrive?'':'none';
   }
   finally{s?.close();}
 }
@@ -115,7 +122,7 @@ async function click(latlng){
     try{sampler=await root.GeoMineChannelDEM.prepare(r,{workCRS:q.crs,signal:q.controller.signal,isCurrent:current});}
     catch(e){
       if(e.code!=='CHANNEL_NATIVE_MISSING')throw e;
-      throw Error('O arquivo .tif deste MDT não está aberto nesta sessão. O cálculo só é feito no TIFF nativo.\nToque em Localizar MDT original e escolha o arquivo.');
+      throw Error('O arquivo .tif deste MDT não está aberto nesta sessão. O cálculo só é feito no TIFF nativo.\nTraga o arquivo por um dos botões acima (Buscar no Google Drive).');
     }
     check();
     const k=scale(sampler),tap=fromWGS(q.crs,latlng.lng,latlng.lat),screen=map.latLngToContainerPoint(latlng),
@@ -212,24 +219,40 @@ async function click(latlng){
 $('pointCatchmentRaster').onchange=()=>{cancel();describe();controls();};
 $('pointCatchmentMark').onclick=arm;
 // Abre a janela que localiza os TIFFs originais; ao voltar, o painel confere de novo.
-$('pointCatchmentLocate').onclick=async()=>{
+/* Trazer o .tif original do MDT. Três caminhos, o mesmo fim: o arquivo passa
+   pela conferência e fica vinculado, e o painel volta pronto para marcar. */
+async function locate(how){
   cancel();const r=selected();if(!r)return;
+  const antes=CMD.linhas.length,drive=root.GeoMineDriveOriginals;let ok=false;
   try{
-    if(typeof rasEscolherNativoAgora==='function'){
+    if(how==='local'){
       status('Escolha o arquivo .tif original de “'+r.name+'”.');
-      const antes=CMD.linhas.length,ok=await rasEscolherNativoAgora(r);
-      // O motivo de uma recusa aparece só num aviso rápido: repete aqui, onde fica.
-      const motivo=CMD.linhas.slice(antes).reverse().find(l=>/não confere|difere|não foi vinculado|não é o arquivo|não tem o tamanho|interrompida|alterada desde/i.test(l.msg))?.msg;
-      status(ok?'MDT original vinculado. Toque em Marcar ponto.':'O arquivo não foi vinculado.'+(motivo?'\n'+motivo:'\nConfira se é o mesmo .tif usado para criar este MDT.'));
-    }else root.GeoMineMissingOriginals?.request();
+      ok=typeof rasEscolherNativoAgora==='function'&&await rasEscolherNativoAgora(r);
+    }else{
+      if(!drive?.available())throw Error('O Google Drive não está disponível nesta sessão. Use “Do aparelho…”.');
+      status(how==='drive'?'Procurando “'+r.name+'” no Google Drive…':'Escolha o arquivo .tif no Google Drive.');
+      const result=how==='drive'?await drive.restore({item:r,kind:'raster',interactive:true}):await drive.choose(r,'raster');
+      ok=result.linked>0;
+      const row=result.rows?.[0];
+      if(!ok&&row?.status==='not-found')status('Não encontrei no Google Drive um arquivo com o nome e o tamanho gravados no projeto. Toque em Escolher no Drive… e indique o arquivo.');
+      if(!ok&&row?.status==='ambiguous')status('Há '+row.count+' arquivos com esse nome no Google Drive. Toque em Escolher no Drive… e indique o certo.');
+      if(!ok&&row?.status==='no-name')status('O projeto não gravou o nome do arquivo original deste MDT. Toque em Escolher no Drive… e indique o arquivo.');
+    }
   }catch(e){if(e.name!=='AbortError')status(e.message);}
   finally{
+    // O motivo de uma recusa aparece só num aviso rápido: repete aqui, onde fica.
+    const motivo=CMD.linhas.slice(antes).reverse().find(l=>/não confere|difere|não foi vinculado|não é o arquivo|não tem o tamanho|interrompida|alterada desde|não passou|não há espaço|incompleto/i.test(l.msg))?.msg;
+    if(ok)status('MDT original vinculado. Toque em Marcar ponto.');
+    else if(motivo)status('O arquivo não foi vinculado.\n'+motivo);
     // No iPad a leitura do arquivo fecha os painéis para mostrar o mapa:
     // reabre este, já com o MDT vinculado, para a pessoa marcar o ponto.
     if(!panel.getClientRects().length&&selected()===r){const text=$('pointCatchmentResult').textContent;open();status(text);}
     describe();controls();
   }
-};
+}
+$('pointCatchmentDrive').onclick=()=>locate('drive');
+$('pointCatchmentDrivePick').onclick=()=>locate('pick');
+$('pointCatchmentLocal').onclick=()=>locate('local');
 $('pointCatchmentRain').onclick=()=>{cancel();ribbonOpen($('secHidroMancha'),anchor||$('pointCatchmentRain'),'Chuva e inundação');};
 const category=CATS.find(c=>c.id==='hidrologia');
 for(const group of category?.grupos||[])for(const item of group.it||[]){

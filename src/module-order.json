@@ -1273,7 +1273,7 @@
       "slot": "asset-116",
       "kind": "script",
       "path": "modules/persistence/project-tab-session.js",
-      "parts": ["modules/persistence/drive-project-source.js", "modules/persistence/project-tab-session.js"],
+      "parts": ["modules/persistence/drive-project-source.js", "modules/persistence/project-tab-session.js", "modules/persistence/drive-originals.js"],
       "open_tag": "<script id=\"geomine-project-tab-session\">",
       "close_tag": "</script>"
     },

@@ -173,6 +173,33 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
 Testes do motor: `node src/modules/hydrology/continuous-catchment.test.cjs` e
 `node src/modules/hydrology/point-catchment.test.cjs`.
 
+## Originais buscados no Google Drive
+
+O projeto guarda só a prévia dos rasters; os TIFF originais do MDT e da
+ortofoto ficam no Drive. Para a pessoa não ter de procurá-los a cada aparelho,
+`src/modules/persistence/drive-originals.js`:
+
+- ao abrir ou retomar um projeto, depois da procura no próprio aparelho,
+  procura no Drive cada original que falta pelo **nome** e pelo **tamanho em
+  bytes** gravados no projeto (`names`, `expectedSize`, `find`);
+- baixa o arquivo para o armazenamento do aparelho e o entrega ao mesmo
+  caminho de conferência e vínculo de quem escolhe à mão
+  (`rasEscolherNativoAgora(r,{file})`, `ortoReligarTIFF`). O módulo não decide
+  que um arquivo "serve";
+- não baixa sozinho arquivos acima de 1,5 GB nem quando falta espaço; aí o
+  botão **Buscar no Google Drive** faz isso a pedido;
+- sem o tamanho gravado e com mais de um arquivo de mesmo nome, não escolhe:
+  pede o arquivo.
+
+Depende da sessão do Drive (cerca de 50 minutos depois da última autorização)
+e do escopo `drive.readonly`. Nada é gravado, movido ou apagado no Drive.
+
+**Seletor já na pasta.** O seletor de arquivos do sistema (iPad, Chrome) não
+aceita pasta inicial vinda de uma página. O seletor do Google Drive do próprio
+GeoMine aceita: `pick({parent})` em `drive-project-source.js` abre na pasta do
+último projeto aberto pelo Drive, e **Escolher no Drive…** abre na pasta onde
+o último original foi encontrado.
+
 ## Janelas de propriedades
 
 As três janelas usam o mesmo conjunto de classes, definido no fim de

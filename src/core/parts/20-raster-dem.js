@@ -2731,7 +2731,9 @@ function rasEscolherNativoAgora(r,options={}){
     });
   }
   // Start now so the OS picker retains the user's click activation.
-  job.promise=escolher().finally(()=>{
+  // options.file: o arquivo já está em mãos (baixado do Google Drive, por
+  // exemplo) e segue pela mesma conferência, sem abrir o seletor.
+  job.promise=(options.file?ler(options.file,null):escolher()).finally(()=>{
     options.signal?.removeEventListener('abort',abort);
     try{inp?.remove();}catch(_){}
     if(rasNativeSelections.get(r)===job)rasNativeSelections.delete(r);
