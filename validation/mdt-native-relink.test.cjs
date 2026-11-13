@@ -155,15 +155,26 @@ test('a changed descriptor during fingerprint verification cannot open or commit
 test('invalid headers and read errors close only the temporary source',async()=>{
  for(const broken of [f=>f.image.getSamplesPerPixel=()=>3,f=>f.image.getBoundingBox=()=>[0,0,0,0],f=>f.headerError=Error('provider failed')]){
   const f=fixture();await f.identify();const before=snapshot(f);let oldClosed=0;f.r.d._tiff={close(){oldClosed++;}};broken(f);
-  await assert.rejects(f.c.religaFonte(f.r,f.file));unchanged(f,before);assert.equal(f.calls.close,1);assert.equal(oldClosed,0);
+  // A falha não estoura: fica escrita na camada, para as janelas mostrarem o motivo.
+  assert.equal(await f.c.religaFonte(f.r,f.file),false);assert.match(f.r._recusaOriginal.mensagem,/não pôde ser lido|bandas|georrefer/);
+  unchanged(f,before);assert.equal(f.calls.close,1);assert.equal(oldClosed,0);
  }
 });
 
-test('legacy content and non-square extent validation still rejects wrong files without changing state',async()=>{
+test('a legacy file with other content or extent is never refused outright: the person is asked, and continuing makes it the layer MDT',async()=>{
  for(const wrong of ['content','extent']){
-  const f=fixture(),before=snapshot(f);f.parsed=grid();
+  // Recusar a pergunta mantém o projeto intacto.
+  const f=fixture(),before=snapshot(f);f.parsed=grid();asks(f,false);
   if(wrong==='content')f.parsed.z.fill(900);else f.parsed.csy=5;
   assert.equal(await f.c.religaFonte(f.r,f.file),false);unchanged(f,before);assert.equal(f.calls.parse,1);assert.equal(f.calls.close,1);
+  assert.equal(f.calls.questions.length,1);assert.match(f.calls.questions[0],/é diferente do MDT[\s\S]*Quer continuar\?/);
+  assert.match(f.r._recusaOriginal.mensagem,/você respondeu que não/);
+  // Continuar troca a grade da camada pela do arquivo escolhido.
+  const g=fixture();g.parsed=grid();asks(g,true);
+  if(wrong==='content')g.parsed.z.fill(900);else g.parsed.csy=5;
+  assert.equal(await g.c.religaFonte(g.r,g.file),true);assert.deepEqual(Array.from(g.r.d.z),Array.from(g.parsed.z));assert.equal(g.r.d.csy,g.parsed.csy);assert.equal(g.calls.questions.length,1);
+  assert.equal(g.calls.close,0);assert.equal(g.calls.release,1);assert.equal(g.r.demHD,true);assert.equal(g.r._projectSourceRaw,g.file);
+  assert.equal(g.r.src.file,g.file.name);assert.equal(g.r.projectSavePending,true);assert.equal(g.r._recusaOriginal,undefined);
  }
 });
 

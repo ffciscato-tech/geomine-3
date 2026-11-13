@@ -1314,6 +1314,63 @@ async function religaFonte(r, file,options={}){
      o vínculo antigo). Em vez de recusar e deixar a pessoa sem MDT, segue para
      a conferência de CRS, área e cotas; sem prova automática, ela decide. */
   let outro='';
+  const nf=(v,casas)=>Number(v).toLocaleString('pt-BR',{maximumFractionDigits:casas}),
+    celulas=(w,h,cx,cy)=>nf(w,0)+' × '+nf(h,0)+' células'+(cx>0?' de '+(Math.abs(cx-cy)>cx*.01?nf(cx,3)+' × '+nf(cy,3):nf(cx,3))+' m':'');
+  /* As duas resoluções lado a lado: a do MDT que está no projeto e a do
+     arquivo escolhido. É o que a pessoa precisa ver para decidir. */
+  const comparaGrades=(w,h,cell,bb)=>{
+    const g=gradeAnterior,nativo=g._W0>0&&g._H0>0&&Array.isArray(g._bb)?[g._W0,g._H0,(g._bb[2]-g._bb[0])/g._W0,(g._bb[3]-g._bb[1])/g._H0]:[g.nc,g.nr,g.cs,g.csy||g.cs];
+    const de=Array.isArray(g.srcDims)&&g.srcDims.length===2&&g.srcDims.every(v=>Number.isSafeInteger(v)&&v>0)&&(g.srcDims[0]!==nativo[0]||g.srcDims[1]!==nativo[1])
+      ?' (prévia de um arquivo de '+nf(g.srcDims[0],0)+' × '+nf(g.srcDims[1],0)+' células)':'';
+    return 'MDT carregado no projeto: '+celulas(...nativo)+de+'.\nArquivo escolhido: '+celulas(w,h,cell?cell[0]:bb?(bb[2]-bb[0])/w:0,cell?cell[1]:bb?(bb[3]-bb[1])/h:0)+'.';
+  };
+  /* Troca a grade da camada pela lida do arquivo escolhido, como numa
+     importação: nome, estilo e posição na árvore ficam; mapa, cotas e Hidro
+     passam a usar o arquivo. mesmoLevantamento: a prévia antiga continua
+     servindo de chave para reencontrar o original ao reabrir o projeto. */
+  const trocaGrade=(nova,mesmoLevantamento)=>{
+    const sigNova=assinaturaMDT(nova);nova._sig=sigNova;
+    const staged={d:nova};projectNativeBindRasterSource(staged,file);
+    if(!unchanged())return false;
+    if(globalThis.GeoMineRasterImport)GeoMineRasterImport.release(temporary);
+    const eraDem=S.hidro&&S.hidro.dem===gradeAnterior;
+    r.d=nova;r._st=null;r._stFull=null;r.srcName=file.name;r.demHD=true;r.dispFull=true;
+    r._projectSourceRaw=staged._projectSourceRaw;r._projectNativeBinding=staged._projectNativeBinding;
+    if(mesmoLevantamento){if(r.src)r.src.sig=sigNova;else r.src={sig:sigNova};}
+    else r.src={file:file.name,size:file.size,at:new Date().toISOString(),sig:sigNova};
+    delete r._semFonte;delete r._avisouReduzida;
+    if(eraDem)S.hidro.dem=nova;
+    committed=true;
+    if(mesmoLevantamento)window.GeoMineOriginalSources?.validated(r,'raster',previousPreview);
+    projectNativeInvalidate(r);
+    try{
+      if(eraDem){if(typeof hShadeOff==='function')hShadeOff(true);if(typeof hInvalidaD8==='function')hInvalidaD8(nova);}
+      if(typeof layoutInvalidateOrtho==='function')layoutInvalidateOrtho('mdt-source');
+      renderRaster(r);refreshUI();
+    }catch(e){console.warn('Exibição do MDT religado:',e);}
+    toast('“'+r.name+'” '+(mesmoLevantamento?'religada ao arquivo pleno':'agora usa “'+file.name+'”')+' ('+nf(nova._W0||nova.nc,0)+' × '+nf(nova._H0||nova.nr,0)+' células)');
+    return true;
+  };
+  /* O arquivo escolhido é DIFERENTE do MDT do projeto. Nunca recusa por isso:
+     mostra a diferença e pergunta. Só deixa de vincular se a pessoa disser
+     não, ou se o arquivo não for um MDT (imagem de várias bandas, sem
+     georreferência). */
+  const substitui=async(motivo,pronta)=>{
+    const im=await rasterImportWait(temporary.getImage(0),control),w=im.getWidth(),h=im.getHeight(),bb=im.getBoundingBox(),
+      bandas=typeof im.getSamplesPerPixel==='function'?im.getSamplesPerPixel():1;
+    if(!unchanged())return false;
+    if(Number(bandas)!==1)return recusa('“'+file.name+'” é uma imagem de '+bandas+' bandas (ortofoto ou composição), não um MDT de cotas. Escolha o arquivo do MDT.');
+    if(!bb||bb.length!==4||bb.some(v=>!Number.isFinite(v))||!(bb[2]>bb[0]&&bb[3]>bb[1]))
+      return recusa('“'+file.name+'” não tem georreferência válida e não pode ser usado como MDT.');
+    const pergunta=(outro?outro+'.\n\n':'')+'“'+file.name+'” é diferente do MDT que está em “'+r.name+'”: '+motivo+'.\n\n'+comparaGrades(w,h,null,bb)+
+      '\n\nQuer continuar? O arquivo escolhido passa a ser o MDT desta camada: o mapa, as cotas e os cálculos do Hidro usam ele, na resolução dele. Nome e estilo da camada são mantidos.';
+    if(!confirm(pergunta))return recusa('“'+file.name+'” não foi vinculado (você respondeu que não). O projeto foi mantido.');
+    if(!unchanged())return false;
+    const nova=pronta||await parseTIFF(file,{...control,tiff:temporary});
+    if(!unchanged())return false;
+    if(nova.srcCRS&&nova.srcCRS!==S.workCRS)toast('⚠ “'+file.name+'” declara '+nova.srcCRS+' e o projeto está em '+(S.workCRS||'—')+': confira a posição no mapa.');
+    return trocaGrade(nova,false);
+  };
   try{
     if(!current())return false;
     try{delete r._recusaOriginal;}catch(_){}
@@ -1374,13 +1431,11 @@ async function religaFonte(r, file,options={}){
       const mesmoTamanho=!outro&&Number(r.src?.size)>0&&file.size===Number(r.src.size);
       const area='O arquivo cobre a mesma área da superfície'+(verification.extentDiff>0.001?' (diferença máxima de '+verification.extentDiff.toLocaleString('pt-BR',{maximumFractionDigits:3})+' m)':'')+
         ' e está no mesmo CRS.';
-      const celula=verification.cell?' ('+verification.cell[0].toLocaleString('pt-BR',{maximumFractionDigits:3})+' × '+verification.cell[1].toLocaleString('pt-BR',{maximumFractionDigits:3})+' m por célula)':'';
       const pergunta=outro
-        ?outro+'.\n\n'+area+'\nEle tem '+verification.width.toLocaleString('pt-BR')+' × '+verification.height.toLocaleString('pt-BR')+' células'+celula+
-          (verification.otherDims?'; a superfície foi criada de um arquivo de '+verification.expectedDims[0].toLocaleString('pt-BR')+' × '+verification.expectedDims[1].toLocaleString('pt-BR')+' células':'')+'.\n\n'+
-          'Usar ESTE arquivo como o original de “'+r.name+'”? As cotas lidas no mapa e os cálculos do Hidro passam a vir dele.'
+        ?outro+'.\n\n'+area+'\n'+comparaGrades(verification.width,verification.height,verification.cell)+'\n\n'+
+          'Quer continuar? Este arquivo passa a ser o original de “'+r.name+'”: as cotas lidas no mapa e os cálculos do Hidro vêm dele, na resolução dele.'
         :'Não foi possível conferir automaticamente se “'+file.name+'” é o original de “'+r.name+'”:\n'+verification.reason+'.\n\n'+area+
-          '\nEle tem '+verification.width.toLocaleString('pt-BR')+' × '+verification.height.toLocaleString('pt-BR')+' células.\n\nVincular este arquivo como o original?';
+          '\n'+comparaGrades(verification.width,verification.height,verification.cell)+'\n\nQuer continuar e usar este arquivo como o original?';
       const aceito=mesmoTamanho||confirm(pergunta);
       if(!unchanged())return false;
       if(aceito){
@@ -1396,7 +1451,10 @@ async function religaFonte(r, file,options={}){
       return recusa('“'+file.name+'” não foi vinculado (você respondeu que não). O projeto foi mantido.');
     }
     if(verification.status==='mismatch'||!verification.safeFallback||outro){
-      return recusa('“'+file.name+'” não é o original de “'+r.name+'”: '+verification.reason+'. O projeto foi mantido.');
+      // Arquivo diferente da superfície gravada (outra área, outro CRS, outras
+      // cotas): não é motivo para deixar a pessoa sem MDT. Ela é avisada da
+      // diferença e, se quiser continuar, o arquivo passa a ser o MDT da camada.
+      return await substitui(verification.status==='mismatch'?verification.reason:'não foi possível compará-lo com a superfície gravada ('+verification.reason+')',null);
     }
     // Small files without reproducible overview metadata keep the established
     // validation path, only after the whole native read passed the hard budget.
@@ -1404,33 +1462,16 @@ async function religaFonte(r, file,options={}){
     if(!unchanged())return false;
     const areaOK=mesmaArea(nova,gradeAnterior),sigNova=assinaturaMDT(nova),
       conteudoOK=sigGuardada?assinaturaBate(sigGuardada,sigNova):true;
-    if(!areaOK||!conteudoOK){
-      const fmt=g=>`${g.xll.toFixed(0)}–${(g.xll+g.nc*g.cs).toFixed(0)} × `+
-                   `${g.yll.toFixed(0)}–${(g.yll+g.nr*(g.csy||g.cs)).toFixed(0)}`;
-      const motivo=!areaOK?'cobre outra área ('+fmt(nova)+' vs '+fmt(gradeAnterior)+')'
-                          :'o conteúdo não confere com a superfície gravada';
-      return recusa('“'+file.name+'” '+motivo+' — não é o arquivo desta superfície');
-    }
-    nova._sig=sigNova;
-    const staged={d:nova};projectNativeBindRasterSource(staged,file);
-    if(!unchanged())return false;
-    if(globalThis.GeoMineRasterImport)GeoMineRasterImport.release(temporary);
-    const eraDem=S.hidro&&S.hidro.dem===gradeAnterior;
-    r.d=nova;r._st=null;r._stFull=null;r.srcName=file.name;r.demHD=true;r.dispFull=true;
-    r._projectSourceRaw=staged._projectSourceRaw;r._projectNativeBinding=staged._projectNativeBinding;
-    if(r.src)r.src.sig=sigNova;else r.src={sig:sigNova};
-    if(eraDem)S.hidro.dem=nova;
-    committed=true;
-    window.GeoMineOriginalSources?.validated(r,'raster',previousPreview);
-    projectNativeInvalidate(r);
-    try{
-      if(eraDem){if(typeof hShadeOff==='function')hShadeOff(true);if(typeof hInvalidaD8==='function')hInvalidaD8(nova);}
-      if(typeof layoutInvalidateOrtho==='function')layoutInvalidateOrtho('mdt-source');
-      renderRaster(r);refreshUI();
-    }catch(e){console.warn('Exibição do MDT religado:',e);}
-    toast('“'+r.name+'” religada ao arquivo pleno ('+nova.nc+'×'+nova.nr+', '+nova.cs.toFixed(2)+' m)');
+    if(!areaOK||!conteudoOK)
+      return await substitui(!areaOK?'ele cobre outra área':'as cotas dele não conferem com as da superfície gravada',nova);
+    if(!trocaGrade(nova,true))return false;
     return true;
-  }catch(error){if(error?.name==='AbortError')return false;throw error;}
+  }catch(error){
+    if(error?.name==='AbortError')return false;
+    // Falha de leitura também fica escrita na camada, não só no aviso rápido.
+    if(current())return recusa('“'+file.name+'” não pôde ser lido como GeoTIFF de MDT: '+(error?.message||error));
+    throw error;
+  }
   finally{if(!committed&&temporary)await projectCloseNativeRasterSource(temporary);}
 }
 /* ---------------------------------------------------------------------------

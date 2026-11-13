@@ -167,6 +167,18 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   `r._recusaOriginal` (não é gravada no projeto) e aparece escrita na janela
   do MDT e no painel da área contribuinte. Teste:
   `node validation/mdt-native-relink.test.cjs`.
+- **MDT carregado pela pessoa é o nativo; diferença vira pergunta, nunca
+  recusa (requisito permanente, 13/11/2026).** O `.tif` que a pessoa escolhe
+  para uma camada de MDT é tratado como o nativo dela. Se ele difere da
+  superfície gravada no projeto (outra área, outro CRS, outras cotas, outras
+  dimensões), `religaFonte` mostra a diferença com as duas resoluções lado a
+  lado e pergunta "Quer continuar?" (`substitui`). Continuando, a grade da
+  camada é trocada pela do arquivo, como numa importação (`trocaGrade`): nome
+  e estilo ficam, e mapa, cotas e Hidro passam a usar o arquivo. Só não
+  vincula quando a pessoa responde que não, ou quando o arquivo não é um MDT
+  (imagem de várias bandas, sem georreferência, ilegível) — e o motivo fica
+  escrito em `r._recusaOriginal`. O programa não pode dizer que "não há MDT
+  nativo" depois de a pessoa ter carregado um.
 - **Snap na linha de fluxo segue o ímã.** Com o ímã ligado (`S.snapOn`), o
   toque gruda na linha visível mais próxima a até a tolerância do snap das
   outras ferramentas (`SNAP_PX` = 15 px; 24 px no toque), em qualquer zoom; o
