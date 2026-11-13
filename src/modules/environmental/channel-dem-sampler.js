@@ -116,9 +116,14 @@
     else if(!g||d.resampled>1||(original&&Number(dims[0])>0&&Number(dims[1])>0&&
       (g.nc!==Number(dims[0])||g.nr!==Number(dims[1])))||(d.fromProject&&d.native!==true&&
       !(g.nc===Number(dims[0])&&g.nr===Number(dims[1])))){
-      if(!original)recovered=await root.GeoMineChannelNativeSource?.resolve(r,options);
-      image=original||recovered?.image;
-      if(!image){if(options.allowPreview&&g)preview=true;else throw missing();}
+      // gridOnly: quem chama quer a grade que já está na memória (método D8 na
+      // grade do projeto) e não o arquivo original.
+      if(options.gridOnly&&g)preview=true;
+      else{
+        if(!original)recovered=await root.GeoMineChannelNativeSource?.resolve(r,options);
+        image=original||recovered?.image;
+        if(!image){if(options.allowPreview&&g)preview=true;else throw missing();}
+      }
     }
     // An original attachment may no longer represent an edited preview.
     if(image&&r._projectNativeBinding&&typeof root.projectNativeRasterSourceCurrent==='function'&&

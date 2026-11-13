@@ -73,3 +73,18 @@ test('a tap beside the thalweg is moved to the nearest cell of the dominant flow
  const slope=await engine.analyze(s,{seed:{col:62,row:100}}),valley=await engine.analyze(s,{seed:{col:beside.col,row:beside.row}});
  assert(valley.cells>50*slope.cells,valley.cells+' x '+slope.cells);
 });
+test('D8 on the whole grid: flow accumulation picks the outlet and the basin equals the windowed engine',async()=>{
+ const s=source(121,161,(x,y)=>500-y*0.5+Math.abs(x-60)*2+0.3*Math.sin(x/7)*Math.cos(y/5));
+ const routing=await engine.routeGrid(s,{seed:{col:60,row:100}});
+ assert.equal(routing.count.length,121*161);
+ const beside=await engine.analyzeRouted(s,routing,{col:63,row:100},{searchCells:5});
+ const local=await engine.locateOutlet(s,{col:63,row:100},{searchCells:5});
+ assert.equal(beside.moved,true);
+ const windowed=await engine.analyze(s,{seed:{col:beside.seed.col,row:beside.seed.row}});
+ assert.equal(beside.cells,windowed.cells);assert.equal(beside.cells,beside.cellsAtOutlet,'a acumulação no exutório é a área da bacia em células');
+ assert(Math.abs(beside.areaM2-windowed.areaM2)<1e-6);checkArea(beside,s);
+ assert(Math.abs(local.row-beside.seed.row)<=2&&Math.abs(local.col-beside.seed.col)<=2);
+ // o mesmo roteamento serve a outro ponto, sem reler a grade
+ const reads=s.windows.length,again=await engine.analyzeRouted(s,routing,{col:60,row:140},{searchCells:2});
+ assert(again.cells>beside.cells);assert(s.windows.length-reads<=1,'só a cota do exutório é lida');
+});

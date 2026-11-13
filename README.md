@@ -128,6 +128,14 @@ O comando **Área Contribuinte** (faixa Hidrologia, também aberto pelo ícone d
 mancha de inundação) delimita toda a área que drena até um exutório marcado no
 mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
 
+- **Método padrão: D8 na grade do projeto.** A ferramenta calcula a direção e
+  a acumulação de fluxo D8 de toda a grade do MDT que já está na memória
+  (`routeGrid`), sem precisar do arquivo `.tif`, e delimita a bacia a montante
+  do exutório (`analyzeRouted`). O roteamento fica guardado: os pontos
+  seguintes no mesmo MDT saem em frações de segundo. O outro método, **MDT
+  original em resolução nativa**, lê o `.tif` por janelas e continua
+  disponível no seletor do painel. A ferramenta nunca deve se recusar a
+  calcular por falta do `.tif`.
 - **Exutório no talvegue.** O toque, ou o ponto projetado numa linha vetorial,
   quase nunca cai na célula exata por onde o escoamento passa no MDT, e uma
   célula de encosta ao lado devolve só alguns metros quadrados. Por isso
