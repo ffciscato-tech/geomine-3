@@ -262,6 +262,38 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
   }
 
   let driveSession=null;
+  /* AUTORIZAÇÃO DO DRIVE NO iPAD
+     A janela do Google abre em outra guia e, enquanto ela está na frente, o
+     iPad põe esta página em espera. O Firebase só fazia duas tarefas de rede
+     DEPOIS de abrir a janela (carregar a ponte com o domínio de login e
+     conferir a origem); em espera elas estouravam o tempo e a autorização
+     terminava em auth/network-request-failed. Aqui elas são feitas antes, com
+     a página na frente: logo depois do login e a cada falha. São chamadas
+     internas do SDK (12.0.0); se mudarem de nome, isto simplesmente não faz
+     nada e o fluxo volta a ser o de antes. */
+  function aqueceJanelaGoogle(){
+    try{
+      const resolver=auth._popupRedirectResolver,chave=typeof auth._key==='function'?auth._key():null;
+      if(!resolver)return;
+      if(typeof resolver._initialize==='function')Promise.resolve(resolver._initialize(auth)).catch(()=>{});
+      if(typeof resolver._originValidation==='function')Promise.resolve(resolver._originValidation(auth)).catch(()=>{
+        // Uma conferência que falhou fica guardada e derruba todas as tentativas seguintes.
+        try{if(chave&&resolver.originValidationPromises)delete resolver.originValidationPromises[chave];}catch(_){}
+      });
+    }catch(_){}
+  }
+  setTimeout(aqueceJanelaGoogle,2500);
+  function erroDrive(error){
+    const code=String(error?.code||'');
+    const texto=code==='auth/network-request-failed'?'A autorização do Google Drive não respondeu a tempo. Toque de novo no ícone; se repetir, use o ícone do aparelho (tablet) e escolha o arquivo pelo seletor do iPad.'
+      :code==='auth/popup-blocked'?'O navegador bloqueou a janela de autorização do Google. Permita pop-ups para o GeoMine e toque de novo.'
+      :code==='auth/popup-closed-by-user'||code==='auth/cancelled-popup-request'||code==='auth/user-cancelled'?'A autorização do Google Drive não foi concluída.'
+      :code==='auth/user-mismatch'?'A conta Google escolhida não é a conta desta sessão do GeoMine. Escolha a mesma conta do login.'
+      :code==='auth/web-storage-unsupported'?'Este navegador bloqueou o armazenamento que a autorização do Google usa. Use o ícone do aparelho (tablet) e escolha o arquivo pelo seletor do iPad.'
+      :'';
+    if(!texto)return error;
+    const amigavel=new Error(texto);amigavel.code=code;amigavel.cause=error;return amigavel;
+  }
   const api = {
     kind:'firebase', version:1, ready:true,
     capabilities:{ rooms:true, invitations:true, roles:['owner','editor','viewer'], presence:true, leases:true,
@@ -292,9 +324,12 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
       let result;
       try{result=await reauthenticateWithPopup(user,provider);}
       catch(error){
-        if(!soArquivo&&error?.code!=='auth/popup-blocked')
+        // Falha de rede ou janela fechada não é recusa da permissão de leitura.
+        const recusou=!/network-request-failed|popup-blocked|popup-closed-by-user|cancelled-popup-request|web-storage-unsupported/.test(String(error?.code||''));
+        if(!soArquivo&&recusou)
           try{localStorage.setItem(recusaKey,JSON.stringify({n:(Date.now()-recusa.at<600000?recusa.n:0)+1,at:Date.now()}));}catch(_){}
-        throw error;
+        aqueceJanelaGoogle();
+        throw erroDrive(error);
       }
       if(!soArquivo)try{localStorage.removeItem(recusaKey);}catch(_){}
       if(auth.currentUser?.uid!==user.uid||result.user.uid!==user.uid)throw Error('A conta do projeto mudou.');

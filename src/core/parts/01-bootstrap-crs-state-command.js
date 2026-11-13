@@ -43,6 +43,10 @@
   });
   window.addEventListener('unhandledrejection', e=>{
     const r=e.reason;
+    /* Ruído interno do SDK de login: quando a janela do Google falha, ele
+       rejeita a mesma operação duas vezes e a segunda vira esta asserção. A
+       falha verdadeira já chega a quem pediu a autorização, com mensagem. */
+    if(/INTERNAL ASSERTION FAILED: Pending promise was never set/.test(String((r&&r.message)||r))){e.preventDefault();return;}
     mostra('PROMISE REJEITADA: '+((r&&r.message)||r)+(r&&r.stack? '\n'+r.stack.split('\n').slice(0,3).join('\n'):''));
   });
 })();

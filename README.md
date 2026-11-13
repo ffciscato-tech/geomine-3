@@ -188,6 +188,15 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   reler o arquivo inteiro. Cotas diferentes: é outro MDT, e vale a pergunta do
   item anterior. Sem amostras suficientes: pergunta simples com as duas
   resoluções.
+- **Autorização do Drive no iPad (`driveAccess` em `web/gate.template.html`).**
+  A janela do Google abre em outra guia e o iPad põe o GeoMine em espera; as
+  duas tarefas de rede que o SDK fazia depois de abrir a janela estouravam o
+  tempo (`auth/network-request-failed`, seguido da asserção "Pending promise
+  was never set"). `aqueceJanelaGoogle` faz essas tarefas antes (2,5 s depois
+  do login e a cada falha) e apaga a conferência de origem que falhou, que o
+  SDK guardava e repetia. As falhas chegam com mensagem em português e não
+  contam como recusa da permissão de leitura. Não dá para testar fora do site
+  oficial: confirmar no iPad a cada mudança aqui.
 - **Snap na linha de fluxo segue o ímã.** Com o ímã ligado (`S.snapOn`), o
   toque gruda na linha visível mais próxima a até a tolerância do snap das
   outras ferramentas (`SNAP_PX` = 15 px; 24 px no toque), em qualquer zoom; o
