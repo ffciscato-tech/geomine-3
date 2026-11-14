@@ -55,6 +55,15 @@ function snap(latlng){
  return best;
 }
 function clear(){revision++;S.meas.pointRefs=[];S.meas.pointResult=null;}
+/* Fonte da cota de cada ponto. Até 8 pontos, um por linha; acima disso (traço
+   à mão livre), pontos seguidos com a mesma fonte saem numa linha só. */
+function fontes(sources){
+ if(sources.length<=8)return sources.map((s,i)=>'P'+(i+1)+': '+esc(s)).join('<br>');
+ const out=[];
+ for(let i=0;i<sources.length;){let j=i;while(j+1<sources.length&&sources[j+1]===sources[i])j++;
+  out.push('P'+(i+1)+(j>i?'–P'+(j+1):'')+': '+esc(sources[i]));i=j+1;}
+ return out.join('<br>');
+}
 function click(latlng){
  const hit=snap(latlng),ll=hit?.latlng||latlng;
  (S.meas.pointRefs||(S.meas.pointRefs=[])).push(hit?{z:hit.z,source:hit.L.name}:null);
@@ -101,7 +110,7 @@ async function update(){
  let detail='';
  if(segs.length===1){summary+=row('Declividade',f(segs[0].decl,' %',true))+row('Inclinação',f(segs[0].graus,'°',true));}
  else detail='<div class="meas-seg" style="max-height:180px;margin:0 0 8px"><table><thead><tr><th>Trecho</th><th>Z inicial</th><th>Z final</th><th>Declividade</th></tr></thead><tbody>'+segs.map(s=>'<tr><td>'+s.i+'</td><td>'+f(s.za,' m')+'</td><td>'+f(s.zb,' m')+'</td><td>'+f(s.decl,' %',true)+'<br>'+f(s.graus,'°',true)+'</td></tr><tr><td colspan="4">2D: '+f(s.d2,' m')+' · 3D: '+f(s.d3,' m')+' · ΔZ: '+f(s.dz,' m',true)+'</td></tr>').join('')+'</tbody></table></div>';
- out.innerHTML='<div class="meas-title">DISTÂNCIA POR PONTOS</div><div class="meas-points">'+B.length+' pontos · '+segs.length+' trechos</div>'+detail+'<div class="meas-grid">'+summary+'</div><div class="meas-note">'+sources.map((s,i)=>'P'+(i+1)+': '+esc(s)).join('<br>')+'<br>Declividade = ΔZ ÷ distância horizontal. Nos vetores, mede os segmentos entre os pontos marcados; não acompanha automaticamente as curvas da linha. Z em metros; — indica dado indisponível.</div>';
+ out.innerHTML='<div class="meas-title">DISTÂNCIA POR PONTOS</div><div class="meas-points">'+B.length+' pontos · '+segs.length+' trechos</div>'+(segs.length>8?'<div class="meas-grid" style="margin-bottom:8px">'+summary+'</div>'+detail:detail+'<div class="meas-grid">'+summary+'</div>')+'<div class="meas-note">'+fontes(sources)+'<br>Declividade = ΔZ ÷ distância horizontal. Nos vetores, mede os segmentos entre os pontos marcados; não acompanha automaticamente as curvas da linha. Z em metros; — indica dado indisponível.</div>';
  document.getElementById('mbMode').textContent=any?(refs.some(q=>Number.isFinite(q?.z))?'Vetor 3D':'3D'):'2D';
  if(S.meas.totalLabel)S.measLayer.removeLayer(S.meas.totalLabel);
  S.meas.totalLabel=L2.marker(B.at(-1),{interactive:false,pane:'alagis_regua',icon:L2.divIcon({className:'',html:'<div class="meas-lbl">'+esc(fmtLen(full?total3:total))+(full?' (3D)':'')+'</div>',iconAnchor:[-8,8]})}).addTo(S.measLayer);

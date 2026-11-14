@@ -533,7 +533,8 @@ function finishDraw(options={}){
   const geom=S.drawBuf.map(([lat,lng])=>{const c=fromWGS(L.crs,lng,lat);return [c[0],c[1]];});
   const tool=S.tool;
   if(tool==='poly'){
-    GeoMineOrtho.closeCorner(geom);
+    // Traço à mão livre não é ortogonal: o fechamento não ganha o canto reto.
+    if(!window.GeoMineFreehand?.inDraft?.())GeoMineOrtho.closeCorner(geom);
     const a=geom[0], b=geom[geom.length-1];
     if(a&&b&&Math.hypot(a[0]-b[0],a[1]-b[1])>1e-9) geom.push(a.slice());
   }

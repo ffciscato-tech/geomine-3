@@ -90,6 +90,33 @@ publicou de outro lugar e este repositório está desatualizado.
   como botão direito, e o botão se desarma sozinho. Com a caneta em contato, a
   palma apoiada na tela não conta como segundo toque nem cancela o "segurar"
   (`touch-workspace.js`; pedido do usuário em 14/11/2026).
+- **Desenho à mão livre (mãozinha ao lado do ✓).** Com o modo ligado e uma
+  ferramenta de traçado ativa, arrastar a caneta sobre o mapa desenha: o traço
+  vira vértices enxutos no mesmo rascunho dos toques ponto a ponto, e o ✓
+  conclui como sempre. Vale para linha e polígono do CAD, feição de drenagem
+  (com a cota do MDT em cada vértice), régua por pontos (distância 2D/3D ao
+  longo do traço) e seleção por polígono (laço: seleciona ao levantar). Regras
+  (`modules/cad/freehand-drawing.js`; pedido do usuário em 14/11/2026):
+  - a caneta desenha e os dedos movem o mapa; com a caneta em contato, a palma
+    não desenha nem move o mapa. Num aparelho em que nunca se usou caneta, um
+    dedo desenha e dois dedos navegam; no computador, o botão esquerdo desenha;
+  - um toque curto continua criando um vértice; traço que começa na ponta do
+    rascunho emenda sem repetir o vértice; o ímã vale na primeira e na última
+    ponta; o modo ortogonal não entra no traço nem no fechamento do polígono;
+  - desfazer tira o traço inteiro (Ctrl/Alt+Z ou "Desfazer" do menu •••);
+  - com o modo ligado, segurar a caneta parada não conclui o comando (ela está
+    começando um traço): conclua pelo ✓ ou pelo botão ◨; a caixa de
+    comprimento/ângulo do CAD só aparece com o mouse;
+  - o Perfil fica de fora: cada vértice dele ganha um rótulo (A, B, C…);
+  - o modo começa desligado e fica guardado por aparelho
+    (`geomine.maoLivre.v1`). Desligado, nada muda no desenho.
+- **Só o toque vale como clique nas ferramentas de ponto.** No tablet, o
+  reforço de toque de `06-map-tools-snap.js` (drenagem, área contribuinte,
+  barramento, lâmina e inundação) convertia qualquer `touchend` em clique:
+  mover o mapa com um dedo ou dar zoom com dois deixava um ponto solto no
+  traçado. Agora o `touchend` só vale quando o dedo não saiu do lugar (12 px)
+  e não houve segundo dedo. Não voltar a aceitar o fim de um arrasto como
+  clique.
 - **Botão direito na árvore traz a lixeira e os demais símbolos.** Os símbolos
   de ação de cada linha (cadeado, propriedades, remover) ficam à direita e, no
   painel estreito do iPad, saem da área visível. O botão direito — ou o toque

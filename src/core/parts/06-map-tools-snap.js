@@ -147,10 +147,23 @@ function initMap(){
   // pedem um ponto (inundação, bacia), converte o touchend em latlng e despacha.
   try{
     const cont=map.getContainer();
+    /* Só o TOQUE vale como clique. Arrastar o mapa com um dedo e a pinça de dois
+       dedos também terminam em "touchend": sem este filtro, navegar com a
+       ferramenta armada deixava um ponto solto (ou disparava o cálculo) onde o
+       dedo saía da tela. O início do gesto é lido na janela, antes de qualquer
+       módulo, para nunca ficar com dados de um gesto anterior. */
+    let gesto=null;
+    window.addEventListener('touchstart',ev=>{
+      if(ev.touches.length===1){ const t=ev.touches[0]; gesto={id:t.identifier,x:t.clientX,y:t.clientY,varios:false}; }
+      else if(gesto) gesto.varios=true;
+    },{capture:true,passive:true});
+    window.addEventListener('touchcancel',()=>{ gesto=null; },{capture:true,passive:true});
     cont.addEventListener('touchend',ev=>{
       if(S.tool!=='inund' && S.tool!=='basin' && S.tool!=='barr' && S.tool!=='lamina' && S.tool!=='dren') return;
       if(!ev.changedTouches || !ev.changedTouches.length) return;
       const t=ev.changedTouches[0];
+      const g=gesto;
+      if(g && (g.varios || ev.touches.length || t.identifier!==g.id || Math.hypot(t.clientX-g.x,t.clientY-g.y)>12)) return;   // navegação, não toque
       const r=cont.getBoundingClientRect();
       const pt=L.point(t.clientX-r.left, t.clientY-r.top);
       let ll; try{ ll=map.containerPointToLatLng(pt); }catch(e){ return; }

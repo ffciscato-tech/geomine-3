@@ -1552,6 +1552,7 @@
       "slot": "asset-145",
       "kind": "script",
       "parts": [
+        "modules/cad/freehand-drawing.js",
         "modules/ui/touch-workspace.js",
         "modules/persistence/import-recovery.js",
         "modules/raster/source-properties.js",

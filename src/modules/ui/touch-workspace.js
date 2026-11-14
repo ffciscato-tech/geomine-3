@@ -110,6 +110,7 @@ function more(anchor){
  const cb=root.GeoMineClipboard;
  ribMiniMenu(anchor,'Comandos por toque',[
   {nome:secondary?'Cancelar o botão direito':'Botão direito no próximo toque',run:()=>{secondary=!secondary;sec=null;sync();}},
+  ...(root.GeoMineFreehand?[{nome:root.GeoMineFreehand.on?'Desligar a mão livre':'Desenho à mão livre',run:()=>{root.GeoMineFreehand.toggle();sync();}}]:[]),
   {nome:'Ações da feição',run:actions},{nome:'Concluir comando',run:()=>key('Enter')},{nome:'Cancelar comando',run:()=>key('Escape')},
   {nome:'Desfazer',run:()=>doUndo()},
   {nome:additive?'Desativar seleção aditiva':'Somar à seleção',run:()=>{additive=!additive;sync();}},
@@ -120,12 +121,20 @@ function more(anchor){
   {nome:'Salvar projeto',run:()=>root.saveProject(false)},
   ...(root.GeoMineImportRecovery?.available()?[{nome:'Recuperar projeto anterior ao TIFF',run:()=>root.GeoMineImportRecovery.recover({manual:true})}]:[]),
   {sep:true},{nome:pan3D?'3D: arrastar para orbitar':'3D: arrastar para deslocar',run:()=>{pan3D=!pan3D;sync();}},
-  {nome:'Ajuda dos gestos',run:()=>toast('Dedo ou caneta — Toque: selecionar · Dois toques na camada: propriedades · Segurar meio segundo: botão direito (menu, propriedades ou concluir comando) · Botão ◨: o próximo toque vale como botão direito · 3D: um dedo gira; dois dedos deslocam e fazem zoom.')}]);
+  {nome:'Ajuda dos gestos',run:()=>toast('Dedo ou caneta — Toque: selecionar · Dois toques na camada: propriedades · Segurar meio segundo: botão direito (menu, propriedades ou concluir comando) · Botão ◨: o próximo toque vale como botão direito · Mãozinha ao lado do ✓: desenho à mão livre, arrastando a caneta · 3D: um dedo gira; dois dedos deslocam e fazem zoom.')}]);
  const menu=[...document.querySelectorAll('.ribmini')].at(-1);if(menu){const r=menu.getBoundingClientRect(),a=anchor.getBoundingClientRect();if(r.bottom>innerHeight-6)menu.style.top=Math.max(6,a.top-r.height-3)+'px';}
 }
 function mount(){
  if(!$('gmTouchFinish')){
  const done=document.createElement('button');done.id='gmTouchFinish';done.type='button';done.className='gm-touch-finish';done.textContent='✓';done.title='Finalizar comando · sem comando, limpar seleção';done.setAttribute('aria-label','Finalizar comando ou limpar seleção');done.onclick=finish;$('main')?.append(done);
+ }
+ /* Mão livre (freehand-drawing.js): a mãozinha ao lado do ✓ liga e desliga o
+    desenho arrastando a caneta. */
+ if(!$('gmTouchFreehand')&&root.GeoMineFreehand){
+ const hand=document.createElement('button');hand.id='gmTouchFreehand';hand.type='button';hand.className='gm-touch-freehand';
+ hand.innerHTML='<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 11.5V5a1.5 1.5 0 0 1 3 0v6"/><path d="M12.5 10V6.5a1.5 1.5 0 0 1 3 0V11"/><path d="M15.5 10.500V8.500a1.500 1.500 0 0 1 3 0V14a6 6 0 0 1-6 6h-1.200a5 5 0 0 1-3.900-1.900L4.700 14.700a1.500 1.500 0 0 1 2.300-1.900l2.500 2.400V11.500"/></svg>';
+ hand.title='Desenho à mão livre: arraste a caneta para traçar (os dedos movem o mapa)';hand.setAttribute('aria-label','Desenho à mão livre');hand.setAttribute('aria-pressed','false');
+ hand.onclick=()=>{root.GeoMineFreehand.toggle();sync();};$('main')?.append(hand);
  }
  if($('gmTouchActions'))return;
  const bar=document.createElement('nav');bar.id='gmTouchActions';bar.className='gm-touch-actions';bar.setAttribute('aria-label','Comandos de toque');
@@ -165,6 +174,8 @@ function sync(){
   const visible=enabled&&(mapView||['v3d','layout','cava2'].includes(S._view));bar.hidden=!visible;
   const done=$('gmTouchFinish');
   if(done){done.hidden=!mapView;done.style.display=mapView?'flex':'none';}
+  const hand=$('gmTouchFreehand');
+  if(hand){const ligado=!!root.GeoMineFreehand?.on;hand.hidden=!mapView;hand.style.display=mapView?'flex':'none';hand.classList.toggle('on',ligado);hand.setAttribute('aria-pressed',String(ligado));}
   bar.dataset.additive=String(additive);bar.dataset.box=String(boxSelection);
   const sb=bar.querySelector('[data-touch-action="secondary"]');if(sb){sb.setAttribute('aria-pressed',String(secondary));sb.classList.toggle('on',secondary);}
   layerScroll();
@@ -183,6 +194,9 @@ function boot(){
  document.querySelectorAll('iframe').forEach(f=>{attach(f);f.addEventListener('load',()=>attach(f));});
  root.addEventListener('blur',()=>{cancelHold();tap=null;sec=null;pen=null;contacts.clear();});root.addEventListener('pagehide',()=>{cancelHold();tap=null;});
 }
-root.GeoMineTouchWorkspace={get enabled(){return enabled;},get additive(){return additive;},get boxSelection(){return boxSelection;},get pan3D(){return pan3D;},actions,key,finish,sync,suppressTap,install};
+/* release: outro módulo assumiu o gesto em andamento (o traço à mão livre);
+   o "segurar" e o toque pendentes deixam de valer. */
+function release(){cancelHold();tap=null;sec=null;}
+root.GeoMineTouchWorkspace={get enabled(){return enabled;},get additive(){return additive;},get boxSelection(){return boxSelection;},get pan3D(){return pan3D;},get secondaryArmed(){return secondary;},actions,key,finish,sync,suppressTap,install,release};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);

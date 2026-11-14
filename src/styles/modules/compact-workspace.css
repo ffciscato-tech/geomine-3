@@ -1,4 +1,8 @@
 .gm-touch-finish{position:absolute;top:42px;left:10px;z-index:1100;display:flex;align-items:center;justify-content:center;width:27px;height:27px;padding:0;border:1px solid var(--line);border-radius:5px;background:var(--panel);color:var(--ink);font:700 18px sans-serif;cursor:pointer;touch-action:manipulation}.gm-touch-finish[hidden]{display:none!important}
+/* Mão livre: a mãozinha ao lado do ✓. */
+.gm-touch-freehand{position:absolute;top:42px;left:42px;z-index:1100;display:flex;align-items:center;justify-content:center;width:27px;height:27px;padding:0;border:1px solid var(--line);border-radius:5px;background:var(--panel);color:var(--ink);cursor:pointer;touch-action:manipulation}.gm-touch-freehand[hidden]{display:none!important}
+.gm-touch-freehand.on{background:var(--amber,#e5a92f);border-color:var(--amber,#e5a92f);color:#17212b}
+.gm-touch-freehand svg{display:block;pointer-events:none}
 body.gm-touch-ui #layerScrollTop{display:none!important}
 body.gm-touch-ui #right{max-height:var(--gm-layer-available,100%)!important}
 @media(max-width:900px){body.gm-touch-ui.alagis3 #right{height:auto!important}}
