@@ -253,5 +253,26 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+
+    // ATUALIZAÇÕES DE PROJETO ENTREGUES AO DONO
+    // Um projeto alterado fora do GeoMine (tools/enviar_atualizacao_projeto.py,
+    // com a conta de serviço) fica aqui para o GeoMine carregar ao recarregar a
+    // página, sem depender do Google Drive. O id do documento é o SHA-256 de
+    // "e-mail\nprojectId"; só o dono lê, e ninguém grava pelo navegador.
+    function ownsProjectUpdate(updateId) {
+      return get(/databases/$(database)/documents/projectUpdates/$(updateId)).data.emailLower
+        == request.auth.token.email.lower();
+    }
+
+    match /projectUpdates/{updateId} {
+      allow get: if isCcmUser()
+        && (resource == null || resource.data.emailLower == request.auth.token.email.lower());
+      allow list, create, update, delete: if false;
+
+      match /parts/{partId} {
+        allow get: if isCcmUser() && ownsProjectUpdate(updateId);
+        allow list, create, update, delete: if false;
+      }
+    }
   }
 }

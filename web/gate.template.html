@@ -593,6 +593,34 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
       return observa(q,retorno,opcoes.onError);
     },
     async getResource(id, resourceId){ return materializa(await getDoc(await recursoRef(id,resourceId))); },
+    /* ATUALIZAÇÕES DE PROJETO ENTREGUES AO DONO (coleção projectUpdates)
+       Só leitura: quem grava é tools/enviar_atualizacao_projeto.py, com a conta
+       de serviço. O id do documento é o SHA-256 de "e-mail\nprojectId", de modo
+       que cada conta só consegue pedir as atualizações dos próprios projetos.
+       O módulo project-updates.js decide quando carregar. */
+    async projectUpdateHead(projectId){
+      const u = perfil(); projectId = String(projectId || '');
+      if(!projectId || projectId.length > 200) return null;
+      const resumo = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(u.email + '\n' + projectId)));
+      const id = Array.from(resumo, b => b.toString(16).padStart(2,'0')).join('');
+      const s = await getDoc(doc(db, 'projectUpdates', id));
+      if(!s.exists()) return null;
+      const d = s.data();
+      if(d.emailLower !== u.email || d.projectId !== projectId) return null;
+      return { id, projectId, revision:String(d.revision || ''), at:Number(d.at) || 0, name:String(d.name || ''),
+        note:String(d.note || '').slice(0,400), parts:Number(d.parts) || 0, bytes:Number(d.bytes) || 0,
+        rawBytes:Number(d.rawBytes) || 0, sha256:String(d.sha256 || ''), format:String(d.format || ''), entry:String(d.entry || '') };
+    },
+    async projectUpdatePart(head, n){
+      perfil();
+      if(!head || !/^[0-9a-f]{64}$/.test(head.id || '') || !/^[\w-]{6,80}$/.test(head.revision || '') || !Number.isInteger(n) || n < 0 || n > 200)
+        throw criaErro('invalid-update', 'Atualização de projeto inválida.');
+      const s = await getDoc(doc(db, 'projectUpdates', head.id, 'parts', head.revision + '_' + n));
+      if(!s.exists()) throw criaErro('missing-part', 'A atualização do projeto está incompleta no servidor.');
+      const dados = s.data().data;
+      return dados && typeof dados.toUint8Array === 'function' ? dados.toUint8Array() : new Uint8Array(0);
+    },
+
     dispose(){
       batimentos.forEach(clearInterval); batimentos.clear();
       minhasLeases.clear();

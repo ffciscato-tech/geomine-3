@@ -3638,6 +3638,8 @@ document.querySelectorAll('#tabBar .tbtn').forEach(b=>{
       if(vistos.has(chave))return;
       vistos.add(chave);a.push({cat:c,grp:g,cmd});
     })));
+    if(window.GeoMineProjectUpdates && window.GeoMineCloudProvider?.projectUpdateHead)
+      a.push({cat:{nome:'Início'},grp:{label:'Projeto'},cmd:{nome:'Carregar atualização do projeto'},run:()=>window.GeoMineProjectUpdates.check({manual:true})});
     const session=window.GeoMineProjectTabSession;
     if(session && window.GeoMineCloudProvider?.drivePickerConfig?.key){
       const cat={nome:'Início'},grp={label:'Projeto'};

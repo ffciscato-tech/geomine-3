@@ -1556,6 +1556,7 @@
         "modules/persistence/import-recovery.js",
         "modules/raster/source-properties.js",
         "modules/persistence/workspace-resume.js",
+        "modules/persistence/project-updates.js",
         "modules/ui/compact-workspace.js",
         "modules/mining/geostatistics-engine.js",
         "modules/mining/geostatistics-panel.js"

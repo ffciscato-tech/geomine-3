@@ -123,6 +123,39 @@ Regras para quem grava a versão nova: salve na **mesma pasta** do arquivo que
 está aberto e **preserve o `projectId`** do projeto (ele fica no começo do
 JSON). O nome do arquivo é livre.
 
+### Entrega pelo banco do GeoMine (não depende do Drive)
+
+No iPad o projeto costuma ser aberto pelo seletor de arquivos, e um arquivo
+escolhido assim é uma cópia: o navegador não tem como enxergar o Drive ao
+recarregar. Por isso, quem altera um projeto por fora **também entrega a versão
+nova pelo Firestore do GeoMine** (escolha do usuário em 14/11/2026):
+
+    python3 -I -X utf8 tools/enviar_atualizacao_projeto.py --credencial CHAVE.json \
+        --projeto Projeto_alterado.ccmgis --email <conta do dono> \
+        --nota "o que foi alterado, em uma frase" --live
+
+- O GeoMine aberto com a conta do dono confere o banco ao carregar a página, ao
+  voltar para a aba e a cada minuto (`src/modules/persistence/project-updates.js`;
+  leitura em `web/gate.template.html`, métodos `projectUpdateHead` e
+  `projectUpdatePart`). Há também o comando **Carregar atualização do projeto**
+  na busca de comandos.
+- Só vale para o projeto que está aberto e tem o **mesmo `projectId`**.
+- Só é oferecida a atualização enviada **depois** do conteúdo carregado (data
+  do arquivo aberto, do último Salvar ou da última atualização aplicada).
+- Sem alterações não salvas no aparelho, carrega sozinha e avisa. Com
+  alterações não salvas, **pergunta antes**: carregar substitui o projeto
+  inteiro, e o que foi feito só no aparelho se perderia.
+- Coleção `projectUpdates/{sha256("e-mail\nprojectId")}` com as partes em
+  `parts/` (projeto em ZIP, até 700 KB por parte). Só o dono lê; ninguém grava
+  pelo navegador (`firestore.rules`). Cada envio substitui o anterior.
+- O arquivo novo no Drive continua sendo criado: é o registro durável, e o que
+  os colegas abrem. O e-mail do dono nunca é gravado no repositório nem em logs.
+- Regras do Firestore: `tools/publicar_regras_firestore.py` (compara, publica
+  e permite voltar). Antes de publicar, teste no emulador local
+  (`firebase emulators:start --only firestore --project demo-geomine`, envie um
+  projeto com `--emulador http://127.0.0.1:8085` e rode
+  `node validation/regras-firestore-atualizacoes.emulador.cjs`).
+
 O código está em `src/modules/persistence/drive-project-source.js` (`latest`)
 e `project-tab-session.js` (`reopen`). A leitura da pasta usa o escopo
 `drive.readonly`, pedido em `web/gate.template.html`; sem ele o GeoMine

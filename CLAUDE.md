@@ -22,5 +22,9 @@ permanentes.
   avise. Use `tools/publicar_firebase.py --live` e depois
   `tools/registrar_publicacao.py`. Mudanças que o usuário não pediu continuam
   exigindo confirmação.
+- **Projeto alterado a pedido:** preserve o `projectId`, grave o arquivo novo na
+  mesma pasta do Drive e entregue também pelo banco do GeoMine com
+  `tools/enviar_atualizacao_projeto.py --live` (ver "Entrega pelo banco do
+  GeoMine" no `README.md`), para a versão nova aparecer ao atualizar a página.
 - **Segredos:** nunca grave chaves, tokens ou senhas no repositório, em
   relatórios ou em logs, nem peça que sejam colados no chat.
