@@ -293,6 +293,16 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   - Envio retomável em partes de 8 MB, com andamento, nova tentativa em queda
     de rede e conferência do tamanho gravado. Se o arquivo foi alterado no
     Drive depois da versão aberta, pergunta antes de gravar por cima.
+  - **Salvar Como usa uma janela do próprio GeoMine**
+    (`drive-folder-browser.js`), não o seletor de pastas do Google. O seletor
+    do Google abria grande, atrás das barras do GeoMine, e listava todas as
+    pastas do Drive misturadas (pedido do usuário em 14/11/2026: "mais bonita
+    e funcional"). A janela é compacta, abre na pasta do projeto, mostra o
+    caminho, navega por Meu Drive e pelos drives compartilhados, busca pasta
+    pelo nome, cria pasta, lista os projetos que já existem ali e pede o nome
+    do arquivo no mesmo lugar. O seletor de arquivos do Google continua só no
+    Abrir do Google Drive, agora acima das barras (`.picker-dialog` em
+    `app.css`).
   - **Salvar nunca vira download** (reforçado pelo usuário em 14/11/2026:
     "como no Word, no AutoCAD, no QGIS"). Se o Drive falhar, o Salvar avisa o
     motivo e as alterações continuam em tela; a única saída por download é o

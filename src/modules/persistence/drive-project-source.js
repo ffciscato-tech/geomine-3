@@ -50,34 +50,6 @@ async function pick(options={}){
     picker.setVisible(true);
   });
 }
-/* Salvar Como: a pessoa escolhe a PASTA de destino entre todas as do Drive
-   (Meu Drive e drives compartilhados). Começa na pasta do projeto atual. */
-async function pickFolder(options={}){
-  const provider=drive(),token=await provider.driveAccess(true,{write:true});
-  await pickerReady();
-  const {appId,key}=provider.drivePickerConfig;
-  return new Promise((resolve,reject)=>{
-    const api=google.picker,pasta='application/vnd.google-apps.folder';
-    const parent=options.parent||lastFolder();
-    const minhas=new api.DocsView(api.ViewId.FOLDERS).setIncludeFolders(true).setSelectFolderEnabled(true).setMimeTypes(pasta);
-    if(parent&&/^[\w-]{1,200}$/.test(parent)&&typeof minhas.setParent==='function')minhas.setParent(parent);
-    const builder=new api.PickerBuilder().setAppId(appId).setDeveloperKey(key).setOAuthToken(token)
-      .setOrigin(location.origin).setLocale('pt-BR').setTitle(options.title||'Salvar Como: escolha a pasta do Google Drive').addView(minhas);
-    try{
-      const compartilhados=new api.DocsView(api.ViewId.FOLDERS).setIncludeFolders(true).setSelectFolderEnabled(true).setMimeTypes(pasta);
-      if(typeof compartilhados.setEnableDrives==='function'){compartilhados.setEnableDrives(true);builder.addView(compartilhados);}
-    }catch(_){}
-    if(api.Feature.SUPPORT_DRIVES)builder.enableFeature(api.Feature.SUPPORT_DRIVES);
-    const picker=builder.setCallback(data=>{
-      if(data.action===api.Action.CANCEL){picker.dispose();reject(abort());}
-      if(data.action!==api.Action.PICKED)return;
-      const doc=data.docs?.[0];picker.dispose();
-      if(!doc?.id||!/^[\w-]{1,200}$/.test(doc.id))reject(Error('O Google Drive não identificou a pasta escolhida.'));
-      else resolve({id:doc.id,name:String(doc.name||'pasta')});
-    }).build();
-    picker.setVisible(true);
-  });
-}
 async function request(source,query,signal,extraHeaders){
   if(!isSource(source))throw Error('Vínculo do projeto com o Drive inválido.');
   const provider=drive(),token=await provider.driveAccess(false);
@@ -157,6 +129,6 @@ async function latest(source,projectId,signal){
   }
   return null;
 }
-root.GeoMineDriveProject={pick,pickFolder,isSource,metadata,read,latest,rememberFolder};
+root.GeoMineDriveProject={pick,isSource,metadata,read,latest,rememberFolder,lastFolder};
 })(window);
 

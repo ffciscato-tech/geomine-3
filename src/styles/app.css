@@ -1419,6 +1419,10 @@
   body.alagis3 #a3SearchResults,
   body.alagis3 #edBox{z-index:12000!important}
   body.alagis3 .modal-bg{z-index:14000!important}
+  /* Seletor do Google Drive (Abrir do Google Drive): por padrão ele fica
+     abaixo das barras do GeoMine, que apareciam por cima da janela. */
+  .picker-dialog-bg{z-index:20000!important}
+  .picker-dialog{z-index:20001!important}
   body.alagis3 #loading{z-index:16000!important}
   body.alagis3 .toast{z-index:17000!important}
 

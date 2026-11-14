@@ -107,13 +107,11 @@ function choose(token,files,signal){
 function binding(projectId){
   try{const record=root.GeoMineProjectTabSession?.state?.().record;return record&&record.projectId===projectId?record:null;}catch(_){return null;}
 }
-async function planSaveAs(token,name,signal){
-  const folder=await root.GeoMineDriveProject.pickFolder();
-  let chosen=prompt('Nome do arquivo do projeto na pasta “'+folder.name+'”:',name);
-  if(chosen===null)throw abort();
-  chosen=String(chosen).trim().replace(/[\\/:*?"<>|\u0000-\u001f]/g,'_').replace(/\.(ccmgis|geocampo|alagis)$/i,'');
-  if(!chosen)throw abort();
-  chosen+='.ccmgis';
+/* Salvar Como: a janela do GeoMine (drive-folder-browser.js) abre na pasta do
+   projeto, navega pelas pastas do Drive e pede o nome no mesmo lugar. */
+async function planSaveAs(token,name,signal,locateFolder){
+  const picked=await root.GeoMineDriveFolderBrowser.open({name,locate:locateFolder,fallbackFolder:root.GeoMineDriveProject.lastFolder?.()||''});
+  const folder=picked.folder,chosen=picked.name;
   const existing=(await list(token,"name = '"+quote(chosen)+"' and '"+folder.id+"' in parents and trashed = false",signal,5))[0];
   if(existing){
     if(!confirm('Já existe “'+chosen+'” na pasta “'+folder.name+'”. Gravar por cima dele?'))throw abort();
@@ -125,10 +123,19 @@ async function planSaveAs(token,name,signal){
 async function prepare(options){
   const p=provider();if(!available())throw Error('A gravação no Google Drive precisa do login no site oficial do GeoMine.');
   const token=await p.driveAccess(true,{write:true}),signal=options.signal,projectId=options.projectId||null;
-  if(options.saveAs===true)return planSaveAs(token,options.name,signal);
   const record=binding(projectId),drive=root.GeoMineDriveProject;
+  /* Pasta do projeto, para a janela do Salvar Como começar nela: a do arquivo
+     vinculado ou, para projeto aberto pelo seletor do aparelho, a do original
+     achado pelo nome e pelo projectId. */
+  const projectFolder=async()=>{
+    if(drive.isSource(record?.source))return (await metadata(token,record.source,signal))?.parent||'';
+    if(!record)return '';
+    const r=await locate(token,{name:record.name||options.name,projectId,size:Number(record.source?.size)||0},signal);
+    return r.found[0]?.parent||'';
+  };
+  if(options.saveAs===true)return planSaveAs(token,options.name,signal,projectFolder);
   // Projeto novo, que nunca veio de um arquivo: a pessoa indica onde gravar.
-  if(!record)return planSaveAs(token,options.name,signal);
+  if(!record)return planSaveAs(token,options.name,signal,null);
   let target=null,base=0;
   if(drive.isSource(record?.source)){
     target=await metadata(token,record.source,signal);
@@ -141,7 +148,7 @@ async function prepare(options){
     base=Number(record?.source?.lastModified)||0;
     if(!target){
       toast('Não achei “'+hint.name+'” no Google Drive com este projeto. Escolha a pasta para gravar.');
-      return planSaveAs(token,options.name,signal);
+      return planSaveAs(token,options.name,signal,null);
     }
   }
   if(!target.editable)throw Error('Sua conta não tem permissão para alterar “'+target.name+'” no Google Drive. Use Salvar Como para gravar em outra pasta.');
