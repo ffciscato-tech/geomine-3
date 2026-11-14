@@ -3591,29 +3591,69 @@ document.getElementById('btnLoCenterReset').onclick=()=>{
      conteúdo JÁ desenhado (#loMapContent, dentro do recorte da moldura)
      acompanha o ponteiro na hora, e a folha é refeita UMA vez, ao soltar, na
      resolução de sempre. Moldura, grade, legenda, escala e norte ficam parados
-     durante o gesto e são acertados nesse redesenho. */
+     durante o gesto e são acertados nesse redesenho.
+
+     Cuidados (o iPad com ortofoto grande trabalha no limite de memória):
+     - nenhuma referência à folha é guardada entre um quadro e outro: o grupo é
+       sempre lido da tela, para a folha antiga ser liberada assim que a nova
+       entra;
+     - ao começar a arrastar, um redesenho ainda em andamento é descartado (o
+       mapa está mudando de lugar; trocar a folha no meio do gesto interrompe
+       o toque). O redesenho que vale é o do soltar — o mesmo efeito que o
+       arrasto antigo tinha a cada movimento;
+     - só o arrasto de UM dedo é do mapa; com dois dedos, a rolagem e o zoom
+       da folha continuam do navegador;
+     - um novo toque encerra um gesto que tenha ficado sem o seu "soltar". */
   const conteudo=()=>wrap.querySelector('svg #loMapContent');
-  let alvo=null, base=[0,0], mexeu=false, dxPx=0, dyPx=0, quadro=0;
+  let base=[0,0], mexeu=false, dxPx=0, dyPx=0, quadro=0, gesto=0;
   const desloca=()=>{
     quadro=0;
-    if(!alvo||!alvo.isConnected){ alvo=conteudo(); base=[0,0]; }   // a folha foi refeita no meio do gesto
-    if(!alvo) return;
+    /* Enquanto o mapa está sendo arrastado, nenhum redesenho pode trocar a
+       folha (isso interrompe o toque): os que estiverem em curso, ou que
+       começarem agora, são descartados — como o arrasto antigo fazia a cada
+       movimento. O que vale é o do soltar. */
+    if(dragging) S._loRenderId=(S._loRenderId||0)+1;
+    const el=conteudo(); if(!el) return;
+    if(el._loGesto!==gesto){ base=[0,0]; el._loGesto=gesto; }   // a folha foi refeita no meio do gesto: parte do zero
     const off=[base[0]+dxPx*mmPerPx, base[1]+dyPx*mmPerPx];
-    alvo._loOff=off;                                               // um novo arrasto antes do redesenho parte daqui
-    alvo.setAttribute('transform','translate('+off[0].toFixed(3)+' '+off[1].toFixed(3)+')');
+    el._loOff=off;                             // um novo arrasto antes do redesenho parte daqui
+    el.setAttribute('transform','translate('+off[0].toFixed(3)+' '+off[1].toFixed(3)+')');
+  };
+
+  const fim=e=>{
+    if(!dragging || (e && e.pointerId!==id)) return;
+    dragging=false;
+    try{ wrap.releasePointerCapture(id); }catch(_){}
+    wrap.style.cursor='';
+    if(!mexeu) return;
+    if(quadro){ cancelAnimationFrame(quadro); desloca(); }
+    const T=S._loT;
+    if(T){
+      const dE=(dxPx*mmPerPx)/T.mmPerM;       // px -> mm -> metros de terreno
+      const dN=(dyPx*mmPerPx)/T.mmPerM;
+      S.loCenter=[c0[0]-dE, c0[1]+dN];        // arrastar p/ a direita => centro anda p/ a esquerda
+    }
+    // um único redesenho, com tudo na resolução de sempre; uma falha já é avisada pelo próprio buildLayout
+    try{ const p=buildLayout(); if(p&&p.catch) p.catch(err=>{ try{ console.warn('Layout: redesenho após o arrasto',err); }catch(_){} }); }
+    catch(err){ try{ console.warn('Layout: redesenho após o arrasto',err); }catch(_){} }
+    if(S.loCenter) toast('Centro: E '+S.loCenter[0].toFixed(0)+' · N '+S.loCenter[1].toFixed(0));
+    plateCapture && plateCapture();           // guarda o centro na prancha ativa
   };
 
   wrap.addEventListener('pointerdown',e=>{
     if(S._loPick) return;                     // modo 🎯 continua funcionando por clique
     if(e.button!==0 && e.pointerType==='mouse') return;
-    if(dragging) return;                      // segundo dedo: o gesto segue com o primeiro
+    if(dragging){
+      if(e.pointerType==='touch' && e.isPrimary===false) return;   // segundo dedo: o gesto segue com o primeiro
+      fim();                                  // gesto anterior que ficou sem o "soltar"
+    }
     if(!S._loT || !dentroDoMapa(e)) return;
     const T=S._loT;
-    dragging=true; mexeu=false; id=e.pointerId; x0=e.clientX; y0=e.clientY; dxPx=dyPx=0;
+    dragging=true; mexeu=false; id=e.pointerId; x0=e.clientX; y0=e.clientY; dxPx=dyPx=0; gesto++;
     // centro atual (pode estar em automático: pega o do enquadramento vigente)
     c0 = S.loCenter ? S.loCenter.slice()
        : [T.x0 + (T.mapW/2)/T.mmPerM, T.y1 - (T.mapH/2)/T.mmPerM];
-    alvo=conteudo(); base=(alvo&&alvo._loOff)||[0,0];
+    { const el=conteudo(); base=(el&&el._loOff)||[0,0]; if(el) el._loGesto=gesto; }
     try{ wrap.setPointerCapture(id); }catch(_){}
     wrap.style.cursor='grabbing';
     e.preventDefault();
@@ -3630,28 +3670,13 @@ document.getElementById('btnLoCenterReset').onclick=()=>{
     if(!quadro) quadro=requestAnimationFrame(desloca);
     e.preventDefault();
   });
-  /* No toque, o gesto dentro da moldura é do mapa, não da rolagem da folha. */
-  wrap.addEventListener('touchmove',e=>{ if(dragging&&e.cancelable) e.preventDefault(); },{passive:false});
+  /* No toque de UM dedo, o gesto dentro da moldura é do mapa, não da rolagem
+     da folha. Dois dedos (rolar/ampliar a folha) seguem com o navegador. */
+  wrap.addEventListener('touchmove',e=>{ if(dragging&&e.touches.length===1&&e.cancelable) e.preventDefault(); },{passive:false});
 
-  const fim=e=>{
-    if(!dragging || (e && e.pointerId!==id)) return;
-    dragging=false;
-    try{ wrap.releasePointerCapture(id); }catch(_){}
-    wrap.style.cursor='';
-    if(!mexeu) return;
-    if(quadro){ cancelAnimationFrame(quadro); desloca(); }
-    const T=S._loT;
-    if(T){
-      const dE=(dxPx*mmPerPx)/T.mmPerM;       // px -> mm -> metros de terreno
-      const dN=(dyPx*mmPerPx)/T.mmPerM;
-      S.loCenter=[c0[0]-dE, c0[1]+dN];        // arrastar p/ a direita => centro anda p/ a esquerda
-    }
-    buildLayout();                            // um único redesenho, com tudo na resolução de sempre
-    if(S.loCenter) toast('Centro: E '+S.loCenter[0].toFixed(0)+' · N '+S.loCenter[1].toFixed(0));
-    plateCapture && plateCapture();           // guarda o centro na prancha ativa
-  };
   wrap.addEventListener('pointerup',fim);
   wrap.addEventListener('pointercancel',fim);
+  wrap.addEventListener('lostpointercapture',e=>{ if(dragging&&e.pointerId===id) fim(e); });
 
   /* PAN DA VISTA DA FOLHA — botão do MEIO (ou espaço + arrastar).
      O arrasto com o botão esquerdo move o CENTRO DO MAPA e só vale dentro da

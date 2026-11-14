@@ -144,9 +144,25 @@ publicou de outro lugar e este repositório está desatualizado.
   cada movimento baixava o fundo de satélite e recortava a ortofoto de novo, e
   com ortofoto grande o gesto travava (relato do usuário em 14/11/2026).
   Moldura, grade, legenda, escala e norte ficam parados durante o gesto e são
-  acertados no redesenho. No toque, o gesto dentro da moldura é do mapa e não
-  da rolagem da folha (`18-lidar-layout-extensions.js`). Não voltar a chamar
-  `buildLayout()` durante o arrasto.
+  acertados no redesenho. No toque de um dedo, o gesto dentro da moldura é do
+  mapa e não da rolagem da folha; dois dedos seguem com o navegador
+  (`18-lidar-layout-extensions.js`). Não voltar a chamar `buildLayout()`
+  durante o arrasto. Cuidados que não podem ser desfeitos (a primeira versão,
+  das 13h27, quebrou o Layout no iPad com ortofoto grande):
+  - nenhuma referência à folha é guardada entre um quadro e outro — o grupo é
+    sempre lido da tela, senão a folha anterior inteira (ortofoto e fundo)
+    fica presa na memória depois de cada arrasto;
+  - enquanto o mapa é arrastado, um redesenho em curso é descartado, para a
+    folha não ser trocada no meio do gesto (isso interrompe o toque);
+  - um novo toque encerra um gesto que tenha ficado sem o seu "soltar".
+- **Fundo do Layout que não carrega não derruba a folha.** Cada tile do fundo
+  tem três tentativas. Na tela, se ainda faltar algum (ou o fundo inteiro), a
+  folha é desenhada assim mesmo, com o aviso no painel "Fundo do Layout" —
+  antes, um único tile perdido impedia o redesenho inteiro: a folha não
+  atualizava, a escala não era aplicada e o Copiar falhava. Na exportação
+  (Copiar, PNG, PDF, SVG) a captura continua exigindo todos os tiles, para a
+  figura não sair com buracos, e a mensagem diz para tentar de novo ou trocar
+  o fundo (`captureBasemap` em `17-layout-printing.js`).
 - **Só o toque vale como clique nas ferramentas de ponto.** No tablet, o
   reforço de toque de `06-map-tools-snap.js` (drenagem, área contribuinte,
   barramento, lâmina e inundação) convertia qualquer `touchend` em clique:

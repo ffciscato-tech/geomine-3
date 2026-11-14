@@ -40,7 +40,12 @@ function tile2lonlat(x,y,z){ const n=Math.pow(2,z);
   const lon=x/n*360-180;
   const lat=Math.atan(Math.sinh(Math.PI*(1-2*y/n)))*180/Math.PI;
   return [lon,lat]; }
-async function captureBasemap(x0,y0,x1,y1,crs,targetPx,base=layoutBasemap()){
+/* opcoes.tolerante: na TELA, tiles que não carregaram deixam um trecho cinza e
+   um aviso — a folha é desenhada assim mesmo. Antes, um único tile perdido
+   derrubava o redesenho inteiro: a folha não atualizava, a escala não era
+   aplicada e o Copiar falhava. Na exportação (PNG, PDF, Copiar) a captura
+   continua exigindo todos os tiles, para a figura não sair com buracos. */
+async function captureBasemap(x0,y0,x1,y1,crs,targetPx,base=layoutBasemap(),opcoes={}){
   // A escolha da prancha nunca altera S._base, usado pelo Mapa 2D.
   const urlFn=TILE_URLS[base]; if(!urlFn) return null; // 'Sem fundo'
   // cache: evita rebaixar tiles a cada ajuste de legenda/símbolo com a mesma extensão
@@ -88,11 +93,22 @@ async function captureBasemap(x0,y0,x1,y1,crs,targetPx,base=layoutBasemap()){
   });
   showLoad(`Capturando ${base} (${tiles.length} tiles, z${z})…`);
   try{
+    /* Rede de celular e provedor de tiles falham de vez em quando: cada tile
+       tem mais duas tentativas, com uma pausa curta, antes de contar como perdido. */
+    const comNovasTentativas=async tile=>{
+      for(let tentativa=0;tentativa<3;tentativa++){
+        if(await loadTile(tile))return true;
+        if(Date.now()>=deadline)return false;
+        await new Promise(r=>setTimeout(r,250*(tentativa+1)));
+      }
+      return false;
+    };
     await Promise.all(Array.from({length:Math.min(8,tiles.length)},async()=>{
-      while(cursor<tiles.length){const tile=tiles[cursor++];if(!await loadTile(tile))failed++;}
+      while(cursor<tiles.length){const tile=tiles[cursor++];if(!await comNovasTentativas(tile))failed++;}
     }));
   }finally{hideLoad();}
-  if(failed)throw new Error(`${base}: ${failed} de ${tiles.length} tiles não carregaram. Tente novamente ou escolha outro fundo na barra do Layout.`);
+  const aviso=failed?`${base}: ${failed} de ${tiles.length} tiles não carregaram. Tente novamente ou escolha outro fundo na barra do Layout.`:'';
+  if(failed&&(!opcoes.tolerante||failed===tiles.length))throw new Error(aviso);
   // recortar exatamente para a extensão WGS pedida
   const [px0,py0]=lonlat2tile(W,N,z), [px1,py1]=lonlat2tile(E,Sl,z);
   const cx=(px0-tX0)*256, cy=(py0-tY0)*256, cw=(px1-px0)*256, ch=(py1-py0)*256;
@@ -104,6 +120,7 @@ async function captureBasemap(x0,y0,x1,y1,crs,targetPx,base=layoutBasemap()){
   // bounds em WGS -> CRS de trabalho (usa retângulo; aproximação adequada em escala de planta)
   const sw=fromWGS(crs,W,Sl), ne=fromWGS(crs,E,N);
   const outObj={dataURL, b:[sw[0],sw[1],ne[0],ne[1]]};
+  if(failed){outObj.aviso=aviso;return outObj;}   // captura incompleta não vai para o cache: o próximo redesenho tenta de novo
   S._capCache={k:ck, v:outObj};
   return outObj;
 }
@@ -945,14 +962,19 @@ async function buildLayout(options){
   const wantSat=document.getElementById('loSat').checked&&layoutBasemap()!=='Sem fundo';
   let baseCapture=null;
   if(wantSat){
-    try{baseCapture=await captureBasemap(x0,y0,x1,y1,crs,Math.round(mapW/25.4*layoutDpiTarget(exporting,options.dpi)));}
+    try{baseCapture=await captureBasemap(x0,y0,x1,y1,crs,Math.round(mapW/25.4*layoutDpiTarget(exporting,options.dpi)),layoutBasemap(),{tolerante:!exporting});}
     catch(error){
       if(!current())return false;
-      const status=document.getElementById('loBaseStatus');if(status)status.textContent=error.message;
-      toast('Fundo do Layout: '+error.message);error.layoutReported=true;throw error;
+      if(exporting){
+        const status=document.getElementById('loBaseStatus');if(status)status.textContent=error.message;
+        toast('Fundo do Layout: '+error.message);error.layoutReported=true;throw error;
+      }
+      /* Na tela, o fundo que não veio não pode derrubar a folha: ela é
+         desenhada sem ele, com o aviso no painel do fundo. */
+      baseCapture={dataURL:null,aviso:error.message||String(error)};
     }
     if(!current())return false;
-    if(baseCapture){const b=baseCapture.b;
+    if(baseCapture&&baseCapture.dataURL){const b=baseCapture.b;
       svg+=`<image data-layout-basemap="${esc(layoutBasemap())}" href="${baseCapture.dataURL}" x="${sx(b[0]).toFixed(2)}" y="${sy(b[3]).toFixed(2)}" width="${((b[2]-b[0])*mmPerM).toFixed(2)}" height="${((b[3]-b[1])*mmPerM).toFixed(2)}" preserveAspectRatio="none"/>`;
     }
   }
@@ -1712,7 +1734,12 @@ async function buildLayout(options){
   S._lastLayoutURL=sourceURL;S._lastLayoutSignature=JSON.stringify([!!S.orthoDispFull,S.workCRS,epoch,presentation]);
   S._lastSVGRevision=(S._lastSVGRevision||0)+1;
   plotCatalog.revision=S._lastSVGRevision;S._loPlotCatalog=plotCatalog;
-  const viewStatus=document.getElementById('loBaseStatus');if(viewStatus)viewStatus.textContent='';
+  /* Fundo incompleto na tela: a folha foi desenhada e o aviso fica no painel
+     do fundo (e num toast, uma vez por mensagem). */
+  const baseAviso=baseCapture&&baseCapture.aviso||'';
+  const viewStatus=document.getElementById('loBaseStatus');if(viewStatus)viewStatus.textContent=baseAviso;
+  if(baseAviso&&S._loBaseAvisoMostrado!==baseAviso)toast('Fundo do Layout incompleto — '+baseAviso);
+  S._loBaseAvisoMostrado=baseAviso;
   syncZoomUI();
   return true;
 }
