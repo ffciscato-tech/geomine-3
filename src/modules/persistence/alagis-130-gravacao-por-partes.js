@@ -157,6 +157,7 @@ window.saveProject=async function(salvarComo){
     catch(error){toast(error.name==='AbortError'?'Vinculação cancelada; alterações mantidas em tela.':error.message);return false;}
   }
   const handleAtual=window.GeoMineProjectFile?.currentHandle()||(S.auto&&S.auto.handle);
+  const pediuSalvarComo=salvarComo===true;
   salvarComo = (salvarComo===true)||!handleAtual;
   const projectIdAtual=S.projectId||null,
     geracaoAtual=window.GeoMineSessionAutosave?.state?.generation;
@@ -177,7 +178,29 @@ window.saveProject=async function(salvarComo){
     toast('Sem permissão para atualizar '+fname+'. Autorize a escrita ou use Salvar Como.');return false;
   }
   const saveTarget=window.GeoMineProjectSaveTarget;
-  if(salvarComo&&(saveTarget?saveTarget.available():window.showSaveFilePicker&&(typeof fsApiOK!=='function'||fsApiOK()))){
+  /* GRAVAÇÃO DIRETA NO GOOGLE DRIVE (drive-project-save.js)
+     Sem seletor de arquivos para escrita (iPad) ou com o projeto vinculado ao
+     Drive, Salvar grava em cima do arquivo original e Salvar Como cria o
+     arquivo na pasta escolhida do Drive. A autorização e a escolha acontecem
+     aqui, ainda dentro do toque. Só se o Drive falhar é oferecido o download. */
+  const seletorDeGravacao=saveTarget?saveTarget.available():!!(window.showSaveFilePicker&&(typeof fsApiOK!=='function'||fsApiOK()));
+  let planoDrive=null,vinculoDrive=false;
+  try{vinculoDrive=!!window.GeoMineDriveProject?.isSource(window.GeoMineProjectTabSession?.bindingFor?.(projectIdAtual)?.source);}catch(_){}
+  if(!handleAtual&&window.GeoMineDriveSave?.available()&&(!seletorDeGravacao||(vinculoDrive&&!pediuSalvarComo))){
+    try{
+      /* No Drive o nome não precisa ser "limpo": vale o nome do projeto como a pessoa o vê. */
+      planoDrive=await GeoMineDriveSave.prepare({saveAs:pediuSalvarComo,name:String(base).replace(/\.(ccmgis|geocampo|alagis)$/i,'')+'.ccmgis',projectId:projectIdAtual});
+      fname=planoDrive.name||fname;
+    }catch(error){
+      if(error&&error.name==='AbortError'){toast('Salvamento cancelado');return false;}
+      console.warn('[130] Google Drive:',error);
+      if(!confirm('Não foi possível gravar no Google Drive: '+(error&&error.message||error)+'\n\nBaixar uma cópia do projeto neste aparelho? (O arquivo do Drive não é alterado.)')){
+        toast('Projeto não salvo. As alterações continuam em tela.');return false;
+      }
+    }
+    if(!mesmoProjeto()){toast('O projeto mudou; salvamento cancelado.');return false;}
+  }
+  if(!planoDrive&&salvarComo&&seletorDeGravacao){
     const opt={suggestedName:fname,excludeAcceptAllOption:true,
       types:[{description:'Projeto CCMGIS',accept:{'application/x-ccmgis':['.ccmgis']}}]};
     if(handleAtual)opt.startIn=handleAtual;else if(S._lastSaved)opt.startIn=S._lastSaved;
@@ -236,6 +259,12 @@ window.saveProject=async function(salvarComo){
       bytes=r.bytes;
       if(mesmoProjeto())startAutosave((handleAtual.name||fname),handleAtual);
       toast('Projeto atualizado em '+(handleAtual.name||fname)+' ('+(bytes/1048576).toFixed(1)+' MB)');
+    } else if(planoDrive){
+      snapshotBlob=projectBlob(d);bytes=snapshotBlob.size;
+      const origem=await GeoMineDriveSave.commit(planoDrive,snapshotBlob,
+        (feito,total)=>showLoad('Gravando no Google Drive… '+Math.round(100*feito/Math.max(1,total))+'% de '+(total/1048576).toFixed(1)+' MB'));
+      if(mesmoProjeto())startAutosave(origem.name||fname,null,origem);
+      toast((planoDrive.mode==='create'?'Projeto salvo no Google Drive como ':'Projeto atualizado no Google Drive: ')+(origem.name||fname)+' ('+(bytes/1048576).toFixed(1)+' MB)');
     } else if(destinoNovo&&await (async()=>{
       /* navegador que mostra o seletor mas recusa gravar no arquivo escolhido
          (painel do app Claude, outros Electron): cai no download logo abaixo */
@@ -278,6 +307,10 @@ window.saveProject=async function(salvarComo){
   }catch(e){
     if(mesmoProjeto())S._saveTargetCell=null;
     if(e && e.name==='AbortError'){ toast('Salvamento cancelado'); }
+    else if(planoDrive){
+      console.warn('[130] gravar no Google Drive:',e);
+      toast('Não foi possível gravar no Google Drive: '+(e&&e.message||e)+' As alterações continuam em tela; toque em Salvar para tentar de novo.');
+    }
     else if(!salvarComo){
       console.warn('[130] sobrescrever projeto:',e);
       toast('Não foi possível sobrescrever o arquivo aberto: '+(e&&e.message||e)+'. Use “Salvar Como” se a permissão mudou.');

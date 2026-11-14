@@ -301,14 +301,22 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
     get user(){ return perfil(); },
     get drivePickerConfig(){return {appId:firebaseConfig.messagingSenderId,key:firebaseConfig.pickerBrowserKey};},
     clearDriveAccess(){driveSession=null;try{sessionStorage.removeItem('geomine.drive.access.v2');}catch(_){}},
-    async driveAccess(interactive){
+    /* options.write: gravação no Drive (Salvar e Salvar Como do projeto).
+       Por escolha do usuário (14/11/2026) usa a permissão ampla do Drive, para
+       o Salvar gravar em cima do arquivo original mesmo quando o projeto foi
+       aberto pelo seletor do iPad. Só é pedida quando a pessoa salva; as
+       leituras continuam com a permissão de leitura. Um acesso de gravação
+       ainda válido também serve às leituras. */
+    async driveAccess(interactive, options){
+      const escrita=!!(options&&options.write);
       const user=usuario(),storageKey='geomine.drive.access.v2';
       let saved=driveSession;
       try{saved=saved||JSON.parse(sessionStorage.getItem(storageKey)||'null');}catch(_){}
-      if(saved?.owner===user.uid&&saved.until>Date.now()&&saved.token)return saved.token;
-      if(!interactive)throw Error('Toque em ↻ ao lado do nome do projeto para reconectar ao Drive.');
+      if(saved?.owner===user.uid&&saved.until>Date.now()&&saved.token&&(!escrita||saved.write===true))return saved.token;
+      if(!interactive)throw Error(escrita?'Toque em Salvar de novo para autorizar a gravação no Google Drive.':'Toque em ↻ ao lado do nome do projeto para reconectar ao Drive.');
       const provider=new GoogleAuthProvider();
       provider.addScope('https://www.googleapis.com/auth/drive.file');
+      if(escrita)provider.addScope('https://www.googleapis.com/auth/drive');
       /* Leitura do Drive: permite achar, na pasta do projeto, a versão mais
          recente quando ela chega como um arquivo novo (drive-project-source.js).
          O GeoMine não grava nem apaga nada no Drive com esta permissão.
@@ -318,7 +326,7 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
       const recusaKey='geomine.drive.leitura.recusas.v1';
       let recusa={n:0,at:0};
       try{recusa=JSON.parse(localStorage.getItem(recusaKey)||'null')||recusa;}catch(_){}
-      const soArquivo=recusa.n>=2&&Date.now()-recusa.at<7*86400000;
+      const soArquivo=escrita||(recusa.n>=2&&Date.now()-recusa.at<7*86400000);
       if(!soArquivo)provider.addScope('https://www.googleapis.com/auth/drive.readonly');
       provider.setCustomParameters({login_hint:user.email});
       let result;
@@ -334,8 +342,8 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
       if(!soArquivo)try{localStorage.removeItem(recusaKey);}catch(_){}
       if(auth.currentUser?.uid!==user.uid||result.user.uid!==user.uid)throw Error('A conta do projeto mudou.');
       const token=GoogleAuthProvider.credentialFromResult(result)?.accessToken;
-      if(!token)throw Error('A conta Google não autorizou a leitura do arquivo.');
-      driveSession={owner:user.uid,until:Date.now()+50*60000,token};
+      if(!token)throw Error(escrita?'A conta Google não autorizou a gravação no Drive.':'A conta Google não autorizou a leitura do arquivo.');
+      driveSession={owner:user.uid,until:Date.now()+50*60000,token,write:escrita};
       try{sessionStorage.setItem(storageKey,JSON.stringify(driveSession));}catch(_){}
       return token;
     },
