@@ -416,7 +416,6 @@ As três janelas usam o mesmo conjunto de classes, definido no fim de
 | `.gmp` | marca a janela (`<div class="modal gmp">`) |
 | `.gmp-info` | faixa sempre visível abaixo do cabeçalho, com o nome e o Renomear |
 | `.gmp-i` + `.gmp-leitura` | botão **i** do cabeçalho e os dados de leitura que ele abre |
-| `.gmp-leitura` | dados de leitura, recolhidos; abrem pelo **i** ao lado do nome (`data-gmp-info`) |
 | `details.gmp-sec` | seção recolhível; `data-gmp-sec` é a chave com que o navegador lembra se ficou aberta |
 | `.gmp-st` | resumo ao lado do título da seção (preenchido por `gmpStatus(id, texto, tipo)`) |
 | `.gmp-row`, `.gmp-g2` | linha com rótulo e campo lado a lado; grade de dois campos |
