@@ -937,7 +937,9 @@ async function buildLayout(options){
   svg+=`<rect x="0" y="0" width="${PW}" height="${PH}" fill="#fff"/>`;
   // clip do mapa
   svg+=`<defs><clipPath id="mapclip"><rect x="${mL}" y="${mT}" width="${mapW}" height="${mapH}"/></clipPath></defs>`;
-  svg+=`<g clip-path="url(#mapclip)">`;
+  /* O conteúdo do mapa fica num grupo próprio dentro do recorte: o arrasto
+     no Layout desloca esse grupo na hora e a folha só é refeita ao soltar. */
+  svg+=`<g clip-path="url(#mapclip)"><g id="loMapContent">`;
 
   // Mapa-base próprio da prancha; não depende da visibilidade do painel 2D.
   const wantSat=document.getElementById('loSat').checked&&layoutBasemap()!=='Sem fundo';
@@ -1234,7 +1236,7 @@ async function buildLayout(options){
     }
   }
 
-  svg+=`</g>`;
+  svg+=`</g></g>`;
 
   // A geometria da grade é independente do tamanho de seus rótulos.
   const gridGeometry={isGeo,gridM,x0,x1,y0,y1,mL,mT,mapW,mapH,PW,PH,

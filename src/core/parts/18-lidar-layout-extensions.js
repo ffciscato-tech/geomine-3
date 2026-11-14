@@ -3574,7 +3574,7 @@ document.getElementById('btnLoCenterReset').onclick=()=>{
    moldura. Redesenha ao vivo, com um quadro por frame (rAF) para não travar. */
 (function(){
   const wrap=document.getElementById('sheetWrap');
-  let dragging=false, id=null, x0=0, y0=0, c0=null, pend=false, mmPerPx=1;
+  let dragging=false, id=null, x0=0, y0=0, c0=null, mmPerPx=1;
 
   const dentroDoMapa=(e)=>{
     const svgEl=wrap.querySelector('svg'); const T=S._loT;
@@ -3585,36 +3585,68 @@ document.getElementById('btnLoCenterReset').onclick=()=>{
     return mmX>=T.mL && mmX<=T.mL+T.mapW && mmY>=T.mT && mmY<=T.mT+T.mapH;
   };
 
+  /* ARRASTO SEM ESPERA (14/11/2026). Antes, cada movimento reconstruía a folha
+     inteira — fundo de satélite baixado de novo e ortofoto recortada na
+     resolução nativa — e, com ortofoto grande, o gesto travava. Agora o
+     conteúdo JÁ desenhado (#loMapContent, dentro do recorte da moldura)
+     acompanha o ponteiro na hora, e a folha é refeita UMA vez, ao soltar, na
+     resolução de sempre. Moldura, grade, legenda, escala e norte ficam parados
+     durante o gesto e são acertados nesse redesenho. */
+  const conteudo=()=>wrap.querySelector('svg #loMapContent');
+  let alvo=null, base=[0,0], mexeu=false, dxPx=0, dyPx=0, quadro=0;
+  const desloca=()=>{
+    quadro=0;
+    if(!alvo||!alvo.isConnected){ alvo=conteudo(); base=[0,0]; }   // a folha foi refeita no meio do gesto
+    if(!alvo) return;
+    const off=[base[0]+dxPx*mmPerPx, base[1]+dyPx*mmPerPx];
+    alvo._loOff=off;                                               // um novo arrasto antes do redesenho parte daqui
+    alvo.setAttribute('transform','translate('+off[0].toFixed(3)+' '+off[1].toFixed(3)+')');
+  };
+
   wrap.addEventListener('pointerdown',e=>{
     if(S._loPick) return;                     // modo 🎯 continua funcionando por clique
     if(e.button!==0 && e.pointerType==='mouse') return;
+    if(dragging) return;                      // segundo dedo: o gesto segue com o primeiro
     if(!S._loT || !dentroDoMapa(e)) return;
     const T=S._loT;
-    dragging=true; id=e.pointerId; x0=e.clientX; y0=e.clientY;
+    dragging=true; mexeu=false; id=e.pointerId; x0=e.clientX; y0=e.clientY; dxPx=dyPx=0;
     // centro atual (pode estar em automático: pega o do enquadramento vigente)
     c0 = S.loCenter ? S.loCenter.slice()
        : [T.x0 + (T.mapW/2)/T.mmPerM, T.y1 - (T.mapH/2)/T.mmPerM];
-    wrap.setPointerCapture(id);
+    alvo=conteudo(); base=(alvo&&alvo._loOff)||[0,0];
+    try{ wrap.setPointerCapture(id); }catch(_){}
     wrap.style.cursor='grabbing';
     e.preventDefault();
   });
 
   wrap.addEventListener('pointermove',e=>{
     if(!dragging || e.pointerId!==id || !S._loT) return;
-    const T=S._loT;
-    const dxPx=e.clientX-x0, dyPx=e.clientY-y0;
-    const dE=(dxPx*mmPerPx)/T.mmPerM;         // px -> mm -> metros de terreno
-    const dN=(dyPx*mmPerPx)/T.mmPerM;
-    S.loCenter=[c0[0]-dE, c0[1]+dN];          // arrastar p/ a direita => centro anda p/ a esquerda
-    if(!pend){ pend=true; requestAnimationFrame(()=>{ pend=false; buildLayout(); }); }
+    dxPx=e.clientX-x0; dyPx=e.clientY-y0;
+    if(!mexeu){
+      if(Math.hypot(dxPx,dyPx)<3) return;     // toque parado não é arrasto
+      mexeu=true;
+      S._loRenderId=(S._loRenderId||0)+1;     // um redesenho ainda em curso não troca a folha no meio do gesto
+    }
+    if(!quadro) quadro=requestAnimationFrame(desloca);
     e.preventDefault();
   });
+  /* No toque, o gesto dentro da moldura é do mapa, não da rolagem da folha. */
+  wrap.addEventListener('touchmove',e=>{ if(dragging&&e.cancelable) e.preventDefault(); },{passive:false});
 
   const fim=e=>{
     if(!dragging || (e && e.pointerId!==id)) return;
     dragging=false;
     try{ wrap.releasePointerCapture(id); }catch(_){}
     wrap.style.cursor='';
+    if(!mexeu) return;
+    if(quadro){ cancelAnimationFrame(quadro); desloca(); }
+    const T=S._loT;
+    if(T){
+      const dE=(dxPx*mmPerPx)/T.mmPerM;       // px -> mm -> metros de terreno
+      const dN=(dyPx*mmPerPx)/T.mmPerM;
+      S.loCenter=[c0[0]-dE, c0[1]+dN];        // arrastar p/ a direita => centro anda p/ a esquerda
+    }
+    buildLayout();                            // um único redesenho, com tudo na resolução de sempre
     if(S.loCenter) toast('Centro: E '+S.loCenter[0].toFixed(0)+' · N '+S.loCenter[1].toFixed(0));
     plateCapture && plateCapture();           // guarda o centro na prancha ativa
   };

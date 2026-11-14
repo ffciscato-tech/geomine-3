@@ -137,6 +137,16 @@ publicou de outro lugar e este repositório está desatualizado.
   `map.touchZoom._onTouchStart`) passam a ignorá-la, e isso só é aplicado
   quando uma caneta toca o mapa; os marcadores arrastáveis não mudam. Ao
   atualizar o Leaflet, conferir esses dois pontos.
+- **Layout: arrastar o mapa dentro da moldura não refaz a folha a cada
+  movimento.** O conteúdo já desenhado (grupo `#loMapContent`, dentro do
+  recorte da moldura) acompanha o ponteiro na hora, e a folha é refeita uma
+  única vez, ao soltar, com fundo e ortofoto na resolução de sempre. Antes,
+  cada movimento baixava o fundo de satélite e recortava a ortofoto de novo, e
+  com ortofoto grande o gesto travava (relato do usuário em 14/11/2026).
+  Moldura, grade, legenda, escala e norte ficam parados durante o gesto e são
+  acertados no redesenho. No toque, o gesto dentro da moldura é do mapa e não
+  da rolagem da folha (`18-lidar-layout-extensions.js`). Não voltar a chamar
+  `buildLayout()` durante o arrasto.
 - **Só o toque vale como clique nas ferramentas de ponto.** No tablet, o
   reforço de toque de `06-map-tools-snap.js` (drenagem, área contribuinte,
   barramento, lâmina e inundação) convertia qualquer `touchend` em clique:
