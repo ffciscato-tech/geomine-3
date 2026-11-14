@@ -266,6 +266,11 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   Ctrl+Z, Cmd+Z e Alt+Z (`gmUndoShortcut`, que usa a tecla física quando o
   teclado do iPad entrega "Ω"), e só é deixado para o campo quando o foco está
   num campo de digitação — interruptores e botões não engolem o atalho.
+- **Salvar sem seletor de arquivos entrega por download.** No iPad (e em
+  Safari/Firefox) o navegador não deixa vincular nem sobrescrever o arquivo
+  original. O Salvar não pode parar num aviso: segue o caminho do Salvar Como e
+  baixa o `.ccmgis`, avisando que o original não foi alterado
+  (`alagis-130-gravacao-por-partes.js`).
 - **Camadas de resultado entram no desfazer.** Comandos que só criam uma
   camada nova (Mesclar, Dissolver, curvas de nível, bacias, direção de fluxo e
   os demais de `25-geoprocessing-tin.js` e `19-hydrology-and-flooding.js`)

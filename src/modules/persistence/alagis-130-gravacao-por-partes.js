@@ -148,7 +148,11 @@ async function guardaCopiaManual(d,key,ownerUid,name,knownBytes,blob){
 }
 
 window.saveProject=async function(salvarComo){
-  if(salvarComo!==true&&window.GeoMineProjectFile?.needsReconnect()){
+  /* Navegador sem seletor de arquivos para escrita (iPad, Safari, Firefox):
+     não há como vincular o original, então Salvar não pode parar num aviso —
+     segue pelo mesmo caminho do Salvar Como e entrega o arquivo por download.
+     O aviso do download já diz que o original não foi alterado. */
+  if(salvarComo!==true&&window.GeoMineProjectFile?.needsReconnect()&&typeof window.showOpenFilePicker==='function'){
     try{await GeoMineProjectFile.reconnect();}
     catch(error){toast(error.name==='AbortError'?'Vinculação cancelada; alterações mantidas em tela.':error.message);return false;}
   }
