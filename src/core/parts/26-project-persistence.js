@@ -146,7 +146,7 @@ function projectData(options){
       figFrozenVis:S._figFrozenVis?{...S._figFrozenVis}:null,
       figLegendVis:S._figLegendVis?{...S._figLegendVis}:{}, figW:gv('loFigW'),
       figH:gv('loFigH'), txt:gv('loTxt'),
-      legFS:gv('loLegFS'), coordFS:gv('loCoordFS'), barFS:gv('loBarFS'), barSc:gv('loBarSc'), sym:gv('loSym'), legSc:gv('loLegSc'), cartFS:gv('loCartFS'), titFS:gv('loTitFS'),
+      legFS:gv('loLegFS'), coordFS:gv('loCoordFS'), coordV:LAYOUT_COORD_VERSAO, barFS:gv('loBarFS'), barSc:gv('loBarSc'), sym:gv('loSym'), legSc:gv('loLegSc'), cartFS:gv('loCartFS'), titFS:gv('loTitFS'),
       legColGap:gv('loLegColGap'), mapSym:gv('loMapSym'), dashDens:gv('loDash'),dashGap:gv('loDashGap'),
       coords:gc('loCoords'), coordTop:gc('loCoordTop'), coordBottom:gc('loCoordBottom'),
       coordLeft:gc('loCoordLeft'), coordRight:gc('loCoordRight'), cart:gc('loCart'),

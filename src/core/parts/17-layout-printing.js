@@ -154,9 +154,24 @@ function layoutCoordFontFactor(value,legFS=1,legSc=0.7){
   return legacy(legFS,1,0.7,3)*legacy(legSc,0.7,0.5,3);
 }
 function layoutCoordFontLabel(value){return (+value).toLocaleString('pt-BR',{maximumFractionDigits:3})+'×';}
+/* Faixa reservada às coordenadas em cada borda (mm): acompanha o tamanho do
+   texto — altura do texto mais 1,8 mm de folga (1 mm até a moldura e o resto
+   até a borda). Antes era fixa em 8 mm: com o texto padrão de 1,5 mm sobravam
+   mais de 5 mm em branco entre as coordenadas e o limite da margem, e o texto
+   não podia passar de 6,5 mm. */
+function layoutCoordBand(factor){return Math.max(3,Math.min(21.8,2.2*layoutCoordFontFactor(factor)+1.8));}
+/* Tamanho padrão do texto das coordenadas: 1× (2,2 mm, o corpo do texto da
+   legenda). Até 14/11/2026 o padrão era 0,7× (1,5 mm), pequeno demais na figura
+   (pedido do usuário). Quem estava no padrão antigo passa ao novo ao abrir;
+   quem já tinha escolhido outro tamanho continua com o seu. A marca `coordV`
+   (gravada com o projeto e com cada prancha) diz que o tamanho foi gravado já
+   com o padrão novo — aí vale exatamente o que está gravado, inclusive 0,7×. */
+const LAYOUT_COORD_PADRAO=1,LAYOUT_COORD_PADRAO_ANTIGO=0.7,LAYOUT_COORD_VERSAO=2;
 function layoutCoordFontRestore(saved){
   const el=document.getElementById('loCoordFS');if(!el)return;
-  el.value=layoutCoordFontFactor(saved?.coordFS,saved?.legFS,saved?.legSc);
+  let fator=layoutCoordFontFactor(saved?.coordFS,saved?.legFS,saved?.legSc);
+  if(!(+saved?.coordV>=LAYOUT_COORD_VERSAO)&&Math.abs(fator-LAYOUT_COORD_PADRAO_ANTIGO)<1e-6)fator=LAYOUT_COORD_PADRAO;
+  el.value=fator;
   const out=document.getElementById('loCoordFSv');if(out)out.textContent=layoutCoordFontLabel(el.value);
 }
 /* Atualiza somente o SVG da quadrícula; nunca relê TIFF nem move o mapa. */
@@ -851,8 +866,9 @@ async function buildLayout(options){
   // A4·selo: margens de impressão — direita 25 mm (encadernação), demais 7 mm
   // Figura: margem definida pelo usuário (0 = sem borda branca) + espaço p/ coordenadas
   const marU=(mode==='a4'?0:clamp(gvn('loMar',0),0,25));
-  const lblX=(showCoords && !isGeo)? 8 : 0;   // reserva lateral
-  const lblY=(showCoords && !isGeo)? 8 : 0;   // reserva horizontal
+  const coordBand=(showCoords && !isGeo)? layoutCoordBand(coordFS) : 0;   // acompanha o texto das coordenadas
+  const lblX=coordBand;   // reserva lateral
+  const lblY=coordBand;   // reserva horizontal
   const mL=(mode==='a4'? 25 : marU+(coordLeft?lblX:0));
   const mR=(mode==='a4'? 7  : marU+(coordRight?lblX:0));
   const mT=(mode==='a4'? 7+(coordTop?lblY:0) : marU+(coordTop?lblY:0));
@@ -1271,7 +1287,7 @@ async function buildLayout(options){
 
   // A geometria da grade é independente do tamanho de seus rótulos.
   const gridGeometry={isGeo,gridM,x0,x1,y0,y1,mL,mT,mapW,mapH,PW,PH,
-    coordTop,coordBottom,coordLeft,coordRight,showCoords,marginBottom:marB,marginRight:mR,projectId:S.projectId};
+    coordTop,coordBottom,coordLeft,coordRight,showCoords,marginBottom:marB,marginRight:mR,coordBand,projectId:S.projectId};
   svg+=layoutGridSVG(gridGeometry,coordFS);
   // moldura
   svg+=`<rect x="${mL}" y="${mT}" width="${mapW}" height="${mapH}" fill="none" stroke="#111" stroke-width="0.4"/>`;
@@ -3994,9 +4010,22 @@ document.getElementById('btnFigTxt').onclick=()=>{
   bindSlider('loLegFS','loLegFSv');
   {
     const el=document.getElementById('loCoordFS'),out=document.getElementById('loCoordFSv');
+    /* Enquanto a barra anda, só o texto da quadrícula é trocado (rápido, sem
+       reler imagens). A faixa das coordenadas acompanha o texto: quando o
+       tamanho pedido pede outra faixa, a folha é refeita UMA vez, pouco depois
+       de a barra parar. */
+    let faixaTimer=0;
     if(el)el.addEventListener('input',()=>{
       if(out)out.textContent=layoutCoordFontLabel(el.value);
-      if(S._view==='layout'&&!layoutUpdateGridFont())redraw();
+      if(S._view!=='layout')return;
+      if(!layoutUpdateGridFont()){redraw();return;}
+      const g=S._loGridGeometry,precisa=g&&g.showCoords&&!g.isGeo?layoutCoordBand(el.value):0;
+      clearTimeout(faixaTimer);
+      if(g&&Math.abs((g.coordBand||0)-precisa)>0.15){
+        // o texto ainda está limitado pela faixa antiga: o aviso certo é o do ajuste que vem a seguir
+        const status=document.getElementById('loBaseStatus');if(status)status.textContent='Ajustando a faixa das coordenadas ao texto…';
+        faixaTimer=setTimeout(()=>{if(S._view==='layout')buildLayout();},450);
+      }
     });
   }
   bindSlider('loBarFS','loBarFSv');

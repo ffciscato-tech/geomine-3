@@ -173,6 +173,36 @@ publicou de outro lugar e este repositório está desatualizado.
   ativação do toque) e era preciso tocar em Copiar de novo. Nos outros
   navegadores segue o blob pronto com PNG+HTML, que é o que o Google Docs
   consegue colar (`copyLayoutIMG`).
+- **Dicas dos comandos no toque** (`modules/ui/touch-tips.js`; pedido do
+  usuário em 14/11/2026: "não consegui ver o texto flutuante de cada
+  comando"). No tablet não existe "passar o mouse". Segurar o dedo ou a caneta
+  parados por meio segundo sobre um botão mostra a dica dele — a mesma do
+  mouse — e, ao soltar, o comando **não** é executado; o toque normal continua
+  executando. Ficam de fora o mapa e as linhas da árvore de camadas (botões
+  delas inclusive): ali, segurar já é o botão direito. No modo de toque o CSS
+  (`body.gm-touch-ui`) desliga a seleção de texto dos botões para o iPad não
+  abrir a lupa por cima da dica. A dica do mouse no desktop não mudou.
+- **Engrenagem do Layout com o nome de cada ajuste.** O painel "Ajustes do
+  layout" mostra, ao lado do ícone, o nome curto de cada barra ("Texto das
+  coordenadas", "Comprimento da escala"…), em duas colunas na tela larga e uma
+  na estreita. Os ajustes que não agem no modo atual aparecem apagados: na
+  prancha A4/A3, "Largura da figura", "Altura da figura", "Fonte da cartela" e
+  "Título da cartela". "Colunas da legenda" só tem efeito quando a legenda tem
+  mais de uma coluna. Não voltar ao painel só de ícones: no tablet o nome é a
+  única forma de saber o que cada barra faz.
+- **Coordenadas do Layout: texto padrão de 1× e faixa justa ao texto.** A faixa
+  reservada às coordenadas em cada borda acompanha o tamanho do texto
+  (`layoutCoordBand`: altura do texto + 1,8 mm, entre 3 e 21,8 mm). Antes era
+  fixa em 8 mm: com o texto padrão sobravam mais de 5 mm em branco entre as
+  coordenadas e o limite da margem, e o texto não passava de 6,5 mm. Enquanto
+  a barra "Texto das coordenadas" anda, só o texto é trocado; a folha é
+  refeita uma única vez, 450 ms depois de a barra parar, para ajustar a faixa.
+  O tamanho padrão passou de 0,7× (1,5 mm) para 1× (2,2 mm, o corpo do texto
+  da legenda). Projetos e pranchas gravados no padrão antigo passam ao novo ao
+  abrir; quem já tinha escolhido outro tamanho continua com o seu. A marca
+  `coordV` (em `layout` e em cada prancha, `f.loCoordV`) indica que o tamanho
+  foi gravado já com o padrão novo — aí vale o que está gravado, inclusive
+  0,7×. Não remover a marca nem voltar à faixa fixa.
 - **Só o toque vale como clique nas ferramentas de ponto.** No tablet, o
   reforço de toque de `06-map-tools-snap.js` (drenagem, área contribuinte,
   barramento, lâmina e inundação) convertia qualquer `touchend` em clique:

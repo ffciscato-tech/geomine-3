@@ -1555,6 +1555,7 @@
         "modules/cad/freehand-drawing.js",
         "modules/ui/pen-mouse.js",
         "modules/ui/touch-workspace.js",
+        "modules/ui/touch-tips.js",
         "modules/persistence/import-recovery.js",
         "modules/raster/source-properties.js",
         "modules/persistence/workspace-resume.js",

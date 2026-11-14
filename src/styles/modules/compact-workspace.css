@@ -4,6 +4,9 @@
 .gm-touch-freehand.on{background:var(--amber,#e5a92f);border-color:var(--amber,#e5a92f);color:#17212b}
 .gm-touch-freehand svg{display:block;pointer-events:none}
 body.gm-touch-ui #layerScrollTop{display:none!important}
+/* Segurar o dedo ou a caneta num botão mostra a dica dele (touch-tips.js): o iPad não deve abrir a lupa nem a seleção de texto por cima. */
+body.gm-touch-ui :is(button,[role="button"],.tbtn,.mtool,.xbtn,.a3-util,[data-a3nav],[data-touch-action],summary,.layout-slider-name){-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+body.gm-touch-ui :is(button,[role="button"],.tbtn,.mtool,.xbtn,.a3-util,[data-a3nav],[data-touch-action],summary) :is(input,textarea,[contenteditable]){-webkit-user-select:text;user-select:text}
 body.gm-touch-ui #right{max-height:var(--gm-layer-available,100%)!important}
 @media(max-width:900px){body.gm-touch-ui.alagis3 #right{height:auto!important}}
 .gm-layer-hscroll{position:sticky;top:0;z-index:12;display:block;width:100%;height:20px;box-sizing:border-box;margin:3px 0 5px;padding:0;touch-action:none;user-select:none;border-radius:5px;background:var(--panel);border:1px solid var(--line)}.gm-layer-hscroll[hidden]{display:none}.gm-layer-hscroll:before{content:'';position:absolute;left:0;right:0;top:5px;height:8px;background:var(--line);border-radius:4px}.gm-layer-hthumb{position:absolute;top:3px;left:0;height:12px;border-radius:4px;background:var(--ink-dim,#7893ad)}.gm-layer-hscroll:focus-visible{outline:2px solid var(--amber);outline-offset:1px}

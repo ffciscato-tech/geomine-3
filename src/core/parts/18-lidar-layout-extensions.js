@@ -2837,6 +2837,7 @@ function plateCapture(op){                     // UI -> prancha ativa
   if(!pl) return;
   pl.f = {};
   PLATE_FIELDS.forEach(id=>{ const e=document.getElementById(id); if(e) pl.f[id]=e.value; });
+  pl.f.loCoordV=LAYOUT_COORD_VERSAO;   // o texto das coordenadas foi gravado já com o padrão novo (layoutCoordFontRestore)
   pl.c = {};
   PLATE_CHECKS.forEach(id=>{ const e=document.getElementById(id); if(e) pl.c[id]=!!e.checked; });
   pl.center = S.loCenter ? S.loCenter.slice() : null;
@@ -2875,7 +2876,7 @@ function plateApply(pl, semState, deferRefresh){ // prancha -> UI
     if(e && id==='loFolha') e.value=pl.f?.loFolha??'';
     else if(e && pl.f && pl.f[id]!=null) e.value=pl.f[id];
   });
-  layoutCoordFontRestore({coordFS:pl.f?.loCoordFS,legFS:pl.f?.loLegFS,legSc:pl.f?.loLegSc});
+  layoutCoordFontRestore({coordFS:pl.f?.loCoordFS,legFS:pl.f?.loLegFS,legSc:pl.f?.loLegSc,coordV:pl.f?.loCoordV});
   PLATE_CHECKS.forEach(id=>{
     const e=document.getElementById(id);
     if(!e) return;
@@ -3205,26 +3206,33 @@ function layoutSideMenuSync(){
     const same=host.classList.contains('open')&&host.dataset.kind==='adjustments';
     closeQuick();if(same)return;host.dataset.kind='adjustments';
     if(sec){sec.classList.remove('layout-open');sec.classList.add('collapsed');}
+    /* Cada ajuste mostra o NOME ao lado do ícone (5º item: nome curto). Só com
+       o ícone, o significado ficava numa dica que exige passar o mouse — no
+       tablet não havia como saber o que cada barra fazia. */
     const defs=[
-      ['loFigWr','width','Largura da figura',v=>Math.round(v)+' mm'],
-      ['loFigHr','height','Altura da figura',v=>(+v>0?Math.round(v)+' mm':'auto')],
-      ['loCartFS','cart','Fonte da cartela',v=>(+v).toFixed(2).replace(/0$/,'').replace('.',',')+'×'],
-      ['loTitFS','title','Título da cartela',v=>(+v).toFixed(2).replace(/0$/,'').replace('.',',')+'×'],
-      ['loLegSc','legend','Tamanho da legenda',v=>(+v).toFixed(2).replace(/0$/,'').replace('.',',')+'×'],
-      ['loLegFS','font','Texto da legenda',v=>(+v).toFixed(1).replace('.',',')+'×'],
-      ['loCoordFS','grid','Fonte da quadrícula',layoutCoordFontLabel],
-      ['loBarFS','scale','Texto da escala gráfica',v=>(+v).toFixed(1).replace('.',',')+'×'],
-      ['loBarSc','scale','Comprimento da escala gráfica',v=>(+v).toFixed(2).replace(/0$/,'').replace('.',',')+'×'],
-      ['loSym','symbol','Símbolos da legenda',v=>(+v).toFixed(1).replace('.',',')+'×'],
-      ['loLegColGap','columns','Espaçamento entre colunas da legenda',v=>(+v).toFixed(1).replace(/\.0$/,'').replace('.',',')+' mm'],
-      ['loMapSym','line','Linhas e pontos do mapa',v=>(+v).toFixed(1).replace('.',',')+'×'],
-      ['loDash','dash','Densidade do tracejado',v=>(+v).toFixed(2).replace('.',',')+'×'],
-      ['loDashGap','dashgap','Espaçamento entre os traços',v=>(+v).toFixed(2).replace('.',',')+'×']
+      ['loFigWr','width','Largura da figura',v=>Math.round(v)+' mm','Largura da figura'],
+      ['loFigHr','height','Altura da figura',v=>(+v>0?Math.round(v)+' mm':'auto'),'Altura da figura'],
+      ['loCartFS','cart','Fonte da cartela',v=>(+v).toFixed(2).replace(/0$/,'').replace('.',',')+'×','Fonte da cartela'],
+      ['loTitFS','title','Título da cartela',v=>(+v).toFixed(2).replace(/0$/,'').replace('.',',')+'×','Título da cartela'],
+      ['loLegSc','legend','Tamanho da legenda',v=>(+v).toFixed(2).replace(/0$/,'').replace('.',',')+'×','Tamanho da legenda'],
+      ['loLegFS','font','Texto da legenda',v=>(+v).toFixed(1).replace('.',',')+'×','Texto da legenda'],
+      ['loCoordFS','grid','Texto das coordenadas (fonte da quadrícula)',layoutCoordFontLabel,'Texto das coordenadas'],
+      ['loBarFS','scale','Texto da escala gráfica',v=>(+v).toFixed(1).replace('.',',')+'×','Texto da escala'],
+      ['loBarSc','scale','Comprimento da escala gráfica',v=>(+v).toFixed(2).replace(/0$/,'').replace('.',',')+'×','Comprimento da escala'],
+      ['loSym','symbol','Símbolos da legenda',v=>(+v).toFixed(1).replace('.',',')+'×','Símbolos da legenda'],
+      ['loLegColGap','columns','Espaçamento entre colunas da legenda',v=>(+v).toFixed(1).replace(/\.0$/,'').replace('.',',')+' mm','Colunas da legenda'],
+      ['loMapSym','line','Linhas e pontos do mapa',v=>(+v).toFixed(1).replace('.',',')+'×','Linhas e pontos do mapa'],
+      ['loDash','dash','Densidade do tracejado',v=>(+v).toFixed(2).replace('.',',')+'×','Tracejado: densidade'],
+      ['loDashGap','dashgap','Espaçamento entre os traços',v=>(+v).toFixed(2).replace('.',',')+'×','Tracejado: espaço']
     ].filter(d=>document.getElementById(d[0]));
     host.innerHTML='<div class="layout-slider-list">'+defs.map(d=>{
-      const el=document.getElementById(d[0]),fixedSize=['loFigWr','loFigHr'].includes(d[0])&&S.loMode!=='fig';
-      return '<div class="layout-slider-row no-auto" title="'+d[2]+(fixedSize?' — disponível no modo Figura':'')+'"'+(fixedSize?' style="opacity:.45"':'')+'>'+
+      /* Na prancha A4/A3 a folha e o selo têm formato fixo: tamanho da figura
+         e fontes da cartela só valem no modo Figura. Aparecem apagados lá,
+         em vez de parecerem um ajuste que não funciona. */
+      const el=document.getElementById(d[0]),fixedSize=['loFigWr','loFigHr','loCartFS','loTitFS'].includes(d[0])&&S.loMode!=='fig';
+      return '<div class="layout-slider-row no-auto with-name" title="'+d[2]+(fixedSize?' — disponível no modo Figura':'')+'"'+(fixedSize?' style="opacity:.45"':'')+'>'+
         '<span class="layout-slider-icon" aria-hidden="true">'+sliderIcon(d[1])+'</span>'+
+        '<span class="layout-slider-name">'+d[4]+'</span>'+
         '<input type="range" data-adjust="'+d[0]+'" aria-label="'+d[2]+'" min="'+el.min+'" max="'+el.max+'" step="'+el.step+'" value="'+el.value+'"'+(fixedSize?' disabled':'')+'>'+
         '<output class="layout-slider-value">'+d[3](el.value)+'</output></div>';}).join('')+'</div>';
     host.classList.add('open');
