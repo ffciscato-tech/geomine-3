@@ -3,14 +3,14 @@
 Código-fonte do GeoMine, o GIS web da CCM publicado em https://geomine-3.web.app/
 (projeto Firebase `geomine-3`).
 
-A raiz deste repositório corresponde à versão publicada em 14/11/2026 às 09h09
+A raiz deste repositório corresponde à versão publicada em 14/11/2026 às 09h20
 (horário de Brasília), e a montagem feita a partir daqui reproduz o site byte a
 byte:
 
 | Arquivo gerado | SHA-256 |
 |---|---|
-| `dist/GeoMine.html` | `06e41552f2cc5cd3773a9673494ad7ef40e2143843b9e7aa80cc11a9cfafba5a` |
-| `public/index.html` | `5131465b2a18220f71f4ad0372dcb506dfca361c108f1ee977ad0ccd9efeb87b` |
+| `dist/GeoMine.html` | `648c5ac87bd2fcef0d4e882a679404c6a86a6438c29dd240097bc3cbe06e0831` |
+| `public/index.html` | `9871a9c42a0c6a993d45c1828947c33fd4f83e68494f06e5bfcb1450086dd8d9` |
 
 Os mesmos valores estão em `CURRENT_RELEASE.json` (`distSha256` e
 `publishedSha256`), junto com o histórico de publicações e validações.
