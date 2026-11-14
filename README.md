@@ -233,6 +233,13 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   Ctrl+Z, Cmd+Z e Alt+Z (`gmUndoShortcut`, que usa a tecla física quando o
   teclado do iPad entrega "Ω"), e só é deixado para o campo quando o foco está
   num campo de digitação — interruptores e botões não engolem o atalho.
+- **Camadas de resultado entram no desfazer.** Comandos que só criam uma
+  camada nova (Mesclar, Dissolver, curvas de nível, bacias, direção de fluxo e
+  os demais de `25-geoprocessing-tin.js` e `19-hydrology-and-flooding.js`)
+  chamam `addLayer({undo:true,...})`. A camada é anotada em `S._undoProdutos`
+  com o mesmo contador de ordem de `S.undo`, e o Ctrl+Z a remove quando ela é a
+  ação mais recente; camadas criadas juntas pelo mesmo comando saem juntas.
+  Os módulos de mineração, que têm histórico próprio, não usam essa marca.
 - **Snap na linha de fluxo segue o ímã.** Com o ímã ligado (`S.snapOn`), o
   toque gruda na linha visível mais próxima a até a tolerância do snap das
   outras ferramentas (`SNAP_PX` = 15 px; 24 px no toque), em qualquer zoom; o

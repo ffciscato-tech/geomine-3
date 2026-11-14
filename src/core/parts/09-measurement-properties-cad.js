@@ -1841,6 +1841,42 @@ function undoPush(a){
   if(a&&a._ts==null)a._ts=Date.now();
   S.undo.push(a); if(S.undo.length>30) S.undo.shift();
 }
+/* CAMADAS DE RESULTADO NO DESFAZER
+   Mesclar, Dissolver, curvas de nível, bacias e os demais comandos que só
+   criam uma camada nova não registravam nada em S.undo: o Ctrl+Z pulava o
+   resultado e desfazia uma ação mais antiga. addLayer({undo:true}) anota a
+   camada aqui, com o mesmo contador de ordem de S.undo; o desfazer remove a
+   camada quando ela é a ação mais recente. Camadas criadas juntas pelo mesmo
+   comando (p.ex. curvas + mestras) saem juntas. */
+function gmUndoProduto(L,ativaAntes){
+  const fila=S._undoProdutos||(S._undoProdutos=[]),agora=Date.now(),ult=fila[fila.length-1],ord=undoNextOrder();
+  fila.push({L,ord,at:agora,project:S.projectId,ativa:ativaAntes,
+    grupo:ult&&ult.project===S.projectId&&agora-ult.at<=400?ult.grupo:ord});
+  if(fila.length>60)fila.shift();
+}
+function gmUndoProdutoPendente(){
+  const fila=S._undoProdutos;if(!fila)return null;
+  while(fila.length&&(fila[fila.length-1].project!==S.projectId||!S.layers.includes(fila[fila.length-1].L)))fila.pop();
+  const ult=fila[fila.length-1],topo=S.undo[S.undo.length-1];
+  return ult&&(!topo||(Number(topo._undoOrd)||0)<ult.ord)?ult:null;
+}
+function gmUndoProdutoDesfaz(ult){
+  const fila=S._undoProdutos,grupo=[];
+  while(fila.length&&fila[fila.length-1].grupo===ult.grupo){const q=fila.pop();if(q.project===S.projectId&&S.layers.includes(q.L))grupo.push(q);}
+  const travada=grupo.find(q=>typeof collabCanEditLayer==='function'&&!collabCanEditLayer(q.L,false));
+  if(travada){fila.push(...grupo.reverse());collabCanEditLayer(travada.L,true);return;}
+  for(const {L} of grupo){
+    if(S.selFeat&&(S.selFeat.layer===L||S.selFeat.layerId===L.id)){S.selFeat=null;try{clearVertices();}catch(_){}}
+    if(L.llayer)try{map.removeLayer(L.llayer);}catch(_){}
+    S.layers=S.layers.filter(x=>x!==L);if(S.stack)S.stack=S.stack.filter(k=>k!=='L:'+L.id);
+  }
+  if((S.msel&&S.msel.items||[]).some(i=>grupo.some(q=>q.L.id===i.layerId)))try{mselClear(true);}catch(_){}
+  if(!S.layers.some(x=>x.id===S.activeId)){const antes=grupo[grupo.length-1].ativa;S.activeId=S.layers.some(x=>x.id===antes)?antes:(S.layers.length?S.layers[0].id:null);}
+  try{highlightSel();}catch(_){}
+  refreshUI();zApply();
+  try{if(typeof refreshTinPanel==='function'&&document.getElementById('sideGeo').style.display!=='none')refreshTinPanel();}catch(_){}
+  toast(grupo.length>1?'Desfeito: '+grupo.length+' camadas de resultado removidas':'Desfeito: camada “'+grupo[0].L.name+'” removida');
+}
 function doUndo(){
   // prioridade 1: vértice do traçado em andamento
   if(['line','poly'].includes(S.tool) && S.drawBuf.length){
@@ -1849,6 +1885,9 @@ function doUndo(){
     toast(S.drawBuf.length? 'Vértice desfeito ('+S.drawBuf.length+' restantes)':'Traçado limpo');
     return;
   }
+  // camada de resultado criada depois da última ação registrada
+  const produto=gmUndoProdutoPendente();
+  if(produto){gmUndoProdutoDesfaz(produto);return;}
   const proxima=S.undo[S.undo.length-1];
   if(proxima?.t==='blastingresult'&&window.GeoMineBlasting){GeoMineBlasting.undo(proxima);return;}
   if(proxima?.t==='linejoin'&&window.GeoMineLineJoin){GeoMineLineJoin.undo(proxima);return;}

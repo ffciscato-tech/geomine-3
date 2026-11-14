@@ -944,7 +944,7 @@ function gtDensify(opcoes){
     });
   }catch(e){toast('Densificação cancelada: '+e.message);return;}
   const criterio=modo==='distancia'?step+' m':(modo==='intervalos'?step+' intervalos':step+' vértices/segmento');
-  const nova=addLayer({sourceLayer:L,name:L.name+' — densif. '+criterio, gtype:L.gtype, crs:S.workCRS,
+  const nova=addLayer({undo:true,sourceLayer:L,name:L.name+' — densif. '+criterio, gtype:L.gtype, crs:S.workCRS,
     features:feats, fields:(L.fields||[]).map(f=>({...f})), color:'#7aa2f7'});
   if(nova&&L.sym){nova.sym=JSON.parse(JSON.stringify(L.sym));drawLayer(nova);}
   document.getElementById('gtOut').innerHTML=
@@ -992,7 +992,7 @@ async function gtExtractVertices(){
     {name:'VTX',type:'N',length:8,decimal:0},{name:'X',type:'N',length:14,decimal:3},
     {name:'Y',type:'N',length:14,decimal:3}];
   if(wantZ) fields.push({name:'Z',type:'N',length:10,decimal:2});
-  addLayer({sourceLayer:L,name:L.name+' — vértices'+(wantZ?' +Z':''), gtype:'point', crs:S.workCRS,
+  addLayer({undo:true,sourceLayer:L,name:L.name+' — vértices'+(wantZ?' +Z':''), gtype:'point', crs:S.workCRS,
     features:feats, fields, color:'#e0af68'});
   const zsrc=wantZ? (src==='geom'?'Z da geometria (3D)':'superfície "'+esc(R.name)+'"') : '';
   document.getElementById('gtOut').innerHTML=
@@ -1028,7 +1028,7 @@ async function gtExtractZ(){
   });
   const fields=(L.fields||[]).map(f=>({...f}));
   if(!fields.some(f=>f.name==='Z')) fields.push({name:'Z',type:'N',length:10,decimal:2});
-  addLayer({sourceLayer:L,name:L.name+' — com Z', gtype:'point', crs:S.workCRS,
+  addLayer({undo:true,sourceLayer:L,name:L.name+' — com Z', gtype:'point', crs:S.workCRS,
     features:feats, fields, color:'#9ece6a'});
   const zsrc=(src==='geom')?'Z da geometria (3D)':'superfície "'+esc(R.name)+'"';
   document.getElementById('gtOut').innerHTML=
@@ -1308,16 +1308,16 @@ async function runContour(){
   const setStyle=(L,w,lbl)=>{ L.weight=w; L.sym.weight=w;
     if(lbl){ L.labelField=lbl; } drawLayer(L); };
   if(split && mst>0 && nM){
-    const Lc=addLayer({sourceLayer:r,name:r.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
+    const Lc=addLayer({undo:true,sourceLayer:r,name:r.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
       features:feats.filter(f=>f.props.MESTRA===0), fields:fields.map(f=>({...f})),
       color:'#37c0aa'});
     setStyle(Lc, 1, null);
-    const Lm=addLayer({sourceLayer:r,name:r.name+' — mestras '+mst+' m', gtype:'line', crs:S.workCRS,
+    const Lm=addLayer({undo:true,sourceLayer:r,name:r.name+' — mestras '+mst+' m', gtype:'line', crs:S.workCRS,
       features:feats.filter(f=>f.props.MESTRA===1), fields:fields.map(f=>({...f})),
       color:'#e0af68'});
     setStyle(Lm, 2.2, 'COTA');
   } else {
-    const L1=addLayer({sourceLayer:r,name:r.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
+    const L1=addLayer({undo:true,sourceLayer:r,name:r.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
       features:feats, fields, color:'#37c0aa'});
     setStyle(L1, 1.2, null);
   }
@@ -1446,7 +1446,7 @@ async function runSymDiff(){
     const fields=[{name:'FID',type:'N',length:9,decimal:0},
       {name:'AREA_M2',type:'N',length:16,decimal:2},{name:'AREA_HA',type:'N',length:12,decimal:4},
       {name:'PERIM_M',type:'N',length:12,decimal:2}];
-    addLayer({sourceLayer:A,name:`DifSim ${A.name} △ ${B.name}`.slice(0,60), gtype:'polygon', crs:S.workCRS,
+    addLayer({undo:true,sourceLayer:A,name:`DifSim ${A.name} △ ${B.name}`.slice(0,60), gtype:'polygon', crs:S.workCRS,
       features:feats, fields});
     hideLoad();
     const aT=feats.reduce((s,f)=>s+f.props.AREA_M2,0);
@@ -1492,7 +1492,7 @@ function runMerge(){
       if(zparts){ ft.zg=ft.multi?zparts:zparts[0]; nz++; }
       feats.push(ft);
     }));
-    addLayer({sourceLayer:Ls[0],name:'Mescla ('+Ls.length+' camadas)', gtype:gt, crs:S.workCRS, features:feats, fields});
+    addLayer({undo:true,sourceLayer:Ls[0],name:'Mescla ('+Ls.length+' camadas)', gtype:gt, crs:S.workCRS, features:feats, fields});
     hideLoad();
     document.getElementById('mgOut').innerHTML=
       `<b>${feats.length}</b> feições de <b>${Ls.length}</b> camadas · ${fields.length} campos (campo ORIGEM adicionado)`+
@@ -1582,7 +1582,7 @@ function runIntersect(){
       return {geom:ln.map(p=>[p[0],p[1]]), multi:true, zg,
         props:{FID:i, TIPO:'interseção', A:A.name.slice(0,30), B:B.name.slice(0,30)}};
     });
-    addLayer({sourceLayer:A,name:`Interseção: ${A.name} × ${B.name}`.slice(0,60), gtype:'line', crs:S.workCRS,
+    addLayer({undo:true,sourceLayer:A,name:`Interseção: ${A.name} × ${B.name}`.slice(0,60), gtype:'line', crs:S.workCRS,
       features:feats, fields:[{name:'FID',type:'N',length:9,decimal:0},
         {name:'TIPO',type:'C',length:12,decimal:0},{name:'A',type:'C',length:30,decimal:0},
         {name:'B',type:'C',length:30,decimal:0}]});
@@ -2152,7 +2152,7 @@ function runCutByLimit(){
     const base=L.name.replace(/_c$/,'');
     const fields=[...(L.fields||[]).filter(f=>f.name!=='FID'),
       {name:'FID',type:'N',length:9,decimal:0},{name:'ORIG',type:'C',length:8,decimal:0}];
-    const cLayer=addLayer({sourceLayer:L,name:(base+'_c').slice(0,60), gtype:'line', crs:L.crs, features:kept, fields});
+    const cLayer=addLayer({undo:true,sourceLayer:L,name:(base+'_c').slice(0,60), gtype:'line', crs:L.crs, features:kept, fields});
     const nLim=unir?Lim.features.reduce((s,f)=>s+((f.multi&&Array.isArray(f.geom[0][0]))?f.geom.length:1),0):0;
     let msg=`<b>${kept.length-nLim}</b> trecho(s) da cava (${keepIn?'dentro':'fora'})`+
       (unir?` + <b>${nLim}</b> do limite`:'')+
@@ -2527,7 +2527,7 @@ function runPolygonizeRaster(){
     if(fld!=='DN')res.features.forEach(f=>{f.props[fld]=f.props.DN;delete f.props.DN;});
     const dissolveNome=dissolveMode==='all'?' · dissolvido':dissolveMode==='class'?' · dissolvido por CLASSE':
       dissolveMode==='value'?' · dissolvido por '+fld:'';
-    const L=addLayer({sourceLayer:r,name:r.name+' — poligonizado'+dissolveNome,gtype:'polygon',crs:S.workCRS,features:res.features,
+    const L=addLayer({undo:true,sourceLayer:r,name:r.name+' — poligonizado'+dissolveNome,gtype:'polygon',crs:S.workCRS,features:res.features,
       fields:[{name:'FID',type:'N',length:9,decimal:0},{name:fld,type:'N',length:18,decimal:6},
         {name:'CLASSE',type:'C',length:80,decimal:0},{name:'VAL_MIN',type:'N',length:18,decimal:6},
         {name:'VAL_MAX',type:'N',length:18,decimal:6},{name:'VAL_MED',type:'N',length:18,decimal:6},
@@ -2637,7 +2637,7 @@ function runPolygonize(){
         props:{FID:i, AREA_M2:+a.toFixed(2), AREA_HA:+(a/1e4).toFixed(4), PERIM_M:+per.toFixed(2)}};
     });
     assertSource();
-    addLayer({sourceLayer:L,name:L.name+' — polígonos'+(selection.explicit?' da seleção':''), gtype:'polygon', crs:S.workCRS, features:feats,
+    addLayer({undo:true,sourceLayer:L,name:L.name+' — polígonos'+(selection.explicit?' da seleção':''), gtype:'polygon', crs:S.workCRS, features:feats,
       fields:[{name:'FID',type:'N',length:9,decimal:0},{name:'AREA_M2',type:'N',length:16,decimal:2},
         {name:'AREA_HA',type:'N',length:12,decimal:4},{name:'PERIM_M',type:'N',length:12,decimal:2}]});
     document.getElementById('pzOut').innerHTML=
@@ -2772,7 +2772,7 @@ async function runDissolve(){
     if(fld) fields.push({name:fld.slice(0,10),type:'C',length:40,decimal:0});
     if(!feats.length)throw Error('Nenhum polígono resultante. As feições de origem foram preservadas.');
     assertSource();
-    addLayer({sourceLayer:L,name:L.name+' — dissolvido'+(fld?' por '+fld:''), gtype:'polygon', crs:S.workCRS,
+    addLayer({undo:true,sourceLayer:L,name:L.name+' — dissolvido'+(fld?' por '+fld:''), gtype:'polygon', crs:S.workCRS,
       features:feats, fields});
     hideLoad();
     document.getElementById('dsOut').innerHTML=
@@ -2833,7 +2833,7 @@ async function runExtractBoundary(){
     }
     if(!rings.length)throw new Error('não foi possível formar um contorno externo');
     const feats=rings.map((r,i)=>({geom:[r],multi:true,props:{FID:i+1,AREA_M2:+xlArea(r).toFixed(2),ORIGEM:L.name}}));
-    const out=addLayer({sourceLayer:L,name:L.name+' — limite',gtype:'polygon',crs:S.workCRS,features:feats,
+    const out=addLayer({undo:true,sourceLayer:L,name:L.name+' — limite',gtype:'polygon',crs:S.workCRS,features:feats,
       fields:[{name:'FID',type:'N',length:9,decimal:0},{name:'AREA_M2',type:'N',length:18,decimal:2},{name:'ORIGEM',type:'C',length:80,decimal:0}]});
     hideLoad();document.getElementById('xlOut').innerHTML=`<b>${feats.length}</b> limite(s) externo(s) · ${fmtArea(feats.reduce((s,f)=>s+f.props.AREA_M2,0))}.`;
     refreshUI();if(out)fitLayer(out);toast('Limite externo criado');
@@ -3686,7 +3686,7 @@ async function runTinInterMdt(){
     const R=await tinIntersecaoLinhasMDT(L,g.d,g.name);
     if(!R.feats.length){hideLoad();
       toast('Nenhum cruzamento: as linhas não furam esse MDT (confira o CRS e as cotas)');return;}
-    const nova=addLayer({sourceLayer:L,name:`${L.name} × ${g.name} — interseção`,gtype:'line',
+    const nova=addLayer({undo:true,sourceLayer:L,name:`${L.name} × ${g.name} — interseção`,gtype:'line',
       crs:S.workCRS,features:R.feats,
       fields:[{name:'ORDEM',type:'N'},{name:'MDT',type:'C'},{name:'LINHAS',type:'C'},
         {name:'PONTOS',type:'N'},{name:'METODO',type:'C'}],color:'#d81b60'});
@@ -3996,7 +3996,7 @@ async function runTIN(){
     await new Promise(rs=>setTimeout(rs,10));
     const lines=contourGrid(r.d, iv);
     if(lines.length){
-      addLayer({sourceLayer:r,name:L.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
+      addLayer({undo:true,sourceLayer:r,name:L.name+' — curvas '+iv+' m', gtype:'line', crs:S.workCRS,
         features:lines.map(ln=>({geom:ln.pts, multi:false, props:{COTA:+ln.z.toFixed(2)}})),
         fields:[{name:'COTA',type:'N',length:12,decimal:2}], color:'#37c0aa'});
       out+=`Curvas geradas: <b>${lines.length}</b> polilinhas a cada ${iv} m\n`;
@@ -4285,7 +4285,7 @@ function estGerar(){
   if(comDecl){ fields.push({name:'DECL_PC',type:'N',length:10,decimal:2});
     fields.push({name:'DECL_GR',type:'N',length:10,decimal:2}); }
   const rotular=((document.getElementById('estRot')||{}).value||'sim')!=='nao',
-    nova=addLayer({sourceLayer:L,name:`Progressiva ${inter} m — ${L.name}`.slice(0,60), gtype:'point',
+    nova=addLayer({undo:true,sourceLayer:L,name:`Progressiva ${inter} m — ${L.name}`.slice(0,60), gtype:'point',
     crs:S.workCRS, features:feats, fields, color:'#37c0aa',
     labelField:rotular?'ESTACA':null,
     lbl:rotular?{size:8, halo:'#ffffff', haloW:1.4, place:'offset', dx:8, dy:-8}:null});
@@ -4574,7 +4574,7 @@ function cotLayer(){
     if(!isNaN(p.z)) f.zg=[+p.z.toFixed(dec)];
     return f;
   });
-  addLayer({sourceLayer:source,
+  addLayer({undo:true,sourceLayer:source,
     name:`Pontos cotados — ${surf}`.slice(0,60),
     gtype:'point', crs:S.workCRS, features:feats,
     fields:[{name:'ID',type:'C',length:12},
@@ -4825,8 +4825,8 @@ function abreCristaPe(){
         const nomes=new Set(['Cristas — '+r.name,'Pés — '+r.name]);
         S.layers.filter(L=>nomes.has(L.name)).forEach(L=>{try{if(L.llayer)map.removeLayer(L.llayer);}catch(e){}});
         S.layers=S.layers.filter(L=>!nomes.has(L.name));
-        if(res.Crista.length){const L=addLayer({sourceLayer:r,name:'Cristas — '+r.name,gtype:'line',crs:S.workCRS,features:res.Crista,fields,color:'#e76f51'});L.weight=3;L.groupId=r.groupId||null;}
-        if(res.Pé.length){const L=addLayer({sourceLayer:r,name:'Pés — '+r.name,gtype:'line',crs:S.workCRS,features:res.Pé,fields,color:'#277da1'});L.weight=3;L.groupId=r.groupId||null;}
+        if(res.Crista.length){const L=addLayer({undo:true,sourceLayer:r,name:'Cristas — '+r.name,gtype:'line',crs:S.workCRS,features:res.Crista,fields,color:'#e76f51'});L.weight=3;L.groupId=r.groupId||null;}
+        if(res.Pé.length){const L=addLayer({undo:true,sourceLayer:r,name:'Pés — '+r.name,gtype:'line',crs:S.workCRS,features:res.Pé,fields,color:'#277da1'});L.weight=3;L.groupId=r.groupId||null;}
         refreshUI();zApply();outEl.innerHTML='<b>'+res.Crista.length+'</b> crista(s) e <b>'+res.Pé.length+'</b> pé(s) gerados em 3D.';
         toast('Crista e pé extraídos — linhas prontas para a triangulação');
       }catch(e){console.error(e);outEl.textContent='Falha: '+e.message;toast('Falha na extração de crista e pé');}finally{bt.disabled=false;}},40);

@@ -2679,7 +2679,7 @@ function hDirecaoSetas(d,source=(S.rasters||[]).find(r=>String(r.id)===String(S.
     feats.push({geom:[[a,e],[h1,e,h2]],multi:true,props:{AZIMUTE:+az.toFixed(1),CELULA:k}});
   }
   const velhas=S.layers.filter(l=>/^Direção de fluxo D8/.test(l.name)); velhas.forEach(deleteVectorLayer);
-  const L=addLayer({sourceLayer:source,name:'Direção de fluxo D8 — setas',gtype:'line',crs:S.workCRS,features:feats,
+  const L=addLayer({undo:true,sourceLayer:source,name:'Direção de fluxo D8 — setas',gtype:'line',crs:S.workCRS,features:feats,
     fields:[{name:'AZIMUTE',type:'N',length:8,decimal:1},{name:'CELULA',type:'N',length:12,decimal:0}],
     color:'#2585c7'});
   L.weight=1.4; if(L.sym){L.sym.weight=1.4;L.sym.color='#2585c7';}
@@ -2808,7 +2808,7 @@ document.getElementById('btnStreams').onclick=()=>{
         f.props=f.props||{};
         f.props.LIMIAR=thr;f.props.FONTE=fonte;f.props.REDE=n;
       });
-      const L=addLayer({sourceLayer:ar||'R:'+S.hidro.sourceRasterId,
+      const L=addLayer({undo:true,sourceLayer:ar||'R:'+S.hidro.sourceRasterId,
         name:`Rede de drenagem ${n} — limiar ${thr}${d._bruto?' · bruto':''}`,
         gtype:'line',crs:S.workCRS,features:feats,
         fields:[
@@ -2931,7 +2931,7 @@ function runBasinClick(latlng){
     toast('Fora do MDE ou bacia não delimitável — modo encerrado'); return; }
   const nExut=((S.layers||[]).find(l=>l._exutorios)?.features||[]).length+1;
   const nome='Exutório '+nExut;
-  addLayer({sourceLayer:'R:'+S.hidro.sourceRasterId,name:'Bacia '+nExut+' ('+fmtArea(w.areaM2)+')', gtype:'polygon', crs:S.workCRS,
+  addLayer({undo:true,sourceLayer:'R:'+S.hidro.sourceRasterId,name:'Bacia '+nExut+' ('+fmtArea(w.areaM2)+')', gtype:'polygon', crs:S.workCRS,
     features:[{geom:[w.ring],multi:true,props:{NOME:nome,
       AREA_M2:+w.areaM2.toFixed(0),AREA_HA:+(w.areaM2/10000).toFixed(3),
       E_EXUT:+w.outlet[0].toFixed(2),N_EXUT:+w.outlet[1].toFixed(2),
@@ -3360,7 +3360,7 @@ async function cnPoligonizarRaster(r,areaMin,totalArea){
     {name:'PERIM_M',type:'N',length:14,decimal:2},{name:'FONTE',type:'C',length:80,decimal:0},
     {name:'METODO',type:'C',length:40,decimal:0}
   ];
-  const L=addLayer({sourceLayer:r,name:`Polígonos CN — grupo ${(r.cnMeta&&r.cnMeta.grupo)||'C'}`,
+  const L=addLayer({undo:true,sourceLayer:r,name:`Polígonos CN — grupo ${(r.cnMeta&&r.cnMeta.grupo)||'C'}`,
     gtype:'polygon',crs:S.workCRS,features:feats,fields,color:'#2585c7'});
   L._cnVector=true;L.cnRasterId=r.id;
   L.sym={...L.sym,mode:'cat',field:'CLASSE',cats};
@@ -3766,7 +3766,7 @@ async function runLaminaChuva(latlng){
       TC_MIN:+tc.toFixed(0), BACIA_HA:+(A/1e4).toFixed(2), COEF_C:+C.toFixed(3),
       METODO:escRun.metodo, PERDAS_MM:+escRun.perda.toFixed(1), CN_EQ:escRun.CN?+escRun.CN.toFixed(1):null,
       VOL_ESCOADO_M3:+V.toFixed(0), BARRAMENTO:(B?B.L.name:'—') }};
-    const cam=addLayer({sourceLayer:'R:'+S.hidro.sourceRasterId, name:`Lâmina de projeto ${lv.toFixed(2)} m`, gtype:'polygon', crs:S.workCRS,
+    const cam=addLayer({undo:true,sourceLayer:'R:'+S.hidro.sourceRasterId, name:`Lâmina de projeto ${lv.toFixed(2)} m`, gtype:'polygon', crs:S.workCRS,
       features:[feat],
       fields:[{name:'COTA_M',type:'N',length:10,decimal:2},{name:'LAMINA_M',type:'N',length:10,decimal:2},
               {name:'AREA_M2',type:'N',length:14,decimal:0},{name:'AREA_HA',type:'N',length:12,decimal:3},
@@ -3779,7 +3779,7 @@ async function runLaminaChuva(latlng){
       color:'#1565c0' });
     if(cam){ cam.fill=0.35; if(cam.sym){ cam.sym.fill=0.35; } try{ drawLayer(cam); }catch(e){} }
     // a bacia contribuinte também vira camada — é o que justifica o volume
-    if(W.ring&&modoBacia==='d8') addLayer({sourceLayer:'R:'+S.hidro.sourceRasterId,name:`Área contribuinte D8 (${fmtArea(A)})`,gtype:'polygon',crs:S.workCRS,
+    if(W.ring&&modoBacia==='d8') addLayer({undo:true,sourceLayer:'R:'+S.hidro.sourceRasterId,name:`Área contribuinte D8 (${fmtArea(A)})`,gtype:'polygon',crs:S.workCRS,
       features:[{geom:[W.ring],multi:true,props:{AREA_M2:+A.toFixed(0),AREA_HA:+(A/1e4).toFixed(3),FONTE:'D8 preenchido'}}],
       fields:[{name:'AREA_M2',type:'N',length:14,decimal:0},{name:'AREA_HA',type:'N',length:12,decimal:3},
               {name:'FONTE',type:'C',length:30,decimal:0}],color:'#7aa2f7'});

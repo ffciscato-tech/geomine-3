@@ -36,7 +36,11 @@ function addLayer(o){
   if(!L.labelField&&L.src&&(L.src.url||L.src.provider))window.GeoMineAutomaticLabels?.apply(L,L.src);
   S.layers.unshift(L);
   if(o.sourceLayer)placeProductAbove(L,o.sourceLayer);
+  /* Produto de um comando (Mesclar, Dissolver, curvas, bacias...): entra na
+     fila do desfazer para o Ctrl+Z remover a camada recém-criada. */
+  const ativaAntes=S.activeId;
   S.activeId=L.id; drawLayer(L); zApply();
+  if(o.undo===true&&typeof gmUndoProduto==='function')try{gmUndoProduto(L,ativaAntes);}catch(_){}
   /* addLayer é o ponto comum de importações, Mesclar e demais produtos
      vetoriais. Vários chamadores atualizavam o mapa, mas esqueciam a aba
      CAMADAS. Agenda uma reconstrução curta e agrupada: assim toda camada
