@@ -211,6 +211,22 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   para 8 m junto à linha foi publicada às 09h34 e desfeita a pedido do
   usuário. Não mexer nessa regra sem um caso reproduzido. Teste de referência (terreno sintético de 0,25 m,
   ponto no talvegue): 64,0 ha na grade de 0,5 m e 66,0 ha na de 1 m.
+- **D8 já calculado como base da área contribuinte (pedido do usuário,
+  13/11/2026).** Quando o Hidro tem direção de fluxo nesta sessão
+  (`S.hidro.dem.dir`, ou a grade de origem de uma acumulação, `_d8Source`), o
+  campo "MDT" do painel ganha o grupo "D8 já calculado (sem reler o MDT)".
+  Escolhido, `clickD8` converte os receptores com
+  `GeoMineContinuousCatchment.routeReceivers` e delimita por
+  `analyzeRouted`: mesmo snap, mesmo raio de busca do talvegue e mesmo
+  contorno, sem ler nenhuma cota. A direção do Hidro não é gravada no projeto:
+  depois de recarregar a página é preciso gerá-la de novo para a opção
+  aparecer. Com MDT bruto as depressões são sumidouros e a bacia sai cortada
+  (o painel avisa). Referência no terreno sintético de 1 m: 56,16 ha pelo D8
+  preenchido contra 56,13 ha pelo MDT.
+- **As setas do D8 não participam do snap.** A camada "Direção de fluxo D8 —
+  setas" é uma amostra da grade espalhada pelo mapa e tem "fluxo" no nome:
+  roubava o ponto da linha de fluxo de verdade (`isArrows`/`snapLines` em
+  `point-catchment.js`).
 - **Snap na linha de fluxo segue o ímã.** Com o ímã ligado (`S.snapOn`), o
   toque gruda na linha visível mais próxima a até a tolerância do snap das
   outras ferramentas (`SNAP_PX` = 15 px; 24 px no toque), em qualquer zoom; o

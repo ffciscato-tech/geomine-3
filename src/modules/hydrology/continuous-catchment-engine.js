@@ -211,5 +211,23 @@ async function analyzeRouted(source,routing,seed,options={}){
     outlet,options,{rounds:1,method:'d8-grid'});
   return {...result,moved:start!==tap,snapDistance:pick.distance*(source.unitScale||1),cellsAtTap:count[tap],cellsAtOutlet:cells};
 }
-root.GeoMineContinuousCatchment={analyze,routeWindow,locateOutlet,routeGrid,analyzeRouted};
+/* DIREÇÃO D8 JÁ CALCULADA FORA DAQUI (o D8 do Hidro). receiver[i] é o índice
+   da célula de jusante, ou negativo quando a célula não tem saída (sumidouro,
+   borda). Converte para o mesmo roteamento de routeGrid e conta, de forma
+   exata, quantas células drenam para cada uma. Nenhuma cota é lida. */
+function routeReceivers(nc,nr,receiver,isNoData){
+  const total=nc*nr;
+  if(!Number.isSafeInteger(nc)||!Number.isSafeInteger(nr)||nc<1||nr<1||!receiver||receiver.length!==total)throw Error('A direção de fluxo D8 não corresponde à grade.');
+  const state=new Uint8Array(total),code=new Uint8Array(9);
+  N.forEach(([x,y],j)=>{code[(y+1)*3+x+1]=j+1;});
+  for(let i=0;i<total;i++){
+    if(isNoData&&isNoData(i)){state[i]=73;continue;}
+    const k=receiver[i];if(!(k>=0)||k===i||k>=total)continue;
+    const dx=k%nc-i%nc,dy=Math.floor(k/nc)-Math.floor(i/nc);
+    if(dx<-1||dx>1||dy<-1||dy>1)continue;   // não é vizinha: tratada como sem saída
+    state[i]=code[(dy+1)*3+dx+1];
+  }
+  return {nc,nr,state,count:accumulate(state,nc,nr)};
+}
+root.GeoMineContinuousCatchment={analyze,routeWindow,locateOutlet,routeGrid,analyzeRouted,routeReceivers};
 })(typeof window!=='undefined'?window:globalThis);

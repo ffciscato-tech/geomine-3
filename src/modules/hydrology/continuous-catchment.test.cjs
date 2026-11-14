@@ -88,3 +88,20 @@ test('D8 on the whole grid: flow accumulation picks the outlet and the basin equ
  const reads=s.windows.length,again=await engine.analyzeRouted(s,routing,{col:60,row:140},{searchCells:2});
  assert(again.cells>beside.cells);assert(s.windows.length-reads<=1,'só a cota do exutório é lida');
 });
+test('a D8 direction computed elsewhere (receiver index per cell) gives the same catchment as routing the grid, without reading elevations',async()=>{
+ // Vale em V descendo para o sul: o receptor de cada célula é a vizinha de maior declive (o D8 do Hidro).
+ const s=source(41,61,(x,y)=>300-y*2+Math.abs(x-20)*3),nc=s.nc,nr=s.nr,receiver=new Int32Array(nc*nr).fill(-1);
+ for(let y=0;y<nr;y++)for(let x=0;x<nc;x++){let best=0,k=-1;
+  for(const [dx,dy] of [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]]){const a=x+dx,b=y+dy;if(a<0||b<0||a>=nc||b>=nr)continue;
+   const slope=(s.z[y*nc+x]-s.z[b*nc+a])/Math.hypot(dx*s.cs,dy*s.csy);if(slope>best){best=slope;k=b*nc+a;}}
+  receiver[y*nc+x]=k;}
+ const seed={col:20,row:50},routing=engine.routeReceivers(nc,nr,receiver,()=>false),reference=await engine.routeGrid(s,{seed});
+ assert.equal(routing.count[seed.row*nc+seed.col],reference.count[seed.row*nc+seed.col],'same flow accumulation at the outlet');
+ const reads=s.windows.length,r=await engine.analyzeRouted(s,routing,seed,{searchCells:1}),ref=await engine.analyzeRouted(s,reference,seed,{searchCells:1});
+ assert.equal(r.cells,ref.cells);assert.equal(r.cells,routing.count[seed.row*nc+seed.col]);checkArea(r,s);
+ assert(s.windows.length-reads<=2,'only the outlet elevation is read');
+ // célula sem dados e receptor inválido não entram nem quebram a contagem
+ receiver[0]=nc*nr+5;receiver[1]=40;const guarded=engine.routeReceivers(nc,nr,receiver,i=>i===2);
+ assert.equal(guarded.state[0],0);assert.equal(guarded.state[1],0);assert.equal(guarded.state[2]&15,9);assert.equal(guarded.count[2],0);
+ assert.throws(()=>engine.routeReceivers(nc,nr,new Int32Array(5)),/não corresponde/);
+});

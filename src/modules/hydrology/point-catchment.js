@@ -35,6 +35,25 @@ const rasterName=r=>String(r.name||'').normalize('NFD').replace(/[\u0300-\u036f]
 const derivedName=r=>!r.quantity&&!r.d?.quantity&&/^(direcao (?:de )?fluxo|acumulacao (?:de )?fluxo|flow direction|flow accumulation|declividade|hillshade|sombreado)\b/.test(rasterName(r));
 const rasters=()=>S.rasters.filter(r=>root.GeoMineChannelDEM.isElevation(r)&&!derivedName(r));
 const selected=()=>rasters().find(r=>String(r.id)===$('pointCatchmentRaster').value);
+/* D8 JÁ CALCULADO NO HIDRO (Carregar MDE › Direção de Fluxo). A grade do Hidro
+   guarda, para cada célula, a célula de jusante (d.dir). Com ela a área
+   contribuinte é só a busca a montante: nenhuma cota é lida de novo. Vale
+   enquanto a direção existir nesta sessão (mexer no MDE do Hidro a apaga). */
+/* Linhas em que o ponto pode grudar: as visíveis, MENOS as setas da direção
+   de fluxo D8. As setas são uma amostra da grade espalhada pelo mapa inteiro
+   e têm "fluxo" no nome: roubavam o ponto da linha de fluxo de verdade. */
+const isArrows=l=>/^Direção de fluxo D8/.test(l.name||'')||(l.fields||[]).some(f=>f.name==='AZIMUTE')&&(l.fields||[]).some(f=>f.name==='CELULA');
+const snapLines=()=>S.layers.filter(l=>l.visible!==false&&l.llayer&&map.hasLayer(l.llayer)&&!isArrows(l));
+function d8Sources(){
+  const out=[],seen=new Set(),ok=d=>d&&d.dir&&d.z&&d.dir.length===d.nc*d.nr&&d.z.length===d.nc*d.nr&&!seen.has(d);
+  const add=(key,d,name)=>{if(ok(d)){seen.add(d);out.push({key,d,name});}};
+  try{add('d8:hidro',S.hidro?.dem,S.hidro?.demName||'MDE do Hidro');}catch(_){}
+  // Acumulações geradas nesta sessão sobre outro MDE do Hidro guardam a grade de origem.
+  for(const r of S.rasters||[])try{add('d8:r'+r.id,r.d?._d8Source,r.name);}catch(_){}
+  return out;
+}
+const selectedD8=()=>{const v=$('pointCatchmentRaster').value;return v.startsWith('d8:')?d8Sources().find(x=>x.key===v)||null:null;};
+let routedD8=null;
 const aborted=()=>Object.assign(Error('Consulta cancelada: o projeto ou o MDT mudou.'),{name:'AbortError'});
 function scale(s){const p=proj4(s.sourceCRS).oProj,k=Number(p.to_meter??1);if(p.projName==='longlat'||!Number.isFinite(k)||k<=0)throw Error('Use um MDT com CRS projetado para calcular a área em metros quadrados.');return k;}
 /* Memória para a análise: aparelhos móveis fecham a aba bem antes de um
@@ -105,8 +124,18 @@ function controls(){
   $('pointCatchmentMark').disabled=false;
 }
 function cancel(){job?.controller.abort();armed=null;if(S.tool==='basin')setTool('select');controls();}
-function resetContext(){const key=String(S.projectId)+'|'+String(gen());if(context!==key){cancel();pointMarker?.remove();pointMarker=null;context=key;routed=null;describing++;$('pointCatchmentRaster').value='';status('A área será informada em m² e hectares.');}}
+function resetContext(){const key=String(S.projectId)+'|'+String(gen());if(context!==key){cancel();pointMarker?.remove();pointMarker=null;context=key;routed=null;routedD8=null;describing++;$('pointCatchmentRaster').value='';status('A área será informada em m² e hectares.');}}
 async function describe(){
+  const pronto=selectedD8();
+  if(pronto){
+    ++describing;resampleOptions(null);$('pointCatchmentLocate').style.display='none';
+    let texto='';
+    try{const d=pronto.d,k=scale({sourceCRS:S.workCRS});
+      texto='D8 já calculado no Hidro: '+fmt(d.cs*k,4)+' × '+fmt((d.csy||d.cs)*k,4)+' m · '+fmt(d.nc,0)+' × '+fmt(d.nr,0)+' células. '+
+        (d.zf?'Depressões preenchidas.':'MDT bruto: as depressões funcionam como sumidouros e a bacia pode sair cortada; para a bacia inteira, use Preencher Depressões e gere a direção de novo.')+' O MDT não é lido de novo.';
+    }catch(e){texto=e.message;}
+    $('pointCatchmentInfo').textContent=texto;return;
+  }
   const r=selected(),token=++describing,project=S.projectId,generation=gen();let s;
   const current=()=>token===describing&&selected()===r&&project===S.projectId&&generation===gen()&&!job;
   if(!r){resampleOptions(null);$('pointCatchmentInfo').textContent='Selecione o MDT.';$('pointCatchmentLocate').style.display=(true)?'none':'flex';return;}
@@ -133,15 +162,17 @@ function refresh(){
   resetContext();const previous=$('pointCatchmentRaster').value,list=rasters();
   const named=list.filter(r=>/^(mdt|mde|dtm|dem)(?:\b|_)/.test(rasterName(r)));
   const r=list.find(r=>String(r.id)===previous)||list.find(r=>String(r.id)===String(S.hidro?.sourceRasterId))||list.find(r=>r===S.selRaster)||(list.length===1?list[0]:named.length===1?named[0]:null);
-  $('pointCatchmentRaster').replaceChildren(new Option('— selecione o MDT —',''),...list.map(r=>new Option(r.name,String(r.id))));
-  $('pointCatchmentRaster').value=r?String(r.id):'';controls();describe();
+  const prontos=d8Sources(),grupo=document.createElement('optgroup');grupo.label='D8 já calculado (sem reler o MDT)';
+  for(const x of prontos)grupo.appendChild(new Option('D8 pronto — '+x.name+' · célula de '+fmt(x.d.cs,2)+' m · '+fmt(x.d.nc,0)+' × '+fmt(x.d.nr,0)+' células',x.key));
+  $('pointCatchmentRaster').replaceChildren(new Option('— selecione o MDT —',''),...list.map(r=>new Option(r.name,String(r.id))),...(prontos.length?[grupo]:[]));
+  $('pointCatchmentRaster').value=prontos.some(x=>x.key===previous)?previous:r?String(r.id):'';controls();describe();
 }
 function open(button){anchor=button||anchor||$('pointCatchmentMark');RIB_CAT_ATUAL='hidrologia';refresh();ribbonOpen(panel,anchor,'Área contribuinte no ponto');}
 function arm(){
   if(job||armed&&S.tool==='basin'){cancel();status('Consulta cancelada.');return;}
-  const r=selected();if(!r){status(rasters().length?'Escolha o MDT no campo acima e toque em Marcar ponto.':'Carregue um MDT original para marcar o ponto.');$('pointCatchmentRaster').focus();return;}
+  const r=selected(),pronto=selectedD8();if(!r&&!pronto){status(rasters().length?'Escolha o MDT no campo acima e toque em Marcar ponto.':'Carregue um MDT original para marcar o ponto.');$('pointCatchmentRaster').focus();return;}
   if(!mapaVista2D())switchView('map');
-  armed={r,project:S.projectId,generation:gen()};setTool('basin');controls();
+  armed={r:r||null,d8:pronto||null,project:S.projectId,generation:gen()};setTool('basin');controls();
   status('Toque no exutório: na linha de fluxo ou em qualquer ponto do MDT. O marcador mostrará o ponto usado.');
 }
 /* O MESMO SNAP DO TOQUE, MOSTRADO ANTES DO TOQUE. Com a marcação armada, o
@@ -154,7 +185,7 @@ function snapPreview(latlng){
     const crs=S.workCRS,tap=fromWGS(crs,latlng.lng,latlng.lat),screen=map.latLngToContainerPoint(latlng),
       side=map.containerPointToLatLng([screen.x+10,screen.y]),sideXY=fromWGS(crs,side.lng,side.lat),
       tolerance=Math.hypot(sideXY[0]-tap[0],sideXY[1]-tap[1])/10*(typeof SNAP_PX==='number'?SNAP_PX:15)*(S.touch?1.6:1),
-      lines=S.layers.filter(l=>l.visible!==false&&l.llayer&&map.hasLayer(l.llayer)),
+      lines=snapLines(),
       snap=tolerance>0?root.GeoMineCatchmentSnap.nearest(lines,tap,{tolerance,selected:S.sel,
         visible:(l,f)=>featureVisible(l,f),project:(p,l)=>!l.crs||l.crs===crs?p:proj4(l.crs,crs,p)}):null;
     if(!snap)return null;
@@ -162,10 +193,72 @@ function snapPreview(latlng){
     return {latlng:L.latLng(ll[1],ll[0]),snapped:true,kind:'linha de fluxo',layer:snap.layer};
   }catch(_){return null;}
 }
+/* Área contribuinte a partir do D8 já calculado no Hidro. Mesmo snap, mesmo
+   raio de busca do talvegue e mesmo contorno do cálculo pelo MDT; o que muda é
+   a origem das direções de fluxo, que já estão prontas. */
+async function clickD8(fonte,latlng){
+  const d=fonte.d,dir=d.dir,q=job={controller:new AbortController(),project:S.projectId,generation:gen(),crs:S.workCRS,d8:d};
+  const current=()=>job===q&&!q.controller.signal.aborted&&q.project===S.projectId&&q.generation===gen()&&q.crs===S.workCRS&&d.dir===dir&&selectedD8()?.d===d;
+  const check=()=>{if(!current())throw aborted();};
+  controls();describing++;
+  try{
+    pointMarker?.remove();
+    pointMarker=L.circleMarker(latlng,{pane:'markerPane',radius:6,color:'#b76514',weight:2,fillColor:'#fff',fillOpacity:1,interactive:false}).addTo(map);
+    const k=scale({sourceCRS:q.crs}),csy=d.csy||d.cs,res=Math.min(d.cs,csy)*k,
+      tap=fromWGS(q.crs,latlng.lng,latlng.lat),screen=map.latLngToContainerPoint(latlng),
+      side=map.containerPointToLatLng([screen.x+10,screen.y]),sideXY=fromWGS(q.crs,side.lng,side.lat),
+      finger=Math.hypot(sideXY[0]-tap[0],sideXY[1]-tap[1]),
+      tolerance=S.snapOn===false?0:Math.max(res,finger/10*(typeof SNAP_PX==='number'?SNAP_PX:15)*(S.touch?1.6:1)),
+      lines=snapLines(),
+      snap=tolerance<=0?null:root.GeoMineCatchmentSnap.nearest(lines,tap,{tolerance,selected:S.sel,
+        visible:(l,f)=>featureVisible(l,f),project:(p,l)=>!l.crs||l.crs===q.crs?p:proj4(l.crs,q.crs,p)}),
+      p=snap?snap.point:tap,col=Math.floor((p[0]-d.xll)/d.cs),row=d.nr-1-Math.floor((p[1]-d.yll)/csy),
+      ll=toWGS(q.crs,...p);
+    pointMarker.setLatLng([ll[1],ll[0]]).setStyle({color:'#1b3560'});
+    statusHead=snap?'Ponto grudado na linha “'+snap.layer.name+'” (ajuste de '+fmt(snap.distance,2)+' m).':S.snapOn===false?'Ímã (snap) desligado: usado o ponto tocado.':'Nenhuma linha a até '+fmt(tolerance,1)+' m do toque: usado o ponto tocado.';
+    status('Usando o D8 já calculado…');
+    if(snap)try{mostraCursorSnap({latlng:L.latLng(ll[1],ll[0]),snapped:true,kind:'linha de fluxo'});setTimeout(()=>{try{if(S.tool!=='basin')limpaCursorSnap();}catch(_){}} ,2500);}catch(_){}
+    if(col<0||row<0||col>=d.nc||row>=d.nr)throw Error('O ponto está fora da grade do D8 calculado.');
+    const engine=root.GeoMineContinuousCatchment,memory=memoryMB();
+    if(d.nc*d.nr*10>memory*1048576*.8)throw Error('A grade do D8 calculado ('+fmt(d.nc,0)+' × '+fmt(d.nr,0)+' células) é grande demais para a memória deste aparelho. Gere o D8 com uma reamostragem maior no Hidro.');
+    if(!routedD8||routedD8.dir!==dir){
+      await new Promise(resolve=>setTimeout(resolve,0));check();
+      routedD8={dir,routing:engine.routeReceivers(d.nc,d.nr,dir,i=>!Number.isFinite(d.z[i]))};
+    }
+    const z=d.z,source={nc:d.nc,nr:d.nr,cs:d.cs,csy,xll:d.xll,yll:d.yll,float32:true,noData:null,unitScale:k,isCurrent:current,
+        readWindow:async([x0,y0,x1,y1])=>{const W=x1-x0,out=new Float32Array(W*(y1-y0));
+          for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++)out[(y-y0)*W+x-x0]=z[y*d.nc+x];return out;}},
+      // Mesmo raio de busca do talvegue do cálculo pelo MDT.
+      searchM=Math.min(40,Math.max(1.4*finger,3*res,snap?3:0)),
+      result=await engine.analyzeRouted(source,routedD8.routing,{col,row},{searchCells:Math.ceil(searchM/res),signal:q.controller.signal,decodedCacheMB:12,tileSize:128,
+        onProgress:v=>{check();status((v.phase==='contour'?'Traçando o contorno':'Delimitando a montante')+'…'+(v.cells?'\n'+fmt(v.cells,0)+' células':''));}});
+    check();
+    const adjust=result.moved?result.snapDistance:0,at=toWGS(q.crs,...result.outlet);pointMarker.setLatLng([at[1],at[0]]);
+    const partial=result.touchesEdge||result.touchesNoData,base=d.zf?'depressões preenchidas':'MDT bruto, depressões como sumidouros',
+      props={AREA_M2:result.areaM2,AREA_HA:result.areaM2/10000,CELULAS:result.cells,
+        E_TOQUE:tap[0],N_TOQUE:tap[1],AJUSTE_M:snap?.distance||0,LINHA:snap?.layer.name||'',E_PONTO:p[0],N_PONTO:p[1],AJUSTE_MDT:adjust,E_CELULA:result.outlet[0],N_CELULA:result.outlet[1],COTA_M:result.seedZ,
+        RES_X_M:result.resolution.x,RES_Y_M:result.resolution.y,RES_MDT_M:res,MDT:fonte.name,ACUM_CEL:result.cellsAtOutlet??result.cells,
+        METODO:'D8 já calculado no Hidro ('+base+') · grade de '+fmt(res,2)+' m',LIMITE_DADOS:partial?'Sim':'Não'},
+      fields=Object.entries(props).map(([name,value])=>({name,type:typeof value==='number'?'N':'C',length:typeof value==='number'?20:100,decimal:['CELULAS','ACUM_CEL'].includes(name)?0:6}));
+    const layer=addLayer({...(S.hidro?.sourceRasterId!=null?{sourceLayer:'R:'+S.hidro.sourceRasterId}:{}),name:'Área contribuinte — '+fmt(props.AREA_HA,4)+' ha',gtype:'polygon',crs:q.crs,
+      features:[{geom:result.rings.map(ring=>ring.map(xy=>[xy[0],xy[1]])),multi:true,props}],fields,color:'#328ad6'});
+    if(layer){layer.weight=2;if(layer.sym){layer.sym.weight=2;layer.sym.fillOpacity=.14;}drawLayer(layer);}
+    refreshUI();
+    const text='Área contribuinte: '+fmt(props.AREA_HA,4)+' ha\n'+fmt(props.AREA_M2,4)+' m² · '+fmt(props.CELULAS,0)+' células'+
+      (partial?'\nA área toca a borda ou células sem dados da grade; pode haver contribuição fora dos dados disponíveis.':'')+
+      (snap?'\nPonto na linha: '+snap.layer.name+' · ajuste '+fmt(snap.distance,2)+' m':
+        S.snapOn===false?'\nÍmã (snap) desligado: usado o ponto tocado.':'\nNenhuma linha a até '+fmt(tolerance,1)+' m do toque: usado o ponto tocado.')+
+      '\nUsado o D8 já calculado no Hidro (“'+fonte.name+'”, grade de '+fmt(res,2)+' m, '+base+'). Acumulação no exutório: '+fmt(props.ACUM_CEL,0)+' células.'+
+      (adjust?'\nExutório ajustado ao talvegue: '+fmt(adjust,2)+' m do ponto.':'\nExutório na célula do ponto marcado.');
+    statusHead='';status(text);cmdLog(text.replaceAll('\n',' · '),'ok');
+  }catch(e){statusHead='';if(q.project===S.projectId&&q.generation===gen()){status(e.name==='AbortError'?'Consulta cancelada.':e.message);if(e.name!=='AbortError')cmdLog('Área contribuinte: '+e.message,'warn');}}
+  finally{statusHead='';if(job===q)job=null;controls();describe();}
+}
 async function click(latlng){
   if(job)return;
   const a=armed;armed=null;setTool('select');controls();
-  if(!a||a.r!==selected()||a.project!==S.projectId||a.generation!==gen()){status('A marcação foi encerrada. Toque em Marcar ponto para iniciar novamente.');return;}
+  if(!a||(a.d8?selectedD8()?.d!==a.d8.d:a.r!==selected())||a.project!==S.projectId||a.generation!==gen()){status('A marcação foi encerrada. Toque em Marcar ponto para iniciar novamente.');return;}
+  if(a.d8)return clickD8(a.d8,latlng);
   const r=a.r,q=job={controller:new AbortController(),project:S.projectId,generation:gen(),crs:S.workCRS,r},d=r.d;
   let sampler,timer;
   const current=()=>job===q&&!q.controller.signal.aborted&&q.project===S.projectId&&q.generation===gen()&&q.crs===S.workCRS&&S.rasters.includes(r)&&r.d===d&&selected()===r;
@@ -192,7 +285,7 @@ async function click(latlng){
       metersPerPixel=Math.hypot(sideXY[0]-tap[0],sideXY[1]-tap[1])/10,
       snapPixels=(typeof SNAP_PX==='number'?SNAP_PX:15)*(S.touch?1.6:1),
       tolerance=S.snapOn===false?0:Math.max(sampler.resolution,metersPerPixel*snapPixels),
-      lines=S.layers.filter(l=>l.visible!==false&&l.llayer&&map.hasLayer(l.llayer)),
+      lines=snapLines(),
       snap=tolerance<=0?null:root.GeoMineCatchmentSnap.nearest(lines,tap,{tolerance,selected:S.sel,
         visible:(l,f)=>featureVisible(l,f),project:(p,l)=>!l.crs||l.crs===q.crs?p:proj4(l.crs,q.crs,p)}),
       p=snap?snap.point:tap,seed=sampler.locate(p);
@@ -342,5 +435,5 @@ for(const group of category?.grupos||[])for(const item of group.it||[]){
   if(item.ic==='mancha-inundacao')item.act=open;
 }
 $('btnBasin').onclick=()=>{refresh();arm();};
-root.GeoMinePointCatchment={open,refresh,arm,click,cancel,snapPreview,projectChanged:()=>{cancel();pointMarker?.remove();pointMarker=null;context=null;routed=null;}};
+root.GeoMinePointCatchment={open,refresh,arm,click,cancel,snapPreview,projectChanged:()=>{cancel();pointMarker?.remove();pointMarker=null;context=null;routed=null;routedD8=null;}};
 })(window);
