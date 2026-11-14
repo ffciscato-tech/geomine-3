@@ -127,6 +127,8 @@ function ribMiniMenu(btnEl, titulo, itens){
       ? '<span class="rmic">'+RIB_SVG[it.ic]+'</span>'
       : (it.soon?'<span style="font-size:9px;color:var(--amber)">◷</span>':'<span style="width:9px"></span>');
     row.innerHTML=ico+'<span>'+esc(it.nome)+'</span>';
+    /* cor própria do item (p.ex. a lixeira em vermelho), no texto e no símbolo */
+    if(it.cor){ row.style.color=it.cor; const sv=row.querySelector('.rmic svg'); if(sv) sv.style.color=it.cor; }
     row.onmouseenter=()=>{ row.style.background='var(--hover2,#1c2434)';
       if(it.desc){ let tip=document.getElementById('ribTip');
         if(!tip){ tip=document.createElement('div'); tip.id='ribTip';

@@ -313,6 +313,109 @@ function renameCategorizedClass(L, ci){
   toast('Classe “'+r.oldName+'” renomeada para “'+r.newName+'” em '+r.count+' feição(ões)');
 }
 /* Seleção múltipla da ÁRVORE (independente da seleção de feições do mapa). */
+/* MENU DO BOTÃO DIREITO (E DO TOQUE LONGO) NAS LINHAS DA ÁRVORE
+   Os símbolos de ação de cada linha (cadeado, propriedades, remover) ficam à
+   direita e, no painel estreito do iPad, saem da área visível. O menu traz as
+   mesmas ações, cada uma com o seu símbolo, mais zoom e tabela de atributos —
+   e a lixeira. Vale para camada vetorial, superfície/ortofoto e grupo. */
+(function treeMenuIcons(){
+  if(typeof RIB_SVG!=='object')return;
+  const svg=d=>'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'+d+'</svg>';
+  Object.assign(RIB_SVG,{
+    ctx_lixeira:svg('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5m4-5v5"/>'),
+    ctx_olho:svg('<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
+    ctx_olho_off:svg('<path d="M3 3l18 18M10.6 5.1c.5-.1.9-.1 1.4-.1 6.4 0 10 7 10 7a17.600 17.600 0 0 1-3.200 4.200M6.600 6.600C3.700 8.500 2 12 2 12s3.600 7 10 7c1.700 0 3.200-.400 4.500-1.100M9.900 9.900a3 3 0 0 0 4.200 4.200"/>'),
+    ctx_zoom:svg('<circle cx="11" cy="11" r="7"/><path d="m20 20-3.500-3.500M8 11h6M11 8v6"/>'),
+    ctx_cadeado:svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+    ctx_cadeado_aberto:svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.700-1.500"/>'),
+    ctx_tabela:svg('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>'),
+    ctx_copiar:svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>'),
+    ctx_colar:svg('<rect x="6" y="5" width="12" height="16" rx="2"/><path d="M9 5V3.500h6V5M9 11h6M9 15h4"/>'),
+    ctx_engrenagem:svg('<circle cx="12" cy="12" r="3"/><path d="M12 2.500v3M12 18.500v3M2.500 12h3M18.500 12h3M5.300 5.300l2.100 2.100M16.600 16.600l2.100 2.100M5.300 18.700l2.100-2.100M16.600 7.400l2.100-2.100"/>'),
+    ctx_renomear:svg('<path d="M4 20h4L19 9l-4-4L4 16v4zM13.500 6.500l4 4"/>'),
+    ctx_desagrupar:svg('<rect x="3" y="3" width="8" height="8" rx="1.500"/><rect x="13" y="13" width="8" height="8" rx="1.500"/><path d="M15 6h3v3M9 18H6v-3"/>'),
+    ctx_recolher:svg('<path d="M4 6h16M4 12h10M4 18h6M18 11l3 3-3 3"/>')
+  });
+})();
+/* O menu abre no ponto do clique/toque; pelo botão ⋮ da linha, abre sob ele. */
+function treeMenuAnchor(anchor,e){
+  const x=e&&Number.isFinite(e.clientX)?e.clientX:null,y=e&&Number.isFinite(e.clientY)?e.clientY:null;
+  if(x==null||y==null||(!x&&!y))return anchor;
+  return {getBoundingClientRect:()=>({left:x,right:x,top:y,bottom:y,width:0,height:0})};
+}
+const TREE_MENU_PERIGO='#e5534b';
+function treeConfirmDeleteLayer(L){
+  if(!S.layers.includes(L))return;
+  const meshInfo=window.GeoMineGeology?.meshViews?.info(L);
+  const detail=meshInfo?`${meshInfo.count.toLocaleString('pt-BR')} ${meshInfo.label}`:`${L.features.length} feições`,
+    /* deleteVectorLayer registra a exclusão no desfazer: o aviso antigo ("não
+       pode ser desfeita") não correspondia ao que o programa faz. */
+    note=meshInfo?'Outras representações não serão alteradas. Use Desfazer para recuperar esta camada.':'Você pode desfazer com Ctrl+Z.';
+  if(confirm(`Remover a camada "${L.name}" (${detail})?\n${note}`))
+    deleteVectorLayer(L);
+}
+function treeConfirmDeleteRaster(o,isRas){
+  if(isRas){
+    if(!(S.rasters||[]).includes(o))return;
+    if(confirm(`Remover a superfície "${o.name}" (${o.d.nc}×${o.d.nr})?\n${o.src?.kind==='cava2-clipped'?'Você pode desfazer com Ctrl+Z.':'Esta ação não pode ser desfeita.'}`)) deleteRaster(o);
+  }else{
+    if(S.img!==o||!confirm('Remover a ortofoto/imagem de fundo?')) return;
+    if(o.overlay) map.removeLayer(o.overlay); S.img=null; refreshUI();
+  }
+}
+function treeMenuLayer(L,anchor,e){
+  if(!L||!S.layers.includes(L))return;
+  S.activeId=L.id;S.selRaster=null;try{propRefresh();}catch(_){}
+  const T=window.GeoMineStyleTransfer,vis=L.visible!==false;
+  ribMiniMenu(treeMenuAnchor(anchor,e),L.name,[
+    {ic:vis?'ctx_olho_off':'ctx_olho',nome:vis?'Ocultar camada':'Mostrar camada',run:()=>{
+      if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false,true)){collabCanEditLayer(L,true,true);return;}
+      nodeSetVis({t:'L',id:L.id,o:L},!vis);zApply();refreshUI();}},
+    {ic:'ctx_zoom',nome:'Zoom na camada',run:()=>{if(S.layers.includes(L))fitLayer(L);}},
+    {ic:L.locked?'ctx_cadeado_aberto':'ctx_cadeado',nome:L.locked?'Descongelar camada':'Congelar camada',
+      desc:L.locked?'Libera a edição desta camada.':'Bloqueia a edição desta camada.',run:()=>setLayerFrozen(L,!L.locked)},
+    {ic:'ctx_tabela',nome:'Tabela de atributos',run:()=>{if(!S.layers.includes(L))return;S.activeId=L.id;S.selRaster=null;refreshUI();openAttr();}},
+    {sep:true},
+    ...(T?[{ic:'ctx_copiar',nome:'Copiar estilo',desc:'Copia simbologia, rótulos e regras de classificação por código.',run:()=>T.copy(L)},
+      {ic:'ctx_colar',nome:'Colar estilo',desc:'Aplica a aparência e cria os campos de classificação ausentes por correspondência.',run:()=>T.paste(L)}]:[]),
+    {ic:'ctx_engrenagem',nome:'Propriedades da camada',run:()=>{if(S.layers.includes(L))openLayerProps(L);}},
+    {sep:true},
+    {ic:'ctx_lixeira',nome:'Excluir camada',cor:TREE_MENU_PERIGO,run:()=>treeConfirmDeleteLayer(L)}
+  ]);
+}
+function treeMenuRaster(n,isRas,anchor,e){
+  const o=n&&n.o,existe=()=>isRas?(S.rasters||[]).includes(o):S.img===o;
+  if(!o||!existe())return;
+  if(isRas&&(S.selRaster!==o||S.activeId!=null)){S.selRaster=o;S.activeId=null;try{propRefresh();}catch(_){}}
+  const vis=o.visible!==false;
+  ribMiniMenu(treeMenuAnchor(anchor,e),o.name||(isRas?'MDE':'ortofoto'),[
+    {ic:vis?'ctx_olho_off':'ctx_olho',nome:vis?'Ocultar':'Mostrar',run:()=>{if(!existe())return;nodeSetVis(n,!vis);zApply();refreshUI();}},
+    {ic:'ctx_zoom',nome:'Zoom na camada',run:()=>{if(existe()&&o.overlay&&o.overlay.getBounds)safeFit(o.overlay.getBounds());else toast('Sem extensão no mapa para aproximar');}},
+    {ic:'ctx_engrenagem',nome:isRas?'Propriedades da superfície':'Propriedades da ortofoto',run:()=>{if(existe())isRas?openRasProps(o):openImgProps();}},
+    {sep:true},
+    {ic:'ctx_lixeira',nome:isRas?'Excluir superfície':'Excluir ortofoto',cor:TREE_MENU_PERIGO,run:()=>treeConfirmDeleteRaster(o,isRas)}
+  ]);
+}
+function treeMenuGroup(g,anchor,e){
+  if(!g||!S.groups.includes(g))return;
+  const membros=groupMembers(g.id),vis=membros.some(n=>n.o.visible!==false);
+  ribMiniMenu(treeMenuAnchor(anchor,e),g.name,[
+    {ic:vis?'ctx_olho_off':'ctx_olho',nome:vis?'Ocultar grupo':'Mostrar grupo',run:()=>{if(S.groups.includes(g))toggleGroupVisibility(g);}},
+    {ic:'ctx_recolher',nome:g.collapsed?'Expandir grupo':'Recolher grupo',run:()=>{if(!S.groups.includes(g))return;g.collapsed=!g.collapsed;refreshUI();}},
+    {ic:'ctx_renomear',nome:'Renomear grupo',run:()=>{if(!S.groups.includes(g))return;const novo=prompt('Renomear grupo:',g.name);if(novo){g.name=novo;refreshUI();layoutSeVisivel();}}},
+    {ic:'ctx_desagrupar',nome:'Desfazer grupo',desc:'As camadas e os subgrupos continuam no projeto, fora deste grupo.',run:()=>{
+      if(S.groups.includes(g)&&confirm(`Desfazer grupo "${g.name}"? As camadas e subgrupos vão para ${g.parentId==null?'a raiz':'o grupo acima'}.`))deleteGroup(g);}},
+    {sep:true},
+    {ic:'ctx_lixeira',nome:'Excluir grupo e tudo o que está dentro',cor:TREE_MENU_PERIGO,run:()=>{
+      if(!S.groups.includes(g))return;
+      // Mesma exclusão (e mesma confirmação com a lista) da lixeira da seleção múltipla.
+      const antes=new Set(S._layerMulti),ligado=S._layerMultiOn;
+      S._layerMulti=new Set(['G:'+g.id]);
+      try{layerMultiDelete();}
+      finally{if(S.groups.includes(g)){S._layerMulti=antes;S._layerMultiOn=ligado;layerMultiSync();}}
+    }}
+  ]);
+}
 S._layerMultiOn=false; S._layerMulti=new Set();
 /* Camadas são marcadas pela chave do nó (L:, R:, I:) e GRUPOS inteiros por
    'G:'+id. Marcar um grupo vale para tudo o que está dentro dele, inclusive
@@ -502,6 +605,7 @@ function refreshUI(){
       el.querySelector('.gdel').onclick=e=>{e.stopPropagation();
         if(confirm(`Desfazer grupo "${g.name}"? As camadas e subgrupos vão para ${g.parentId==null?'a raiz':'o grupo acima'}.`)) deleteGroup(g);};
       el.querySelector('.nm').ondblclick=()=>{const n=prompt('Renomear grupo:',g.name); if(n){g.name=n;refreshUI();layoutSeVisivel();}};
+      el.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();treeMenuGroup(g,el,e);};
       bindDrag(el,'group',g.id);
       list.appendChild(el);
       return;
@@ -542,12 +646,9 @@ function refreshUI(){
         <span class="tree-row-actions"><span class="gset" title="${isRas?'Propriedades, resolução e curvas de nível':'Propriedades da ortofoto'}">⚙</span>
         <span class="gdel ndel" title="Remover">✕</span></span>`;
       el.querySelector('.gset').onclick=e=>{e.stopPropagation(); isRas? openRasProps(o) : openImgProps();};
-      el.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();isRas?openRasProps(o):openImgProps();};
+      el.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();treeMenuRaster(n,isRas,el,e);};
       el.querySelector('.eye').onclick=e=>{e.stopPropagation(); nodeSetVis(n,!vis); zApply(); refreshUI();};
-      el.querySelector('.ndel').onclick=e=>{e.stopPropagation();
-        if(isRas){ if(confirm(`Remover a superfície "${o.name}" (${o.d.nc}×${o.d.nr})?\n${o.src?.kind==='cava2-clipped'?'Você pode desfazer com Ctrl+Z.':'Esta ação não pode ser desfeita.'}`)) deleteRaster(o); }
-        else { if(!confirm('Remover a ortofoto/imagem de fundo?')) return;
-               if(o.overlay) map.removeLayer(o.overlay); S.img=null; refreshUI(); } };
+      el.querySelector('.ndel').onclick=e=>{e.stopPropagation();treeConfirmDeleteRaster(o,isRas);};
       const ms=el.querySelector('.lmsel');if(ms)ms.onclick=e=>layerMultiHandle(key,e);
       /* Um clique seleciona, dois abrem as propriedades, três dão zoom: a
          mesma regra das camadas vetoriais. */
@@ -604,11 +705,7 @@ function refreshUI(){
       if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false,true)){collabCanEditLayer(L,true,true);return;}
       nodeSetVis({t:'L',id:L.id,o:L},!L.visible);zApply();refreshUI();};
     el.querySelector('.lfreeze').onclick=e=>{e.stopPropagation();setLayerFrozen(L,!L.locked);};
-    el.querySelector('.ldel').onclick=e=>{e.stopPropagation();
-      const detail=meshInfo?`${meshInfo.count.toLocaleString('pt-BR')} ${meshInfo.label}`:`${L.features.length} feições`,
-        note=meshInfo?'Outras representações não serão alteradas. Use Desfazer para recuperar esta camada.':'Esta ação não pode ser desfeita.';
-      if(confirm(`Remover a camada "${L.name}" (${detail})?\n${note}`))
-        deleteVectorLayer(L);};
+    el.querySelector('.ldel').onclick=e=>{e.stopPropagation();treeConfirmDeleteLayer(L);};
     // acesso direto às propriedades: o toque duplo continua funcionando, mas
     // não é descobrível — nada na tela indicava que ele existia
     el.querySelector('.lcfg').onclick=e=>{ e.stopPropagation();
@@ -642,8 +739,8 @@ function refreshUI(){
       // que entrega o segundo toque só como dblclick.
       treeDblClick(keyL,acoesL);
     };
-    el.querySelector('.lstyle').onclick=e=>{e.stopPropagation();window.GeoMineStyleTransfer?.menu(L,e.currentTarget);};
-    el.oncontextmenu=e=>{e.preventDefault();window.GeoMineStyleTransfer?.menu(L,el);};
+    el.querySelector('.lstyle').onclick=e=>{e.stopPropagation();treeMenuLayer(L,e.currentTarget);};
+    el.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();treeMenuLayer(L,el,e);};
     bindDrag(el,'node',nodeKey('L',L.id));
     list.appendChild(el);
     // classes expandidas sob a camada (olho por classe)

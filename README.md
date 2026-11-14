@@ -78,6 +78,15 @@ publicou de outro lugar e este repositório está desatualizado.
   inteiros também podem ser marcados (chave `G:`+id em `S._layerMulti`).
   Excluir um grupo marcado exclui o grupo, os subgrupos e tudo o que está
   dentro, depois de uma confirmação que lista o que será apagado.
+- **Botão direito na árvore traz a lixeira e os demais símbolos.** Os símbolos
+  de ação de cada linha (cadeado, propriedades, remover) ficam à direita e, no
+  painel estreito do iPad, saem da área visível. O botão direito — ou o toque
+  longo — abre um menu com as mesmas ações, cada uma com o seu símbolo:
+  mostrar/ocultar, zoom, congelar, tabela de atributos, copiar e colar estilo,
+  propriedades e, por último e em vermelho, **excluir** (lixeira). Vale para
+  camada vetorial, superfície/ortofoto e grupo (`treeMenuLayer`,
+  `treeMenuRaster` e `treeMenuGroup` em `15-layer-tree-crs-ui.js`). Um item
+  novo no menu sempre leva símbolo.
 - **Caixa de comandos discreta.** No rodapé, a caixa tem altura automática:
   barra, andamento do carregamento (quando há), as últimas linhas do histórico
   e o campo de comando. Minimizada (botão ▾), mostra só a barra e o andamento

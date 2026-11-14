@@ -137,6 +137,7 @@ function paste(L){
  }catch(e){toast(e.message);return false;}
 }
 function menu(L,anchor){
+ if(typeof treeMenuLayer==='function'){treeMenuLayer(L,anchor);return;}
  S.activeId=L.id;S.selRaster=null;try{propRefresh();}catch(_){}
  ribMiniMenu(anchor,L.name,[{nome:'Copiar estilo',desc:'Copia simbologia, rótulos e regras de classificação por código.',run:()=>copy(L)},
  {nome:'Colar estilo',desc:'Aplica a aparência e cria os campos de classificação ausentes por correspondência.',run:()=>paste(L)},

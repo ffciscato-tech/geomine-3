@@ -46,7 +46,7 @@ function install(doc){
   if(!contacts.size)consumed=null;
   if(e.pointerType!=='touch'&&e.pointerType!=='pen')return;enable();contacts.add(e.pointerId);cancelHold();
   const t=e.target,container=doc===document?mapElement():t.closest?.('canvas')||doc.body;
-  const row=t.closest?.('.layer,.clsrow,.ghead'),inMap=container?.contains(t);
+  const row=t.closest?.('.layer,.clsrow,.ghead,.grp'),inMap=container?.contains(t);
   tap=contacts.size===1&&e.pointerType==='touch'&&doc===document&&inMap&&!input(t)&&!vertex(t)&&['point','line','poly'].includes(S.tool)?
     {id:e.pointerId,x:e.clientX,y:e.clientY,at:Date.now(),project:S.projectId,tool:S.tool}:null;
   if(inMap){lastSurface=container;
