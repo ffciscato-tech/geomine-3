@@ -288,7 +288,8 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   - A gravação usa a permissão ampla do Drive (`driveAccess(true,{write:true})`
     no portão), escolhida pelo usuário para dispensar a indicação do arquivo.
     Só é pedida ao salvar; a janela do Google reaparece quando a autorização
-    de 50 minutos vence.
+    de 50 minutos vence. No iPad, o usuário relatou (14/11/2026) que essa
+    janela falhava no Safari e funciona bem no Chrome.
   - Envio retomável em partes de 8 MB, com andamento, nova tentativa em queda
     de rede e conferência do tamanho gravado. Se o arquivo foi alterado no
     Drive depois da versão aberta, pergunta antes de gravar por cima.
@@ -315,6 +316,13 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   com o mesmo contador de ordem de `S.undo`, e o Ctrl+Z a remove quando ela é a
   ação mais recente; camadas criadas juntas pelo mesmo comando saem juntas.
   Os módulos de mineração, que têm histórico próprio, não usam essa marca.
+- **O marcador da área contribuinte fica no ponto marcado.** Quando o ímã gruda
+  o toque na linha de fluxo, o marcador fica em cima da linha, e não no centro
+  da célula usada como exutório: na grade de 1,8 m do D8 do Hidro o centro da
+  célula fica até 0,9 m ao lado da linha, e com zoom alto o ponto parecia ter
+  saído do lugar (caso do usuário em 14/11/2026). A célula de escoamento usada
+  continua nos atributos (`E_CELULA`, `N_CELULA`, `AJUSTE_MDT`) e no texto do
+  resultado. Vale para o D8 pronto e para o cálculo pelo MDT.
 - **Snap na linha de fluxo segue o ímã.** Com o ímã ligado (`S.snapOn`), o
   toque gruda na linha visível mais próxima a até a tolerância do snap das
   outras ferramentas (`SNAP_PX` = 15 px; 24 px no toque), em qualquer zoom; o

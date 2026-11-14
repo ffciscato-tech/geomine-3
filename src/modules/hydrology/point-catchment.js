@@ -23,7 +23,7 @@ panel.innerHTML=`<h2>Área contribuinte no ponto</h2>
 </div>
 <button class="tbtn" id="pointCatchmentMark" style="width:100%;justify-content:center;background:var(--amber);color:#1a1206;font-weight:700">◎ Marcar ponto</button>
 <div class="hout" id="pointCatchmentResult" role="status" aria-live="polite" style="white-space:pre-line;margin-top:8px">A área será informada em m² e hectares.</div>
-<div class="hint" style="margin-top:8px">Com o ímã (snap) ligado, o toque gruda na linha de fluxo mais próxima, e o painel avisa na hora. Depois o ponto é ajustado ao talvegue do MDT (maior acumulação de fluxo ao lado), sem descer o rio; o marcador mostra o exutório usado. A área é toda a que drena até ele.</div>
+<div class="hint" style="margin-top:8px">Com o ímã (snap) ligado, o toque gruda na linha de fluxo mais próxima, e o painel avisa na hora. O marcador fica no ponto marcado. Como a linha quase nunca cai exatamente sobre a célula por onde a água passa na grade, a bacia é calculada a partir da célula de maior escoamento ao lado do ponto, sem descer o rio. A área é toda a que drena até ela.</div>
 <button class="mini" id="pointCatchmentRain" style="margin-top:12px">Chuva e inundação…</button>`;
 ($('secHidroBacia')?.parentElement||document.body).appendChild(panel);
 // statusHead: primeira linha fixa durante um cálculo (o aviso do snap).
@@ -55,6 +55,11 @@ function d8Sources(){
 const selectedD8=()=>{const v=$('pointCatchmentRaster').value;return v.startsWith('d8:')?d8Sources().find(x=>x.key===v)||null:null;};
 let routedD8=null;
 const aborted=()=>Object.assign(Error('Consulta cancelada: o projeto ou o MDT mudou.'),{name:'AbortError'});
+/* Distância real no terreno, em metros, entre dois pontos do CRS de trabalho. */
+function metersBetween(crs,a,b,fallback){
+  try{const A=toWGS(crs,a[0],a[1]),B=toWGS(crs,b[0],b[1]),m=map.distance([A[1],A[0]],[B[1],B[0]]);return Number.isFinite(m)&&m>0?m:fallback;}
+  catch(_){return fallback;}
+}
 function scale(s){const p=proj4(s.sourceCRS).oProj,k=Number(p.to_meter??1);if(p.projName==='longlat'||!Number.isFinite(k)||k<=0)throw Error('Use um MDT com CRS projetado para calcular a área em metros quadrados.');return k;}
 /* Memória para a análise: aparelhos móveis fecham a aba bem antes de um
    computador. Bacias que não cabem na resolução nativa são recalculadas numa
@@ -173,7 +178,7 @@ function arm(){
   const r=selected(),pronto=selectedD8();if(!r&&!pronto){status(rasters().length?'Escolha o MDT no campo acima e toque em Marcar ponto.':'Carregue um MDT original para marcar o ponto.');$('pointCatchmentRaster').focus();return;}
   if(!mapaVista2D())switchView('map');
   armed={r:r||null,d8:pronto||null,project:S.projectId,generation:gen()};setTool('basin');controls();
-  status('Toque no exutório: na linha de fluxo ou em qualquer ponto do MDT. O marcador mostrará o ponto usado.');
+  status('Toque no exutório: na linha de fluxo ou em qualquer ponto do MDT. O marcador fica no ponto marcado.');
 }
 /* O MESMO SNAP DO TOQUE, MOSTRADO ANTES DO TOQUE. Com a marcação armada, o
    cursor do ímã (a mira verde das outras ferramentas) aparece sobre a linha
@@ -233,7 +238,12 @@ async function clickD8(fonte,latlng){
       result=await engine.analyzeRouted(source,routedD8.routing,{col,row},{searchCells:Math.ceil(searchM/res),signal:q.controller.signal,decodedCacheMB:12,tileSize:128,
         onProgress:v=>{check();status((v.phase==='contour'?'Traçando o contorno':'Delimitando a montante')+'…'+(v.cells?'\n'+fmt(v.cells,0)+' células':''));}});
     check();
-    const adjust=result.moved?result.snapDistance:0,at=toWGS(q.crs,...result.outlet);pointMarker.setLatLng([at[1],at[0]]);
+    /* O MARCADOR FICA NO PONTO QUE A PESSOA MARCOU (em cima da linha de fluxo,
+       quando o ímã grudou). Levá-lo ao centro da célula usada como exutório
+       deixava o ponto "ao lado" da linha em grade grossa — 0,9 m na grade de
+       1,8 m do D8 do Hidro, bem visível com zoom alto. A célula usada continua
+       registrada nos atributos (E_CELULA, N_CELULA) e no texto. */
+    const adjust=result.moved?metersBetween(q.crs,p,result.outlet,result.snapDistance):0;
     const partial=result.touchesEdge||result.touchesNoData,base=d.zf?'depressões preenchidas':'MDT bruto, depressões como sumidouros',
       props={AREA_M2:result.areaM2,AREA_HA:result.areaM2/10000,CELULAS:result.cells,
         E_TOQUE:tap[0],N_TOQUE:tap[1],AJUSTE_M:snap?.distance||0,LINHA:snap?.layer.name||'',E_PONTO:p[0],N_PONTO:p[1],AJUSTE_MDT:adjust,E_CELULA:result.outlet[0],N_CELULA:result.outlet[1],COTA_M:result.seedZ,
@@ -251,7 +261,7 @@ async function clickD8(fonte,latlng){
       (snap?'\nPonto na linha: '+snap.layer.name+' · ajuste '+fmt(snap.distance,2)+' m':
         S.snapOn===false?'\nÍmã (snap) desligado: usado o ponto tocado.':'\nNenhuma linha a até '+fmt(tolerance,1)+' m do toque: usado o ponto tocado.')+
       '\nUsado o D8 já calculado no Hidro (“'+fonte.name+'”, grade de '+fmt(res,2)+' m, '+base+'). Acumulação no exutório: '+fmt(props.ACUM_CEL,0)+' células.'+
-      (adjust?'\nExutório ajustado ao talvegue: '+fmt(adjust,2)+' m do ponto.':'\nExutório na célula do ponto marcado.');
+      (adjust?'\nBacia calculada a partir da célula de escoamento ao lado do ponto (a '+fmt(adjust,2)+' m; grade de '+fmt(res,2)+' m).':'\nBacia calculada a partir da célula do ponto marcado.');
     statusHead='';status(text);cmdLog(text.replaceAll('\n',' · '),'ok');
   }catch(e){statusHead='';if(q.project===S.projectId&&q.generation===gen()){status(e.name==='AbortError'?'Consulta cancelada.':e.message);if(e.name!=='AbortError')cmdLog('Área contribuinte: '+e.message,'warn');}}
   finally{statusHead='';if(job===q)job=null;controls();describe();}
@@ -324,8 +334,8 @@ async function click(latlng){
         routed={key,d,z:d._full?.z||d.z,routing};
       }
       result=await engine.analyzeRouted(source,routed.routing,start,{searchCells:Math.ceil(searchM/workRes),signal:q.controller.signal,decodedCacheMB:12,tileSize:128,onProgress:phase});check();
-      adjust=result.moved?result.snapDistance:0;wholeGrid=true;
-      const at=toWGS(q.crs,...sampler.toWork(result.outlet));pointMarker.setLatLng([at[1],at[0]]);
+      // O marcador fica no ponto marcado; a célula usada vai para o texto e os atributos.
+      adjust=result.moved?metersBetween(q.crs,p,sampler.toWork(result.outlet),result.snapDistance):0;wholeGrid=true;
     }catch(e){
       // Faltou memória para a grade inteira: segue pela janela a montante.
       if(e.code!=='memory'&&!(e instanceof RangeError))throw e;
@@ -336,9 +346,8 @@ async function click(latlng){
       status(factor>1?'Bacia grande: calculando em grade de '+fmt(res,2)+' m…':'Ajustando o exutório ao talvegue do MDT…');
       // O exutório é procurado em cada grade: a média das cotas pode deslocar o talvegue.
       const outlet=await engine.locateOutlet(source,start,{searchCells:Math.max(factor>1?2:1,Math.ceil(searchM/res)),signal:q.controller.signal,maxMemoryMB:memory});check();
-      if(factor===1||byChoice&&factor===chosen){adjust=outlet.moved?outlet.distance:0;
-        const at=toWGS(q.crs,...sampler.toWork([source.xll+(outlet.col+.5)*source.cs,source.yll+(source.nr-outlet.row-.5)*(source.csy||source.cs)]));
-        pointMarker.setLatLng([at[1],at[0]]);}
+      if(factor===1||byChoice&&factor===chosen)adjust=outlet.moved?metersBetween(q.crs,p,
+        sampler.toWork([source.xll+(outlet.col+.5)*source.cs,source.yll+(source.nr-outlet.row-.5)*(source.csy||source.cs)]),outlet.distance):0;
       try{
         result=await engine.analyze(source,{
           seed:{col:outlet.col,row:outlet.row},signal:q.controller.signal,maxMemoryMB:memory,decodedCacheMB:12,tileSize:128,initialRadiusM:reached||undefined,
@@ -383,7 +392,7 @@ async function click(latlng){
         S.snapOn===false?'\nÍmã (snap) desligado: usado o ponto tocado.':'\nNenhuma linha a até '+fmt(tolerance,1)+' m do toque: usado o ponto tocado.')+
       (factor===1?'\nCalculado nas cotas do TIFF nativo: '+fmt(nativeRes,2)+' m.':'')+
       (wholeGrid?'\nDireção e acumulação de fluxo D8 de toda a grade. Acumulação no exutório: '+fmt(result.cellsAtOutlet,0)+' células.':'')+
-      (adjust?'\nExutório ajustado ao talvegue do MDT: '+fmt(adjust,2)+' m do ponto.':'\nExutório na célula do ponto marcado.')+
+      (adjust?'\nBacia calculada a partir da célula de escoamento ao lado do ponto (a '+fmt(adjust,2)+' m; grade de '+fmt(result.resolution.x,2)+' m).':'\nBacia calculada a partir da célula do ponto marcado.')+
       (byChoice?'\nReamostrado por escolha sua: grade de '+fmt(result.resolution.x,2)+' m (média das cotas do TIFF de '+fmt(nativeRes,2)+' m).':'')+
       (factor>1&&!byChoice?'\nATENÇÃO: NÃO é o resultado do TIFF nativo. Por escolha sua, foi calculado em grade de '+fmt(result.resolution.x,2)+' m com média das cotas (TIFF de '+fmt(nativeRes,2)+' m), porque a bacia não coube na memória deste aparelho.':'')+
 '';
