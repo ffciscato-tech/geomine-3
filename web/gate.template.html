@@ -313,7 +313,7 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
       let saved=driveSession;
       try{saved=saved||JSON.parse(sessionStorage.getItem(storageKey)||'null');}catch(_){}
       if(saved?.owner===user.uid&&saved.until>Date.now()&&saved.token&&(!escrita||saved.write===true))return saved.token;
-      if(!interactive)throw Error(escrita?'Toque em Salvar de novo para autorizar a gravação no Google Drive.':'Toque em ↻ ao lado do nome do projeto para reconectar ao Drive.');
+      if(!interactive)throw criaErro('drive/authorization-needed',escrita?'Toque em Salvar de novo para autorizar a gravação no Google Drive.':'Toque em ↻ ao lado do nome do projeto para reconectar ao Drive.');
       const provider=new GoogleAuthProvider();
       provider.addScope('https://www.googleapis.com/auth/drive.file');
       if(escrita)provider.addScope('https://www.googleapis.com/auth/drive');

@@ -147,11 +147,29 @@ async function guardaCopiaManual(d,key,ownerUid,name,knownBytes,blob){
   }
 }
 
-window.saveProject=async function(salvarComo){
+/* Resolução das superfícies escolhida uma vez por projeto neste aparelho, para
+   o Salvar no Drive não repetir a pergunta a cada gravação. */
+const CHAVE_RESOLUCAO='geomine.salvar.resolucao.v1:';
+function resolucaoLembrada(projectId){
+  try{
+    const v=localStorage.getItem(CHAVE_RESOLUCAO+(projectId||''));
+    if(v==='nativa')return {cell:null};
+    const n=Number(v);return v&&n>0?{cell:n}:null;
+  }catch(_){return null;}
+}
+function lembraResolucao(projectId,cell){
+  try{localStorage.setItem(CHAVE_RESOLUCAO+(projectId||''),cell==null?'nativa':String(cell));}catch(_){}
+}
+
+window.saveProject=async function(salvarComo,opcoes){
+  /* opcoes.copiaLocal: comando explícito "Baixar cópia do projeto" — a única
+     forma de o projeto sair por download onde o Salvar grava no Google Drive. */
+  const copiaLocal=!!(opcoes&&opcoes.copiaLocal===true);
+  if(copiaLocal)salvarComo=true;
   /* Navegador sem seletor de arquivos para escrita (iPad, Safari, Firefox):
-     não há como vincular o original, então Salvar não pode parar num aviso —
-     segue pelo mesmo caminho do Salvar Como e entrega o arquivo por download.
-     O aviso do download já diz que o original não foi alterado. */
+     não há como vincular o arquivo escolhido pelo seletor do aparelho. O Salvar
+     grava direto no Google Drive (abaixo); o aviso de vínculo só vale onde o
+     navegador tem seletor de arquivos para escrita. */
   if(salvarComo!==true&&window.GeoMineProjectFile?.needsReconnect()&&typeof window.showOpenFilePicker==='function'){
     try{await GeoMineProjectFile.reconnect();}
     catch(error){toast(error.name==='AbortError'?'Vinculação cancelada; alterações mantidas em tela.':error.message);return false;}
@@ -182,11 +200,13 @@ window.saveProject=async function(salvarComo){
      Sem seletor de arquivos para escrita (iPad) ou com o projeto vinculado ao
      Drive, Salvar grava em cima do arquivo original e Salvar Como cria o
      arquivo na pasta escolhida do Drive. A autorização e a escolha acontecem
-     aqui, ainda dentro do toque. Só se o Drive falhar é oferecido o download. */
+     aqui, ainda dentro do toque. Nunca vira download: o usuário definiu que
+     salvar é gravar no arquivo, como em qualquer programa de mesa. Se o Drive
+     falhar, o Salvar avisa o motivo e as alterações continuam em tela. */
   const seletorDeGravacao=saveTarget?saveTarget.available():!!(window.showSaveFilePicker&&(typeof fsApiOK!=='function'||fsApiOK()));
   let planoDrive=null,vinculoDrive=false;
   try{vinculoDrive=!!window.GeoMineDriveProject?.isSource(window.GeoMineProjectTabSession?.bindingFor?.(projectIdAtual)?.source);}catch(_){}
-  if(!handleAtual&&window.GeoMineDriveSave?.available()&&(!seletorDeGravacao||(vinculoDrive&&!pediuSalvarComo))){
+  if(!copiaLocal&&!handleAtual&&window.GeoMineDriveSave?.available()&&(!seletorDeGravacao||(vinculoDrive&&!pediuSalvarComo))){
     try{
       /* No Drive o nome não precisa ser "limpo": vale o nome do projeto como a pessoa o vê. */
       planoDrive=await GeoMineDriveSave.prepare({saveAs:pediuSalvarComo,name:String(base).replace(/\.(ccmgis|geocampo|alagis)$/i,'')+'.ccmgis',projectId:projectIdAtual});
@@ -194,9 +214,10 @@ window.saveProject=async function(salvarComo){
     }catch(error){
       if(error&&error.name==='AbortError'){toast('Salvamento cancelado');return false;}
       console.warn('[130] Google Drive:',error);
-      if(!confirm('Não foi possível gravar no Google Drive: '+(error&&error.message||error)+'\n\nBaixar uma cópia do projeto neste aparelho? (O arquivo do Drive não é alterado.)')){
-        toast('Projeto não salvo. As alterações continuam em tela.');return false;
-      }
+      const motivo=String(error&&error.message||error).replace(/\s+$/,'');
+      toast('Não foi possível gravar no Google Drive: '+motivo+(/[.!?]$/.test(motivo)?'':'.')+' O projeto não foi salvo; as alterações continuam em tela. Toque em Salvar para tentar de novo.');
+      if(typeof cmdLog==='function')cmdLog('Salvar no Google Drive falhou: '+motivo+' — nada foi alterado no Drive. Se a falha persistir, o comando “Baixar cópia do projeto” (busca de comandos) guarda o trabalho neste aparelho.','avisa');
+      return false;
     }
     if(!mesmoProjeto()){toast('O projeto mudou; salvamento cancelado.');return false;}
   }
@@ -215,9 +236,12 @@ window.saveProject=async function(salvarComo){
   if((S.rasters||[]).some(r=>r&&r.d&&!r.tinPuro)||S.img){
     showLoad('Verificando vínculos dos rasters; reutilizando os arquivos existentes…');
     try{
+      /* No Drive não existe "pasta de projeto" local: não pede pasta nem avisa
+         da cópia nativa pendente — o TIFF original continua onde está. */
+      const pedePasta=!!salvarComo&&!planoDrive&&!copiaLocal;
       const sync=typeof projectSyncNativeSources==='function'
-        ?await projectSyncNativeSources(!!salvarComo):await projectSyncNativeRasters(!!salvarComo);
-      if(sync&&!sync.ok)
+        ?await projectSyncNativeSources(pedePasta):await projectSyncNativeRasters(pedePasta);
+      if(sync&&!sync.ok&&!planoDrive&&!copiaLocal)
         toast('Projeto será salvo com a prévia interna; a cópia GeoTIFF nativa aguarda uma pasta de projeto.');
     }catch(e){ console.warn('[130] sync nativo',e); }
   }
@@ -225,11 +249,19 @@ window.saveProject=async function(salvarComo){
 
   S._saveTargetCell=null;
   const semPasta = (typeof fsApiOK==='function') ? !fsApiOK() : !window.showSaveFilePicker;
-  const limiar = semPasta ? 25 : 180;
-  if((S.rasters||[]).length && estimaPesoMB(null) > limiar){
+  /* Salvar no Drive: até 60 MB (o que o próprio diálogo recomenda para
+     celular e tablet) grava as superfícies como estão, sem perguntar. Acima
+     disso pergunta UMA vez por projeto e reutiliza a resposta; Salvar Como
+     pergunta de novo. */
+  const limiar = semPasta ? (planoDrive ? 60 : 25) : 180;
+  const lembrada = planoDrive&&!pediuSalvarComo ? resolucaoLembrada(projectIdAtual) : null;
+  if((S.rasters||[]).length && estimaPesoMB(null) > limiar && lembrada && estimaPesoMB(lembrada.cell) <= 380){
+    S._saveTargetCell=lembrada.cell;
+  }else if((S.rasters||[]).length && estimaPesoMB(null) > limiar){
     const alvo=await escolheResolucaoSalvar(semPasta);
     if(!mesmoProjeto()){hideLoad();toast('O projeto mudou; salvamento cancelado.');return false;}
     if(alvo===false){S._saveTargetCell=null;hideLoad();return false;}
+    if(planoDrive)lembraResolucao(projectIdAtual,alvo);
     S._saveTargetCell=alvo;
   }
 

@@ -127,6 +127,8 @@ async function prepare(options){
   const token=await p.driveAccess(true,{write:true}),signal=options.signal,projectId=options.projectId||null;
   if(options.saveAs===true)return planSaveAs(token,options.name,signal);
   const record=binding(projectId),drive=root.GeoMineDriveProject;
+  // Projeto novo, que nunca veio de um arquivo: a pessoa indica onde gravar.
+  if(!record)return planSaveAs(token,options.name,signal);
   let target=null,base=0;
   if(drive.isSource(record?.source)){
     target=await metadata(token,record.source,signal);

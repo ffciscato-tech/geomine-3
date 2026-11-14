@@ -173,6 +173,10 @@ function showResumeIssue(){
   const issue=resumeIssue;resumeIssue=null;
   if(!issue||!current()||record?.source?.id!==issue.id||S.projectId!==issue.project)return;
   updateSourceButton();
+  if(issue.quiet){
+    try{cmdLog('Projeto retomado do que estava guardado neste aparelho. A conferência com o Google Drive volta no próximo Salvar ou ao tocar em ↻.','info');}catch(_){}
+    return;
+  }
   if(!issue.conflict){
     const message='Exibindo a cópia local de “'+record.name+'”. '+issue.message;
     try{cmdLog(message,'warn');}catch(_){}
@@ -253,6 +257,9 @@ async function reopen(options){
     if(!valid())return false;
     const draft=automatic?await window.GeoMineWorkspaceResume?.pendingSnapshot(target.projectId):null;
     if(!valid())return false;
+    /* Nada mudou no Drive desde a versão guardada neste aparelho: a retomada
+       local mostra o mesmo conteúdo sem baixar o projeto inteiro de novo. */
+    if(automatic&&remote&&draft&&!draft.dirty&&!switched&&draft.baseRevision&&draft.baseRevision===source.version)return false;
     if(draft?.dirty){
       const changed=source.kind==='drive'&&draft.baseRevision ? draft.baseRevision!==source.version :
         !draft.baseModified||draft.baseModified!==source.lastModified;
@@ -289,9 +296,13 @@ async function reopen(options){
   }catch(e){
     if(valid()&&e.name!=='AbortError'){
       if(options?.source){notify(e.message);return false;}
-      if(remote&&automatic)resumeIssue={project:target.projectId,id:target.source.id,message:e.message};
+      /* Autorização do Drive vencida numa recarga não é erro: o projeto volta
+         do que está guardado neste aparelho e a conferência com o Drive
+         acontece no próximo Salvar ou no ↻. Sem aviso na tela. */
+      const semAutorizacao=remote&&automatic&&e.code==='drive/authorization-needed';
+      if(remote&&automatic)resumeIssue={project:target.projectId,id:target.source.id,message:e.message,quiet:semAutorizacao};
       pending=true;needsPermission=needsPermission||e.name==='NotAllowedError'||e.name==='SecurityError';
-      lastError='Não foi possível reabrir “'+target.name+'”. '+(e.message||e);}
+      lastError=semAutorizacao?'':'Não foi possível reabrir “'+target.name+'”. '+(e.message||e);}
     return false;
   }finally{if(operation===token)busy=false;if(opening)opening.finish();else if(shown&&(operation===token||committed))try{hideLoad();}catch(_){}if(pending)render();}
 }

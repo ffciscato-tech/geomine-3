@@ -283,9 +283,22 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   - Envio retomável em partes de 8 MB, com andamento, nova tentativa em queda
     de rede e conferência do tamanho gravado. Se o arquivo foi alterado no
     Drive depois da versão aberta, pergunta antes de gravar por cima.
-  - O download só é oferecido, com pergunta, quando o Drive falha
-    (autorização, permissão de edição). Em navegador de mesa com seletor de
-    arquivos o Salvar continua gravando no arquivo local, como antes.
+  - **Salvar nunca vira download** (reforçado pelo usuário em 14/11/2026:
+    "como no Word, no AutoCAD, no QGIS"). Se o Drive falhar, o Salvar avisa o
+    motivo e as alterações continuam em tela; a única saída por download é o
+    comando explícito **Baixar cópia do projeto**, na busca de comandos.
+  - Projeto novo (que não veio de um arquivo): o primeiro Salvar pede a pasta
+    do Drive e o nome; os seguintes gravam nesse arquivo.
+  - Nada de perguntas no caminho: o Salvar no Drive não pede "pasta de
+    projeto" para os rasters nem repete a pergunta de resolução — até 60 MB
+    grava as superfícies como estão; acima disso pergunta uma vez por projeto
+    e guarda a resposta (`geomine.salvar.resolucao.v1:`).
+  - Ao recarregar a página, autorização do Drive vencida não é erro: o projeto
+    volta do que está guardado no aparelho, sem aviso na tela
+    (`drive/authorization-needed`). Com a autorização válida e nada novo no
+    Drive, também não baixa o projeto de novo.
+  - Em navegador de mesa com seletor de arquivos o Salvar continua gravando no
+    arquivo local, como antes.
 - **Camadas de resultado entram no desfazer.** Comandos que só criam uma
   camada nova (Mesclar, Dissolver, curvas de nível, bacias, direção de fluxo e
   os demais de `25-geoprocessing-tin.js` e `19-hydrology-and-flooding.js`)
