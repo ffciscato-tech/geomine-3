@@ -1860,6 +1860,7 @@ function doUndo(){
   if(proxima?.t==='featsplit'&&window.GeoMinePolygonSplit){GeoMinePolygonSplit.undo(proxima);return;}
   if(proxima&&proxima.L&&typeof collabCanEditLayer==='function'&&!collabCanEditLayer(proxima.L,false)){collabCanEditLayer(proxima.L,true);return;}
   if(proxima?.t==='dimensionstyle'&&window.GeoMineDimensions){GeoMineDimensions.undoStyle(proxima);return;}
+  if(proxima?.t==='catchmentresult'&&window.GeoMinePointCatchment?.undo){GeoMinePointCatchment.undo(proxima);return;}
   const a=S.undo.pop();
   if(!a){ toast('Nada para desfazer'); return; }
   if(a.t==='attrfieldsdelete'){attrUndoDeleteFields(a);return;}
@@ -2001,10 +2002,25 @@ function doUndo(){
     drawLayer(a.L); refreshUI(); toast('Geometria restaurada');
   }
 }
+/* Atalho de desfazer: Ctrl+Z, Cmd+Z e Alt+Z (Option+Z). Em teclado de iPad/Mac
+   o Alt+Z chega como "Ω" e alguns teclados entregam o Ctrl+Z como caractere de
+   controle; nesses casos vale a tecla física (code). */
+function gmUndoShortcut(e){
+  if(!e||!(e.ctrlKey||e.metaKey||e.altKey))return false;
+  const k=String(e.key||'');
+  return /^[a-z]$/i.test(k)?k.toLowerCase()==='z':e.code==='KeyZ';
+}
+/* Campo em que se digita: o desfazer é o do próprio campo. Interruptores,
+   botões e controles deslizantes ficam com o foco depois do clique e não
+   podem engolir o atalho. */
+function gmUndoFocoDeTexto(){
+  const el=document.activeElement,tag=(el&&el.tagName)||'';
+  if(tag==='TEXTAREA'||(el&&el.isContentEditable))return true;
+  return tag==='INPUT'&&!/^(checkbox|radio|range|button|submit|reset|color|file|image)$/i.test(el.type||'');
+}
 document.addEventListener('keydown',e=>{
-  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){
-    const tag=(document.activeElement&&document.activeElement.tagName)||'';
-    if(tag==='INPUT'||tag==='TEXTAREA') return;        // não roubar o undo de campos de texto
+  if(gmUndoShortcut(e)){
+    if(gmUndoFocoDeTexto()) return;                    // não roubar o undo de campos de texto
     // desenhando drenagem: Ctrl+Z remove o ÚLTIMO ponto do traçado em andamento
     if(S.tool==='dren' && S._drenBuf && S._drenBuf.length){
       e.preventDefault();

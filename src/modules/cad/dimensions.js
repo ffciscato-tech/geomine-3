@@ -206,7 +206,7 @@ window.addEventListener('keydown',e=>{
   if($('Modal')?.classList.contains('on')){e.preventDefault();e.stopImmediatePropagation();$('Modal').classList.remove('on');}return;
  }
  if(!current||e.target.closest?.('input,textarea,select,[contenteditable="true"]'))return;
- if(e.key==='Backspace'||((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'&&current.points.length)){
+ if(e.key==='Backspace'||((typeof gmUndoShortcut==='function'?gmUndoShortcut(e):(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z')&&current.points.length)){
   e.preventDefault();e.stopImmediatePropagation();current.points.pop();if(current.links)current.links.length=current.points.length;current.line.setLatLngs([]);current.label.setIcon(textIcon('',0,current.style));current.hover=null;instruction();
  }
 },true);

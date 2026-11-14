@@ -240,9 +240,11 @@ async function clickD8(fonte,latlng){
         RES_X_M:result.resolution.x,RES_Y_M:result.resolution.y,RES_MDT_M:res,MDT:fonte.name,ACUM_CEL:result.cellsAtOutlet??result.cells,
         METODO:'D8 já calculado no Hidro ('+base+') · grade de '+fmt(res,2)+' m',LIMITE_DADOS:partial?'Sim':'Não'},
       fields=Object.entries(props).map(([name,value])=>({name,type:typeof value==='number'?'N':'C',length:typeof value==='number'?20:100,decimal:['CELULAS','ACUM_CEL'].includes(name)?0:6}));
+    const activeBefore=S.activeId;
     const layer=addLayer({...(S.hidro?.sourceRasterId!=null?{sourceLayer:'R:'+S.hidro.sourceRasterId}:{}),name:'Área contribuinte — '+fmt(props.AREA_HA,4)+' ha',gtype:'polygon',crs:q.crs,
       features:[{geom:result.rings.map(ring=>ring.map(xy=>[xy[0],xy[1]])),multi:true,props}],fields,color:'#328ad6'});
     if(layer){layer.weight=2;if(layer.sym){layer.sym.weight=2;layer.sym.fillOpacity=.14;}drawLayer(layer);}
+    if(layer)undoPush({t:'catchmentresult',L:layer,project:S.projectId,active:activeBefore});
     refreshUI();
     const text='Área contribuinte: '+fmt(props.AREA_HA,4)+' ha\n'+fmt(props.AREA_M2,4)+' m² · '+fmt(props.CELULAS,0)+' células'+
       (partial?'\nA área toca a borda ou células sem dados da grade; pode haver contribuição fora dos dados disponíveis.':'')+
@@ -369,9 +371,11 @@ async function click(latlng){
         METODO:(wholeGrid?'D8 — direção e acumulação de fluxo da grade inteira':'D8 — fluxo contínuo em janela a montante')+' · '+(byChoice?'REAMOSTRADO por escolha: grade de '+fmt(workRes,2)+' m ('+factor+'× a célula nativa, média das cotas)':factor>1?'NÃO NATIVO: grade agregada '+factor+'× (média das cotas)':'cotas do TIFF nativo'),LIMITE_DADOS:partial?'Sim':'Não'},
       fields=Object.entries(props).map(([name,value])=>({name,type:typeof value==='number'?'N':'C',length:typeof value==='number'?20:100,decimal:['CELULAS','ACUM_CEL'].includes(name)?0:6}));
     check();
+    const activeBefore=S.activeId;
     const layer=addLayer({sourceLayer:'R:'+r.id,name:'Área contribuinte — '+fmt(props.AREA_HA,4)+' ha',gtype:'polygon',crs:q.crs,
       features:[{geom,multi:true,props}],fields,color:'#328ad6'});
     if(layer){layer.weight=2;if(layer.sym){layer.sym.weight=2;layer.sym.fillOpacity=.14;}drawLayer(layer);}
+    if(layer)undoPush({t:'catchmentresult',L:layer,project:S.projectId,active:activeBefore});
     refreshUI();
     const text='Área contribuinte: '+fmt(props.AREA_HA,4)+' ha\n'+fmt(props.AREA_M2,4)+' m² · '+fmt(props.CELULAS,0)+' células'+
       (partial?'\nA área toca a borda ou células sem dados do MDT; pode haver contribuição fora dos dados disponíveis.':'')+
@@ -386,6 +390,20 @@ async function click(latlng){
     statusHead='';status(text);cmdLog(text.replaceAll('\n',' · '),'ok');
   }catch(e){statusHead='';if(q.project===S.projectId&&q.generation===gen()){status(e.name==='AbortError'?'Consulta cancelada.':e.message);if(e.name!=='AbortError')cmdLog('Área contribuinte: '+e.message,'warn');}}
   finally{statusHead='';clearInterval(timer);sampler?.close();if(job===q)job=null;controls();describe();}
+}
+/* Ctrl+Z logo depois de gerar: sai a camada da área contribuinte recém-criada
+   (e o marcador do exutório dela), sem tocar em ações anteriores. */
+function undo(a){
+  S.undo.pop();
+  const L=a.L;
+  if(a.project!==S.projectId||!S.layers.includes(L)){toast('Desfazer: a área contribuinte já não está no projeto.');return false;}
+  if(S.selFeat&&(S.selFeat.layer===L||S.selFeat.layerId===L.id)){S.selFeat=null;try{clearVertices();highlightSel();}catch(_){}}
+  if((S.msel?.items||[]).some(i=>i.layerId===L.id))try{mselClear(true);}catch(_){}
+  if(L.llayer)try{map.removeLayer(L.llayer);}catch(_){}
+  S.layers=S.layers.filter(x=>x!==L);S.stack=(S.stack||[]).filter(k=>k!=='L:'+L.id);
+  if(S.activeId===L.id)S.activeId=S.layers.some(x=>x.id===a.active)?a.active:S.layers[0]?.id??null;
+  if(!job){pointMarker?.remove();pointMarker=null;status('Área contribuinte desfeita. Toque em Marcar ponto para gerar outra.');}
+  refreshUI();zApply();toast('Desfeito: camada “'+L.name+'” removida');return true;
 }
 $('pointCatchmentRaster').onchange=()=>{cancel();describe();controls();};
 $('pointCatchmentMark').onclick=arm;
@@ -435,5 +453,5 @@ for(const group of category?.grupos||[])for(const item of group.it||[]){
   if(item.ic==='mancha-inundacao')item.act=open;
 }
 $('btnBasin').onclick=()=>{refresh();arm();};
-root.GeoMinePointCatchment={open,refresh,arm,click,cancel,snapPreview,projectChanged:()=>{cancel();pointMarker?.remove();pointMarker=null;context=null;routed=null;routedD8=null;}};
+root.GeoMinePointCatchment={open,refresh,arm,click,cancel,snapPreview,undo,projectChanged:()=>{cancel();pointMarker?.remove();pointMarker=null;context=null;routed=null;routedD8=null;}};
 })(window);

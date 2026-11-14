@@ -676,7 +676,7 @@ function bind(){
       cancel();toast('Comando cancelado');return;
     }
     /* desfazer no meio do gesto trocaria a geometria por baixo da prévia */
-    if(g&&g.fase!=='aperto'&&(ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='z')stop(ev);
+    if(g&&g.fase!=='aperto'&&(typeof gmUndoShortcut==='function'?gmUndoShortcut(ev):(ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='z'))stop(ev);
   },true);
   root.addEventListener('blur',()=>{if(g&&g.fase!=='destino')cancelaGesto();});
   map.on('move zoomend resize',()=>{if(g&&g.canvas)agenda();});

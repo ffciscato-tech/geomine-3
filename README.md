@@ -227,6 +227,12 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   setas" é uma amostra da grade espalhada pelo mapa e tem "fluxo" no nome:
   roubava o ponto da linha de fluxo de verdade (`isArrows`/`snapLines` em
   `point-catchment.js`).
+- **Ctrl+Z desfaz a área contribuinte.** Cada bacia gerada entra na pilha de
+  desfazer (`catchmentresult`, tratado por `GeoMinePointCatchment.undo`); antes
+  o atalho pulava a bacia e desfazia uma ação mais antiga. O atalho vale como
+  Ctrl+Z, Cmd+Z e Alt+Z (`gmUndoShortcut`, que usa a tecla física quando o
+  teclado do iPad entrega "Ω"), e só é deixado para o campo quando o foco está
+  num campo de digitação — interruptores e botões não engolem o atalho.
 - **Snap na linha de fluxo segue o ímã.** Com o ímã ligado (`S.snapOn`), o
   toque gruda na linha visível mais próxima a até a tolerância do snap das
   outras ferramentas (`SNAP_PX` = 15 px; 24 px no toque), em qualquer zoom; o
