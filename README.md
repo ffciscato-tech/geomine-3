@@ -110,6 +110,33 @@ publicou de outro lugar e este repositório está desatualizado.
   - o Perfil fica de fora: cada vértice dele ganha um rótulo (A, B, C…);
   - o modo começa desligado e fica guardado por aparelho
     (`geomine.maoLivre.v1`). Desligado, nada muda no desenho.
+- **Caneta no papel do mouse** (`modules/ui/pen-mouse.js`; pedido do usuário em
+  14/11/2026: "fazer todo o papel do mouse com a caneta"). Sem mouse, a caneta
+  faz o papel dele e os dedos continuam sendo o toque:
+  - arrastar com a caneta não move o mapa (isso é com os dedos), como o botão
+    esquerdo do mouse: na seta desenha a caixa de seleção (janela ou
+    cruzando), move a feição já selecionada — inclusive pelo interior — e
+    arrasta as alças de vértice;
+  - nas ferramentas de clique (ponto, linha, polígono, drenagem, régua,
+    perfil, informação, área contribuinte, barramento, inundação, lâmina,
+    ponto cotado), encostar e arrastar é mirar: as coordenadas, a mira do ímã
+    e a prévia do segmento acompanham a ponta, e o ponto entra onde a caneta é
+    levantada. O toque curto continua valendo como clique;
+  - com a caneta em contato no mapa, a palma não move o mapa nem dá zoom;
+  - a caixa de comprimento/ângulo do CAD vai para o canto do mapa quando a
+    caneta levanta (com o mouse ela acompanha o cursor);
+  - botão direito: segurar meio segundo ou o botão ◨. Com a mão livre ligada,
+    o traço tem a vez nas ferramentas que ela atende;
+  - vem ligado e fica guardado por aparelho (`geomine.canetaMouse.v1`); o menu
+    ••• › "Caneta: voltar a arrastar o mapa" devolve o comportamento antigo.
+  O que a caneta não substitui: a roda do mouse (o zoom é com dois dedos ou
+  pelos botões de zoom), o botão do meio (mover o mapa é com os dedos) e as
+  dicas que aparecem ao passar o mouse.
+  Técnica: o Leaflet embutido (1.9.4) recebe a caneta como toque nativo. Só o
+  arrasto e a pinça do MAPA (`map.dragging._draggable._onDown` e
+  `map.touchZoom._onTouchStart`) passam a ignorá-la, e isso só é aplicado
+  quando uma caneta toca o mapa; os marcadores arrastáveis não mudam. Ao
+  atualizar o Leaflet, conferir esses dois pontos.
 - **Só o toque vale como clique nas ferramentas de ponto.** No tablet, o
   reforço de toque de `06-map-tools-snap.js` (drenagem, área contribuinte,
   barramento, lâmina e inundação) convertia qualquer `touchend` em clique:

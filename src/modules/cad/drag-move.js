@@ -464,8 +464,10 @@ function alvoDireto(ev,esDado){
   }
   const t=toqueNoConjunto(es,p,ll,8);if(!t)return null;
   /* onde o arrasto simples é o pan (tela de toque), o interior não inicia o Mover:
-     só o traço. Para mover pelo interior, usa-se o comando Mover. */
-  if(t==='dentro'&&S.touch)return null;
+     só o traço. Para mover pelo interior, usa-se o comando Mover. A caneta no
+     papel do mouse (pen-mouse.js) não arrasta o mapa: com ela vale o interior,
+     como no computador. */
+  if(t==='dentro'&&S.touch&&!(ev.pointerType==='pen'&&root.GeoMinePen?.asMouse))return null;
   if(t==='dentro'&&typeof feicaoSobPonto==='function'){
     /* interior de polígono selecionado, mas com OUTRA feição sob o cursor:
        o gesto é dela (seleção), não do polígono de fundo */

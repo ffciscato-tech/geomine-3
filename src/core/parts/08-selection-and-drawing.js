@@ -256,7 +256,9 @@ function mselBind(){
   };
   const caixaNaSeta=e=>{
     const touchBox=e.pointerType!=='mouse'&&window.GeoMineTouchWorkspace?.boxSelection;
-    if(S.tool!=='select'||(!touchBox&&e.pointerType!=='mouse')||(e.pointerType==='mouse'&&e.button!==0)||!e.isPrimary||e.altKey)return false;
+    /* Caneta no papel do mouse (pen-mouse.js): arrastar com ela é o botão esquerdo. */
+    const canetaMouse=e.pointerType==='pen'&&!!window.GeoMinePen?.asMouse;
+    if(S.tool!=='select'||(!touchBox&&!canetaMouse&&e.pointerType!=='mouse')||(e.pointerType==='mouse'&&e.button!==0)||!e.isPrimary||e.altKey)return false;
     if(!mapaVista2D())return false;
     if(e.target?.closest?.('.leaflet-control,.leaflet-marker-icon,.gm-vtx-hit,.modal,.edbox,input,button,select,textarea,.feat-menu'))return false;
     if(S._vtxCtx||S._vtxDragging||S.drawBuf?.length)return false;
@@ -279,8 +281,9 @@ function mselBind(){
     st={id:e.pointerId, p0:cp(e), moved:false, modo:'seta', somar:e.shiftKey||e.ctrlKey||e.metaKey||!!window.GeoMineTouchWorkspace?.additive};
     /* Shift+arrasto é o zoom por caixa do Leaflet: na seta, ele soma à seleção */
     if(map.boxZoom&&map.boxZoom.enabled()){ map.boxZoom.disable(); st.bz=true; }
-    /* o botão esquerdo do mouse é da seta: nunca arrasta o mapa junto com o retângulo */
-    if(map.dragging&&map.dragging.enabled()){ map.dragging.disable(); st.pan=true; }
+    /* o botão esquerdo do mouse é da seta: nunca arrasta o mapa junto com o retângulo.
+       A caneta no papel do mouse já não arrasta o mapa: nada a desligar. */
+    if(!(e.pointerType==='pen'&&window.GeoMinePen?.asMouse)&&map.dragging&&map.dragging.enabled()){ map.dragging.disable(); st.pan=true; }
   });
   const religa=foi=>{
     if(foi&&foi.bz) setTimeout(()=>{ try{ map.boxZoom.enable(); }catch(_){} },0);
@@ -293,7 +296,8 @@ function mselBind(){
     /* botão solto fora do mapa: o retângulo termina onde estava */
     if(st.modo==='seta'&&e.pointerType==='mouse'&&e.buttons===0){ fim(e); return; }
     const p=cp(e);
-    if(!st.moved && p.distanceTo(st.p0)<(st.modo==='seta'?5:8)) return;
+    /* a ponta da caneta escorrega mais que o mouse num toque: folga maior antes de virar caixa */
+    if(!st.moved && p.distanceTo(st.p0)<(st.modo==='seta'?(e.pointerType==='pen'?9:5):8)) return;
     st.moved=true;
     const a=map.containerPointToLatLng(st.p0), b=map.containerPointToLatLng(p);
     const g=mselSk(); g.clearLayers();

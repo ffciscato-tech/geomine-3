@@ -111,6 +111,7 @@ function more(anchor){
  ribMiniMenu(anchor,'Comandos por toque',[
   {nome:secondary?'Cancelar o botão direito':'Botão direito no próximo toque',run:()=>{secondary=!secondary;sec=null;sync();}},
   ...(root.GeoMineFreehand?[{nome:root.GeoMineFreehand.on?'Desligar a mão livre':'Desenho à mão livre',run:()=>{root.GeoMineFreehand.toggle();sync();}}]:[]),
+  ...(root.GeoMinePen?[{nome:root.GeoMinePen.asMouse?'Caneta: voltar a arrastar o mapa':'Caneta: fazer o papel do mouse',run:()=>root.GeoMinePen.toggle()}]:[]),
   {nome:'Ações da feição',run:actions},{nome:'Concluir comando',run:()=>key('Enter')},{nome:'Cancelar comando',run:()=>key('Escape')},
   {nome:'Desfazer',run:()=>doUndo()},
   {nome:additive?'Desativar seleção aditiva':'Somar à seleção',run:()=>{additive=!additive;sync();}},
@@ -121,7 +122,7 @@ function more(anchor){
   {nome:'Salvar projeto',run:()=>root.saveProject(false)},
   ...(root.GeoMineImportRecovery?.available()?[{nome:'Recuperar projeto anterior ao TIFF',run:()=>root.GeoMineImportRecovery.recover({manual:true})}]:[]),
   {sep:true},{nome:pan3D?'3D: arrastar para orbitar':'3D: arrastar para deslocar',run:()=>{pan3D=!pan3D;sync();}},
-  {nome:'Ajuda dos gestos',run:()=>toast('Dedo ou caneta — Toque: selecionar · Dois toques na camada: propriedades · Segurar meio segundo: botão direito (menu, propriedades ou concluir comando) · Botão ◨: o próximo toque vale como botão direito · Mãozinha ao lado do ✓: desenho à mão livre, arrastando a caneta · 3D: um dedo gira; dois dedos deslocam e fazem zoom.')}]);
+  {nome:'Ajuda dos gestos',run:()=>toast('Dedo ou caneta — Toque: selecionar · Dois toques na camada: propriedades · Segurar meio segundo: botão direito (menu, propriedades ou concluir comando) · Botão ◨: o próximo toque vale como botão direito · Caneta no papel do mouse: arrastar seleciona por caixa, move a feição selecionada ou mira o ponto (entra ao levantar); os dedos movem o mapa · Mãozinha ao lado do ✓: desenho à mão livre · 3D: um dedo gira; dois dedos deslocam e fazem zoom.')}]);
  const menu=[...document.querySelectorAll('.ribmini')].at(-1);if(menu){const r=menu.getBoundingClientRect(),a=anchor.getBoundingClientRect();if(r.bottom>innerHeight-6)menu.style.top=Math.max(6,a.top-r.height-3)+'px';}
 }
 function mount(){

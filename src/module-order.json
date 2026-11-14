@@ -1553,6 +1553,7 @@
       "kind": "script",
       "parts": [
         "modules/cad/freehand-drawing.js",
+        "modules/ui/pen-mouse.js",
         "modules/ui/touch-workspace.js",
         "modules/persistence/import-recovery.js",
         "modules/raster/source-properties.js",
