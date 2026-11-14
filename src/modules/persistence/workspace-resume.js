@@ -61,8 +61,54 @@ async function write(){
   if(!identity())throw new DOMException('A sessão mudou.','AbortError');
   try{sessionStorage.setItem(POINTER,JSON.stringify(meta));}catch(_){}committed=true;
   lastSaved=JSON.stringify([id,o,project,g,version]);savedAt=Date.now();wanted=!valid();warning='';view();if(own(old)&&old.key!==key)void remove(old);return true;
- }catch(e){wanted=true;if(e.name!=='AbortError'&&warning!==(e.message||String(e))){warning=e.message||String(e);toast('A retomada automática não pôde ser guardada neste aparelho: '+warning+' O arquivo do projeto continua disponível pelo comando Salvar.');}return false;}
+ }catch(e){wanted=true;
+  // e pode chegar nulo de APIs antigas: nunca ler propriedades sem conferir.
+  const cheio=!!e&&(e.name==='QuotaExceededError'||e.code===22),
+   texto=cheio?'o armazenamento do navegador neste aparelho está cheio.':String(e&&e.message||e||'falha ao gravar no armazenamento do navegador.');
+  if(!(e&&e.name==='AbortError')&&warning!==texto){warning=texto;
+   toast('A retomada automática não pôde ser guardada neste aparelho: '+texto+' O arquivo do projeto continua disponível pelo comando Salvar.');
+   if(cheio)void usage().then(u=>{if(u)try{cmdLog('Armazenamento do navegador neste aparelho: '+u+'.','avisa');}catch(_){}});}
+  return false;}
  finally{if(!committed)void remove({v:1,key,owner:o,tab:id,count});}
+}
+async function usage(){
+ try{const q=await navigator.storage?.estimate?.();if(!q||!(q.quota>0))return '';
+  const gb=b=>(b/1073741824).toFixed(b<10737418240?1:0).replace('.',',')+' GB';return 'usando '+gb(q.usage||0)+' de '+gb(q.quota);}catch(_){return '';}
+}
+/* LIMPEZA DE SOBRAS. Cada gravação da retomada usa uma chave nova e apaga a
+   anterior ao terminar. Se a página é recarregada, ou o iPad descarta a aba,
+   no meio de uma gravação, os blocos já gravados ficam sem dono: nenhum
+   ponteiro os referencia e ninguém os apaga. Num projeto de dezenas de MB,
+   algumas recargas bastam para encher o armazenamento do navegador, e daí em
+   diante toda gravação falha. Na partida, apaga os blocos desta conta que
+   nenhum ponteiro referencia — só os desta aba (que ainda não gravou nada
+   nesta página) e os de abas que não estão mais abertas. Um bloco sem
+   ponteiro nunca pode ser retomado, então nada de útil é apagado. */
+async function sweep(){
+ const o=owner(),id=tabId();if(!id)return 0;
+ const base=PREFIX+encodeURIComponent(o||'offline')+':',lastBase=LAST+encodeURIComponent(o||'offline')+':';
+ try{
+  const db=await idb(),range=prefix=>IDBKeyRange.bound(prefix,prefix+'\uffff'),
+   ask=make=>new Promise((resolve,reject)=>{const r=make(db.transaction('kv','readonly').objectStore('kv'));r.onsuccess=()=>resolve(r.result||[]);r.onerror=()=>reject(r.error||Error('leitura'));});
+  const keys=await ask(s=>s.getAllKeys(range(base)));if(!keys.length)return 0;
+  const keep=new Set(),note=p=>{if(p&&typeof p.key==='string')keep.add(p.key);};
+  note(parse(POINTER));(await ask(s=>s.getAll(range(lastBase)))).forEach(note);
+  try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k&&k.startsWith(lastBase))note(localRead(k));}}catch(_){}
+  // Abas abertas agora: cada uma segura um bloqueio com o próprio id.
+  let live=null;
+  try{const q=await navigator.locks?.query?.();if(q)live=new Set((q.held||[]).map(l=>String(l.name||'')).filter(n=>n.startsWith('geomine-project-tab:')).map(n=>n.slice(20)));}catch(_){}
+  const dead=[];
+  for(const k of keys){
+   const rest=String(k).slice(base.length).split(':');if(rest.length<2)continue;
+   let tab='';try{tab=decodeURIComponent(rest[0]);}catch(_){continue;}
+   if(keep.has(base+rest[0]+':'+rest[1]))continue;
+   if(tab===id||live&&!live.has(tab))dead.push(k);
+  }
+  if(!dead.length)return 0;
+  await new Promise((resolve,reject)=>{const tx=db.transaction('kv','readwrite'),s=tx.objectStore('kv');dead.forEach(k=>s.delete(k));
+   tx.oncomplete=resolve;tx.onerror=tx.onabort=()=>reject(tx.error||Error('limpeza'));});
+  return dead.length;
+ }catch(_){return 0;}
 }
 async function flush(options={}){
  if((!ready&&!options.startup)||restoring||!has()||state()?.suspend||!state()?.booted||S._rasterImportController&&S._rasterImportController!==options.importController)return false;
@@ -117,6 +163,8 @@ function forget(){const old=parse(POINTER),o=owner(),project=S.projectId;epoch++
 async function start(){
  await root.GeoMineProjectTabSession?.ready;if(ready)return;
  const resumed=await restore();
+ // Antes da primeira gravação desta página: libera o espaço das gravações interrompidas.
+ try{const removed=await sweep();if(removed)try{cmdLog('Retomada automática: '+removed+' bloco(s) de gravações interrompidas foram apagados do armazenamento deste navegador.','info');}catch(_){}}catch(_){}
  if(!resumed&&!has())await root.GeoMineImportRecovery?.recover();
  request();
  // Commit the downloaded revision before declaring startup complete. An
@@ -140,6 +188,6 @@ function boot(){
 async function pendingSnapshot(project){
  const p=await previous();return bound(p)&&p.project===project?p:null;
 }
-root.GeoMineWorkspaceResume={request,flush,restore,forget,pendingSnapshot,get state(){return {ready,restoring,busy:!!busy,pointer:parse(POINTER),warning};}};
+root.GeoMineWorkspaceResume={request,flush,restore,forget,pendingSnapshot,sweep,get state(){return {ready,restoring,busy:!!busy,pointer:parse(POINTER),warning};}};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);

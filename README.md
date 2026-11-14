@@ -66,9 +66,11 @@ publicou de outro lugar e este repositório está desatualizado.
   (`S.orthoHD` e `S.orthoDispFull` na ortofoto; `demHD` e `dispFull` no MDT).
 - **Janelas de propriedades só com controles.** Nas janelas de propriedades da
   ortofoto (`#imgModal`), da camada vetorial (`#lpModal`) e do MDT
-  (`#rasModal`), o nome e o botão Renomear ficam no painel aberto pelo botão
-  **i** do cabeçalho. Os dados de leitura (arquivo, CRS, tamanho, datas) ficam
-  recolhidos dentro desse painel e só aparecem no **i** ao lado do nome. Os
+  (`#rasModal`), **o nome e o botão Renomear ficam sempre visíveis**, numa
+  linha logo abaixo do cabeçalho (o usuário não encontrou o Renomear quando
+  ele ficava dentro do painel do **i**; pedido de 14/11/2026: essa opção tem de
+  aparecer sempre nas propriedades). O botão **i** do cabeçalho abre só os
+  dados de leitura (arquivo, CRS, tamanho, datas), que ficam recolhidos. Os
   textos de cada seção ficam no **i** ao lado do título. Na janela ficam só os
   controles, com botões do tamanho do texto (nada de largura total) e as seções
   pouco usadas recolhidas. Layout aprovado em 12/11/2026 e compactado em
@@ -87,6 +89,18 @@ publicou de outro lugar e este repositório está desatualizado.
   camada vetorial, superfície/ortofoto e grupo (`treeMenuLayer`,
   `treeMenuRaster` e `treeMenuGroup` em `15-layer-tree-crs-ui.js`). Um item
   novo no menu sempre leva símbolo.
+- **Retomada automática: falha de gravação vira aviso, e sobras são limpas.**
+  A retomada (`workspace-resume.js`) grava a sessão em blocos no IndexedDB. No
+  iPad, com o armazenamento do navegador cheio, o `idbSet` rejeitava com
+  `null` e o tratamento do erro quebrava em `e.name`: aparecia a caixa
+  vermelha "PROMISE REJEITADA: null is not an object" (caso de 14/11/2026).
+  Agora o `idbSet` sempre rejeita com um erro de verdade (e termina quando a
+  transação é abortada), e a retomada mostra o motivo ("armazenamento do
+  navegador cheio", com o uso no registro de comandos). Na partida, `sweep()`
+  apaga os blocos de gravações interrompidas — recarregar a página ou ter a
+  aba descartada no meio de uma gravação deixava dezenas de MB sem dono a cada
+  vez. Só saem blocos que nenhum ponteiro referencia, desta aba ou de abas já
+  fechadas; um bloco sem ponteiro nunca pode ser retomado.
 - **Caixa de comandos discreta.** No rodapé, a caixa tem altura automática:
   barra, andamento do carregamento (quando há), as últimas linhas do histórico
   e o campo de comando. Minimizada (botão ▾), mostra só a barra e o andamento
@@ -400,7 +414,8 @@ As três janelas usam o mesmo conjunto de classes, definido no fim de
 | Classe | Papel |
 |---|---|
 | `.gmp` | marca a janela (`<div class="modal gmp">`) |
-| `.gmp-i` + `.gmp-info` | botão **i** do cabeçalho e o painel que ele abre (nome e Renomear) |
+| `.gmp-info` | faixa sempre visível abaixo do cabeçalho, com o nome e o Renomear |
+| `.gmp-i` + `.gmp-leitura` | botão **i** do cabeçalho e os dados de leitura que ele abre |
 | `.gmp-leitura` | dados de leitura, recolhidos; abrem pelo **i** ao lado do nome (`data-gmp-info`) |
 | `details.gmp-sec` | seção recolhível; `data-gmp-sec` é a chave com que o navegador lembra se ficou aberta |
 | `.gmp-st` | resumo ao lado do título da seção (preenchido por `gmpStatus(id, texto, tipo)`) |

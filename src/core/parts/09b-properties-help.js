@@ -90,9 +90,10 @@
   window.visualViewport?.addEventListener('resize', position);
 })();
 
-/* Janelas de propriedades (.gmp): o i do cabeçalho abre o painel com o nome e
-   os dados de leitura, as seções lembram se ficaram abertas e cada título
-   mostra um resumo do estado da seção. */
+/* Janelas de propriedades (.gmp): o nome com o Renomear fica sempre visível
+   logo abaixo do cabeçalho; o i do cabeçalho abre os dados de leitura do
+   arquivo; as seções lembram se ficaram abertas e cada título mostra um
+   resumo do estado da seção. */
 (function () {
   const key = id => 'gmp.sec.' + id;
   const recall = id => { try { return localStorage.getItem(key(id)); } catch (_) { return null; } };

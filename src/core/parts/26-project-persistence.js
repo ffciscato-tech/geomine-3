@@ -299,9 +299,15 @@ function idb(){
     q.onsuccess=()=>res(q.result); q.onerror=()=>rej(q.error);
   });
 }
+/* No WebKit (iPad) o evento de erro chega com t.error ainda nulo — o motivo
+   está no pedido — e uma transação abortada (armazenamento cheio) não dispara
+   onerror. Rejeitar com null quebrava quem lê e.name no catch, e sem onabort a
+   promessa nunca terminava. */
 async function idbSet(k,v){ const db=await idb(); return new Promise((res,rej)=>{
-  const t=db.transaction('kv','readwrite'); t.objectStore('kv').put(v,k);
-  t.oncomplete=()=>res(true); t.onerror=()=>rej(t.error); }); }
+  const t=db.transaction('kv','readwrite'), r=t.objectStore('kv').put(v,k);
+  const falha=ev=>rej(t.error||r.error||(ev&&ev.target&&ev.target.error)||
+    new Error('O navegador não conseguiu gravar no armazenamento deste aparelho.'));
+  t.oncomplete=()=>res(true); t.onerror=falha; t.onabort=falha; }); }
 async function idbGet(k){ const db=await idb(); return new Promise((res,rej)=>{
   const t=db.transaction('kv','readonly'); const r=t.objectStore('kv').get(k);
   r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }); }
