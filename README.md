@@ -80,6 +80,16 @@ publicou de outro lugar e este repositório está desatualizado.
   inteiros também podem ser marcados (chave `G:`+id em `S._layerMulti`).
   Excluir um grupo marcado exclui o grupo, os subgrupos e tudo o que está
   dentro, depois de uma confirmação que lista o que será apagado.
+- **Caneta sem pressão e "botão direito" na tela.** O botão direito nunca
+  depende de pressão (a Apple Pencil USB-C não tem esse sensor). Com dedo ou
+  caneta: um toque seleciona, dois toques na camada abrem as propriedades e
+  segurar parado por meio segundo vale como botão direito (menu da árvore,
+  propriedades da feição no mapa ou concluir o comando em andamento). Para
+  quem prefere não esperar, o botão ◨ (ícone de mouse) da barra de baixo arma
+  o botão direito: o próximo toque numa feição ou numa linha da árvore vale
+  como botão direito, e o botão se desarma sozinho. Com a caneta em contato, a
+  palma apoiada na tela não conta como segundo toque nem cancela o "segurar"
+  (`touch-workspace.js`; pedido do usuário em 14/11/2026).
 - **Botão direito na árvore traz a lixeira e os demais símbolos.** Os símbolos
   de ação de cada linha (cadeado, propriedades, remover) ficam à direita e, no
   painel estreito do iPad, saem da área visível. O botão direito — ou o toque

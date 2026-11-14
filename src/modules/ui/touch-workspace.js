@@ -5,6 +5,16 @@
 const nav=root.navigator||{},ipad=/iPad|iPhone|iPod/i.test(nav.userAgent||'')||/Mac/i.test(nav.platform||'')&&nav.maxTouchPoints>1;
 let enabled=ipad||/Android/i.test(nav.userAgent||'')||!!root.matchMedia?.('(pointer:coarse)').matches;
 let additive=false,boxSelection=false,pan3D=false,hold=null,tap=null,lastSurface=null,lastPoint=null,consumed=null,frame=0;
+/* CANETA SEM PRESSÃO (Apple Pencil USB-C) E BOTÃO DIREITO NA TELA
+   O botão direito não depende de pressão: segurar o dedo ou a caneta parados
+   por meio segundo já vale como botão direito. Para quem prefere não esperar,
+   o botão ◨ da barra arma o "botão direito": o próximo toque (dedo ou caneta)
+   numa feição do mapa ou numa linha da árvore abre as propriedades ou o menu,
+   e o botão se desarma sozinho. Com a caneta em contato, a palma apoiada na
+   tela não conta como segundo toque nem cancela o "segurar". */
+let secondary=false,sec=null,pen=null,penSeen=0;
+const penActive=()=>pen!=null&&Date.now()-penSeen<1500;
+const SECONDARY_ICON='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 3v7M6 10h12"/><path d="M12.9 3.9a5.2 5.2 0 0 1 4.3 5.2H12.9z" fill="currentColor" stroke="none"/></svg>';
 const contacts=new Set(),installed=new WeakSet();
 const mapElement=()=>typeof map!=='undefined'?map?.getContainer?.():null;
 const $=id=>document.getElementById(id),input=t=>t?.closest?.('input,textarea,select,[contenteditable="true"],button,a,.leaflet-control,.gm-touch-actions,.modal-bg,.modal,.feat-menu,.a3-float-menu');
@@ -44,7 +54,11 @@ function install(doc){
  if(!doc||installed.has(doc))return;installed.add(doc);
  doc.addEventListener('pointerdown',e=>{
   if(!contacts.size)consumed=null;
-  if(e.pointerType!=='touch'&&e.pointerType!=='pen')return;enable();contacts.add(e.pointerId);cancelHold();
+  if(e.pointerType!=='touch'&&e.pointerType!=='pen')return;enable();
+  // Caneta em contato: a palma apoiada na tela é ignorada.
+  if(e.pointerType==='touch'&&penActive())return;
+  if(e.pointerType==='pen'){pen=e.pointerId;penSeen=Date.now();contacts.clear();}
+  contacts.add(e.pointerId);cancelHold();
   const t=e.target,container=doc===document?mapElement():t.closest?.('canvas')||doc.body;
   const row=t.closest?.('.layer,.clsrow,.ghead,.grp'),inMap=container?.contains(t);
   tap=contacts.size===1&&e.pointerType==='touch'&&doc===document&&inMap&&!input(t)&&!vertex(t)&&['point','line','poly'].includes(S.tool)?
@@ -52,7 +66,9 @@ function install(doc){
   if(inMap){lastSurface=container;
    if(doc===document){const r=container.getBoundingClientRect();lastPoint={project:S.projectId,ll:map.containerPointToLatLng([e.clientX-r.left,e.clientY-r.top])};}}
   if(contacts.size!==1||e.isPrimary===false||input(t)||vertex(t)||!row&&!inMap)return;
-  const q=hold={id:e.pointerId,x:e.clientX,y:e.clientY,target:row||container,project:S.projectId,timer:0};
+  // Botão direito armado: este toque vale como botão direito ao soltar.
+  if(secondary){tap=null;sec={id:e.pointerId,x:e.clientX,y:e.clientY,target:row||container,project:S.projectId};return;}
+  const q=hold={id:e.pointerId,x:e.clientX,y:e.clientY,target:row||container,project:S.projectId,timer:0,pen:e.pointerType==='pen'};
   q.timer=setTimeout(()=>{
    if(hold!==q||contacts.size!==1||S.projectId!==q.project||!q.target.isConnected)return;
    hold=null;consumed={x:q.x,y:q.y,until:Date.now()+900};
@@ -60,8 +76,19 @@ function install(doc){
    q.target.dispatchEvent(new MouseEvent('contextmenu',{clientX:q.x,clientY:q.y,button:2,buttons:0,bubbles:true,cancelable:true,view:doc.defaultView}));
   },550);
  },{capture:true,passive:true});
- doc.addEventListener('pointermove',e=>{if(hold&&(e.pointerId!==hold.id||Math.hypot(e.clientX-hold.x,e.clientY-hold.y)>10))cancelHold();if(tap&&(tap.id!==e.pointerId||Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>10))tap=null;},{capture:true,passive:true});
- const finish=e=>{contacts.delete(e.pointerId);if(hold?.id===e.pointerId)cancelHold();};
+ doc.addEventListener('pointermove',e=>{
+  if(e.pointerType==='pen'&&e.pointerId===pen)penSeen=Date.now();
+  // O movimento da palma não cancela o "segurar" da caneta.
+  if(hold&&(e.pointerId!==hold.id?!(hold.pen&&e.pointerType==='touch'):Math.hypot(e.clientX-hold.x,e.clientY-hold.y)>10))cancelHold();
+  if(sec&&e.pointerId===sec.id&&Math.hypot(e.clientX-sec.x,e.clientY-sec.y)>12)sec=null;   // arrastou: é navegação, não toque
+  if(tap&&(tap.id!==e.pointerId||Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>10))tap=null;},{capture:true,passive:true});
+ doc.addEventListener('pointerup',e=>{
+  const q=sec;if(!q||q.id!==e.pointerId)return;sec=null;
+  if(!secondary||S.projectId!==q.project||!q.target.isConnected||Math.hypot(e.clientX-q.x,e.clientY-q.y)>12)return;
+  secondary=false;consumed={x:q.x,y:q.y,until:Date.now()+900};sync();
+  q.target.dispatchEvent(new MouseEvent('contextmenu',{clientX:q.x,clientY:q.y,button:2,buttons:0,bubbles:true,cancelable:true,view:doc.defaultView}));
+ },{capture:true,passive:true});
+ const finish=e=>{contacts.delete(e.pointerId);if(hold?.id===e.pointerId)cancelHold();if(pen===e.pointerId)pen=null;if(e.type==='pointercancel'&&sec?.id===e.pointerId)sec=null;};
  doc.addEventListener('pointerup',finish,{capture:true,passive:true});doc.addEventListener('pointercancel',finish,{capture:true,passive:true});
  doc.addEventListener('pointercancel',()=>{tap=null;},{capture:true,passive:true});
  // Leaflet may discard the first compatibility click after a touch box/pan.
@@ -82,6 +109,7 @@ function install(doc){
 function more(anchor){
  const cb=root.GeoMineClipboard;
  ribMiniMenu(anchor,'Comandos por toque',[
+  {nome:secondary?'Cancelar o botão direito':'Botão direito no próximo toque',run:()=>{secondary=!secondary;sec=null;sync();}},
   {nome:'Ações da feição',run:actions},{nome:'Concluir comando',run:()=>key('Enter')},{nome:'Cancelar comando',run:()=>key('Escape')},
   {nome:'Desfazer',run:()=>doUndo()},
   {nome:additive?'Desativar seleção aditiva':'Somar à seleção',run:()=>{additive=!additive;sync();}},
@@ -92,7 +120,7 @@ function more(anchor){
   {nome:'Salvar projeto',run:()=>root.saveProject(false)},
   ...(root.GeoMineImportRecovery?.available()?[{nome:'Recuperar projeto anterior ao TIFF',run:()=>root.GeoMineImportRecovery.recover({manual:true})}]:[]),
   {sep:true},{nome:pan3D?'3D: arrastar para orbitar':'3D: arrastar para deslocar',run:()=>{pan3D=!pan3D;sync();}},
-  {nome:'Ajuda dos gestos',run:()=>toast('Toque: selecionar · Segurar: menu ou concluir comando · 3D: um dedo gira; dois dedos deslocam e fazem zoom.')}]);
+  {nome:'Ajuda dos gestos',run:()=>toast('Dedo ou caneta — Toque: selecionar · Dois toques na camada: propriedades · Segurar meio segundo: botão direito (menu, propriedades ou concluir comando) · Botão ◨: o próximo toque vale como botão direito · 3D: um dedo gira; dois dedos deslocam e fazem zoom.')}]);
  const menu=[...document.querySelectorAll('.ribmini')].at(-1);if(menu){const r=menu.getBoundingClientRect(),a=anchor.getBoundingClientRect();if(r.bottom>innerHeight-6)menu.style.top=Math.max(6,a.top-r.height-3)+'px';}
 }
 function mount(){
@@ -101,13 +129,14 @@ function mount(){
  }
  if($('gmTouchActions'))return;
  const bar=document.createElement('nav');bar.id='gmTouchActions';bar.className='gm-touch-actions';bar.setAttribute('aria-label','Comandos de toque');
- const defs=[['more','•••','Comandos por toque']];
- bar.innerHTML=defs.map(([id,icon,title])=>'<button type="button" data-touch-action="'+id+'" title="'+title+'" aria-label="'+title+'"'+(['add','box'].includes(id)?' aria-pressed="false"':'')+'>'+icon+'</button>').join('');
+ const defs=[['secondary',SECONDARY_ICON,'Botão direito: o próximo toque (dedo ou caneta) abre o menu ou as propriedades'],['more','•••','Comandos por toque']];
+ bar.innerHTML=defs.map(([id,icon,title])=>'<button type="button" data-touch-action="'+id+'" title="'+title+'" aria-label="'+title+'"'+(['add','box','secondary'].includes(id)?' aria-pressed="false"':'')+'>'+icon+'</button>').join('');
  ($('mapTools')||$('main'))?.append(bar);
  bar.addEventListener('click',e=>{
   const b=e.target.closest('[data-touch-action]');if(!b)return;
   switch(b.dataset.touchAction){
    case 'actions':actions();break;case 'finish':key('Enter');break;case 'cancel':key('Escape');break;case 'undo':if(typeof doUndo==='function')doUndo();break;
+   case 'secondary':secondary=!secondary;sec=null;if(secondary)toast('Botão direito armado: toque na feição ou na camada.');break;
    case 'add':additive=!additive;break;
    case 'box':boxSelection=!boxSelection;if(boxSelection)setTool('select');break;
    case 'more':more(b);break;
@@ -137,6 +166,7 @@ function sync(){
   const done=$('gmTouchFinish');
   if(done){done.hidden=!mapView;done.style.display=mapView?'flex':'none';}
   bar.dataset.additive=String(additive);bar.dataset.box=String(boxSelection);
+  const sb=bar.querySelector('[data-touch-action="secondary"]');if(sb){sb.setAttribute('aria-pressed',String(secondary));sb.classList.toggle('on',secondary);}
   layerScroll();
  });
 }
@@ -148,10 +178,10 @@ function boot(){
  document.addEventListener('pointerdown',e=>{if(!editable(e.target)&&e.target.closest?.(grips)){const s=root.getSelection?.();if(s&&!s.isCollapsed)s.removeAllRanges();}},{capture:true,passive:true});
  document.addEventListener('scroll',()=>{if(enabled)requestAnimationFrame(layerScroll);},{capture:true,passive:true});root.addEventListener('resize',()=>requestAnimationFrame(layerScroll));
  for(const name of ['setTool','switchView','refreshUI']){const base=root[name];if(typeof base==='function')root[name]=function(){const out=base.apply(this,arguments);sync();return out;};}
- const load=root.loadProject;if(typeof load==='function')root.loadProject=function(){cancelHold();contacts.clear();consumed=null;lastPoint=null;additive=false;boxSelection=false;const out=load.apply(this,arguments);sync();return out;};
+ const load=root.loadProject;if(typeof load==='function')root.loadProject=function(){cancelHold();contacts.clear();consumed=null;lastPoint=null;additive=false;boxSelection=false;secondary=false;sec=null;pen=null;const out=load.apply(this,arguments);sync();return out;};
  const attach=f=>{try{if(f.contentDocument)install(f.contentDocument);}catch(_){}};
  document.querySelectorAll('iframe').forEach(f=>{attach(f);f.addEventListener('load',()=>attach(f));});
- root.addEventListener('blur',()=>{cancelHold();tap=null;contacts.clear();});root.addEventListener('pagehide',()=>{cancelHold();tap=null;});
+ root.addEventListener('blur',()=>{cancelHold();tap=null;sec=null;pen=null;contacts.clear();});root.addEventListener('pagehide',()=>{cancelHold();tap=null;});
 }
 root.GeoMineTouchWorkspace={get enabled(){return enabled;},get additive(){return additive;},get boxSelection(){return boxSelection;},get pan3D(){return pan3D;},actions,key,finish,sync,suppressTap,install};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
