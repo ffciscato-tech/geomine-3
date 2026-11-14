@@ -105,3 +105,59 @@ test('a D8 direction computed elsewhere (receiver index per cell) gives the same
  assert.equal(guarded.state[0],0);assert.equal(guarded.state[1],0);assert.equal(guarded.state[2]&15,9);assert.equal(guarded.count[2],0);
  assert.throws(()=>engine.routeReceivers(nc,nr,new Int32Array(5)),/não corresponde/);
 });
+/* GRADE-GUIA. Vale que corre para o norte até o exutório; a montante, uma bacia
+   fechada grande (cava) que só transborda por um entalhe na barragem, para
+   dentro do vale. A janela que cresce em volta do exutório corta a cava em duas
+   rodadas seguidas: a máscara fica interna e estável sem a cava. */
+const pit=(x,y)=>{const lateral=Math.abs(((x-180)%120+180)%120-60),central=x>120&&x<240;let z=100+0.05*y+0.04*lateral;
+ if(central&&y>=130){if(y<=134)z=100+0.05*132+(Math.abs(x-180)<=1?1:4)+0.04*lateral;else if(y<=380)z=96-0.002*(y-135)+0.12*lateral;else z=96-0.002*245+0.12*lateral+0.5*(y-380);}
+ return z+((x*7919+y*104729)%97)*1e-4;};
+function coarse(s,f){const nc=Math.ceil(s.nc/f),nr=Math.ceil(s.nr/f),sum=new Float64Array(nc*nr),n=new Uint16Array(nc*nr);
+ for(let y=0;y<s.nr;y++)for(let x=0;x<s.nc;x++){const i=Math.floor(y/f)*nc+Math.floor(x/f);sum[i]+=s.z[y*s.nc+x];n[i]++;}
+ const z=sum.map((v,i)=>v/n[i]);
+ return {nc,nr,cs:s.cs*f,csy:s.csy*f,xll:s.xll,yll:s.yll+s.nr*s.csy-nr*s.csy*f,readWindow:async([a,b,c,d])=>Float64Array.from({length:(c-a)*(d-b)},(_,i)=>z[(b+Math.floor(i/(c-a)))*nc+a+i%(c-a)])};}
+test('a closed basin upstream, cut by the analysis window, is recovered with the guide grid: same basin as routing the whole grid',async()=>{
+ const s=source(360,420,pit),seed={col:180,row:60},before=Buffer.from(s.z.buffer).toString('hex');
+ const routing=await engine.routeGrid(s,{seed}),reference=await engine.analyzeRouted(s,routing,seed,{searchCells:1});
+ assert.equal(reference.moved,false);
+ // regra antiga, sem guia: a cava cortada pela janela fica de fora, sem aviso
+ const alone=await engine.analyze(s,{seed});
+ assert.equal(alone.stable,true);assert(alone.cells<reference.cells*.35,'reprodução: mais de 65% da bacia fica de fora');assert.equal(alone.guide,undefined);
+ for(const f of [3,4,6]){
+  const guide=await engine.routeGuide(coarse(s,f)),windows=[];
+  const r=await engine.analyze(s,{seed,guide,onProgress:p=>{if(p.window&&windows.at(-1)!==p.window)windows.push(p.window);}});
+  assert.equal(r.cells,reference.cells,'guia '+f+'×: bacia igual à da grade inteira');assert.equal(r.guide.extended,true);assert.equal(r.guide.unverified,undefined);
+  assert(Math.abs(r.guide.gainedM2-(reference.cells-alone.cells)*s.cs*s.csy)<1e-6,'o ganho informado é a diferença para a bacia antiga');
+  assert(r.guide.areaM2>reference.areaM2*.85&&r.guide.areaM2<reference.areaM2*1.25);assert.equal(r.guide.resolution.x,s.cs*f);checkArea(r,s);
+  // a janela ampliada contém todas as anteriores
+  for(let i=1;i<windows.length;i++){const a=windows[i-1],b=windows[i];assert(b[0]<=a[0]&&b[1]<=a[1]&&b[2]>=a[2]&&b[3]>=a[3]);}
+ }
+ assert.equal(Buffer.from(s.z.buffer).toString('hex'),before,'cotas originais intactas');
+});
+test('the guide grid never changes a basin the window already holds, and an unusable guide is ignored',async()=>{
+ const s=source(201,201,(x,y)=>500-y+Math.abs(x-100)*4.173),seed={col:100,row:160},plain=await engine.analyze(s,{seed,initialRadiusM:4});
+ const guide=await engine.routeGuide(coarse(s,4)),guided=await engine.analyze(s,{seed,guide,initialRadiusM:4});
+ assert.equal(guided.cells,plain.cells);assert.equal(guided.rounds,plain.rounds);assert.deepEqual(guided.window,plain.window);assert.deepEqual(guided.rings,plain.rings);
+ assert.equal(guided.guide.extended,false);assert.equal(guided.guide.gainedM2,0);assert.equal(guided.stable,true);
+ // guia que não é mais grossa, que não cobre a mesma área ou incompleta: não é usada
+ const pitted=source(360,420,pit),p={col:180,row:60},alone=await engine.analyze(pitted,{seed:p}),good=await engine.routeGuide(coarse(pitted,4));
+ for(const bad of [{...good,cs:pitted.cs,csy:pitted.csy},{...good,xll:good.xll+500},{...good,nr:good.nr-20},{...good,state:good.state.subarray(1)},{...good,state:null},null]){
+  const r=await engine.analyze(pitted,{seed:p,guide:bad});assert.equal(r.cells,alone.cells);assert.equal(r.guide,undefined);}
+});
+test('when the window asked by the guide does not fit in memory, the largest basin already held is returned and flagged, never less than before',async()=>{
+ const s=source(360,420,pit),seed={col:180,row:60},guide=await engine.routeGuide(coarse(s,4)),windows=[];
+ const reference=await engine.analyze(s,{seed,guide,onProgress:p=>{if(p.window&&windows.at(-1)!==p.window)windows.push(p.window);}}),alone=await engine.analyze(s,{seed});
+ const cells=w=>(w[2]-w[0])*(w[3]-w[1]),need=w=>cells(w)*9.125/.83/1048576,accepted=windows.findIndex(w=>w[2]-w[0]===alone.window[2]-alone.window[0]&&w[3]-w[1]===alone.window[3]-alone.window[1]);
+ assert(accepted>=0&&accepted<windows.length-2,'há a janela aceita pela regra antiga, a ampliada e a de conferência');
+ // cabe a janela da regra antiga, não cabe a ampliada: fica a bacia antiga, com o aviso
+ const small=await engine.analyze(s,{seed,guide,maxMemoryMB:need(windows[accepted])*1.02});
+ assert.equal(small.cells,alone.cells);assert.equal(small.stable,true);assert.equal(small.guide.unverified,true);assert.equal(small.guide.extended,true);assert.equal(small.guide.gainedM2,0);
+ assert(small.guide.areaM2>small.areaM2*2,'a guia indica bem mais área do que coube');checkAreaLoose(small,s);
+ // cabe a ampliada, não a de conferência: fica a bacia inteira, marcada como não conferida numa janela maior
+ const middle=await engine.analyze(s,{seed,guide,maxMemoryMB:need(windows.at(-2))*1.02});
+ assert.equal(middle.cells,reference.cells);assert.equal(middle.stable,false);assert.equal(middle.guide.unverified,true);assert(middle.guide.gainedM2>0);
+ // sem guia a regra continua a de sempre: sem memória, nada é devolvido
+ await assert.rejects(engine.analyze(s,{seed,maxMemoryMB:need(windows[accepted])*.5}),/memória/);
+ await assert.rejects(engine.analyze(s,{seed,guide,maxMemoryMB:need(windows[accepted])*.5}),/memória/);
+});
+function checkAreaLoose(r,s){assert(Math.abs(r.areaM2-r.cells*s.cs*s.csy)<1e-8);assert.equal(r.nativeResolution,true);for(const ring of r.rings)assert.deepEqual(ring[0],ring.at(-1));}

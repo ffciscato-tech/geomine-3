@@ -67,11 +67,62 @@ function d8Sources(){
 }
 const selectedD8=()=>{const v=$('pointCatchmentRaster').value;return v.startsWith('d8:')?d8Sources().find(x=>x.key===v)||null:null;};
 let routedD8=null;
+/* CAMADA DE EXUTÓRIOS (pedido do usuário em 14/11/2026: "quando marco uma área
+   de contribuição não vejo mais a camada de ponto com os exutórios"). A
+   ferramenta antiga de bacia deixava cada exutório numa camada de pontos
+   única, "Exutórios", com área e acumulação; esta ferramenta a substituiu e
+   deixou de fazer isso. Cada área contribuinte volta a registrar ali o ponto
+   marcado (em cima da linha de fluxo, quando o ímã grudou). É uma camada como
+   as outras: liga, desliga e apaga na árvore — diferente do marcador
+   temporário, que some sozinho. Os campos são os da camada antiga, para os
+   pontos novos entrarem numa camada "Exutórios" que o projeto já tenha. */
+const OUTLET_FIELDS=[{name:'NOME',type:'C',length:40},{name:'E',type:'N',length:14,decimal:2},{name:'N',type:'N',length:14,decimal:2},
+  {name:'AREA_M2',type:'N',length:14,decimal:0},{name:'AREA_HA',type:'N',length:12,decimal:3},{name:'ACUM_CEL',type:'N',length:12,decimal:0},
+  {name:'COTA',type:'N',length:10,decimal:2},{name:'DESLOC_M',type:'N',length:8,decimal:2}];
+const outletLayer=()=>(S.layers||[]).find(l=>l._exutorios)||
+  (S.layers||[]).find(l=>l.gtype==='point'&&l.name==='Exutórios'&&['NOME','AREA_HA','DESLOC_M'].every(n=>(l.fields||[]).some(f=>f.name===n)))||null;
+function registerOutlet(crs,point,info,sourceLayer){
+  try{
+    let L=outletLayer(),xy=point;
+    if(L&&L.crs&&L.crs!==crs)xy=proj4(crs,L.crs,[point[0],point[1]]);
+    const nome='Exutório '+((L?.features?.length||0)+1),z=Number(info.z),
+      props={NOME:nome,E:+xy[0].toFixed(2),N:+xy[1].toFixed(2),AREA_M2:+info.areaM2.toFixed(0),AREA_HA:+(info.areaM2/10000).toFixed(3),
+        ACUM_CEL:Math.round(info.cells||0),COTA:Number.isFinite(z)?+z.toFixed(2):null,DESLOC_M:+(info.adjust||0).toFixed(2)},
+      feature={geom:[[xy[0],xy[1]]],multi:false,zg:Number.isFinite(z)?[+z]:null,props};
+    if(!L){
+      L=addLayer({...(sourceLayer?{sourceLayer}:{}),name:'Exutórios',gtype:'point',crs,features:[feature],fields:OUTLET_FIELDS.map(f=>({...f})),color:'#f5a524'});
+      if(!L)return null;
+      L._exutorios=true;return {L,feature,created:true,nome};
+    }
+    L._exutorios=true;L.features.push(feature);try{drawLayer(L);}catch(_){}
+    return {L,feature,created:false,nome};
+  }catch(e){console.warn('exutório não registrado',e);return null;}
+}
+/* Desfazer a área contribuinte tira também o exutório que ela registrou (e a
+   camada "Exutórios", se foi criada por ela e ficou vazia). */
+function unregisterOutlet(o){
+  if(!o||!S.layers.includes(o.L))return;
+  const i=o.L.features.indexOf(o.feature);if(i>=0)o.L.features.splice(i,1);
+  if(o.created&&!o.L.features.length){
+    const L=o.L;if(L.llayer)try{map.removeLayer(L.llayer);}catch(_){}
+    S.layers=S.layers.filter(x=>x!==L);S.stack=(S.stack||[]).filter(k=>k!=='L:'+L.id);
+    if(S.activeId===L.id)S.activeId=S.layers[0]?.id??null;
+  }else try{drawLayer(o.L);}catch(_){}
+}
 const aborted=()=>Object.assign(Error('Consulta cancelada: o projeto ou o MDT mudou.'),{name:'AbortError'});
 /* Distância real no terreno, em metros, entre dois pontos do CRS de trabalho. */
 function metersBetween(crs,a,b,fallback){
   try{const A=toWGS(crs,a[0],a[1]),B=toWGS(crs,b[0],b[1]),m=map.distance([A[1],A[0]],[B[1],B[0]]);return Number.isFinite(m)&&m>0?m:fallback;}
   catch(_){return fallback;}
+}
+/* A bacia sai da célula de maior escoamento ao lado do ponto, procurada num
+   raio que acompanha o tamanho do dedo na tela (maior com o mapa afastado).
+   Perto de uma confluência essa célula pode estar em OUTRA linha de
+   escoamento, e a bacia sai a de outro exutório (relato do usuário em
+   14/11/2026). O raio não foi mexido; quando a célula usada fica longe do
+   ponto, o resultado avisa e diz como evitar. */
+function farNote(adjust,res){
+  return adjust>Math.max(3,3*res)?'\nATENÇÃO: essa célula fica a '+fmt(adjust,1)+' m do ponto marcado e pode estar em outra linha de escoamento. Se a bacia não é a que você esperava, aproxime o zoom e marque de novo: com o mapa mais perto, o ajuste fica junto do ponto.':'';
 }
 function scale(s){const p=proj4(s.sourceCRS).oProj,k=Number(p.to_meter??1);if(p.projName==='longlat'||!Number.isFinite(k)||k<=0)throw Error('Use um MDT com CRS projetado para calcular a área em metros quadrados.');return k;}
 /* Memória para a análise: aparelhos móveis fecham a aba bem antes de um
@@ -85,6 +136,36 @@ function scale(s){const p=proj4(s.sourceCRS).oProj,k=Number(p.to_meter??1);if(p.
    MDT não recalculam nada. Vale enquanto a grade e as cotas forem as mesmas. */
 let routed=null;
 const gridKey=(r,g)=>JSON.stringify([r.id,g.nc,g.nr,g.cs,g.csy,g.xll,g.yll]);
+/* GRADE-GUIA (pedido do usuário em 14/11/2026: a bacia não incluiu todas as
+   linhas de fluxo que convergem para o exutório). MDT grande é calculado numa
+   janela que cresce em volta do exutório, e uma cava a montante cortada pela
+   borda da janela ficava de fora sem aviso. A grade do MDT que o projeto já
+   guarda em memória (a de tela, mais grossa) é roteada INTEIRA uma vez e serve
+   de guia: quando ela mostra área que drena para a bacia encontrada e passa da
+   janela, a janela é ampliada e o cálculo é refeito nas cotas nativas. A guia
+   só diz onde olhar; nenhuma cota dela entra no resultado. Sem grade de tela
+   mais grossa, ou em outro CRS, não há guia e o cálculo é o de sempre. */
+let guideRouted=null;
+async function guideFor(r,sampler,native,signal,current,say){
+  try{
+    const d=r.d,z=d&&d.z;
+    if(!z||!(d.nc>=32)||!(d.nr>=32)||z.length!==d.nc*d.nr)return null;
+    const crs=d.crs||r.crs||d.srcCRS||r.srcCRS,csy=d.csy||d.cs;
+    if(crs&&sampler.sourceCRS&&String(crs)!==String(sampler.sourceCRS))return null;
+    if(!(d.cs>=native.cs*1.5)||!(csy>=(native.csy||native.cs)*1.5))return null;   // não é mais grossa: não ajuda
+    if(guideRouted&&guideRouted.d===d&&guideRouted.z===z)return guideRouted.guide;
+    say?.();await new Promise(resolve=>setTimeout(resolve,0));
+    const nd=[d.noData,d.nodata,d._nd].map(v=>v==null||v===''?NaN:Number(v)).find(Number.isFinite),float32=z instanceof Float32Array,
+      grid={nc:d.nc,nr:d.nr,cs:d.cs,csy,xll:d.xll,yll:d.yll,float32,noData:nd??null,isCurrent:current,
+        readWindow:async([x0,y0,x1,y1])=>{const W=x1-x0,out=float32?new Float32Array(W*(y1-y0)):new Float64Array(W*(y1-y0));
+          for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++)out[(y-y0)*W+x-x0]=z[y*d.nc+x];return out;}},
+      guide=await root.GeoMineContinuousCatchment.routeGuide(grid,{signal,maxMemoryMB:Math.max(64,memoryMB()/2)});
+    guideRouted={d,z,guide};return guide;
+  }catch(e){
+    if(e.name==='AbortError')throw e;
+    return null;   // sem guia o cálculo segue como sempre
+  }
+}
 const memoryMB=()=>root.GeoMineImportHandoff?.mobile?.()||navigator.maxTouchPoints>1?256:navigator.deviceMemory>=8?768:384;
 /* Quando a bacia não cabe na memória na resolução nativa, a célula cresce o
    mínimo possível: 2×, 3×, 4×… em vez de dobrar a cada tentativa. */
@@ -142,7 +223,7 @@ function controls(){
   $('pointCatchmentMark').disabled=false;
 }
 function cancel(){job?.controller.abort();armed=null;if(S.tool==='basin')setTool('select');controls();}
-function resetContext(){const key=String(S.projectId)+'|'+String(gen());if(context!==key){cancel();markerClear();context=key;routed=null;routedD8=null;describing++;$('pointCatchmentRaster').value='';status('A área será informada em m² e hectares.');}}
+function resetContext(){const key=String(S.projectId)+'|'+String(gen());if(context!==key){cancel();markerClear();context=key;routed=null;routedD8=null;guideRouted=null;describing++;$('pointCatchmentRaster').value='';status('A área será informada em m² e hectares.');}}
 async function describe(){
   const pronto=selectedD8();
   if(pronto){
@@ -264,18 +345,20 @@ async function clickD8(fonte,latlng){
         RES_X_M:result.resolution.x,RES_Y_M:result.resolution.y,RES_MDT_M:res,MDT:fonte.name,ACUM_CEL:result.cellsAtOutlet??result.cells,
         METODO:'D8 já calculado no Hidro ('+base+') · grade de '+fmt(res,2)+' m',LIMITE_DADOS:partial?'Sim':'Não'},
       fields=Object.entries(props).map(([name,value])=>({name,type:typeof value==='number'?'N':'C',length:typeof value==='number'?20:100,decimal:['CELULAS','ACUM_CEL'].includes(name)?0:6}));
-    const activeBefore=S.activeId;
-    const layer=addLayer({...(S.hidro?.sourceRasterId!=null?{sourceLayer:'R:'+S.hidro.sourceRasterId}:{}),name:'Área contribuinte — '+fmt(props.AREA_HA,4)+' ha',gtype:'polygon',crs:q.crs,
+    const activeBefore=S.activeId,origem=S.hidro?.sourceRasterId!=null?'R:'+S.hidro.sourceRasterId:null,
+      exutorio=registerOutlet(q.crs,p,{areaM2:result.areaM2,cells:props.ACUM_CEL,z:result.seedZ,adjust},origem);
+    const layer=addLayer({...(origem?{sourceLayer:origem}:{}),name:'Área contribuinte — '+fmt(props.AREA_HA,4)+' ha',gtype:'polygon',crs:q.crs,
       features:[{geom:result.rings.map(ring=>ring.map(xy=>[xy[0],xy[1]])),multi:true,props}],fields,color:'#328ad6'});
     if(layer){layer.weight=2;if(layer.sym){layer.sym.weight=2;layer.sym.fillOpacity=.14;}drawLayer(layer);}
-    if(layer)undoPush({t:'catchmentresult',L:layer,project:S.projectId,active:activeBefore});
+    if(layer)undoPush({t:'catchmentresult',L:layer,project:S.projectId,active:activeBefore,outlet:exutorio});else unregisterOutlet(exutorio);
     refreshUI();
     const text='Área contribuinte: '+fmt(props.AREA_HA,4)+' ha\n'+fmt(props.AREA_M2,4)+' m² · '+fmt(props.CELULAS,0)+' células'+
       (partial?'\nA área toca a borda ou células sem dados da grade; pode haver contribuição fora dos dados disponíveis.':'')+
       (snap?'\nPonto na linha: '+snap.layer.name+' · ajuste '+fmt(snap.distance,2)+' m':
         S.snapOn===false?'\nÍmã (snap) desligado: usado o ponto tocado.':'\nNenhuma linha a até '+fmt(tolerance,1)+' m do toque: usado o ponto tocado.')+
       '\nUsado o D8 já calculado no Hidro (“'+fonte.name+'”, grade de '+fmt(res,2)+' m, '+base+'). Acumulação no exutório: '+fmt(props.ACUM_CEL,0)+' células.'+
-      (adjust?'\nBacia calculada a partir da célula de escoamento ao lado do ponto (a '+fmt(adjust,2)+' m; grade de '+fmt(res,2)+' m).':'\nBacia calculada a partir da célula do ponto marcado.');
+      (adjust?'\nBacia calculada a partir da célula de escoamento ao lado do ponto (a '+fmt(adjust,2)+' m; grade de '+fmt(res,2)+' m).':'\nBacia calculada a partir da célula do ponto marcado.')+
+      farNote(adjust,res)+(exutorio?'\n'+exutorio.nome+' registrado na camada “Exutórios”.':'');
     statusHead='';status(text);cmdLog(text.replaceAll('\n',' · '),'ok');concluido=true;
   }catch(e){statusHead='';if(q.project===S.projectId&&q.generation===gen()){status(e.name==='AbortError'?'Consulta cancelada.':e.message);if(e.name!=='AbortError')cmdLog('Área contribuinte: '+e.message,'warn');}}
   finally{statusHead='';if(job===q){job=null;markerOffSoon(concluido?MARKER_AFTER_RESULT:MARKER_AFTER_FAILURE);}controls();describe();}
@@ -354,6 +437,8 @@ async function click(latlng){
       if(e.code!=='memory'&&!(e instanceof RangeError))throw e;
       check();routed=null;result=null;
     }
+    const guia=wholeGrid?null:await guideFor(r,sampler,native,q.controller.signal,current,()=>status('Preparando a conferência das depressões a montante…'));
+    check();
     if(!wholeGrid)for(;;){
       const res=Math.min(source.cs,source.csy||source.cs)*k;
       status(factor>1?'Bacia grande: calculando em grade de '+fmt(res,2)+' m…':'Ajustando o exutório ao talvegue do MDT…');
@@ -363,10 +448,25 @@ async function click(latlng){
         sampler.toWork([source.xll+(outlet.col+.5)*source.cs,source.yll+(source.nr-outlet.row-.5)*(source.csy||source.cs)]),outlet.distance):0;
       try{
         result=await engine.analyze(source,{
-          seed:{col:outlet.col,row:outlet.row},signal:q.controller.signal,maxMemoryMB:memory,decodedCacheMB:12,tileSize:128,initialRadiusM:reached||undefined,
+          seed:{col:outlet.col,row:outlet.row},signal:q.controller.signal,maxMemoryMB:memory,decodedCacheMB:12,tileSize:128,initialRadiusM:reached||undefined,guide:guia,
           onProgress:v=>{check();if(v.window)reached=Math.max(reached,(v.window[2]-v.window[0])*source.cs*k/2);
-            status((factor>1?'Grade de '+fmt(res,2)+' m · ':'')+(v.phase==='contour'?'Traçando o contorno':v.phase==='read'?'Lendo cotas nativas':v.phase==='expand'?'Ampliando a busca a montante':v.phase==='routing'?'Conectando o escoamento sem alterar cotas':'Delimitando a montante')+'…'+(v.cells?'\n'+fmt(v.cells,0)+' células · '+fmt((v.areaM2||v.cells*source.cs*(source.csy||source.cs)*k*k)/10000,4)+' ha':''));}
-        });check();break;
+            status((factor>1?'Grade de '+fmt(res,2)+' m · ':'')+(v.phase==='guide'?'Há área a montante ligada por depressão (cava): ampliando a janela de análise':v.phase==='contour'?'Traçando o contorno':v.phase==='read'?'Lendo cotas nativas':v.phase==='expand'?'Ampliando a busca a montante':v.phase==='routing'?'Conectando o escoamento sem alterar cotas':'Delimitando a montante')+'…'+(v.cells?'\n'+fmt(v.cells,0)+' células · '+fmt((v.areaM2||v.cells*source.cs*(source.csy||source.cs)*k*k)/10000,4)+' ha':''));}
+        });check();
+        /* A grade-guia mostra mais área chegando a este ponto do que coube na
+           janela nativa (cava a montante cortada pela janela). Como quando a
+           bacia não cabe na memória, a saída é a grade agregada — só com o
+           aceite da pessoa. Recusando, fica a bacia nativa, com o aviso. */
+        const g=result.guide,next=FACTORS[FACTORS.indexOf(factor)+1];
+        if(g?.unverified&&g.areaM2>result.areaM2*1.15&&!byChoice&&next&&Math.ceil(native.nc/next)>=64&&
+          (factor>1||confirm('A bacia deste ponto parece maior do que coube na análise.\n\n'+
+            'Na grade de visualização do MDT ('+fmt(Math.max(g.resolution.x,g.resolution.y),2)+' m) chegam a este ponto cerca de '+fmt(g.areaM2/10000,2)+' ha; nas cotas nativas ('+fmt(nativeRes,2)+' m) saíram '+fmt(result.areaM2/10000,2)+' ha. '+
+            'Há área a montante que só chega aqui passando por uma depressão (cava), e a janela necessária não cabe na memória deste aparelho na resolução nativa.\n\n'+
+            'OK: calcular a bacia inteira numa grade com média das cotas (a partir de '+fmt(nativeRes*next,2)+' m). O resultado NÃO é o do TIFF nativo e sai identificado assim.\n'+
+            'Cancelar: ficar com a bacia de '+fmt(result.areaM2/10000,2)+' ha das cotas nativas, com o aviso de que pode estar incompleta.'))){
+          check();factor=next;source=coarsen(native,factor);result=null;
+          start={col:Math.min(source.nc-1,Math.floor(seed.col/factor)),row:Math.min(source.nr-1,Math.floor(seed.row/factor))};continue;
+        }
+        check();break;
       }catch(e){
         // Não coube na memória nesta resolução: repete numa grade com o dobro da célula.
         const next=FACTORS[FACTORS.indexOf(factor)+1];
@@ -385,19 +485,34 @@ async function click(latlng){
     }
     const geom=[];let vertices=0;
     for(const ring of result.rings){const out=[];for(const xy of ring){out.push(sampler.toWork(xy));if(++vertices%4096===0){await new Promise(r=>setTimeout(r,0));check();}}geom.push(out);}
+    /* O que a grade-guia fez, dito à pessoa só quando muda alguma coisa:
+       a bacia cresceu (cava a montante incluída), pode estar incompleta (a
+       janela pedida não coube) ou a grade grossa mostra mais área que as cotas
+       nativas não confirmam. */
+    const g=result.guide,gRes=g?fmt(Math.max(g.resolution.x,g.resolution.y),2):'',cotas=factor===1?'nativas':'desta grade',
+      gCell=g?g.resolution.x*g.resolution.y:0,
+      conferencia=!g?['','']:
+        g.unverified&&g.areaM2>result.areaM2*1.15?['INCOMPLETA? grade de '+gRes+' m indica ≈'+fmt(g.areaM2/10000,2)+' ha',
+          '\nATENÇÃO: a bacia pode estar INCOMPLETA. Na grade de visualização do MDT ('+gRes+' m) chegam a este ponto cerca de '+fmt(g.areaM2/10000,2)+' ha: há área a montante ligada por depressão (cava) que não coube na janela de análise deste aparelho. Para a bacia inteira, ligue “Reamostrar o MDT para o cálculo”.']:
+        g.gainedM2>0?['janela ampliada pela grade de '+gRes+' m: +'+fmt(g.gainedM2/10000,4)+' ha',
+          '\nIncluída a área a montante que chega por depressão (cava): '+fmt(g.gainedM2/10000,4)+' ha. A janela de análise foi ampliada com a grade de visualização do MDT ('+gRes+' m) e o cálculo refeito nas cotas '+cotas+'.']:
+        !g.unverified&&g.areaM2>result.areaM2*1.3&&result.areaM2>=100*gCell?['grade de '+gRes+' m indica ≈'+fmt(g.areaM2/10000,2)+' ha; cotas '+cotas+' não confirmam',
+          '\nNa grade de visualização do MDT ('+gRes+' m) parece chegar mais área a este ponto (≈'+fmt(g.areaM2/10000,2)+' ha). Conferido nas cotas '+cotas+': o restante não drena para cá. Linhas de fluxo geradas em grade mais grossa podem mostrar esse caminho; para a bacia que acompanha essa grade, ligue “Reamostrar o MDT para o cálculo”.']:['',''];
     const outlet=sampler.toWork(result.outlet),partial=result.touchesEdge||result.touchesNoData,
       props={AREA_M2:result.areaM2,AREA_HA:result.areaM2/10000,CELULAS:result.cells,
         E_TOQUE:tap[0],N_TOQUE:tap[1],AJUSTE_M:snap?.distance||0,LINHA:snap?.layer.name||'',E_PONTO:p[0],N_PONTO:p[1],AJUSTE_MDT:adjust,E_CELULA:outlet[0],N_CELULA:outlet[1],COTA_M:result.seedZ,
         RES_X_M:result.resolution.x,RES_Y_M:result.resolution.y,RES_MDT_M:nativeRes,MDT:r.name,
         ACUM_CEL:result.cellsAtOutlet??result.cells,
-        METODO:(wholeGrid?'D8 — direção e acumulação de fluxo da grade inteira':'D8 — fluxo contínuo em janela a montante')+' · '+(byChoice?'REAMOSTRADO por escolha: grade de '+fmt(workRes,2)+' m ('+factor+'× a célula nativa, média das cotas)':factor>1?'NÃO NATIVO: grade agregada '+factor+'× (média das cotas)':'cotas do TIFF nativo'),LIMITE_DADOS:partial?'Sim':'Não'},
+        METODO:(wholeGrid?'D8 — direção e acumulação de fluxo da grade inteira':'D8 — fluxo contínuo em janela a montante')+' · '+(byChoice?'REAMOSTRADO por escolha: grade de '+fmt(workRes,2)+' m ('+factor+'× a célula nativa, média das cotas)':factor>1?'NÃO NATIVO: grade agregada '+factor+'× (média das cotas)':'cotas do TIFF nativo'),LIMITE_DADOS:partial?'Sim':'Não',
+        ...(conferencia[0]?{CONFERENCIA:conferencia[0].slice(0,100)}:{})},
       fields=Object.entries(props).map(([name,value])=>({name,type:typeof value==='number'?'N':'C',length:typeof value==='number'?20:100,decimal:['CELULAS','ACUM_CEL'].includes(name)?0:6}));
     check();
-    const activeBefore=S.activeId;
+    const activeBefore=S.activeId,
+      exutorio=registerOutlet(q.crs,p,{areaM2:result.areaM2,cells:props.ACUM_CEL,z:result.seedZ,adjust},'R:'+r.id);
     const layer=addLayer({sourceLayer:'R:'+r.id,name:'Área contribuinte — '+fmt(props.AREA_HA,4)+' ha',gtype:'polygon',crs:q.crs,
       features:[{geom,multi:true,props}],fields,color:'#328ad6'});
     if(layer){layer.weight=2;if(layer.sym){layer.sym.weight=2;layer.sym.fillOpacity=.14;}drawLayer(layer);}
-    if(layer)undoPush({t:'catchmentresult',L:layer,project:S.projectId,active:activeBefore});
+    if(layer)undoPush({t:'catchmentresult',L:layer,project:S.projectId,active:activeBefore,outlet:exutorio});else unregisterOutlet(exutorio);
     refreshUI();
     const text='Área contribuinte: '+fmt(props.AREA_HA,4)+' ha\n'+fmt(props.AREA_M2,4)+' m² · '+fmt(props.CELULAS,0)+' células'+
       (partial?'\nA área toca a borda ou células sem dados do MDT; pode haver contribuição fora dos dados disponíveis.':'')+
@@ -406,6 +521,8 @@ async function click(latlng){
       (factor===1?'\nCalculado nas cotas do TIFF nativo: '+fmt(nativeRes,2)+' m.':'')+
       (wholeGrid?'\nDireção e acumulação de fluxo D8 de toda a grade. Acumulação no exutório: '+fmt(result.cellsAtOutlet,0)+' células.':'')+
       (adjust?'\nBacia calculada a partir da célula de escoamento ao lado do ponto (a '+fmt(adjust,2)+' m; grade de '+fmt(result.resolution.x,2)+' m).':'\nBacia calculada a partir da célula do ponto marcado.')+
+      farNote(adjust,result.resolution.x)+(exutorio?'\n'+exutorio.nome+' registrado na camada “Exutórios”.':'')+
+      conferencia[1]+
       (byChoice?'\nReamostrado por escolha sua: grade de '+fmt(result.resolution.x,2)+' m (média das cotas do TIFF de '+fmt(nativeRes,2)+' m).':'')+
       (factor>1&&!byChoice?'\nATENÇÃO: NÃO é o resultado do TIFF nativo. Por escolha sua, foi calculado em grade de '+fmt(result.resolution.x,2)+' m com média das cotas (TIFF de '+fmt(nativeRes,2)+' m), porque a bacia não coube na memória deste aparelho.':'')+
 '';
@@ -423,7 +540,8 @@ function undo(a){
   if((S.msel?.items||[]).some(i=>i.layerId===L.id))try{mselClear(true);}catch(_){}
   if(L.llayer)try{map.removeLayer(L.llayer);}catch(_){}
   S.layers=S.layers.filter(x=>x!==L);S.stack=(S.stack||[]).filter(k=>k!=='L:'+L.id);
-  if(S.activeId===L.id)S.activeId=S.layers.some(x=>x.id===a.active)?a.active:S.layers[0]?.id??null;
+  unregisterOutlet(a.outlet);
+  if(S.activeId===L.id||!S.layers.some(x=>x.id===S.activeId))S.activeId=S.layers.some(x=>x.id===a.active)?a.active:S.layers[0]?.id??null;
   if(!job){markerClear();status('Área contribuinte desfeita. Toque em Marcar ponto para gerar outra.');}
   refreshUI();zApply();toast('Desfeito: camada “'+L.name+'” removida');return true;
 }

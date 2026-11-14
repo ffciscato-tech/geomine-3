@@ -2,7 +2,21 @@
    Process from known boundary outlets toward the interior in elevation order;
    unresolved pits use the discovery path, while downhill cells use D8 slopes.
    A point query expands its native window until the upstream mask is interior
-   and unchanged in a larger window. Never return a clipped, unstable basin. */
+   and unchanged in a larger window. Never return a clipped, unstable basin.
+
+   GRADE-GUIA (options.guide). As bordas da janela funcionam como saídas
+   falsas: uma depressão grande a montante (uma cava) cortada pela borda escoa
+   para a borda em vez de transbordar para o exutório, e a máscara fica
+   "interna e estável" em duas janelas seguidas faltando a cava e tudo o que
+   drena para ela (caso de 14/11/2026: num terreno de teste, 88% da bacia de
+   fora, sem aviso). Uma grade mais grossa do mesmo MDT, roteada INTEIRA
+   (routeGuide), enxerga a cava toda. Quando a regra de sempre aceita uma
+   bacia, a grade-guia diz o que mais drena para dentro dela; se isso passa da
+   janela, a janela é ampliada para conter essa área e o cálculo nativo é
+   refeito. A grade-guia só indica ONDE olhar: o resultado continua vindo das
+   cotas nativas. Sem guia, ou quando ela não aponta nada fora da janela, o
+   resultado é exatamente o de antes; e a janela ampliada contém a anterior,
+   então a bacia nunca sai menor do que saía. */
 (function(root){
 'use strict';
 const N=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
@@ -65,16 +79,18 @@ async function routeWindow(source,window,options={}){
     if((processed&16383)===0)await pause('routing');
   }
   check();
+  if(options.routingOnly&&!options.seed)return {window,W,H,state};
   const seed=options.seed,x=seed.col-left,y=seed.row-top,start=y*W+x;
   if(x<0||y<0||x>=W||y>=H||(state[start]&15)===9)throw Error('O ponto está fora da área válida do MDT original.');
   if(options.routingOnly)return {window,W,H,state,start};
   const seedZ=z[start],queue=new Uint32Array(z.buffer,0,total),mask=new Uint8Array(Math.ceil(total/8));
-  let a=0,b=1,edge=false,noData=false,crop=false,hash1=0,hash2=0,bounds=[x,y,x,y];queue[0]=start;mask[start>>3]|=1<<(start&7);
+  let a=0,b=1,edge=false,noData=false,crop=false,sides=0,hash1=0,hash2=0,bounds=[x,y,x,y];queue[0]=start;mask[start>>3]|=1<<(start&7);
   while(a<b){
     const i=queue[a++],x=i%W,y=Math.floor(i/W),gx=x+left,gy=y+top,k=gy*source.nc+gx;
     hash1=(hash1+Math.imul(k^0x9e3779b9,0x85ebca6b))>>>0;hash2=(hash2^Math.imul(k^k>>>16,0xc2b2ae35))>>>0;
     edge=edge||gx===0||gy===0||gx===source.nc-1||gy===source.nr-1;
-    crop=crop||(left>0&&x<=1)||(top>0&&y<=1)||(right<source.nc&&x>=W-2)||(bottom<source.nr&&y>=H-2);
+    // lados da janela em que a máscara encosta: 1 esquerda, 2 cima, 4 direita, 8 baixo
+    if(left>0&&x<=1)sides|=1;if(top>0&&y<=1)sides|=2;if(right<source.nc&&x>=W-2)sides|=4;if(bottom<source.nr&&y>=H-2)sides|=8;
     bounds[0]=Math.min(bounds[0],x);bounds[1]=Math.min(bounds[1],y);bounds[2]=Math.max(bounds[2],x);bounds[3]=Math.max(bounds[3],y);
     for(let j=0;j<8;j++){
       const [dx,dy]=N[j],xx=x+dx,yy=y+dy;if(xx<0||yy<0||xx>=W||yy>=H)continue;
@@ -84,7 +100,8 @@ async function routeWindow(source,window,options={}){
     }
     if((a&16383)===0)await pause('upstream',{cells:b});
   }
-  return {window,W,H,mask,cells:b,seedZ,hash:hash1+':'+hash2,crop,touchesEdge:edge,touchesNoData:noData,bounds,valid,
+  crop=sides!==0;
+  return {window,W,H,mask,cells:b,seedZ,hash:hash1+':'+hash2,crop,cropSides:sides,touchesEdge:edge,touchesNoData:noData,bounds,valid,
     memoryBytes:total*(cellBytes+1)+mask.byteLength+heap.byteLength,heapPeak:peak};
 }
 /* Contorno e área de uma máscara de células já delimitada numa janela. */
@@ -108,16 +125,109 @@ async function analyze(source,options={}){
     ![source.cs,source.csy??source.cs,source.unitScale??1].every(v=>Number.isFinite(v)&&v>0)||
     ![source.xll,source.yll].every(Number.isFinite))throw Error('Georreferenciamento do MDT inválido.');
   const seed=options.seed;if(!seed||!Number.isInteger(seed.col)||!Number.isInteger(seed.row)||seed.col<0||seed.row<0||seed.col>=source.nc||seed.row>=source.nr)throw Error('O ponto está fora do MDT.');
-  let radius=Math.max(64,Math.ceil((options.initialRadiusM||64)/Math.min(source.cs,source.csy||source.cs)/(source.unitScale||1))),previous=null,round=0;
+  const radius=Math.max(64,Math.ceil((options.initialRadiusM||64)/Math.min(source.cs,source.csy||source.cs)/(source.unitScale||1))),
+    guide=usableGuide(source,options.guide),area=(source.unitScale||1)**2;
+  /* Extensão da janela a partir do exutório: esquerda, cima, direita, baixo.
+     É o quadrado de sempre, crescendo igual nos quatro lados (1,5× enquanto a
+     máscara encosta na borda; 1,25× para conferir), até a grade-guia pedir
+     mais área. Daí em diante a janela só cresce nos lados necessários. */
+  let ext=[radius,radius,radius,radius],previous=null,round=0,extended=false,accepted=null,interior=null,info=null;
+  /* O que a guia fez, para quem chama poder dizer à pessoa: extended = a janela
+     foi ampliada por ela; gainedM2 = quanto a bacia cresceu com isso; areaM2 =
+     área que, na guia, drena para a bacia encontrada; unverified = a janela que
+     ela pediu não coube na memória. */
+  const report=(cells,extra={})=>guide?{guide:{resolution:{x:guide.cs*(source.unitScale||1),y:guide.csy*(source.unitScale||1)},extended,
+    gainedM2:accepted?(cells-accepted.r.cells)*source.cs*(source.csy||source.cs)*area:0,
+    areaM2:info?info.cells*guide.cs*guide.csy*area:null,...extra}}:{};
   for(;;){
-    const w=[Math.max(0,seed.col-radius),Math.max(0,seed.row-radius),Math.min(source.nc,seed.col+radius+1),Math.min(source.nr,seed.row+radius+1)],full=w[0]===0&&w[1]===0&&w[2]===source.nc&&w[3]===source.nr;
-    const r=await routeWindow(source,w,{...options,onProgress:p=>options.onProgress?.({...p,round,window:w})});
+    const w=[Math.max(0,seed.col-ext[0]),Math.max(0,seed.row-ext[1]),Math.min(source.nc,seed.col+ext[2]+1),Math.min(source.nr,seed.row+ext[3]+1)],full=w[0]===0&&w[1]===0&&w[2]===source.nc&&w[3]===source.nr;
+    let r;
+    try{r=await routeWindow(source,w,{...options,onProgress:p=>options.onProgress?.({...p,round,window:w,guided:extended})});}
+    catch(e){
+      /* A janela pedida pela grade-guia (ou a rodada de conferência dela) não
+         coube na memória. Fica a maior bacia já obtida inteira dentro de uma
+         janela: a da janela ampliada, se houve; senão a que a regra de sempre
+         já tinha aceitado — com o aviso de que a guia indica mais área. */
+      if(e.code!=='memory'&&!(e instanceof RangeError)||!extended)throw e;
+      const keep=interior||accepted;
+      return contour(source,keep.w,keep.r,seed,options,{rounds:round,...report(keep.r.cells,{unverified:true}),...(keep===accepted?{}:{stable:false})});
+    }
     const stable=previous&&previous.cells===r.cells&&previous.hash===r.hash;
-    if(!r.crop&&(full||stable))return contour(source,w,r,seed,options,{rounds:round+1});
-    previous={cells:r.cells,hash:r.hash};r.mask=null;round++;radius=Math.ceil(radius*(r.crop?1.5:1.25));
+    if(!r.crop&&(full||stable)){
+      const need=guide&&!full?guideNeed(source,guide,w,r,seed):null;
+      if(need)info=need;
+      // A guia aponta área que drena para esta bacia e passa da janela: amplia e refaz.
+      const m=need?Math.ceil(2*Math.max(guide.cs/source.cs,guide.csy/(source.csy||source.cs))):0,
+        wide=need&&[seed.col-(need.rect[0]-m),seed.row-(need.rect[1]-m),need.rect[2]+m-1-seed.col,need.rect[3]+m-1-seed.row],
+        beyond=need&&((need.rect[0]<w[0]+2&&w[0]>0)||(need.rect[1]<w[1]+2&&w[1]>0)||(need.rect[2]>w[2]-2&&w[2]<source.nc)||(need.rect[3]>w[3]-2&&w[3]<source.nr));
+      if(!beyond)return contour(source,w,r,seed,options,{rounds:round+1,...report(r.cells)});
+      if(!extended)accepted={w,r};else interior={w,r};
+      extended=true;previous=null;round++;ext=ext.map((v,i)=>Math.max(v,wide[i]));
+      options.onProgress?.({phase:'guide',round,cells:r.cells});
+      await new Promise(resolve=>setTimeout(resolve,0));
+      continue;
+    }
+    if(extended&&!r.crop)interior={w,r};
+    previous={cells:r.cells,hash:r.hash};if(!(extended&&!r.crop))r.mask=null;round++;
+    if(extended&&r.crop)ext=ext.map((v,i)=>r.cropSides&(1<<i)?v+Math.max(96,Math.ceil(v*.25)):v);
+    else{const f=r.crop?1.5:1.25;ext=ext.map(v=>Math.ceil(v*f));}
     options.onProgress?.({phase:'expand',round,cells:r.cells});
     await new Promise(resolve=>setTimeout(resolve,0));
   }
+}
+/* GRADE-GUIA: uma grade mais grossa do mesmo MDT, no mesmo CRS e orientação,
+   roteada inteira. routeGuide guarda só a direção de cada célula (1 byte). */
+async function routeGuide(grid,options={}){
+  const r=await routeWindow(grid,[0,0,grid.nc,grid.nr],{...options,seed:null,routingOnly:true});
+  return {nc:grid.nc,nr:grid.nr,cs:grid.cs,csy:grid.csy||grid.cs,xll:grid.xll,yll:grid.yll,state:r.state};
+}
+function usableGuide(source,g){
+  if(!g||!g.state||!Number.isSafeInteger(g.nc)||!Number.isSafeInteger(g.nr)||g.state.length!==g.nc*g.nr)return null;
+  const csy=g.csy||g.cs,cy=source.csy||source.cs;
+  if(![g.cs,csy,g.xll,g.yll].every(Number.isFinite)||!(g.cs>0)||!(csy>0))return null;
+  // Só serve se for mais grossa que a grade em análise e cobrir a mesma área (meia célula da guia de folga).
+  if(g.cs<source.cs*1.5||csy<cy*1.5)return null;
+  const tol=Math.max(g.cs,csy);
+  if(Math.abs(g.xll-source.xll)>tol||Math.abs(g.yll+g.nr*csy-(source.yll+source.nr*cy))>tol||
+    Math.abs(g.nc*g.cs-source.nc*source.cs)>2*tol||Math.abs(g.nr*csy-source.nr*cy)>2*tol)return null;
+  return {...g,csy};
+}
+/* O que a grade-guia diz que drena para dentro da bacia encontrada: parte das
+   células da guia cobertas pela máscara (ao menos 60% de cada uma), sobe por
+   todas as que drenam para elas e devolve o retângulo dessa área em células da
+   grade em análise. A célula da guia em que cai o exutório NÃO entra sozinha:
+   junto de uma confluência ela costuma ser a do rio maior, e a guia acusaria
+   a bacia do outro afluente como se faltasse (alarme falso). Bacia menor que
+   uma célula da guia fica, por isso, sem conferência. */
+function guideNeed(source,g,w,r,seed){
+  const cy=source.csy||source.cs,top=source.yll+source.nr*cy,gtop=g.yll+g.nr*g.csy,W=r.W,
+    colOf=x=>Math.floor((source.xll+(x+.5)*source.cs-g.xll)/g.cs),rowOf=y=>Math.floor((gtop-(top-(y+.5)*cy))/g.csy),
+    [bx0,by0,bx1,by1]=r.bounds,C0=colOf(w[0]+bx0),C1=colOf(w[0]+bx1),R0=rowOf(w[1]+by0),R1=rowOf(w[1]+by1),
+    cw=C1-C0+1,ch=R1-R0+1,cover=new Uint32Array(cw*ch),columns=new Int32Array(bx1-bx0+1);
+  for(let x=bx0;x<=bx1;x++)columns[x-bx0]=colOf(w[0]+x)-C0;
+  for(let y=by0;y<=by1;y++){
+    const line=(rowOf(w[1]+y)-R0)*cw,row=y*W;
+    for(let x=bx0;x<=bx1;x++){const i=row+x;if(r.mask[i>>3]&(1<<(i&7)))cover[line+columns[x-bx0]]++;}
+  }
+  const full=(g.cs/source.cs)*(g.csy/cy),enough=Math.max(1,Math.ceil(full*(g.overlap??.6))),total=g.nc*g.nr,
+    seen=new Uint8Array(Math.ceil(total/8)),inside=(C,R)=>C>=0&&R>=0&&C<g.nc&&R<g.nr&&(g.state[R*g.nc+C]&15)!==9;
+  let queue=new Uint32Array(Math.max(1024,cw*ch)),a=0,b=0;
+  const push=k=>{if(seen[k>>3]&(1<<(k&7)))return;seen[k>>3]|=1<<(k&7);
+    if(b===queue.length){const next=new Uint32Array(queue.length*2);next.set(queue);queue=next;}queue[b++]=k;};
+  for(let R=R0;R<=R1;R++)for(let C=C0;C<=C1;C++)if(cover[(R-R0)*cw+C-C0]>=enough&&inside(C,R))push(R*g.nc+C);
+  if(!b)return null;
+  let minC=Infinity,minR=Infinity,maxC=-1,maxR=-1;
+  while(a<b){
+    const k=queue[a++],x=k%g.nc,y=Math.floor(k/g.nc);
+    if(x<minC)minC=x;if(y<minR)minR=y;if(x>maxC)maxC=x;if(y>maxR)maxR=y;
+    for(let j=0;j<8;j++){
+      const xx=x+N[j][0],yy=y+N[j][1];if(xx<0||yy<0||xx>=g.nc||yy>=g.nr)continue;
+      const n=yy*g.nc+xx;if((g.state[n]&15)===((j+4)%8+1))push(n);
+    }
+  }
+  const clampX=v=>Math.max(0,Math.min(source.nc,v)),clampY=v=>Math.max(0,Math.min(source.nr,v));
+  return {cells:b,rect:[clampX(Math.floor((g.xll+minC*g.cs-source.xll)/source.cs)),clampY(Math.floor((top-(gtop-minR*g.csy))/cy)),
+    clampX(Math.ceil((g.xll+(maxC+1)*g.cs-source.xll)/source.cs)),clampY(Math.ceil((top-(gtop-(maxR+1)*g.csy))/cy))]};
 }
 /* Exutório no talvegue. O toque, ou o ponto projetado numa linha vetorial, quase
    nunca cai na célula exata por onde o escoamento passa no MDT: uma célula de
@@ -229,5 +339,5 @@ function routeReceivers(nc,nr,receiver,isNoData){
   }
   return {nc,nr,state,count:accumulate(state,nc,nr)};
 }
-root.GeoMineContinuousCatchment={analyze,routeWindow,locateOutlet,routeGrid,analyzeRouted,routeReceivers};
+root.GeoMineContinuousCatchment={analyze,routeWindow,locateOutlet,routeGrid,analyzeRouted,routeReceivers,routeGuide};
 })(typeof window!=='undefined'?window:globalThis);

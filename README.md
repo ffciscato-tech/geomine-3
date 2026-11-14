@@ -431,9 +431,20 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
     guardado na aba.
   - A gravação usa a permissão ampla do Drive (`driveAccess(true,{write:true})`
     no portão), escolhida pelo usuário para dispensar a indicação do arquivo.
-    Só é pedida ao salvar; a janela do Google reaparece quando a autorização
-    de 50 minutos vence. No iPad, o usuário relatou (14/11/2026) que essa
-    janela falhava no Safari e funciona bem no Chrome.
+    A janela do Google reaparece quando a autorização de 55 minutos vence. No
+    iPad, o usuário relatou (14/11/2026) que essa janela falhava no Safari e
+    funciona bem no Chrome.
+  - **Uma autorização serve para abrir e salvar** (pedido do usuário em
+    14/11/2026: "não precisa abrir uma aba do Firebase quando clico em
+    salvar"). O acesso de leitura obtido ao abrir não servia para gravar, e o
+    primeiro Salvar abria a aba de autorização outra vez. Quem já autorizou a
+    gravação neste aparelho (`geomine.drive.gravacao.v1` no `localStorage`,
+    por conta) passa a recebê-la em toda autorização do Drive; quem nunca
+    salvou continua sendo perguntado só pela leitura. Se o Google recusar a
+    gravação pedida junto, a marca sai e a tentativa seguinte pede só a
+    leitura. Limite que não depende do GeoMine: o Google só deixa um acesso
+    valer por uma hora, e renová-lo sem janela exigiria guardar no servidor
+    uma autorização permanente do Drive (não existe hoje).
   - Envio retomável em partes de 8 MB, com andamento, nova tentativa em queda
     de rede e conferência do tamanho gravado. Se o arquivo foi alterado no
     Drive depois da versão aberta, pergunta antes de gravar por cima.
@@ -482,6 +493,48 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   resultado, e então se apaga sozinho. Sai na hora quando o painel é fechado,
   quando outro ponto vai ser marcado e quando a área é desfeita. Antes ficava
   no mapa indefinidamente (pedido do usuário em 14/11/2026).
+- **Cada área contribuinte registra o exutório na camada "Exutórios".** A
+  ferramenta antiga de bacia deixava cada exutório numa camada de pontos
+  única; esta a substituiu e deixou de fazer isso (pedido do usuário em
+  14/11/2026: "não vejo mais a camada de ponto com os exutórios").
+  `registerOutlet` grava o ponto marcado (em cima da linha, quando o ímã
+  grudou) com os campos da camada antiga (`NOME`, `E`, `N`, `AREA_M2`,
+  `AREA_HA`, `ACUM_CEL`, `COTA`, `DESLOC_M`), numa camada "Exutórios" que o
+  projeto já tenha ou numa nova, no grupo do MDT. Ctrl+Z tira a área e o
+  ponto dela. É uma camada comum (liga e desliga na árvore); o marcador
+  temporário continua sumindo sozinho.
+- **Aviso quando a célula usada fica longe do ponto.** O ajuste ao talvegue
+  procura a célula de maior escoamento num raio que acompanha o dedo na tela
+  (maior com o mapa afastado); perto de uma confluência ela pode estar em
+  outra linha de escoamento, e a bacia sai a de outro exutório (relato do
+  usuário em 14/11/2026). O raio não foi mexido; quando o ajuste passa de 3 m
+  (ou 3 células), o resultado avisa e orienta a aproximar o zoom
+  (`farNote`). Ainda falta reproduzir o caso real para decidir se a regra de
+  escolha da célula muda.
+- **Grade-guia: cava a montante cortada pela janela de análise.** MDT que não
+  cabe inteiro na memória é roteado numa janela que cresce em volta do
+  exutório, e as bordas da janela funcionam como saídas falsas. Uma depressão
+  grande a montante (cava) cortada pela borda escoava para a borda em vez de
+  transbordar para o exutório: a bacia ficava "interna e estável" em duas
+  janelas seguidas sem a cava e sem tudo o que drena para ela (88% de fora
+  num terreno de teste; 15 de 240 exutórios em terrenos aleatórios). A grade
+  do MDT que o projeto guarda em memória (a de tela) é roteada inteira uma
+  vez (`routeGuide`) e, quando a regra de sempre aceita uma bacia, diz o que
+  mais drena para dentro dela (`guideNeed`); se isso passa da janela, a
+  janela é ampliada e o cálculo é refeito nas cotas nativas. A guia só indica
+  onde olhar — nenhuma cota dela entra no resultado — e a janela ampliada
+  contém a anterior, então a bacia nunca sai menor do que saía. Se a janela
+  pedida não cabe na memória, a pessoa escolhe entre a grade agregada e a
+  bacia nativa com o aviso de que pode estar incompleta (`CONFERENCIA`).
+  Limites conhecidos: a guia não enxerga ligações que só existem na resolução
+  nativa, e uma bacia menor que uma célula da guia fica sem conferência (a
+  célula da guia sob o exutório não entra sozinha: junto de uma confluência
+  ela costuma ser a do rio maior e daria alarme falso). Em terrenos
+  aleatórios de teste: erros em 4 de 160 exutórios com guia 4× e 10 de 120
+  com guia 9×, contra 17 e 15 da regra antiga; em nenhum caso a bacia saiu
+  menor que a da regra antiga nem com células a mais que a da grade inteira.
+  Teste de ponta a ponta com MDT sintético de 4.400 × 4.400 células (cava a
+  montante): 8,2 ha antes, 69,3 ha depois, igual à grade inteira.
 - **Snap na linha de fluxo segue o ímã.** Com o ímã ligado (`S.snapOn`), o
   toque gruda na linha visível mais próxima a até a tolerância do snap das
   outras ferramentas (`SNAP_PX` = 15 px; 24 px no toque), em qualquer zoom; o
