@@ -333,6 +333,11 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   saído do lugar (caso do usuário em 14/11/2026). A célula de escoamento usada
   continua nos atributos (`E_CELULA`, `N_CELULA`, `AJUSTE_MDT`) e no texto do
   resultado. Vale para o D8 pronto e para o cálculo pelo MDT.
+- **O marcador da área contribuinte é temporário.** Ele mostra o ponto
+  marcado enquanto o cálculo roda e por cerca de 6 segundos depois do
+  resultado, e então se apaga sozinho. Sai na hora quando o painel é fechado,
+  quando outro ponto vai ser marcado e quando a área é desfeita. Antes ficava
+  no mapa indefinidamente (pedido do usuário em 14/11/2026).
 - **Snap na linha de fluxo segue o ímã.** Com o ímã ligado (`S.snapOn`), o
   toque gruda na linha visível mais próxima a até a tolerância do snap das
   outras ferramentas (`SNAP_PX` = 15 px; 24 px no toque), em qualquer zoom; o

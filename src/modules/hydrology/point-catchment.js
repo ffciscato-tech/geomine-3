@@ -4,7 +4,20 @@
 'use strict';
 const panel=document.createElement('div'),$=id=>document.getElementById(id),gen=()=>root.GeoMineSessionAutosave?.state?.generation;
 const fmt=(v,d=2)=>Number(v).toLocaleString('pt-BR',{maximumFractionDigits:d});
-let job=null,armed=null,context=null,describing=0,anchor=null,pointMarker=null;
+let job=null,armed=null,context=null,describing=0,anchor=null,pointMarker=null,markerTimer=0;
+/* O MARCADOR DO PONTO É TEMPORÁRIO. Ele mostra onde o ponto foi marcado
+   enquanto o cálculo roda e por alguns segundos depois do resultado; então se
+   apaga sozinho. Antes ficava no mapa indefinidamente, mesmo com o painel
+   fechado (pedido do usuário em 14/11/2026). Também sai na hora quando o
+   painel é fechado, quando outro ponto vai ser marcado e quando a área é
+   desfeita. */
+const MARKER_AFTER_RESULT=6000,MARKER_AFTER_FAILURE=2500;
+function markerClear(){clearTimeout(markerTimer);markerTimer=0;pointMarker?.remove();pointMarker=null;}
+function markerOffSoon(ms){clearTimeout(markerTimer);markerTimer=setTimeout(markerClear,ms);}
+function markerPlace(latlng){
+  markerClear();
+  pointMarker=L.circleMarker(latlng,{pane:'markerPane',radius:6,color:'#b76514',weight:2,fillColor:'#fff',fillOpacity:1,interactive:false}).addTo(map);
+}
 panel.id='secPointCatchment';panel.className='hsec';panel.style.display='none';
 panel.innerHTML=`<h2>Área contribuinte no ponto</h2>
 <div class="hint">Marque o exutório: um ponto da linha de fluxo ou qualquer ponto do MDT. O resultado é toda a área que drena até ele.</div>
@@ -129,7 +142,7 @@ function controls(){
   $('pointCatchmentMark').disabled=false;
 }
 function cancel(){job?.controller.abort();armed=null;if(S.tool==='basin')setTool('select');controls();}
-function resetContext(){const key=String(S.projectId)+'|'+String(gen());if(context!==key){cancel();pointMarker?.remove();pointMarker=null;context=key;routed=null;routedD8=null;describing++;$('pointCatchmentRaster').value='';status('A área será informada em m² e hectares.');}}
+function resetContext(){const key=String(S.projectId)+'|'+String(gen());if(context!==key){cancel();markerClear();context=key;routed=null;routedD8=null;describing++;$('pointCatchmentRaster').value='';status('A área será informada em m² e hectares.');}}
 async function describe(){
   const pronto=selectedD8();
   if(pronto){
@@ -177,8 +190,9 @@ function arm(){
   if(job||armed&&S.tool==='basin'){cancel();status('Consulta cancelada.');return;}
   const r=selected(),pronto=selectedD8();if(!r&&!pronto){status(rasters().length?'Escolha o MDT no campo acima e toque em Marcar ponto.':'Carregue um MDT original para marcar o ponto.');$('pointCatchmentRaster').focus();return;}
   if(!mapaVista2D())switchView('map');
+  markerClear();   // o ponto anterior sai quando um novo vai ser marcado
   armed={r:r||null,d8:pronto||null,project:S.projectId,generation:gen()};setTool('basin');controls();
-  status('Toque no exutório: na linha de fluxo ou em qualquer ponto do MDT. O marcador fica no ponto marcado.');
+  status('Toque no exutório: na linha de fluxo ou em qualquer ponto do MDT. O marcador fica no ponto marcado e some sozinho depois do resultado.');
 }
 /* O MESMO SNAP DO TOQUE, MOSTRADO ANTES DO TOQUE. Com a marcação armada, o
    cursor do ímã (a mira verde das outras ferramentas) aparece sobre a linha
@@ -204,11 +218,11 @@ function snapPreview(latlng){
 async function clickD8(fonte,latlng){
   const d=fonte.d,dir=d.dir,q=job={controller:new AbortController(),project:S.projectId,generation:gen(),crs:S.workCRS,d8:d};
   const current=()=>job===q&&!q.controller.signal.aborted&&q.project===S.projectId&&q.generation===gen()&&q.crs===S.workCRS&&d.dir===dir&&selectedD8()?.d===d;
+  let concluido=false;
   const check=()=>{if(!current())throw aborted();};
   controls();describing++;
   try{
-    pointMarker?.remove();
-    pointMarker=L.circleMarker(latlng,{pane:'markerPane',radius:6,color:'#b76514',weight:2,fillColor:'#fff',fillOpacity:1,interactive:false}).addTo(map);
+    markerPlace(latlng);
     const k=scale({sourceCRS:q.crs}),csy=d.csy||d.cs,res=Math.min(d.cs,csy)*k,
       tap=fromWGS(q.crs,latlng.lng,latlng.lat),screen=map.latLngToContainerPoint(latlng),
       side=map.containerPointToLatLng([screen.x+10,screen.y]),sideXY=fromWGS(q.crs,side.lng,side.lat),
@@ -262,9 +276,9 @@ async function clickD8(fonte,latlng){
         S.snapOn===false?'\nÍmã (snap) desligado: usado o ponto tocado.':'\nNenhuma linha a até '+fmt(tolerance,1)+' m do toque: usado o ponto tocado.')+
       '\nUsado o D8 já calculado no Hidro (“'+fonte.name+'”, grade de '+fmt(res,2)+' m, '+base+'). Acumulação no exutório: '+fmt(props.ACUM_CEL,0)+' células.'+
       (adjust?'\nBacia calculada a partir da célula de escoamento ao lado do ponto (a '+fmt(adjust,2)+' m; grade de '+fmt(res,2)+' m).':'\nBacia calculada a partir da célula do ponto marcado.');
-    statusHead='';status(text);cmdLog(text.replaceAll('\n',' · '),'ok');
+    statusHead='';status(text);cmdLog(text.replaceAll('\n',' · '),'ok');concluido=true;
   }catch(e){statusHead='';if(q.project===S.projectId&&q.generation===gen()){status(e.name==='AbortError'?'Consulta cancelada.':e.message);if(e.name!=='AbortError')cmdLog('Área contribuinte: '+e.message,'warn');}}
-  finally{statusHead='';if(job===q)job=null;controls();describe();}
+  finally{statusHead='';if(job===q){job=null;markerOffSoon(concluido?MARKER_AFTER_RESULT:MARKER_AFTER_FAILURE);}controls();describe();}
 }
 async function click(latlng){
   if(job)return;
@@ -272,14 +286,13 @@ async function click(latlng){
   if(!a||(a.d8?selectedD8()?.d!==a.d8.d:a.r!==selected())||a.project!==S.projectId||a.generation!==gen()){status('A marcação foi encerrada. Toque em Marcar ponto para iniciar novamente.');return;}
   if(a.d8)return clickD8(a.d8,latlng);
   const r=a.r,q=job={controller:new AbortController(),project:S.projectId,generation:gen(),crs:S.workCRS,r},d=r.d;
-  let sampler,timer;
+  let sampler,timer,concluido=false;
   const current=()=>job===q&&!q.controller.signal.aborted&&q.project===S.projectId&&q.generation===gen()&&q.crs===S.workCRS&&S.rasters.includes(r)&&r.d===d&&selected()===r;
   const check=()=>{if(!current()||sampler&&!sampler.isCurrent())throw aborted();};
   controls();describing++;
   try{
     // Acknowledge the tap before opening a potentially slow original file.
-    pointMarker?.remove();
-    pointMarker=L.circleMarker(latlng,{pane:'markerPane',radius:6,color:'#b76514',weight:2,fillColor:'#fff',fillOpacity:1,interactive:false}).addTo(map);
+    markerPlace(latlng);
     status('Ponto marcado. Lendo o MDT…');
     timer=setInterval(()=>{if(!current())q.controller.abort();},200);
     try{sampler=await root.GeoMineChannelDEM.prepare(r,{workCRS:q.crs,signal:q.controller.signal,isCurrent:current});}
@@ -396,9 +409,9 @@ async function click(latlng){
       (byChoice?'\nReamostrado por escolha sua: grade de '+fmt(result.resolution.x,2)+' m (média das cotas do TIFF de '+fmt(nativeRes,2)+' m).':'')+
       (factor>1&&!byChoice?'\nATENÇÃO: NÃO é o resultado do TIFF nativo. Por escolha sua, foi calculado em grade de '+fmt(result.resolution.x,2)+' m com média das cotas (TIFF de '+fmt(nativeRes,2)+' m), porque a bacia não coube na memória deste aparelho.':'')+
 '';
-    statusHead='';status(text);cmdLog(text.replaceAll('\n',' · '),'ok');
+    statusHead='';status(text);cmdLog(text.replaceAll('\n',' · '),'ok');concluido=true;
   }catch(e){statusHead='';if(q.project===S.projectId&&q.generation===gen()){status(e.name==='AbortError'?'Consulta cancelada.':e.message);if(e.name!=='AbortError')cmdLog('Área contribuinte: '+e.message,'warn');}}
-  finally{statusHead='';clearInterval(timer);sampler?.close();if(job===q)job=null;controls();describe();}
+  finally{statusHead='';clearInterval(timer);sampler?.close();if(job===q){job=null;markerOffSoon(concluido?MARKER_AFTER_RESULT:MARKER_AFTER_FAILURE);}controls();describe();}
 }
 /* Ctrl+Z logo depois de gerar: sai a camada da área contribuinte recém-criada
    (e o marcador do exutório dela), sem tocar em ações anteriores. */
@@ -411,7 +424,7 @@ function undo(a){
   if(L.llayer)try{map.removeLayer(L.llayer);}catch(_){}
   S.layers=S.layers.filter(x=>x!==L);S.stack=(S.stack||[]).filter(k=>k!=='L:'+L.id);
   if(S.activeId===L.id)S.activeId=S.layers.some(x=>x.id===a.active)?a.active:S.layers[0]?.id??null;
-  if(!job){pointMarker?.remove();pointMarker=null;status('Área contribuinte desfeita. Toque em Marcar ponto para gerar outra.');}
+  if(!job){markerClear();status('Área contribuinte desfeita. Toque em Marcar ponto para gerar outra.');}
   refreshUI();zApply();toast('Desfeito: camada “'+L.name+'” removida');return true;
 }
 $('pointCatchmentRaster').onchange=()=>{cancel();describe();controls();};
@@ -462,5 +475,12 @@ for(const group of category?.grupos||[])for(const item of group.it||[]){
   if(item.ic==='mancha-inundacao')item.act=open;
 }
 $('btnBasin').onclick=()=>{refresh();arm();};
-root.GeoMinePointCatchment={open,refresh,arm,click,cancel,snapPreview,undo,projectChanged:()=>{cancel();pointMarker?.remove();pointMarker=null;context=null;routed=null;routedD8=null;}};
+/* Painel fechado no × ou trocado por outro comando: o marcador sai na hora. */
+(function watchPanel(){
+  const start=()=>{const pop=document.getElementById('ribbonPop');
+    if(!pop||typeof MutationObserver!=='function')return;
+    new MutationObserver(()=>{if(!pop.contains(panel))markerClear();}).observe(pop,{childList:true});};
+  if(document.getElementById('ribbonPop'))start();else document.addEventListener('DOMContentLoaded',start,{once:true});
+})();
+root.GeoMinePointCatchment={open,refresh,arm,click,cancel,snapPreview,undo,projectChanged:()=>{cancel();markerClear();context=null;routed=null;routedD8=null;}};
 })(window);
