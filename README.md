@@ -155,14 +155,24 @@ publicou de outro lugar e este repositório está desatualizado.
   - enquanto o mapa é arrastado, um redesenho em curso é descartado, para a
     folha não ser trocada no meio do gesto (isso interrompe o toque);
   - um novo toque encerra um gesto que tenha ficado sem o seu "soltar".
-- **Fundo do Layout que não carrega não derruba a folha.** Cada tile do fundo
-  tem três tentativas. Na tela, se ainda faltar algum (ou o fundo inteiro), a
-  folha é desenhada assim mesmo, com o aviso no painel "Fundo do Layout" —
-  antes, um único tile perdido impedia o redesenho inteiro: a folha não
-  atualizava, a escala não era aplicada e o Copiar falhava. Na exportação
-  (Copiar, PNG, PDF, SVG) a captura continua exigindo todos os tiles, para a
-  figura não sair com buracos, e a mensagem diz para tentar de novo ou trocar
-  o fundo (`captureBasemap` em `17-layout-printing.js`).
+- **Fundo do Layout que não carrega não derruba a folha nem a saída.** Cada
+  tile do fundo tem três tentativas. Se ainda faltar algum (ou o fundo
+  inteiro), a folha é desenhada assim mesmo, com o aviso no painel "Fundo do
+  Layout" — antes, um único tile perdido impedia o redesenho inteiro: a folha
+  não atualizava, a escala não era aplicada e o Copiar falhava. A saída
+  (Copiar, PNG, PDF, SVG) leva o que a tela mostra: se a alta resolução do
+  fundo não vier inteira, usa a captura da tela quando ela está completa e,
+  em último caso, sai com o fundo incompleto e um aviso a cada saída
+  (`captureBasemap` e `buildLayout` em `17-layout-printing.js`). Não voltar a
+  lançar erro por tile perdido: o usuário ficou sem conseguir copiar a figura
+  que estava vendo (14/11/2026).
+- **Copiar no iPad com um toque.** No WebKit do iPad/iPhone a gravação na
+  área de transferência é iniciada dentro do toque e recebe a imagem por uma
+  promessa (`ClipboardItem` com promessa), só em PNG. No caminho antigo a
+  primeira gravação era sempre recusada (gerar a figura demora mais que a
+  ativação do toque) e era preciso tocar em Copiar de novo. Nos outros
+  navegadores segue o blob pronto com PNG+HTML, que é o que o Google Docs
+  consegue colar (`copyLayoutIMG`).
 - **Só o toque vale como clique nas ferramentas de ponto.** No tablet, o
   reforço de toque de `06-map-tools-snap.js` (drenagem, área contribuinte,
   barramento, lâmina e inundação) convertia qualquer `touchend` em clique:

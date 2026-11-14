@@ -40,17 +40,19 @@ function tile2lonlat(x,y,z){ const n=Math.pow(2,z);
   const lon=x/n*360-180;
   const lat=Math.atan(Math.sinh(Math.PI*(1-2*y/n)))*180/Math.PI;
   return [lon,lat]; }
-/* opcoes.tolerante: na TELA, tiles que não carregaram deixam um trecho cinza e
-   um aviso — a folha é desenhada assim mesmo. Antes, um único tile perdido
+/* opcoes.tolerante: tiles que não carregaram deixam um trecho cinza e um
+   aviso — a folha é desenhada assim mesmo. Antes, um único tile perdido
    derrubava o redesenho inteiro: a folha não atualizava, a escala não era
-   aplicada e o Copiar falhava. Na exportação (PNG, PDF, Copiar) a captura
-   continua exigindo todos os tiles, para a figura não sair com buracos. */
+   aplicada e o Copiar falhava.
+   opcoes.soGuardada: devolve só a captura já guardada para esta mesma
+   extensão e resolução (sem ir à rede), ou null. */
 async function captureBasemap(x0,y0,x1,y1,crs,targetPx,base=layoutBasemap(),opcoes={}){
   // A escolha da prancha nunca altera S._base, usado pelo Mapa 2D.
   const urlFn=TILE_URLS[base]; if(!urlFn) return null; // 'Sem fundo'
   // cache: evita rebaixar tiles a cada ajuste de legenda/símbolo com a mesma extensão
   const ck=[base,crs,x0.toFixed(1),y0.toFixed(1),x1.toFixed(1),y1.toFixed(1),Math.round(targetPx/64)].join('|');
   if(S._capCache && S._capCache.k===ck) return S._capCache.v;
+  if(opcoes.soGuardada) return null;
   // extensão em WGS84 (amostrando os 4 cantos p/ cobrir distorção)
   const corners=[[x0,y0],[x1,y0],[x1,y1],[x0,y1]].map(p=>toWGS(crs,p[0],p[1]));
   const lons=corners.map(c=>c[0]), lats=corners.map(c=>c[1]);
@@ -962,18 +964,25 @@ async function buildLayout(options){
   const wantSat=document.getElementById('loSat').checked&&layoutBasemap()!=='Sem fundo';
   let baseCapture=null;
   if(wantSat){
-    try{baseCapture=await captureBasemap(x0,y0,x1,y1,crs,Math.round(mapW/25.4*layoutDpiTarget(exporting,options.dpi)),layoutBasemap(),{tolerante:!exporting});}
+    /* O fundo que não veio (inteiro ou em parte) não derruba a folha: ela é
+       desenhada sem ele, ou com o que veio, e o aviso aparece. Vale para a
+       tela e para a saída (Copiar, PNG, PDF, SVG): a figura copiada é a que a
+       tela mostra. Exigir o fundo completo só na saída fazia o Copiar falhar
+       justamente quando a folha já estava visível e aceita. */
+    try{baseCapture=await captureBasemap(x0,y0,x1,y1,crs,Math.round(mapW/25.4*layoutDpiTarget(exporting,options.dpi)),layoutBasemap(),{tolerante:true});}
     catch(error){
       if(!current())return false;
-      if(exporting){
-        const status=document.getElementById('loBaseStatus');if(status)status.textContent=error.message;
-        toast('Fundo do Layout: '+error.message);error.layoutReported=true;throw error;
-      }
-      /* Na tela, o fundo que não veio não pode derrubar a folha: ela é
-         desenhada sem ele, com o aviso no painel do fundo. */
       baseCapture={dataURL:null,aviso:error.message||String(error)};
     }
     if(!current())return false;
+    if(exporting&&baseCapture&&baseCapture.aviso){
+      /* A alta resolução do fundo não veio inteira: se a captura da tela está
+         completa e guardada, a saída usa essa (fundo sem buracos, em resolução de tela). */
+      let tela=null;
+      try{tela=await captureBasemap(x0,y0,x1,y1,crs,Math.round(mapW/25.4*layoutDpiTarget(false)),layoutBasemap(),{tolerante:true,soGuardada:true});}catch(_){}
+      if(!current())return false;
+      if(tela&&tela.dataURL&&!tela.aviso)baseCapture={dataURL:tela.dataURL,b:tela.b,avisoSaida:'Fundo em resolução de tela nesta saída: os tiles de alta resolução não carregaram.'};
+    }
     if(baseCapture&&baseCapture.dataURL){const b=baseCapture.b;
       svg+=`<image data-layout-basemap="${esc(layoutBasemap())}" href="${baseCapture.dataURL}" x="${sx(b[0]).toFixed(2)}" y="${sy(b[3]).toFixed(2)}" width="${((b[2]-b[0])*mmPerM).toFixed(2)}" height="${((b[3]-b[1])*mmPerM).toFixed(2)}" preserveAspectRatio="none"/>`;
     }
@@ -1738,8 +1747,14 @@ async function buildLayout(options){
      do fundo (e num toast, uma vez por mensagem). */
   const baseAviso=baseCapture&&baseCapture.aviso||'';
   const viewStatus=document.getElementById('loBaseStatus');if(viewStatus)viewStatus.textContent=baseAviso;
-  if(baseAviso&&S._loBaseAvisoMostrado!==baseAviso)toast('Fundo do Layout incompleto — '+baseAviso);
-  S._loBaseAvisoMostrado=baseAviso;
+  if(exporting){
+    // na saída o aviso aparece toda vez: a pessoa precisa saber como a figura copiada saiu
+    if(baseCapture&&baseCapture.avisoSaida)toast(baseCapture.avisoSaida);
+    else if(baseAviso)toast('Saída com o fundo incompleto — '+baseAviso);
+  }else{
+    if(baseAviso&&S._loBaseAvisoMostrado!==baseAviso)toast('Fundo do Layout incompleto — '+baseAviso);
+    S._loBaseAvisoMostrado=baseAviso;
+  }
   syncZoomUI();
   return true;
 }
@@ -2146,27 +2161,50 @@ function loBlobInvalida(){ _loBlob=null; _loBlobKey=null; _loHTML=null; _loPixel
 
 async function copyLayoutIMG(){
   const chave=loBlobKey();
+  /* iPad/iPhone (WebKit): só o PNG vai para a área de transferência. A dupla
+     PNG+HTML pode ser recusada e a segunda tentativa já cai fora do toque. */
+  const webkitMovel=/iP(hone|ad|od)/.test(navigator.userAgent||'')||(/Mac/.test(navigator.platform||'')&&navigator.maxTouchPoints>1);
   // 1) cache válido: escreve o blob pronto, dentro da ativação do clique
   if(_loBlob && _loBlobKey===chave && layoutSourceCurrent()){
     try{
-      await writeLayoutClipboard(_loBlob,_loHTML);
+      if(webkitMovel&&navigator.clipboard&&window.ClipboardItem)await navigator.clipboard.write([new ClipboardItem({'image/png':_loBlob})]);
+      else await writeLayoutClipboard(_loBlob,_loHTML);
       toast(`Layout copiado · 300 dpi · ${_loPixels} — cole no documento (Ctrl+V)`); return;
     }catch(e){ await entregarImagem(_loBlob,'layout'); return; }
   }
   // 2) primeira vez: rasteriza, guarda e tenta copiar
   let blob=null,html=null,pixels='',renderKey=null;
-  try{
-    showLoad('Gerando imagem…');
-    const cv=await rasterizeLayout(300);
-    renderKey=loBlobKey();
-    blob=await layoutPNG300(cv);
-    html=await layoutClipboardHTML(blob,cv.width,cv.height);
-    pixels=`${cv.width}×${cv.height} px`;
-    if(renderKey!==loBlobKey()||!layoutSourceCurrent())throw new Error('A fonte mudou; gere a imagem novamente.');
-  }catch(e){ hideLoad(); toast('Falha: '+(e&&e.message||e)); return; }
-  finally{ hideLoad(); }
-  if(!blob){ toast('Não foi possível gerar a imagem'); return; }
-  _loBlob=blob; _loBlobKey=renderKey; _loHTML=html; _loPixels=pixels;
+  const prepara=async()=>{
+    try{
+      showLoad('Gerando imagem…');
+      const cv=await rasterizeLayout(300);
+      renderKey=loBlobKey();
+      blob=await layoutPNG300(cv);
+      html=await layoutClipboardHTML(blob,cv.width,cv.height);
+      pixels=`${cv.width}×${cv.height} px`;
+      if(renderKey!==loBlobKey()||!layoutSourceCurrent())throw new Error('A fonte mudou; gere a imagem novamente.');
+    }finally{ hideLoad(); }
+    if(!blob)throw new Error('Não foi possível gerar a imagem');
+    _loBlob=blob; _loBlobKey=renderKey; _loHTML=html; _loPixels=pixels;
+    return blob;
+  };
+  /* iPad/iPhone (WebKit): a área de transferência só aceita a gravação
+     iniciada DENTRO do toque, mas aceita receber a imagem depois, por uma
+     promessa. Assim um toque só basta, mesmo que gerar a figura demore; no
+     caminho antigo a primeira gravação era sempre recusada e era preciso
+     tocar em Copiar de novo. Nos outros navegadores segue o blob pronto, que
+     é o que o Google Docs consegue colar. */
+  if(webkitMovel&&navigator.clipboard&&window.ClipboardItem){
+    const pronto=prepara();
+    pronto.catch(()=>{});   // o erro é tratado abaixo; evita rejeição solta
+    let gravou=false;
+    try{ await navigator.clipboard.write([new ClipboardItem({'image/png':pronto})]); gravou=true; }catch(_){}
+    try{ await pronto; }catch(e){ toast('Falha: '+(e&&e.message||e)); return; }
+    toast(gravou?`Layout copiado · 300 dpi · ${_loPixels} — cole no documento`:'Imagem pronta — toque em Copiar novamente para colar');
+    return;
+  }
+  try{ await prepara(); }
+  catch(e){ toast('Falha: '+(e&&e.message||e)); return; }
   try{
     await writeLayoutClipboard(blob,html);
     toast(`Layout copiado · 300 dpi · ${_loPixels} — cole no documento (Ctrl+V)`);
