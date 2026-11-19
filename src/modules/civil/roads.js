@@ -485,7 +485,8 @@ function civSaia(g,eixo,opt){
 }
 /* ===== CIVIL — ligação do painel de estrada ===== */
 function civDesenhaSaia(precomputed=null){
-  const info=document.getElementById('civInfo'),C=GeoMineCivil.current();
+  // O recado dos taludes fica no card do corredor, onde está o botão que os desenha.
+  const info=document.getElementById('civSlopeInfo')||document.getElementById('civInfo'),C=GeoMineCivil.current();
   if(!C.alignmentConfirmed||C.alignmentPending){toast('Confirme o alinhamento e o greide antes de gerar taludes.');return;}
   if(!C.eixo||C.eixo.length<2){toast('Gere o alinhamento A→B antes de desenhar os taludes');return;}
   const R=civMdt();
@@ -591,7 +592,8 @@ function civDesenhaPontos(){
 }
 function civUpdateSteps(){
   const C=S._civ,busy=!!window.GeoMineRoadAlternatives?.busy(),ready=!!(C?.eixo?.length>1&&!C.alignmentPending&&!busy);
-  const next=document.getElementById('civNextSteps');if(next)next.hidden=!ready;
+  // Cards 4 e 5 (alinhamentos) só existem com um eixo escolhido; o 6 (corredor), com o alinhamento confirmado.
+  for(const id of ['civHorizontalCard','civVerticalCard']){const card=document.getElementById(id);if(card)card.hidden=!ready;}
   const generate=document.getElementById('btnCivAlinha');
   if(generate){generate.disabled=busy||!(C?.A&&C?.B);generate.textContent=busy?'Comparando traçados…':'Gerar 3 opções pelo MDT';}
   const cancel=document.getElementById('civCancelAlternatives');if(cancel)cancel.hidden=!busy;
@@ -599,6 +601,7 @@ function civUpdateSteps(){
   const stage=document.getElementById('civCorridorStage');if(stage)stage.hidden=!confirmed;
   for(const id of ['btnCivProfile','civConfirmAlignment','btnCivSaia','civCorridor']){const b=document.getElementById(id);if(b)b.disabled=(id==='btnCivProfile'||id==='civConfirmAlignment')?!ready:!confirmed;}
   const confirm=document.getElementById('civConfirmAlignment');if(confirm)confirm.hidden=confirmed;
+  window.GeoMineRoadGeometry?.refresh();
 }
 function civMarcaPonto(qual){
   GeoMineCivil.current();
@@ -721,7 +724,7 @@ function restore(data){
 }
 window.GeoMineCivil={current,readParams,snapshot,restore,reset,sync,create};
 civUpdateSteps();
-document.getElementById('civConfirmAlignment').onclick=()=>{const C=current();if(C.alignmentPending||!C.eixo||C.eixo.length<2)return;const R=civMdt();if(!R){toast('Selecione o MDT base antes de confirmar.');return;}if(!readParams(C))return;for(let i=0;i<C.eixo.length;i++){const p=C.eixo[i];if(!Number.isFinite(civSample(R.d,p.x,p.y))){toast('O eixo sai do MDT. Ajuste o alinhamento antes de confirmar.');return;}if(i){const a=C.eixo[i-1],d=Math.hypot(p.x-a.x,p.y-a.y);if(d<=0||Math.abs(p.z-a.z)>C.params.civG/100*d+1e-7){toast('Ajuste o greide: a rampa excede o máximo de '+C.params.civG+'%.');return;}}}C.alignmentConfirmed=true;civUpdateSteps();toast('Alinhamento confirmado. Defina a seção e gere o corredor.');};
+document.getElementById('civConfirmAlignment').onclick=()=>{const C=current();if(C.alignmentPending||!C.eixo||C.eixo.length<2)return;const R=civMdt();if(!R){toast('Selecione o MDT base antes de confirmar.');return;}if(!readParams(C))return;for(let i=0;i<C.eixo.length;i++){const p=C.eixo[i];if(!Number.isFinite(civSample(R.d,p.x,p.y))){toast('O eixo sai do MDT. Ajuste o alinhamento antes de confirmar.');return;}if(i){const a=C.eixo[i-1],d=Math.hypot(p.x-a.x,p.y-a.y);if(d<=0||Math.abs(p.z-a.z)>C.params.civG/100*d+1e-7){toast('Ajuste o greide: a rampa excede o máximo de '+C.params.civG+'%.');return;}}}C.alignmentConfirmed=true;civUpdateSteps();document.getElementById('civCorridorStage')?.scrollIntoView({block:'nearest',behavior:'smooth'});toast('Alinhamento confirmado. Defina a seção e gere o corredor.');};
 document.getElementById('civRoadNew').onclick=create;
 document.getElementById('civRoadSel').onchange=e=>{
  if(S._civ)readParams(S._civ,false);

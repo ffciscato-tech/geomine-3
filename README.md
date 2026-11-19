@@ -239,6 +239,16 @@ publicou de outro lugar e este repositório está desatualizado.
   (`CMD.alt` em `01-bootstrap-crs-state-command.js`; classes `.cmd-auto` e
   `.cmd-min` em `app.css`).
 
+- **Cards numerados.** Desde 18/11/2026 as ferramentas do GeoMine são
+  apresentadas em cards numerados, na ordem em que a pessoa trabalha (pedido
+  de 19/11/2026: o que for criado ou reorganizado segue esse padrão). Um card é
+  `<section class="gm-work-card">` com o cabeçalho `.gm-card-heading` (número
+  em `.gm-card-step`, título em `<b>` e a ajuda no **ⓘ**,
+  `details.gm-card-info`). `src/modules/ui/panel-cards.js` numera em sequência
+  só os cards visíveis de cada janela, então um card escondido não deixa
+  buraco na numeração. Painéis com cards escritos à mão (bacia, escada
+  hidráulica e estrada) ficam fora da divisão automática desse módulo.
+
 ## Organização
 
 | Caminho | Conteúdo |
@@ -588,6 +598,63 @@ aceita pasta inicial vinda de uma página. O seletor do Google Drive do próprio
 GeoMine aceita: `pick({parent})` em `drive-project-source.js` abre na pasta do
 último projeto aberto pelo Drive, e **Escolher no Drive…** abre na pasta onde
 o último original foi encontrado.
+
+## Estradas (Civil)
+
+O painel **CIVIL → Estrada** (`#secCivil`) tem seis cards, na ordem do projeto.
+Os três primeiros aparecem sempre; o 4 e o 5 quando há um traçado escolhido; o
+6 depois de confirmar o alinhamento.
+
+| Card | Conteúdo | Onde está o código |
+|---|---|---|
+| 1 Estrada e terreno | estrada em edição, nome e MDT | `roads.js` |
+| 2 Critérios de projeto | largura, raio mínimo, rampa máxima; taludes, bancadas e bermas | `roads.js` (`readParams`) |
+| 3 Traçado pelo MDT | pontos A e B, três opções comparadas por corte e aterro | `road-alternatives.js` |
+| 4 Alinhamento horizontal | tabela de curvas com o raio de cada uma, mover PIs no mapa | `road-geometry.js`, `road-curves.js` |
+| 5 Alinhamento vertical | perfil resumido, tabela de PVIs com o L de cada curva, perfil completo, confirmar | `road-geometry.js`, `road-editor.js` |
+| 6 Corredor e volumes | taludes até o terreno e cubagem por seções | `corridor.js` |
+
+Todos os arquivos ficam em `src/modules/civil/`. Ao escolher uma opção o painel
+continua aberto e os cards 4 e 5 aparecem; o perfil completo abre pelo card 5 e,
+ao fechar, devolve o painel.
+
+**Alinhamento horizontal.** O eixo é a poligonal dos PIs
+(`horizontalControls`, do ponto A ao B) concordada por curvas circulares
+(`civCurvasTangentes`). Cada PI interno guarda o raio da sua curva em `r`;
+sem `r` vale o raio mínimo dos critérios. O raio nunca é reduzido para a curva
+caber: a rotina recusa e diz qual vértice não comporta. O card mostra, por
+curva, deflexão e lado, R, tangente T, desenvolvimento D, estacas do PC e do PT
+(metros desde A) e "cabe até", o maior raio que ainda cabe com os vizinhos como
+estão (`GeoMineRoadGeometry.horizontalElements`, com as mesmas condições da
+rotina que traça). Um raio menor que o mínimo dos critérios não é aceito; se o
+mínimo subir depois, as curvas menores ficam sinalizadas e nada muda sozinho.
+
+**Alinhamento vertical.** O greide é `verticalDesign`: PVIs com `u` (posição de
+0 a 1 no eixo), cota `z`, comprimento `L` da parábola e `fixed`. O card mostra,
+por PVI, estaca, cota, a rampa que chega e a que sai, o tipo (côncava ou
+convexa), K = L ÷ |diferença das rampas em %| e o maior L que cabe
+(`verticalElements`, com as condições de `GeoMineRoadEditor.vertical`). O resumo
+traz a rampa máxima contra o limite, o menor K com o PVI e o maior corte e o
+maior aterro no eixo. O perfil completo (`road-editor.js`) desenha terreno,
+greide, corte, aterro, a rampa de cada tangente, o trecho de cada curva
+vertical e as estacas; cotas, estacas e novos PVIs continuam sendo editados
+nele.
+
+**Uma só rotina aplica tudo.** Os cards chamam `GeoMineRoadEditor.update` e o
+arrasto dos PIs no mapa e o perfil chamam `apply`: as mesmas conferências (eixo
+dentro do MDT, rampa máxima, curvas que cabem, camadas desbloqueadas) e o mesmo
+histórico de Desfazer, que vale enquanto a estrada, o MDT e o projeto forem os
+mesmos — fechar o perfil não o apaga.
+
+**O que não é calculado.** Velocidade de projeto, distância de visibilidade,
+superelevação, superlargura e curva de transição. As tabelas descrevem a
+geometria; a verificação de norma é do projetista. O campo "Passo do greide"
+saiu da tela em 19/11/2026 porque nenhum cálculo o usa mais (continua no
+formulário, oculto, para os projetos gravados).
+
+Testes: `node src/modules/civil/road-geometry.test.cjs` (raio por curva e os
+elementos das duas tabelas, conferidos contra as rotinas que traçam o eixo e o
+greide).
 
 ## Janelas de propriedades
 

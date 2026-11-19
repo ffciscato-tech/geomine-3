@@ -160,60 +160,89 @@
       <div class="sec" id="secCivil">
         <h3>Civil — estrada <span class="chev">▾</span></h3>
         <div class="body">
-          <label class="field">Estrada em edição</label>
+          <section class="gm-work-card" id="civCardRoad">
+          <div class="gm-card-heading"><span class="gm-card-step">1</span><b>Estrada e terreno</b><details class="gm-card-info"><summary aria-label="Sobre a estrada e o terreno">ⓘ</summary><p>Cada estrada guarda os seus pontos, critérios, eixo e camadas, e todas ficam no projeto. O MDT dá as cotas do traçado, do greide e dos taludes.</p></details></div>
+          <label class="field" for="civRoadSel">Estrada em edição</label>
           <div class="row2"><select id="civRoadSel"><option value="">— nova estrada —</option></select><button class="mini" id="civRoadNew">+ Nova estrada</button></div>
-          <label class="field">Nome da estrada</label><input id="civRoadName" type="text" placeholder="Nome do acesso">
+          <label class="field" for="civRoadName">Nome da estrada</label><input id="civRoadName" type="text" placeholder="Nome do acesso">
+          <label class="field" for="civMdtSel">MDT</label>
+          <select id="civMdtSel"></select>
+          </section>
+          <section class="gm-work-card" id="civCardCriteria">
+          <div class="gm-card-heading"><span class="gm-card-step">2</span><b>Critérios de projeto</b><details class="gm-card-info"><summary aria-label="Sobre os critérios de projeto">ⓘ</summary><p>Valem para a busca dos traçados e para toda edição posterior. O raio mínimo é o menor raio aceito em qualquer curva horizontal; depois de escolher o traçado, cada curva pode receber um raio maior no card do alinhamento horizontal. A rampa máxima limita as tangentes do greide. Os taludes entram na comparação de corte e aterro das opções e no corredor.</p></details></div>
           <div class="row3">
             <div><label class="field">Largura (m)</label><input type="number" id="civW" value="8" step="0.5" min="1"></div>
+            <div><label class="field" title="Curvas circulares tangentes; 0 usa 60 m. O raio também deve comportar a meia largura da pista.">Raio mín. (m)</label><input type="number" id="civRaioMin" value="60" step="1" min="0"></div>
             <div><label class="field">Rampa máx. (%)</label><input type="number" id="civG" value="8" step="0.5" min="0.5" max="30"></div>
-            <div><label class="field">Passo do greide (m)</label><input type="number" id="civDz" value="2" step="0.5" min="0.5"></div>
           </div>
-          <label class="field">MDT</label>
-          <select id="civMdtSel"></select>
+          <details><summary>Taludes, bancadas e bermas</summary>
           <div class="row2" style="margin-top:6px">
-            <button class="tbtn" id="btnCivA" style="justify-content:center">◎ Ponto A</button>
-            <button class="tbtn" id="btnCivB" style="justify-content:center">◎ Ponto B</button>
-          </div>
-          <div class="row2" style="margin-top:6px">
-            <div hidden><label class="field">Critério do traçado</label><select id="civCrit">
-              <option value="curto">Priorizar comprimento (respeitando a rampa)</option>
-              <option value="terra" selected>Priorizar movimento de terra</option>
-            </select></div>
-            <div><label class="field" title="Curvas circulares tangentes; 0 usa 60 m. O raio também deve comportar a meia largura da pista.">Raio mínimo de curva (m)</label><input type="number" id="civRaioMin" value="60" step="1" min="0"></div>
-          </div>
-
-          <details style="margin-top:6px"><summary>Taludes para comparação</summary>
-          <div class="row2" style="margin-top:6px">
-            <div><label class="field">Passo do talude (m)</label><input type="number" id="civPasso" value="1" step="0.25" min="0.25"></div>
-          </div>
-          <div class="row3" style="margin-top:6px">
             <div><label class="field">Talude de corte (°)</label><input type="number" id="civAngC" value="60" step="1" min="5" max="89"></div>
             <div><label class="field">Talude de aterro (°)</label><input type="number" id="civAngA" value="34" step="1" min="5" max="89"></div>
-            <div><label class="field">Altura da bancada (m)</label><input type="number" id="civH" value="8" step="0.5" min="0.5"></div>
           </div>
           <div class="row2" style="margin-top:6px">
+            <div><label class="field">Altura da bancada (m)</label><input type="number" id="civH" value="8" step="0.5" min="0.5"></div>
             <div><label class="field">Largura da berma (m)</label><input type="number" id="civBerma" value="3" step="0.5" min="0"></div>
+          </div>
+          <div class="row2" style="margin-top:6px">
+            <div><label class="field">Passo do talude (m)</label><input type="number" id="civPasso" value="1" step="0.25" min="0.25"></div>
             <div><label class="field">Alcance máx. (m)</label><input type="number" id="civMaxOff" value="120" step="5" min="5"></div>
           </div>
           </details>
-          <button class="tbtn" id="btnCivAlinha" disabled style="width:100%;justify-content:center;margin-top:6px">Gerar 3 opções pelo MDT</button>
-          <button class="mini" id="civCancelAlternatives" hidden onclick="GeoMineRoadAlternatives.stop()">Cancelar comparação</button>
-          <div id="civAlternatives" style="font-size:12px;margin:8px 0"></div>
-          <div id="civNextSteps" hidden>
-          <h4>2 · Perfil e greide</h4>
-          <button class="tbtn" id="btnCivProfile" style="width:100%;justify-content:center">Gerar perfil · editar greide</button>
-          <button class="tbtn" id="civConfirmAlignment" style="width:100%;justify-content:center;margin-top:6px">Confirmar alinhamento e greide</button>
-          <div id="civCorridorStage" hidden>
-          <h4>3 · Corredor e taludes</h4>
-            <div><label class="field">Intervalo das seções (m)</label><input id="civSectionStep" type="number" value="10" min="1" max="100"></div>
-          <button class="tbtn" id="btnCivSaia" style="width:100%;justify-content:center;margin-top:6px">⛰ Desenhar taludes até a interseção</button>
-          <button class="tbtn" id="civCorridor">Gerar corredor</button>
-          <button class="mini" id="civCancel" hidden>Cancelar cálculo</button>
-          <div id="civReport" class="hint" style="max-height:280px;overflow:auto"></div>
-          </div>
+          </section>
+          <section class="gm-work-card" id="civCardRoute">
+          <div class="gm-card-heading"><span class="gm-card-step">3</span><b>Traçado pelo MDT</b><details class="gm-card-info"><summary aria-label="Sobre o traçado pelo MDT">ⓘ</summary><p>Marque no mapa o início (A) e o fim (B). O GeoMine busca caminhos pelo relevo, ajusta curvas e greide dentro dos critérios e compara corte e aterro por seções. As três melhores opções ficam no mapa para escolher. Mudar A, B, o MDT ou um critério pede nova comparação.</p></details></div>
+          <div class="row2">
+            <button class="tbtn" id="btnCivA" style="justify-content:center">◎ Ponto A</button>
+            <button class="tbtn" id="btnCivB" style="justify-content:center">◎ Ponto B</button>
           </div>
           <div class="hint" id="civInfo" style="margin-top:5px"></div>
-          <div hidden><hr><b>Corredor e melhoria do greide</b>
+          <button class="tbtn gm-card-primary" id="btnCivAlinha" disabled>Gerar 3 opções pelo MDT</button>
+          <button class="mini" id="civCancelAlternatives" hidden onclick="GeoMineRoadAlternatives.stop()">Cancelar comparação</button>
+          <div id="civAlternatives" style="font-size:12px;margin:8px 0 0"></div>
+          </section>
+          <section class="gm-work-card" id="civHorizontalCard" hidden>
+          <div class="gm-card-heading"><span class="gm-card-step">4</span><b>Alinhamento horizontal</b><details class="gm-card-info"><summary aria-label="Sobre o alinhamento horizontal">ⓘ</summary><p>O eixo é formado por tangentes ligadas por curvas circulares. Cada PI (ponto de interseção das tangentes) tem a sua curva: deflexão, raio R, tangente T, desenvolvimento D e as estacas do começo (PC) e do fim (PT), em metros desde o ponto A. Troque o raio de uma curva e aplique; “cabe até” é o maior raio que ainda cabe com os PIs e as curvas vizinhas como estão. Nenhum raio é reduzido sozinho para a curva caber. Superelevação, superlargura e curva de transição não são calculadas.</p></details></div>
+          <div class="civ-summary" id="civHzSummary"></div>
+          <div class="civ-rows" id="civHzRows"></div>
+          <div class="row2 civ-actions">
+            <button class="mini" id="civHzApply" disabled>Aplicar raios</button>
+            <button class="mini" id="civHzPis">Mover PIs no mapa</button>
+            <button class="mini" id="civHzUndo" disabled>↶ Desfazer</button>
+          </div>
+          <div class="hint civ-status" id="civHzStatus" role="status"></div>
+          </section>
+          <section class="gm-work-card" id="civVerticalCard" hidden>
+          <div class="gm-card-heading"><span class="gm-card-step">5</span><b>Alinhamento vertical</b><details class="gm-card-info"><summary aria-label="Sobre o alinhamento vertical">ⓘ</summary><p>O greide é formado por rampas que se encontram nos PVIs (pontos de interseção vertical, também chamados PIV), concordadas por parábolas de comprimento L. A tabela mostra a rampa que chega e a que sai, o tipo da curva e K = L ÷ diferença das rampas em %. Troque o L de uma curva e aplique; cotas, estacas e novos PVIs são editados no perfil. A rampa máxima dos critérios é conferida em toda alteração; velocidade de projeto e distância de visibilidade ainda exigem verificação.</p></details></div>
+          <div class="civ-mini" id="civVtMini" role="button" tabindex="0" title="Abrir o perfil para editar o greide"></div>
+          <div class="civ-summary" id="civVtSummary"></div>
+          <div class="civ-rows" id="civVtRows"></div>
+          <div class="row2 civ-actions">
+            <button class="mini" id="civVtApply" disabled>Aplicar curvas verticais</button>
+            <button class="mini" id="civVtUndo" disabled>↶ Desfazer</button>
+          </div>
+          <div class="hint civ-status" id="civVtStatus" role="status"></div>
+          <button class="tbtn" id="btnCivProfile" style="width:100%;justify-content:center;margin-top:8px">Abrir perfil · editar greide</button>
+          <button class="tbtn gm-card-primary" id="civConfirmAlignment">Confirmar alinhamento e greide</button>
+          <div class="hint" id="civAlignState" style="margin-top:5px"></div>
+          </section>
+          <section class="gm-work-card" id="civCorridorStage" hidden>
+          <div class="gm-card-heading"><span class="gm-card-step">6</span><b>Corredor e volumes</b><details class="gm-card-info"><summary aria-label="Sobre o corredor e os volumes">ⓘ</summary><p>Com o alinhamento confirmado, os taludes marcham da borda da plataforma até encontrar o terreno e o corredor calcula corte e aterro por seções transversais no intervalo informado. Trechos sem terreno ou sem encontro do talude ficam fora da cubagem e são informados. Depois de alterar o eixo, gere o corredor de novo.</p></details></div>
+          <div><label class="field">Intervalo das seções (m)</label><input id="civSectionStep" type="number" value="10" min="1" max="100"></div>
+          <button class="tbtn" id="btnCivSaia" style="width:100%;justify-content:center;margin-top:6px">⛰ Desenhar taludes até a interseção</button>
+          <div class="hint" id="civSlopeInfo" style="margin-top:5px"></div>
+          <button class="tbtn gm-card-primary" id="civCorridor">Gerar corredor</button>
+          <button class="mini" id="civCancel" hidden>Cancelar cálculo</button>
+          <div id="civReport" class="hint" style="max-height:280px;overflow:auto"></div>
+          </section>
+          <!-- Campos sem uso na tela: continuam no formulário para os projetos gravados e para o corredor. -->
+          <div hidden>
+          <div><label class="field">Critério do traçado</label><select id="civCrit">
+              <option value="curto">Priorizar comprimento (respeitando a rampa)</option>
+              <option value="terra" selected>Priorizar movimento de terra</option>
+            </select></div>
+          <div><label class="field">Passo do greide (m)</label><input type="number" id="civDz" value="2" step="0.5" min="0.5"></div>
+          <hr><b>Corredor e melhoria do greide</b>
           <button class="tbtn" id="civUseAxis">Usar eixo 3D da camada ativa</button>
           <div class="row2">
             <div><label class="field">Ajuste máximo de cota (m)</label><input id="civAdjust" type="number" value="5" min="0.1" max="50" step="0.5"></div>

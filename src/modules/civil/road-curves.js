@@ -1,5 +1,12 @@
 /* Circular fillets, tangent to the adjoining straights. Never reduce the
-   requested radius to make a corner fit. Coordinates remain in metres. */
+   requested radius to make a corner fit. Coordinates remain in metres.
+
+   RAIO POR CURVA (19/11/2026). Um vértice de controle pode trazer o seu
+   próprio raio em `r` (metros); sem ele vale o raio geral da chamada. Assim o
+   alinhamento horizontal deixa de ter um raio único: cada PI pode receber um
+   raio maior onde o terreno permite, e a tabela de curvas mostra o que foi
+   usado. Um raio próprio menor que o geral é erro de quem chama: aqui ele é
+   apenas respeitado, nunca reduzido para a curva caber. */
 function civCurvasTangentes(input,radius,spacing=2,preserve=false){
  if(!(radius>0))throw Error('Informe um raio de curva positivo.');
  // Remove grid-scale zigzags within a bounded corridor before fitting arcs.
@@ -22,12 +29,13 @@ function civCurvasTangentes(input,radius,spacing=2,preserve=false){
   const a=pts[i-1],b=pts[i],c=pts[i+1],l1=Math.hypot(b.x-a.x,b.y-a.y),l2=Math.hypot(c.x-b.x,c.y-b.y);
   const u=[(b.x-a.x)/l1,(b.y-a.y)/l1],v=[(c.x-b.x)/l2,(c.y-b.y)/l2],angle=Math.acos(Math.max(-1,Math.min(1,u[0]*v[0]+u[1]*v[1])));
   if(angle<1e-8)continue;
-  const sign=Math.sign(u[0]*v[1]-u[1]*v[0]),t=radius*Math.tan(angle/2);
-  if(!sign||!Number.isFinite(t)||t>=Math.min(l1,l2))throw Error('Não há espaço para uma curva de '+radius+' m no vértice '+i+'. Ajuste o traçado; o raio não foi reduzido.');
+  const R=Number.isFinite(b.r)&&b.r>0?b.r:radius;
+  const sign=Math.sign(u[0]*v[1]-u[1]*v[0]),t=R*Math.tan(angle/2);
+  if(!sign||!Number.isFinite(t)||t>=Math.min(l1,l2))throw Error('Não há espaço para uma curva de '+R+' m no vértice '+i+'. Ajuste o traçado; o raio não foi reduzido.');
   const entry={x:b.x-u[0]*t,y:b.y-u[1]*t,z:b.z+(a.z-b.z)*t/l1},exit={x:b.x+v[0]*t,y:b.y+v[1]*t,z:b.z+(c.z-b.z)*t/l2};
-  turns[i]={entry,exit,t,angle,sign,cx:entry.x-sign*u[1]*radius,cy:entry.y+sign*u[0]*radius};
+  turns[i]={entry,exit,t,angle,sign,radius:R,index:i,cx:entry.x-sign*u[1]*R,cy:entry.y+sign*u[0]*R};
  }
- for(let i=1;i<pts.length;i++)if((turns[i-1]?.t||0)+(turns[i]?.t||0)>Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y)-1e-6)throw Error('Curvas consecutivas não comportam o raio de '+radius+' m. Afaste os vértices do traçado.');
+ for(let i=1;i<pts.length;i++)if((turns[i-1]?.t||0)+(turns[i]?.t||0)>Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y)-1e-6)throw Error('Curvas consecutivas não comportam os raios de '+(turns[i-1]?.radius||radius)+' m e '+(turns[i]?.radius||radius)+' m entre os vértices '+(i-1)+' e '+i+'. Afaste os vértices ou reduza um dos raios.');
  const result=[{...pts[0]}],lineTo=p=>{
   const a=result.at(-1),d=Math.hypot(p.x-a.x,p.y-a.y),n=Math.max(1,Math.ceil(d/spacing));
   if(d<1e-7)return;
@@ -35,8 +43,8 @@ function civCurvasTangentes(input,radius,spacing=2,preserve=false){
  };
  for(let i=1;i<pts.length-1;i++){
   const q=turns[i];if(!q){lineTo(pts[i]);continue;}lineTo(q.entry);
-  const a0=Math.atan2(q.entry.y-q.cy,q.entry.x-q.cx),n=Math.max(2,Math.ceil(q.angle*radius/spacing),Math.ceil(q.angle/.025));
-  for(let k=1;k<=n;k++){const a=a0+q.sign*q.angle*k/n;result.push({x:q.cx+radius*Math.cos(a),y:q.cy+radius*Math.sin(a),z:q.entry.z+(q.exit.z-q.entry.z)*k/n});}
+  const a0=Math.atan2(q.entry.y-q.cy,q.entry.x-q.cx),n=Math.max(2,Math.ceil(q.angle*q.radius/spacing),Math.ceil(q.angle/.025));
+  for(let k=1;k<=n;k++){const a=a0+q.sign*q.angle*k/n;result.push({x:q.cx+q.radius*Math.cos(a),y:q.cy+q.radius*Math.sin(a),z:q.entry.z+(q.exit.z-q.entry.z)*k/n});}
  }
  lineTo(pts.at(-1));return {points:result,controls:pts,curves:turns.filter(Boolean),radius};
 }

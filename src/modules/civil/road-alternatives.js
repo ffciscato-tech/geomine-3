@@ -210,7 +210,7 @@ function render(C){
  const box=el('civAlternatives');if(!box)return;box.innerHTML='';showPreview(C);
  const result=C?.alternatives;if(!result)return;
  const f=n=>Number(n).toLocaleString('pt-BR',{maximumFractionDigits:1});
- box.innerHTML='<b>1 · Escolha o traçado pelo MDT</b><div>'+result.tested+' traçados avaliados · '+result.compared+' comparados por seções · '+(result.refined||0)+' greides otimizados.</div>'+
+ box.innerHTML='<b>Opções de traçado</b><div>'+result.tested+' traçados avaliados · '+result.compared+' comparados por seções · '+(result.refined||0)+' greides otimizados.</div>'+
  Array.from({length:3},(_,i)=>{
   const q=result.options[i];
   if(!q)return '<div style="border:1px solid var(--line);padding:8px;margin-top:6px"><b>Opção '+(i+1)+'</b> · indisponível<div>Não foi encontrado outro traçado viável com estes parâmetros.</div></div>';
@@ -230,13 +230,21 @@ function apply(C,index){
  if(saved&&JSON.stringify(saved)!==JSON.stringify(C.params)){toast('Os parâmetros mudaram. Compare as alternativas novamente.');return;}
  if(S.layers.some(l=>l._civilDesignId===C.id&&(l.locked||(typeof canEditLayer==='function'&&!canEditLayer(l,false))))){toast('Desbloqueie as camadas da estrada.');return;}
  clearPreview();GeoMineRoadEditor.close();GeoMineCorridor.invalidate(C);
- Object.assign(C,{eixo:copy(q.axis),horizontalControls:copy(q.controls),verticalDesign:copy(q.design),horizontalCurved:true,alignmentPending:false,alignmentConfirmed:false,selectedAlternative:index,W:C.params.civW});
+ // Cada PI interno guarda o raio com que a opção foi traçada (ver road-curves.js): a tabela de
+ // curvas mostra o que está no eixo e uma troca posterior do raio mínimo não muda as curvas sozinha.
+ const controls=copy(q.controls).map((p,i,all)=>i&&i<all.length-1&&q.radius>0?{...p,r:q.radius}:p);
+ Object.assign(C,{eixo:copy(q.axis),horizontalControls:controls,verticalDesign:copy(q.design),horizontalCurved:true,alignmentPending:false,alignmentConfirmed:false,selectedAlternative:index,W:C.params.civW});
  const feature={geom:q.axis.map(p=>[p.x,p.y]),zg:q.axis.map(p=>p.z),multi:false,props:{TIPO:'Alternativa '+(index+1),COMP_M:q.total,RAMPA_MAX:q.grade,CORTE_M3:q.volumes.cut,ATERRO_M3:q.volumes.fill,RAIO_MIN:q.radius,LARGURA:C.params.civW}};
  let L=S.layers.find(l=>l.id===C.alignmentId&&l._civilDesignId===C.id);
  if(L){L.features=[feature];}else{L=addLayer({name:C.name+' — eixo',gtype:'line',crs:C.crs,features:[feature],fields:[],color:'#168dda'});L._civilDesignId=C.id;C.alignmentId=L.id;}
  L._civAlinhamento=true;L.visible=true;drawLayer(L);
  const old=S.layers.find(l=>l.id===C.slopesId);if(old){old.visible=false;drawLayer(old);}
- GeoMineCivil.sync();refreshUI();GeoMineRoadEditor.open();toast('Opção '+(index+1)+' aplicada. Revise o perfil antes de confirmar.');
+ GeoMineCivil.sync();refreshUI();
+ // O painel continua aberto: os cards dos alinhamentos horizontal e vertical aparecem logo abaixo
+ // da opção escolhida. O perfil completo abre pelo card do alinhamento vertical.
+ el('civInfo').textContent='Opção '+(index+1)+' em uso. Para trocar, escolha outra opção; para mudar A ou B, marque de novo e compare.';
+ el('civHorizontalCard')?.scrollIntoView({block:'start',behavior:'smooth'});
+ toast('Opção '+(index+1)+' aplicada. Revise os alinhamentos horizontal e vertical antes de confirmar.');
 }
 async function compare(){
  const C=GeoMineCivil.current(),R=civMdt();
@@ -254,7 +262,7 @@ async function compare(){
    C.selectedAlternative=null;C.alignmentPending=true;C.alignmentConfirmed=false;
    GeoMineRoadEditor.close();GeoMineCorridor.invalidate(C);
    for(const L of S.layers.filter(l=>l._civilDesignId===C.id&&(l.id===C.alignmentId||l.id===C.slopesId))){L.visible=false;drawLayer(L);}
-   el('civInfo').textContent=result.options.length===3?'Três opções prontas. Escolha um traçado para gerar o perfil.':'Foram encontradas '+result.options.length+' opções viáveis. Ajuste raio, rampa ou A/B para ampliar a busca.';
+   el('civInfo').textContent=result.options.length===3?'Três opções prontas. Escolha um traçado para ver os alinhamentos horizontal e vertical.':'Foram encontradas '+result.options.length+' opções viáveis. Ajuste raio, rampa ou A/B para ampliar a busca.';
   }else el('civInfo').textContent='Nenhum traçado viável nesta busca. Confira A/B, raio, rampa e cobertura do MDT.';
   render(C);window.GeoMineSessionAutosave?.markDirty('alternativas de estrada');
  }catch(e){if(job===token&&C===S._civ){el('civInfo').textContent=e.message;render(C);}}

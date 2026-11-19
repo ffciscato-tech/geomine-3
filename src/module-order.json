@@ -204,6 +204,7 @@
         "modules/civil/corridor.js",
         "modules/civil/road-editor.js",
         "modules/civil/road-alternatives.js",
+        "modules/civil/road-geometry.js",
         "core/parts/23-block-model-and-volumes.js",
         "core/parts/24-slope-stability.js",
         "core/parts/25-geoprocessing-tin.js",

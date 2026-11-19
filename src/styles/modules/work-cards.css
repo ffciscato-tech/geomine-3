@@ -22,3 +22,27 @@
 body.alagis3 #stairsReport>.modal{width:min(1000px,100%)!important;resize:none}
 #stairsReport .command-resize-grip{display:none!important}
 #stairsReport table{width:100%;border-collapse:collapse;font-size:11px}#stairsReport td,#stairsReport th{padding:5px;border-bottom:1px solid #b9c8d4;text-align:right}#stairsReport th:first-child,#stairsReport td:first-child{text-align:left}
+/* Estrada: seis cards na ordem do projeto. As linhas dos alinhamentos (curvas e PVIs) rolam dentro do card. */
+#secCivil>.body{padding:0!important}#secCivil [hidden]{display:none!important}
+#secCivil .gm-work-card select,#secCivil .gm-work-card input:not([type=checkbox]){width:100%;box-sizing:border-box}
+#secCivil .gm-work-card .field{margin-top:6px}#secCivil .gm-work-card .row2>div,#secCivil .gm-work-card .row3>div{flex:1;min-width:0}
+#secCivil .gm-work-card>details:not(.gm-card-info){margin-top:8px}#secCivil .gm-work-card>details:not(.gm-card-info)>summary{cursor:pointer;font-size:12px;line-height:28px;color:var(--ink-dim,#526c80)}
+#secCivil .gm-work-card .gm-card-primary{margin-left:0;margin-right:0}#secCivil .gm-work-card>.tbtn{margin-left:0;margin-right:0}
+#secCivil .gm-work-card button:disabled{opacity:.45;cursor:not-allowed}
+#secCivil .gm-card-info p{color:var(--ink-dim,#526c80)}
+#secCivil .civ-summary{font-size:11.5px;line-height:1.5;margin:0 0 6px;overflow-wrap:anywhere}#secCivil .civ-summary:empty{display:none}
+#secCivil .civ-rows{border:1px solid var(--line,#b8c7d4);border-radius:7px;max-height:264px;overflow:auto;-webkit-overflow-scrolling:touch}#secCivil .civ-rows:empty{display:none}
+#secCivil .civ-row{padding:6px 8px;border-top:1px solid var(--line,#b8c7d4);font-size:11.5px;line-height:1.4}#secCivil .civ-row:first-child{border-top:0}
+#secCivil .civ-row.dirty{box-shadow:inset 3px 0 0 var(--amber,#f5a524)}
+#secCivil .civ-row-main{display:flex;align-items:center;gap:6px;min-height:30px}#secCivil .civ-row-main>b{flex:none}#secCivil .civ-row-main>span{flex:1;min-width:0}
+#secCivil .civ-row-field{flex:none;display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-dim,#526c80)}
+#secCivil .civ-row-field input{width:74px!important;min-height:30px;text-align:right;padding:3px 6px}
+#secCivil .civ-row-detail{color:var(--ink-dim,#526c80);font-size:11px;overflow-wrap:anywhere}#secCivil .civ-row-warn{color:var(--sel,#c62828);font-size:11px;margin-top:2px}
+#secCivil .civ-actions{margin-top:7px;flex-wrap:wrap}#secCivil .civ-actions>.mini{flex:1 1 auto;width:auto;margin:0;justify-content:center;min-height:30px}
+#secCivil .civ-actions>.mini.on{background:var(--amber,#f5a524);color:#1a1206;border-color:var(--amber,#f5a524);font-weight:600}
+#secCivil .civ-status{margin-top:5px;overflow-wrap:anywhere}#secCivil .civ-status:empty,#secCivil #civAlignState:empty,#secCivil #civSlopeInfo:empty,#secCivil #civInfo:empty{display:none}
+#secCivil .civ-status[data-kind=erro]{color:var(--sel,#c62828)}#secCivil .civ-status[data-kind=ok]{color:var(--ok,#1a7f37)}
+#secCivil .civ-mini{margin:0 0 6px;cursor:pointer;border:1px solid var(--line,#b8c7d4);border-radius:7px;padding:4px;background:var(--bg,#edf3f8)}#secCivil .civ-mini:empty{display:none}
+#secCivil .civ-mini svg{display:block;width:100%;height:auto;max-height:170px}
+#secCivil .civ-legend{display:flex;flex-wrap:wrap;gap:3px 9px;font-size:10.5px;line-height:1.3;color:var(--ink-dim,#526c80);padding:2px 2px 0}
+#secCivil .civ-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:3px;vertical-align:-1px}

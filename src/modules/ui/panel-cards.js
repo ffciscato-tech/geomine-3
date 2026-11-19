@@ -43,7 +43,6 @@ function numberScopes(scope){
 const schemas={
  secCRS:[['Sistema de coordenadas']],
  secCAD:[['Coordenadas'],['Precisão e encaixe','#cadOrtho'],['Paralela / offset','#cadOffD'],['Hachura','#btnCadHatch'],['Edição de linhas','#btnCadRef'],['Limpeza do projeto','#limTol'],['Exportar DXF','#cadDxfScope']],
- secCivil:[['Estrada'],['Terreno e traçado','#civMdtSel']],
  secLayout:[['Título e identificação'],['Logomarca','#cliLogoFile'],['Escala e coordenadas','#loScale'],['Papel e enquadramento','#loA4Paper'],['Elementos do mapa','#loCart'],['Legenda e símbolos','h4'],['Escala gráfica','#loBarPasso']],
  secCNOrto:[['Produto'],['Solo e coeficientes','#hCnCInputs'],['Ortofoto e terreno','#hCnOrtoSource'],['Área e geração','#hCnLimite'],['Média por área','#hCZoneSection']],
  secHidroInund:[['Terreno'],['Destino','#hInundDestination'],['Barramento e níveis','#hInundBarrier'],['Simulação','#hInundIni']],
@@ -168,7 +167,8 @@ function propertyCards(modal){
 }
 function enhance(panel){
  if(!panel?.isConnected)return;
- if(panel.id==='secBacia'||panel.id==='secHydraulicStairs')return;
+ // Painéis com cards escritos à mão no template: só a numeração é comum.
+ if(panel.id==='secBacia'||panel.id==='secHydraulicStairs'||panel.id==='secCivil')return;
  if(panel.matches('.modal-bg')){
   if(panel.querySelector('.gmp')){propertyCards(panel);return;}
   const body=panel.querySelector('.modal-b')||panel.querySelector(':scope>.modal');
