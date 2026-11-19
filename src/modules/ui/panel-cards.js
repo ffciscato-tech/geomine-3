@@ -20,6 +20,7 @@ function numberWindow(host){
   if(step.dataset.gmCardNumber!==value)step.dataset.gmCardNumber=value;
   if(/^\d+$/.test(step.textContent.trim())&&step.textContent!==value)step.textContent=value;
  }
+ refreshHelp(host);
 }
 function requestNumbers(host){
  if(!host)return;numberPending.add(host);if(numberScheduled)return;
@@ -154,6 +155,84 @@ function split(host,rules){
    const s=host.ownerDocument.createElement('summary');s.textContent='ⓘ';s.setAttribute('aria-label','Sobre esta ferramenta');info.append(s,intro);hd.append(info);intro.classList.remove('hint');}
  }
 }
+// ---------- Explicações no ⓘ do card ----------
+// Pedido de 19/11/2026, sobre a janela do Perfil Longitudinal: "esses textos
+// podem ficar escondidos no botão i". Nada é movido: a dica original continua
+// no lugar, oculta, para o módulo que a mostra, esconde ou reescreve; o ⓘ
+// exibe uma cópia, com o nome do campo quando a dica o traz. Só entram dicas
+// estáticas: sem id (os avisos de estado têm id), sem controles e fora de
+// resultados (.hout) e de blocos <details>, que já abrem sob demanda.
+const helpHosts='#sidePerfis';
+const helpSkip='.hout,details,.gm-card-info';
+const helpSeen=new WeakMap();
+const isHelp=h=>!h.id&&!h.closest(helpSkip)&&!h.querySelector('button,a,input,select,textarea,canvas,img');
+function helpApplies(card,h){
+ // A dica vale enquanto o lugar dela está à vista: a do modo raster some no
+ // modo vetorial, a do resultado só existe depois de gerar.
+ for(let p=h.parentElement;p&&p!==card;p=p.parentElement)if(p.hidden||getComputedStyle(p).display==='none')return false;
+ return true;
+}
+// O nome do campo vem escrito na própria dica (data-gm-help). Deduzi-lo pelo
+// rótulo vizinho erra quando a dica fecha um grupo inteiro de campos.
+const helpCaption=h=>(h.dataset.gmHelp||'').trim();
+function renderHelp(card,info){
+ const body=info.querySelector(':scope>.gm-card-help-body');if(!body)return;
+ const items=[];
+ for(const h of card.querySelectorAll('.gm-card-help-text')){
+  if(h.closest('.gm-work-card')!==card||!helpApplies(card,h))continue;
+  items.push({h,caption:helpCaption(h)});
+ }
+ // Só toca na página quando o conteúdo mudou: a janela é observada.
+ const signature=items.map(i=>i.caption+'\u0001'+i.h.innerHTML).join('\u0002');
+ if(helpSeen.get(body)!==signature){
+  helpSeen.set(body,signature);body.textContent='';let last=null;
+  for(const {h,caption} of items){
+   const p=card.ownerDocument.createElement('p');
+   if(caption&&caption!==last){const b=card.ownerDocument.createElement('b');b.className='gm-card-help-field';b.textContent=caption;p.append(b,' ');}
+   last=caption;
+   for(const child of h.childNodes)p.append(child.cloneNode(true));
+   body.append(p);
+  }
+ }
+ // Sem nenhuma explicação aplicável o ⓘ não aparece (ex.: resultado ainda não gerado).
+ const other=[...info.children].some(c=>c!==body&&!c.matches('summary'));
+ const hide=!items.length&&!other;
+ if(info.hidden!==hide)info.hidden=hide;
+}
+function refreshHelp(host){
+ for(const info of host.querySelectorAll('.gm-card-help')){
+  const card=info.closest('.gm-work-card');
+  if(card&&card.getClientRects().length)renderHelp(card,info);
+ }
+}
+function helpCard(card){
+ if(card.classList.contains('gm-has-help'))return;
+ const hd=card.querySelector(':scope>.gm-card-heading');
+ // Num cabeçalho <summary> o ⓘ abriria e fecharia o próprio card.
+ if(!hd||hd.matches('summary'))return;
+ const hints=[...card.querySelectorAll('.hint')].filter(h=>h.closest('.gm-work-card')===card&&isHelp(h));
+ if(!hints.length)return;
+ const doc=card.ownerDocument;
+ let info=hd.querySelector(':scope>.gm-card-info');
+ if(!info){
+  info=doc.createElement('details');info.className='gm-card-info';
+  const s=doc.createElement('summary');s.textContent='ⓘ';s.setAttribute('aria-label','Explicações deste card');
+  info.append(s);hd.append(info);
+ }
+ const body=doc.createElement('div');body.className='gm-card-help-body';info.append(body);
+ info.classList.add('gm-card-help');card.classList.add('gm-has-help');
+ for(const h of hints)h.classList.add('gm-card-help-text');
+ info.addEventListener('toggle',()=>{if(info.open)renderHelp(card,info);});
+ renderHelp(card,info);
+}
+function helpCards(scope){
+ const cards=[];
+ if(scope.matches?.('.gm-panel-card')&&scope.closest(helpHosts))cards.push(scope);
+ for(const host of [...(scope.matches?.(helpHosts)?[scope]:[]),...scope.querySelectorAll(helpHosts)])cards.push(...host.querySelectorAll('.gm-panel-card'));
+ const inside=scope.closest?.(helpHosts);
+ if(inside)cards.push(...scope.querySelectorAll('.gm-panel-card'));
+ for(const card of new Set(cards))helpCard(card);
+}
 function propertyCards(modal){
  for(const pane of modal.querySelectorAll('.lp-pane,.modal-b'))pane.classList.add('gm-card-stack');
  for(const card of modal.querySelectorAll('.gmp-sec,.lp-cls-ctrl'))decorate(card,card.querySelector(':scope>.gmp-c #lpOpacity')?'Aparência':null);
@@ -194,6 +273,7 @@ function scan(scope){
  panels.push(...scope.querySelectorAll(panelSelector));
  // Filhos primeiro: o pai não absorve os cards de um submódulo.
  for(const p of panels.reverse())enhance(p);
+ helpCards(scope);
  if(scope.matches?.('.feat-menu'))featureCards(scope);
  scope.querySelectorAll('.feat-menu').forEach(featureCards);
  numberScopes(scope);
@@ -214,11 +294,12 @@ new MutationObserver(records=>{
   const target=record.target.nodeType===1?record.target:null;
   if(!target||!target.closest(panelSelector+',.feat-menu,#ribbonPop,#edBox')&&target.closest('#map,#v3d,#sheetWrap,#cava2Workspace,#layerList,.leaflet-container'))continue;
   if(record.target.nodeType===1&&record.target.closest('.modal-bg'))queue(record.target);
-  for(const n of record.addedNodes)if(n.nodeType===1&&!n.matches('.gm-card-heading,.gm-card-step'))queue(n);
+  if(target.closest('.gm-card-info'))continue;
+  for(const n of record.addedNodes)if(n.nodeType===1&&!n.matches('.gm-card-heading,.gm-card-step,.gm-card-info'))queue(n);
  }
 }).observe(document.body,{childList:true,subtree:true});
 // O corpo controla o recolhimento do dock e os modos de visualização.
 new MutationObserver(()=>numberScopes(document.body)).observe(document.body,{attributes:true,attributeFilter:['class']});
 root.addEventListener('resize',()=>numberScopes(document.body));
-root.GeoMinePanelCards={enhance:scan,version:2};
+root.GeoMinePanelCards={enhance:scan,version:3};
 })(window);

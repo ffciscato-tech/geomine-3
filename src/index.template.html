@@ -2638,7 +2638,7 @@
               <button class="mini" id="btnPrRasterAdd" style="margin:0" title="Manter este MDT para comparar com outra superfície">＋ Comparar</button>
             </div>
             <div id="prRasterChosen" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px"></div>
-            <div class="hint">Escolha o terreno e clique em “Comparar”; depois escolha a cava ou outra superfície. Repita para incluir mais MDTs. A lista mostra a ordem das fontes.</div>
+            <div class="hint" data-gm-help="Superfície raster / MDT">Escolha o terreno e clique em “Comparar”; depois escolha a cava ou outra superfície. Repita para incluir mais MDTs. A lista mostra a ordem das fontes.</div>
           </div>
           <div id="prLineWrap" style="display:none">
             <label class="field" for="prVectorSel">Camada vetorial 3D</label>
@@ -2647,8 +2647,8 @@
               <button class="mini" id="btnPrVectorAdd" style="margin:0" title="Manter esta fonte para comparar com outra camada">＋ Comparar</button>
             </div>
             <div id="prVectorChosen" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:7px"></div>
-            <div class="hint">A camada escolhida já será utilizada. “Comparar” permite acrescentar outras fontes. Aceita linhas XYZ e curvas com atributo de cota.</div>
-            <div class="hint">Para várias linhas ou partes, selecione no mapa a linha desejada. Para curvas de nível, trace um eixo que cruze as curvas. Nenhum TIFF é necessário.</div>
+            <div class="hint" data-gm-help="Camada vetorial 3D">A camada escolhida já será utilizada. “Comparar” permite acrescentar outras fontes. Aceita linhas XYZ e curvas com atributo de cota.</div>
+            <div class="hint" data-gm-help="Camada vetorial 3D">Para várias linhas ou partes, selecione no mapa a linha desejada. Para curvas de nível, trace um eixo que cruze as curvas. Nenhum TIFF é necessário.</div>
           </div>
           <div class="hint">Todas as fontes são comparadas no mesmo eixo A–B. Para GEO5, adicione primeiro o terreno; no modo misto os MDTs aparecem antes dos vetores. Escolher ou ocultar uma fonte não altera os dados originais.</div>
         </div>
@@ -2657,16 +2657,16 @@
           <label class="field" for="prAxisVectorSel">Eixo comum — independente das fontes comparadas</label>
           <select id="prAxisVectorSel"><option value="">— traçar no mapa ou usar a linha selecionada —</option></select>
           <button class="mini" id="btnPrUseVectorAxis">Usar a linha escolhida como eixo</button>
-          <div class="hint">Pode ser uma linha 2D ou 3D. Escolha a feição/parte na lista ou selecione-a no mapa. A lista mostra até 1.000 partes; as demais podem ser selecionadas no mapa. Vetores fora do eixo e sem cruzamentos não produzem cotas; não são deslocados para fabricar comparação.</div>
+          <div class="hint" data-gm-help="Eixo comum">Pode ser uma linha 2D ou 3D. Escolha a feição/parte na lista ou selecione-a no mapa. A lista mostra até 1.000 partes; as demais podem ser selecionadas no mapa. Vetores fora do eixo e sem cruzamentos não produzem cotas; não são deslocados para fabricar comparação.</div>
           <button class="tbtn" id="btnPrDraw" style="width:100%;justify-content:center">✏ Traçar no mapa</button>
           <button class="mini" id="btnPrClear">🗑 Limpar perfil e traçado</button>
-          <div class="hint" style="margin-top:6px">Ou selecione uma linha existente no mapa (◈) e gere direto.</div>
+          <div class="hint" data-gm-help="Eixo comum" style="margin-top:6px">Ou selecione uma linha existente no mapa (◈) e gere direto.</div>
           <label class="field">Nome do perfil</label>
           <div class="row2">
             <input type="text" id="prName" value="A" maxlength="30" placeholder="ex.: A, B, Talude Norte">
             <button class="mini" id="btnPrNext" title="Avança para a próxima letra livre" style="margin:0">Próxima letra</button>
           </div>
-          <div class="hint" style="margin-top:4px">Dois pontos (reta): as pontas são <b>A</b> e <b>a</b>. Com três ou mais vértices, cada quebra recebe a sua letra em sequência — <b>A, B, C, D, E</b> — na planta, no gráfico e no DXF. Se o nome tiver mais de uma palavra, ele vira o título e as letras partem da inicial.</div>
+          <div class="hint" data-gm-help="Nome do perfil" style="margin-top:4px">Dois pontos (reta): as pontas são <b>A</b> e <b>a</b>. Com três ou mais vértices, cada quebra recebe a sua letra em sequência — <b>A, B, C, D, E</b> — na planta, no gráfico e no DXF. Se o nome tiver mais de uma palavra, ele vira o título e as letras partem da inicial.</div>
           <label class="field" id="prStepLabel">Passo de amostragem (m) — vazio = célula</label>
           <input type="number" id="prStep" value="" step="1" min="0.5">
           <div id="prRasterSampling">
@@ -2675,12 +2675,12 @@
             <option value="bilinear">Bilinear (suaviza dentro da célula)</option>
             <option value="near">Vizinho mais próximo (cota crua da célula)</option>
           </select>
-          <div class="hint">Use “vizinho mais próximo” para ver a cota <b>bruta</b> do MDS, sem
+          <div class="hint" data-gm-help="Amostragem">Use “vizinho mais próximo” para ver a cota <b>bruta</b> do MDS, sem
             interpolação: se o perfil continuar liso, a suavização está no próprio MDS, não aqui.</div>
           <label class="field" style="display:flex;align-items:center;gap:6px;margin-top:8px">
             <input type="checkbox" id="prNativo" checked style="width:auto;accent-color:var(--amber)">
             Usar a grade <b>nativa</b> da superfície</label>
-          <div class="hint">Marcado (recomendado): o perfil é traçado na resolução original do MDS,
+          <div class="hint" data-gm-help="Grade nativa">Marcado (recomendado): o perfil é traçado na resolução original do MDS,
             relendo o GeoTIFF se necessário. Desmarcado: usa a grade de trabalho carregada (mais leve,
             porém suavizada se a superfície foi reamostrada).</div>
           </div>
@@ -2693,7 +2693,7 @@
           <div id="prStyleBox" style="display:none;border:1px solid var(--line);border-radius:9px;padding:7px;margin-bottom:7px">
             <div style="font-weight:700;font-size:12px;margin-bottom:6px">Editar linhas do perfil</div>
             <div id="prStyleList"></div>
-            <div class="hint" style="margin-top:5px">Nome, visibilidade, cor, espessura e padrão são aplicados imediatamente ao gráfico e ao PNG exportado.</div>
+            <div class="hint" data-gm-help="Editar linhas do perfil" style="margin-top:5px">Nome, visibilidade, cor, espessura e padrão são aplicados imediatamente ao gráfico e ao PNG exportado.</div>
           </div>
           <canvas id="profChart" width="860" height="300" style="width:100%;height:auto;display:none;background:#fff;border-radius:8px"></canvas>
           <div class="hout" id="prOut">Nenhum perfil gerado.</div>
@@ -2705,7 +2705,7 @@
             <button class="tbtn" id="btnPrDXF" style="justify-content:center">⤓ DXF (desenho)</button>
             <button class="tbtn" id="btnPrDXFG5" style="justify-content:center">⤓ DXF p/ GEO5</button>
           </div>
-          <div class="hint" style="margin-top:3px">O <b>desenho</b> traz eixos, grade e rótulos, para CAD.
+          <div class="hint" data-gm-help="DXF" style="margin-top:3px">O <b>desenho</b> traz eixos, grade e rótulos, para CAD.
             O <b>GEO5</b> sai fechado, formando região de solo.</div>
           <div style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-top:6px">
             <div style="font-weight:600;font-size:12px;margin-bottom:4px">Modelo para o GEO5</div>
@@ -2733,7 +2733,7 @@
               <input type="number" id="g5EmbVal" value="10" step="0.5" style="margin-top:4px">
               <select id="g5EmbSurf" style="display:none;margin-top:4px"></select>
             </div>
-            <div class="hint" style="margin-top:4px">O contorno sai como polilinha <b>fechada</b>:
+            <div class="hint" data-gm-help="Modelo para o GEO5" style="margin-top:4px">O contorno sai como polilinha <b>fechada</b>:
               terreno no topo, verticais nas pontas e base horizontal — é o que o GEO5 usa
               para criar a região de solo.</div>
           </div>
@@ -2811,7 +2811,7 @@
               <div><label class="field">ru</label>
                 <input type="number" id="bshFRu" value="0.15" step="0.05" min="0" max="0.6"></div>
             </div>
-            <div class="hint">A fatia usa o peso das duas camadas; a resistência (c', φ', ru) é a do
+            <div class="hint" data-gm-help="Pilha sobre embasamento">A fatia usa o peso das duas camadas; a resistência (c', φ', ru) é a do
               material onde a BASE do círculo passa. Gere o perfil marcando as DUAS superfícies
               (pilha e topografia original) na seção acima.</div>
           </div>

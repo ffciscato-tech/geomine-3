@@ -24,6 +24,15 @@ details.gm-panel-card[open]>summary.gm-card-heading::after{content:'⌄'}
 .gm-card-info[open]{flex-basis:100%!important}
 .gm-card-info>div{font-weight:400;font-size:12px;line-height:1.45;color:var(--ink-dim);margin:5px 0 0}
 .gm-panel-card>.gm-card-heading:has(.gm-card-info[open]){flex-wrap:wrap}
+/* Explicações no ⓘ: a dica original fica no lugar, oculta; o ⓘ mostra a cópia
+   com o nome do campo a que ela se refere. */
+.gm-has-help .gm-card-help-text{display:none!important}
+.gm-has-help .gm-card-help-text+:is(button,.tbtn,.mini){margin-top:6px}
+.gm-card-info>.gm-card-help-body{font-size:11px}
+.gm-card-help-body p{margin:0 0 6px}
+.gm-card-help-body p:last-child{margin-bottom:0}
+.gm-card-help-field{color:var(--ink);font-weight:600}
+.gm-card-help-field::after{content:' —'}
 /* As seções existentes continuam a controlar sua abertura e seus valores. */
 .gmp .gmp-sec.gm-panel-card,.gmp .lp-cls-ctrl.gm-panel-card{border:1px solid var(--line,#b8c7d4)!important;border-radius:9px;background:var(--panel,#f8fbff);padding:9px!important;margin:0 0 10px!important}
 .gmp .gmp-sec.gm-panel-card>.gmp-hd,.gmp .lp-cls-ctrl.gm-panel-card>.gmp-hd{padding:0;gap:7px;min-height:28px;font-size:12px}

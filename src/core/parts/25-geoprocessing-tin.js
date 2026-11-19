@@ -5365,7 +5365,7 @@ function profRenderVectorSources(){
   box.innerHTML=S.prof.sourceLineIds.length?S.prof.sourceLineIds.map((id,i)=>{
     const L=S.layers.find(q=>String(q.id)===String(id));
     return `<span class="tag" style="display:inline-flex;align-items:center;gap:5px;max-width:100%"><span style="overflow:hidden;text-overflow:ellipsis">${i+1}. ${esc(L.name)}</span><button type="button" class="prSrcRemove" data-id="${esc(String(id))}" title="Remover esta fonte" style="border:0;background:none;color:inherit;cursor:pointer;padding:0">×</button></span>`;
-  }).join(''):'<span class="hint">Sem fontes adicionais para comparação.</span>';
+  }).join(''):'<span class="hint gm-card-help-text" data-gm-help="Camada vetorial 3D">Sem fontes adicionais para comparação.</span>';
 }
 function profRenderRasterSources(){
   profReconcileSources();
@@ -5374,7 +5374,7 @@ function profRenderRasterSources(){
   box.innerHTML=S.prof.sourceRasterIds.length?S.prof.sourceRasterIds.map((id,i)=>{
     const r=S.rasters.find(r=>String(r.id)===id);
     return `<span class="tag" style="display:inline-flex;align-items:center;gap:5px;max-width:100%"><span style="overflow:hidden;text-overflow:ellipsis">${i+1}. ${esc(r.name)}</span><button type="button" class="prRasterRemove" data-id="${esc(id)}" title="Remover este MDT" style="border:0;background:none;color:inherit;cursor:pointer;padding:0">×</button></span>`;
-  }).join(''):'<span class="hint">A superfície escolhida será utilizada. Use “Comparar” para manter mais de uma.</span>';
+  }).join(''):'<span class="hint gm-card-help-text" data-gm-help="Superfície raster / MDT">A superfície escolhida será utilizada. Use “Comparar” para manter mais de uma.</span>';
 }
 function profAxisOptions(){
   const out=[],layers=S.layers.filter(L=>L.gtype==='line'),counts=new Map();

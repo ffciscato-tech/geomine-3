@@ -278,6 +278,25 @@ publicou de outro lugar e este repositório está desatualizado.
   só os cards visíveis de cada janela, então um card escondido não deixa
   buraco na numeração. Painéis com cards escritos à mão (bacia, escada
   hidráulica e estrada) ficam fora da divisão automática desse módulo.
+- **Textos explicativos ficam no ⓘ do card.** Pedido de 19/11/2026, sobre a
+  janela do Perfil Longitudinal: "esses textos podem ficar escondidos no botão
+  i". Nos cards montados automaticamente (`panel-cards.js`) as dicas estáticas
+  — `.hint` sem `id`, sem controles, fora de resultados (`.hout`) e de blocos
+  `<details>` — ficam ocultas, e o ⓘ do cabeçalho mostra uma cópia delas,
+  agrupadas pelo nome do campo escrito em `data-gm-help` na própria dica (o
+  nome não é deduzido do rótulo vizinho: a dedução erra quando a dica fecha um
+  grupo inteiro de campos). Nada é movido: a dica original continua no lugar,
+  com a classe `gm-card-help-text` e oculta por CSS, de modo que o módulo dono
+  segue mostrando, escondendo e reescrevendo o que é dele, e a cópia
+  acompanha — as dicas do modo raster somem no modo vetorial, as do resultado
+  só existem depois de gerar, e sem nenhuma dica aplicável o ⓘ não aparece.
+  Avisos de estado e resultados (com `id` ou dentro de `.hout`) nunca são
+  escondidos. Texto gerado por código entra na regra recebendo a classe
+  `gm-card-help-text` na origem (as duas listas de fontes do perfil, em
+  `25-geoprocessing-tin.js`). A regra está ligada só no painel de perfis
+  (`helpHosts='#sidePerfis'`: Perfil Longitudinal, Perfil Transversal, Seções
+  Transversais e Estabilidade de talude). Para ligar em outra ferramenta,
+  acrescente o seletor e confira os textos um a um.
 - **O menu de texto do aparelho nunca fica por cima dos comandos do GeoMine.**
   Pedido de 19/11/2026, com o print do iPad mostrando "Colar / Selecionar /
   Selecionar Tudo / Ferramentas de Escrita / Formatar" sobre o menu da feição.
