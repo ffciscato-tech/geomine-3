@@ -10,6 +10,8 @@ const IDS_VALORES=['cava_H','cava_banco','cava_nb','cava_face','cava_berma','cav
 const estado={frame:null,ready:false,crs:null,baseZ:0,fonte:null,alvo:'cava',syncTimer:0,
   projetoPendente:undefined,restaurando:false,desenhos:[],desenhoId:null,seq:0,
   painelFechado:true,mostrarGrade:true,fundoMapa:null,cutHashes:{},mdtTrabalhoId:null};
+// Chaves (_cava2Key) que cada camada gerada recebeu na última publicação. Ver publicaDesenho.
+const cava2Publicadas=new WeakMap();
 
 function fontePreparada(){
   return String(CAVA2_V106_SOURCE||'')
@@ -74,6 +76,7 @@ function criaInterface(){
     <div class="cava2-design-tabs" id="cava2DesignTabs" role="tablist" aria-label="Desenhos da cava"></div>
     <button id="cava2TabsNext" type="button" aria-label="Rolar abas para a direita" title="Próximas abas" disabled>›</button>
     <select id="cava2DesignList" aria-label="Ir para cava ou DCE" title="Todas as cavas e DCEs" disabled></select>
+    <button id="cava2RestoreDeleted" type="button" hidden></button>
     <select id="cava2Basemap" aria-label="Satélite ou ortofoto no modo Cava" title="Satélite ou ortofoto no modo Cava" disabled>${FUNDOS_CAVA.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('')}</select>
   </nav>
   <iframe id="cava2Frame" title="Área 2D — cava e DCE" sandbox="allow-scripts allow-same-origin allow-downloads"></iframe>`;
@@ -82,6 +85,7 @@ function criaInterface(){
   document.getElementById('cava2Basemap').value=fundoCava();
   document.getElementById('cava2Basemap').onchange=e=>selecionaFundoCava(e.target.value);
   novo.onchange=()=>{const tipo=novo.value;novo.value='';if(tipo)criaNovoDesenho(tipo);};
+  document.getElementById('cava2RestoreDeleted').onclick=restauraApagadas;
   listaAbas.onchange=()=>{const opt=listaAbas.selectedOptions[0];if(opt?.dataset.designId)trocaDesenho(opt.dataset.designId,opt.dataset.variant);};
   for(const [id,sentido] of [['cava2TabsPrev',-1],['cava2TabsNext',1]])document.getElementById(id).onclick=()=>{
     abas.scrollBy({left:sentido*Math.max(80,abas.clientWidth*.8),behavior:'auto'});
@@ -116,6 +120,10 @@ function criaInterface(){
     try{estado.frame.contentWindow.addEventListener('cava2:cleared',()=>{
       if(!estado.restaurando)limpaCamadasDoDesenho();
     });}catch(e){console.warn('Área 2D: limpeza das camadas',e);}
+    // Limite redesenhado: é outro desenho, as feições apagadas do anterior não valem para ele.
+    try{estado.frame.contentWindow.addEventListener('cava2:base-drawn',()=>{
+      const d=desenhoAtual();if(d&&!estado.restaurando&&d.apagadas?.length){d.apagadas=[];cava2AtualizaBotaoApagadas();}
+    });}catch(e){}
     try{estado.frame.contentWindow.addEventListener('cava2:grid-changed',e=>{estado.mostrarGrade=e.detail?.visible!==false;salvaRegistroLocal();window.GeoMineSessionAutosave?.markDirty('quadrícula da cava');});}catch(e){}
     try{estado.frame.contentWindow.addEventListener('cava2:cursor',atualizaCursorGlobal);}catch(e){}
     try{estado.frame.contentWindow.addEventListener('cava2:drawing-blocked',exigeMdt);}catch(e){}
@@ -578,6 +586,7 @@ function renderAbas(){
    }
   });
   if(!estado.desenhos.length){const vazio=document.createElement('span');vazio.className='cava2-tabs-empty';vazio.textContent='Crie uma cava ou DCE em ＋ Nova';box.appendChild(vazio);}
+  cava2AtualizaBotaoApagadas();
   requestAnimationFrame(()=>atualizaNavegacaoAbas(true));
 }
 function atualizaCampos(d){
@@ -1393,7 +1402,7 @@ function reconstroiCamadasAusentes(){
 }
 function snapshot(){
   if(!estado.ready&&estado.projetoPendente!==undefined)return clone(estado.projetoPendente);
-  salvaAtual(true);
+  salvaAtual(true);cava2ReconciliaInativos();
   return dadosRegistro();
 }
 function migraEstado(st){
@@ -1448,6 +1457,7 @@ function aplicaEstadoProjeto(st){
   estado.desenhoId=estado.desenhos.some(d=>d.id===m.activeId)?m.activeId:estado.desenhos[0]?.id||null;
   migraCamadasAntigas();
   for(const d of estado.desenhos){const L=camadaDoDesenho(d.id);if(!d.engine&&L?._cava2Engine)d.engine=clone(L._cava2Engine);}
+  cava2RegistraBaseDasCamadas();
   aplicaPainel();if(desenhoAtual())aplicaDesenho(desenhoAtual(),false);else limpaMotorSemDesenho();reconstroiCamadasAusentes();
   renderAbas();atualizaContexto();salvaRegistroLocal();if(typeof refreshUI==='function')refreshUI();return true;
 }
@@ -1512,7 +1522,16 @@ function feicoesCartograficasDoDesign(design,baseZ,meta){
   const corredores=design.corredores||[],A=api(),
     rampPolys=corredores.filter(c=>!c?.gancho).map(c=>c.poly).filter(P=>Array.isArray(P)&&P.length>=3),
     rotulados=new Set();
+  /* _cava2Key identifica a MESMA linha entre uma publicação e outra (ver
+     "feições apagadas pelo usuário", adiante). Os anéis são contados de FORA
+     para dentro dentro do seu bloco, como o motor faz com as bermas editadas:
+     mudar o número de bancadas acrescenta ou tira anéis no lado de dentro e a
+     chave continua apontando para a mesma crista ou pé. */
+  const aneisPorBloco=new Map(),aneisVistos=new Map(),rampasVistas=new Map();
+  (design.aneis||[]).forEach(a=>{const b=a?._bloco||'';aneisPorBloco.set(b,(aneisPorBloco.get(b)||0)+1);});
   (design.aneis||[]).forEach((a,i)=>{
+    const bloco=a._bloco||'',posicao=aneisVistos.get(bloco)||0,deFora=aneisPorBloco.get(bloco)-1-posicao;
+    aneisVistos.set(bloco,posicao+1);
     const recorte=A&&typeof A.recortaLinhaForaRampas==='function'
       ?A.recortaLinhaForaRampas(a.P,rampPolys,a.cortesRampa):{partes:[a.P],cortado:false};
     (a.partesEntrada||recorte.partes||[]).forEach((parte,j)=>{
@@ -1521,17 +1540,18 @@ function feicoesCartograficasDoDesign(design,baseZ,meta){
       const z=n(baseZ)+n(a.z),elemento=classe(a.tp),ordem=(i+1)*100+j,
         deveRotular=(a.tp==='crista'||i===0)&&!rotulados.has(i);
       if(deveRotular)rotulados.add(i);
-      out.push({geom,multi:false,zg:geom.map(()=>z),props:{FID:fid++,...cava2Props(meta,{
+      out.push({geom,multi:false,zg:geom.map(()=>z),_cava2Key:`L|anel|${bloco}|${deFora}|${j}`,props:{FID:fid++,...cava2Props(meta,{
         ELEMENTO:elemento,COTA:z,ROTULO:deveRotular?formataCota(z):'',ORDEM:ordem,
         BANCO:Math.floor(i/2)+1,CLASSE:elemento==='Crista'?'rb31-crista':'rb31-pe'})}});
     });
   });
   corredores.forEach((c,i)=>{
-    const cm=cava2MetaCorredor(c,corredores,i);
+    const cm=cava2MetaCorredor(c,corredores,i),bloco=c._bloco||'',trecho=rampasVistas.get(bloco)||0;
+    rampasVistas.set(bloco,trecho+1);
     [['borda1','Borda esquerda'],['centro','Eixo'],['borda2','Borda direita']].forEach(([chave,papel],j)=>{
       const P=c[chave]||[],geom=limpaPontos(P);if(geom.length<2)return;
       const zg=P.map(p=>n(baseZ)+n(p.z)),grad=n(c.gradEfetivo??design.gradEfetivo,NaN);
-      out.push({geom,multi:false,zg,props:{FID:fid++,...cava2Props(meta,{ELEMENTO:cm.elemento,
+      out.push({geom,multi:false,zg,_cava2Key:`L|rampa|${bloco}|${trecho}|${chave}`,props:{FID:fid++,...cava2Props(meta,{ELEMENTO:cm.elemento,
         COTA:zg[0],ROTULO:papel==='Eixo'&&!cm.retorno&&cm.banco===1?`R${Number.isFinite(grad)?` · ${formataCota(grad)}%`:''}`:'',
         ORDEM:i*3+j+1,BANCO:cm.banco,CLASSE:cm.classe,ORIGEM:`Área 2D · Cava2 · ${papel}`})}});
     });
@@ -1542,7 +1562,7 @@ function feicoesCartograficasDoDesign(design,baseZ,meta){
     // As partes da união já carregam o deslocamento do bloco em cada Z.
     // Não fechar a parte nem ligar alturas diferentes por uma corda artificial.
     const zg=aberta?P.map(p=>n(baseZ)+n(p.z,lim.z0)):geom.map(()=>n(baseZ)+n(lim.z0));
-    out.push({geom,multi:false,zg,props:{FID:fid++,...cava2Props(meta,{
+    out.push({geom,multi:false,zg,_cava2Key:`L|limite|${i}`,props:{FID:fid++,...cava2Props(meta,{
       ELEMENTO:'Limite exterior',COTA:zg[0],ROTULO:'',ORDEM:900000+i,BANCO:null,
       CLASSE:'rb31-limite',ORIGEM:'Área 2D · Cava2 · limite exterior'})}});
   });
@@ -1565,10 +1585,10 @@ function feicoesPreenchimentoDoDesign(design,baseZ,meta){
     const d=b.design,aneis=d?.aneis||[];if(!aneis.length)return;
     const exterior=aneis.at(-1),interior=aneis[0],gExt=cava2GeomFechada(exterior.P),
       gInt=cava2GeomFechada(interior.P);
-    if(gExt.length>=4){const z=n(baseZ)+n(exterior.z);out.push({geom:gExt,multi:false,zg:gExt.map(()=>z),
+    if(gExt.length>=4){const z=n(baseZ)+n(exterior.z);out.push({geom:gExt,multi:false,zg:gExt.map(()=>z),_cava2Key:`F|area|${bi}`,
       props:{FID:fid++,...cava2Props(meta,{ELEMENTO:'Área projetada',COTA:z,ROTULO:'',ORDEM:bi*10000+1,
         BANCO:null,CLASSE:'rb31-area'})}});}
-    if(gInt.length>=4&&!b.hasContinuation){const z=n(baseZ)+n(interior.z);out.push({geom:gInt,multi:false,zg:gInt.map(()=>z),
+    if(gInt.length>=4&&!b.hasContinuation){const z=n(baseZ)+n(interior.z);out.push({geom:gInt,multi:false,zg:gInt.map(()=>z),_cava2Key:`F|fundo|${bi}`,
       props:{FID:fid++,...cava2Props(meta,{ELEMENTO:meta?.tipo==='pilha'?'Topo':'Fundo',COTA:z,
         ROTULO:cava2NomeBloco(meta,bi),ORDEM:bi*10000+2,BANCO:0,CLASSE:'rb31-fundo'})}});}
     const corredores=d.corredores||[];
@@ -1576,7 +1596,7 @@ function feicoesPreenchimentoDoDesign(design,baseZ,meta){
       const cm=cava2MetaCorredor(c,corredores,i);
       const geom=cava2GeomFechada(c.poly);if(geom.length<4)return;
       const src=c.poly||[],fallback=n(baseZ)+n(c.zIni),zg=geom.map((_,j)=>n(baseZ)+n(src[Math.min(j,src.length-1)]?.z,fallback-n(baseZ)));
-      out.push({geom,multi:false,zg,props:{FID:fid++,...cava2Props(meta,{ELEMENTO:cm.elemento,COTA:zg[0],
+      out.push({geom,multi:false,zg,_cava2Key:`F|rampa|${bi}|${i}`,props:{FID:fid++,...cava2Props(meta,{ELEMENTO:cm.elemento,COTA:zg[0],
         ROTULO:'',ORDEM:bi*10000+100+i,BANCO:cm.banco,CLASSE:cm.retorno?'rb31-retorno-area':'rb31-rampa-area'})}});
     });
   });
@@ -1718,17 +1738,92 @@ function cava2CongelaCorte(d,R,C,CF){
   return {line:L,fill:null,id:corteId,name:nome};
 }
 
+/* FEIÇÕES APAGADAS PELO USUÁRIO (19/11/2026 — "quando eu selecionar várias
+   feições e apagá-las todas devem ser apagadas"). As camadas Bruta e de
+   preenchimento são reescritas por inteiro a cada publicação, e o salvamento
+   automático publica meio segundo depois de qualquer alteração: tudo o que a
+   pessoa apagava no Mapa 2D voltava sozinho. Agora cada publicação compara a
+   camada com o que ela mesma recebeu da última vez:
+     - chave que saiu da camada → a pessoa apagou (tecla Delete, lixeira, menu,
+       Excluir feição, mover para outra camada): entra em d.apagadas;
+     - chave apagada que reapareceu na camada → a pessoa desfez (Ctrl+Z): sai.
+   d.apagadas faz parte do registro do desenho e vai junto para o projeto e
+   para a sessão. O que está nela deixa de ser redesenhado no Mapa 2D, no
+   Layout e no 3D. O motor da aba Cava, os volumes e a camada Recortada seguem
+   usando o desenho paramétrico inteiro. "Limpar desenho" e um limite novo
+   zeram a lista; o botão ↺ da barra de desenhos traz tudo de volta. */
+function cava2ReconciliaApagadas(d,L){
+  const publicadas=L&&cava2Publicadas.get(L);if(!publicadas)return false;
+  const atuais=new Set();
+  // Feição sem chave no meio da camada (colada, explodida, redesenhada): não dá para saber o que
+  // foi apagado, então nada é concluído nesta rodada — é melhor redesenhar do que omitir por engano.
+  for(const f of L.features||[]){if(!f||!f._cava2Key)return false;atuais.add(f._cava2Key);}
+  const apagadas=new Set(Array.isArray(d.apagadas)?d.apagadas:[]);let mudou=false;
+  for(const k of publicadas)if(!atuais.has(k)&&!apagadas.has(k)){apagadas.add(k);mudou=true;}
+  for(const k of atuais)if(apagadas.delete(k))mudou=true;
+  if(mudou)d.apagadas=[...apagadas];
+  return mudou;
+}
+function cava2RegistraPublicadas(L,feats){
+  if(L)cava2Publicadas.set(L,new Set(feats.map(f=>f._cava2Key).filter(Boolean)));
+}
+/* As feições gravadas no projeto trazem a chave. Ao abrir, o conteúdo de cada
+   camada vira a referência da "última publicação", para que apagar logo depois
+   de abrir — ou num desenho que não é o da aba ativa — também seja percebido.
+   Camadas gravadas por versões anteriores não têm chave e ficam sem referência:
+   são redesenhadas inteiras na primeira publicação, como antes. */
+function cava2RegistraBaseDasCamadas(){
+  for(const d of estado.desenhos)for(const L of [camadaDoDesenho(d.id),camadaPreenchimentoDoDesenho(d.id)]){
+    if(!L||cava2Publicadas.has(L)||!(L.features||[]).length||L.features.some(f=>!f||!f._cava2Key))continue;
+    cava2RegistraPublicadas(L,L.features);
+  }
+}
+/* O salvamento publica só o desenho da aba ativa. Os outros não são reescritos,
+   mas o que foi apagado neles precisa entrar no registro que vai para o projeto. */
+function cava2ReconciliaInativos(){
+  for(const d of estado.desenhos){
+    if(d.id===estado.desenhoId||d.somenteRecortada)continue;
+    for(const L of [camadaDoDesenho(d.id),camadaPreenchimentoDoDesenho(d.id)])
+      if(cava2ReconciliaApagadas(d,L))cava2RegistraPublicadas(L,L.features);
+  }
+}
+let cava2AvisouApagadas=false;
+function cava2AtualizaBotaoApagadas(){
+  const b=document.getElementById('cava2RestoreDeleted');if(!b)return;
+  const d=desenhoAtual(),total=d?.apagadas?.length||0;
+  b.hidden=!total;b.textContent='↺ '+total;
+  b.title=total?`Trazer de volta ${total} feição(ões) apagada(s) de “${d.nome}”`:'';b.setAttribute('aria-label',b.title||'Feições apagadas');
+}
+function restauraApagadas(){
+  const d=desenhoAtual(),total=d?.apagadas?.length||0;if(!total)return false;
+  d.apagadas=[];sincronizaCamadas(true);cava2AtualizaBotaoApagadas();
+  window.GeoMineSessionAutosave?.markDirty('feições apagadas da cava/DCE');
+  if(typeof toast==='function')toast(`${d.nome}: ${total} feição(ões) apagada(s) voltaram ao desenho.`);
+  return true;
+}
 function publicaDesenho(d,design,silencioso){
   if(!d||d.somenteRecortada)return null;
-  const feats=feicoesCartograficasDoDesign(design,n(d.baseZ),d),areas=feicoesPreenchimentoDoDesign(design,n(d.baseZ),d),
-    ativo=S.activeId;let F=camadaPreenchimentoDoDesenho(d.id),L=camadaDoDesenho(d.id),criou=false;
+  let feats=feicoesCartograficasDoDesign(design,n(d.baseZ),d),areas=feicoesPreenchimentoDoDesign(design,n(d.baseZ),d);
+  const ativo=S.activeId;let F=camadaPreenchimentoDoDesenho(d.id),L=camadaDoDesenho(d.id),criou=false;
+  const antes=d.apagadas?.length||0,mudouL=cava2ReconciliaApagadas(d,L),mudouF=cava2ReconciliaApagadas(d,F);
+  if(d.apagadas?.length){
+    const fora=new Set(d.apagadas);feats=feats.filter(f=>!fora.has(f._cava2Key));areas=areas.filter(f=>!fora.has(f._cava2Key));
+  }
+  if(mudouL||mudouF){
+    cava2AtualizaBotaoApagadas();
+    if(silencioso)setTimeout(()=>{try{if(typeof refreshUI==='function')refreshUI();}catch(_){}} ,0);
+    if((d.apagadas?.length||0)>antes&&!cava2AvisouApagadas&&typeof toast==='function'){
+      cava2AvisouApagadas=true;
+      toast(`${d.nome}: o que você apagou não será redesenhado. Ctrl+Z desfaz; o botão ↺ da aba Cava traz tudo de volta.`);
+    }
+  }
   if(!F&&areas.length&&!saidaSuprimida(d,'rawFill')){
     F=addLayer({name:nomeCamadaPreenchimento(d),gtype:'polygon',features:areas,
       fields:['FID','DESENHO','DESIGN_ID','PROJETO','ELEMENTO','COTA','ROTULO','ORDEM','BANCO','ORIGEM'],
       crs:d.crs||S.workCRS,color:d.tipo==='pilha'?'#9aa0a8':'#c9b18a',src:'Área 2D · Cava2 · estilo'});
     F._cava2DesignId=d.id;F._cava2Role='fill';criou=true;
   }else if(F){F.features=areas;F.crs=d.crs||F.crs||S.workCRS;F.src='Área 2D · Cava2 · estilo';F.name=nomeCamadaPreenchimento(d);}
-  if(F){F._cava2Kind=d.tipo;F._cava2Engine=clone(d.engine);estiloCamadaPreenchimento(F,areas);}
+  if(F){F._cava2Kind=d.tipo;F._cava2Engine=clone(d.engine);estiloCamadaPreenchimento(F,areas);cava2RegistraPublicadas(F,areas);}
   if(!L&&!feats.length){if(F&&typeof drawLayer==='function')drawLayer(F);return null;}
   if(!L){
     L=addLayer({name:nomeCamada(d),gtype:'line',features:feats,
@@ -1736,7 +1831,7 @@ function publicaDesenho(d,design,silencioso){
       crs:d.crs||S.workCRS,color:'#111111',src:'Área 2D · Cava2'});
     L._cava2DesignId=d.id;L._cava2Role='line';criou=true;
   }else{L.features=feats;L.crs=d.crs||L.crs||S.workCRS;L.src='Área 2D · Cava2';L.name=nomeCamada(d);}
-  L._cava2Kind=d.tipo;L._cava2Engine=clone(d.engine);estiloCamada(L,feats);
+  L._cava2Kind=d.tipo;L._cava2Engine=clone(d.engine);estiloCamada(L,feats);cava2RegistraPublicadas(L,feats);
   if(F&&criou)cava2OrdenaLinhaSobrePreenchimento(L,F);
   if(F&&typeof drawLayer==='function')drawLayer(F);if(typeof drawLayer==='function')drawLayer(L);
   if(ativo!=null&&S.layers.some(x=>x.id===ativo))S.activeId=ativo;
@@ -1901,7 +1996,7 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
 
 function limpaCamadasDoDesenho(){
   clearTimeout(estado.syncTimer);estado.syncTimer=0;const d=desenhoAtual();if(!d)return false;
-  d.engine=leEstadoMotor();estado.cutHashes[d.id]=null;
+  d.engine=leEstadoMotor();estado.cutHashes[d.id]=null;d.apagadas=[];cava2AtualizaBotaoApagadas();
   const removidas=[camadaDoDesenho(d.id),camadaPreenchimentoDoDesenho(d.id),camadaCorteDoDesenho(d.id),
     camadaPreenchimentoCorteDoDesenho(d.id)].filter(Boolean);
   removidas.forEach(removeCamadaGerada);salvaRegistroLocal();if(typeof refreshUI==='function')refreshUI();atualizaContexto();

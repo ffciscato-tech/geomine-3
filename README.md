@@ -254,6 +254,21 @@ publicou de outro lugar e este repositório está desatualizado.
   selecionada sem a pessoa ter clicado nela — ao terminar um desenho ou ao
   reabrir o projeto. Na aba **Cava** a lixeira é outro comando ("Limpar tudo
   da cava/DCE") e não mudou.
+- **O que é apagado numa cava/DCE continua apagado.** As camadas que a aba Cava
+  gera ("… — Bruta" e "… — Bruta · preenchimento e rampas") são reescritas pelo
+  motor a cada publicação, e o salvamento automático publica meio segundo
+  depois de qualquer alteração; por isso tudo o que se apagava nelas voltava
+  sozinho. Desde 19/11/2026 cada feição publicada leva uma chave estável
+  (`_cava2Key`; os anéis são contados de fora para dentro, como o motor faz
+  com as bermas editadas, para a chave seguir a mesma crista ou pé quando o
+  número de bancadas muda) e `publicaDesenho` (`cava2-workspace.js`) compara a
+  camada com o que ela mesma recebeu da última vez: o que saiu entra em
+  `apagadas` no registro do desenho (vai para o projeto) e deixa de ser
+  redesenhado no Mapa 2D, no Layout e no 3D; o que reapareceu por Ctrl+Z sai da
+  lista. O botão **↺ N** da barra de desenhos traz tudo de volta; "Limpar
+  desenho" e um limite novo zeram a lista. O motor da aba Cava, os volumes e a
+  camada Recortada continuam usando o desenho paramétrico inteiro (a Recortada
+  só é refeita quando o desenho ou o MDT mudam).
 - **Cards numerados.** Desde 18/11/2026 as ferramentas do GeoMine são
   apresentadas em cards numerados, na ordem em que a pessoa trabalha (pedido
   de 19/11/2026: o que for criado ou reorganizado segue esse padrão). Um card é

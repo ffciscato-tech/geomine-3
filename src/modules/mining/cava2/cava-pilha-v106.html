@@ -3898,6 +3898,8 @@ function fechaDesenho(){
   desenho=null;
   defineTool("mover");
   vistaManual=false;
+  // O CCMGIS guarda as feições que o usuário apagou deste desenho; um limite novo recomeça a lista.
+  window.dispatchEvent(new CustomEvent("cava2:base-drawn",{detail:{alvo}}));
   regen();
 }
 

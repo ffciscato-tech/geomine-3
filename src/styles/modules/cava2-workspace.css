@@ -102,3 +102,6 @@ body.light .cava2-bridgebar button{background:#fff;color:#1d3343}
 
 #cava2Basemap{width:152px;max-width:28vw;font-weight:600}
 #cava2Basemap[aria-busy="true"]{border-color:var(--blue)}
+/* Feições apagadas pelo usuário neste desenho: o botão só aparece quando há alguma. */
+.cava2-design-nav>#cava2RestoreDeleted{width:auto;min-width:46px;padding:0 9px;font-size:13px;font-weight:600;white-space:nowrap}
+.cava2-design-nav>#cava2RestoreDeleted[hidden]{display:none}
