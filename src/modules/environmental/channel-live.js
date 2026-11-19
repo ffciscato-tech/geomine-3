@@ -76,7 +76,7 @@ function changed(q){return q.axisStamp!==q.recipe.sourceSignature||rasterChanged
 function status(group,state,message){
   mutating=true;
   try{for(const member of group){const L=member.layer;if(!memberCurrent(member))continue;
-    if(L.locked||typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false))continue;
+    if(L.locked||typeof canEditLayer==='function'&&!canEditLayer(L,false))continue;
     const link=member.recipe;link.state=state;link.message=message;
     if(!member.shared){if(state!=='ready'&&!L.name.endsWith(STALE))L.name+=STALE;
       if(state==='ready'&&L.name.endsWith(STALE))L.name=L.name.slice(0,-STALE.length);}
@@ -95,7 +95,7 @@ function suspend(){
 function makeRecipes(v,created,id,shared){
   if(!v?.q||!Array.isArray(created)||created.length!==2||!id||new Set(created.map(L=>L.gtype)).size!==2||!created.some(L=>L.gtype==='line')||!created.some(L=>L.gtype==='polygon'))throw Error('São necessárias as camadas de seções e polígono para vincular o trecho.');
   const {q}=v;if(!Array.isArray(q.rows)||!q.rows.length)throw Error('Não há eixo para vincular.');
-  if(q.L.locked||typeof collabCanEditLayer==='function'&&!collabCanEditLayer(q.L,false))throw Error('O eixo está bloqueado ou sem permissão para receber o vínculo.');
+  if(q.L.locked||typeof canEditLayer==='function'&&!canEditLayer(q.L,false))throw Error('O eixo está bloqueado ou sem permissão para receber o vínculo.');
   const assigned=[];
   try{
     if(shared&&created.some(L=>!featuresFor(L,id).length))throw Error('As feições do novo trecho precisam estar identificadas antes de vincular.');
@@ -116,7 +116,7 @@ function call(j,method,args){return new Promise((resolve,reject)=>{
   j.reject=reject;j.worker.onmessage=e=>{j.reject=null;e.data.error?reject(Object.assign(Error(e.data.error),{code:e.data.code})):resolve(e.data.result);};
   j.worker.onerror=e=>{j.reject=null;reject(Error(e.message||'Falha ao recalcular a calha.'));};j.worker.postMessage({method,args});
 });}
-function editable(group){return group.every(m=>!m.layer.locked&&(typeof collabCanEditLayer!=='function'||collabCanEditLayer(m.layer,false)));}
+function editable(group){return group.every(m=>!m.layer.locked&&(typeof canEditLayer!=='function'||canEditLayer(m.layer,false)));}
 function mergeFields(L,features){const fields=(L.fields||[]).slice(),names=new Set(fields.map(f=>f.name));for(const f of GeoMineChannelExtraction.fields(features))if(!names.has(f.name)){fields.push(f);names.add(f.name);}return fields;}
 function replaceEntryFeatures(L,id,features){
   const next=[];let inserted=false;for(const f of L.features){if(matchesFeature(f,id)){if(!inserted){for(const item of features)next.push(item);inserted=true;}}else next.push(f);}

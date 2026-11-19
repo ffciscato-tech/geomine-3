@@ -398,24 +398,25 @@ function v3AtributoZ(f){
 function v3VectorExtent(){
   const e={xmin:Infinity,ymin:Infinity,zmin:Infinity,
     xmax:-Infinity,ymax:-Infinity,zmax:-Infinity,n:0,n3:0,n2:0};
-  const add=(L,p,z,temZ)=>{
+  const add=(L,p,z,temZ,drape=null)=>{
     if(!p||p.length<2)return;
     const q=reproj(L.crs,S.workCRS,+p[0],+p[1]);
     if(!isFinite(q[0])||!isFinite(q[1]))return;
+    if(drape){z=GeoMineVectorDrape.sample(drape,q[0],q[1]);if(!Number.isFinite(z))return;temZ=true;}
     if(!isFinite(z))z=0;
     e.xmin=Math.min(e.xmin,q[0]);e.xmax=Math.max(e.xmax,q[0]);
     e.ymin=Math.min(e.ymin,q[1]);e.ymax=Math.max(e.ymax,q[1]);
     e.zmin=Math.min(e.zmin,+z);e.zmax=Math.max(e.zmax,+z);e.n++;
     if(temZ)e.n3++;else e.n2++;
   };
-  const scan=(L,g,z)=>{
+  const scan=(L,g,z,drape=null)=>{
     if(!Array.isArray(g))return;
     if(g.length>=2&&isFinite(g[0])&&isFinite(g[1])){
       const zg=isFinite(z)?+z:(g.length>2&&isFinite(g[2])?+g[2]:NaN);
-      add(L,g,isFinite(zg)?zg:0,isFinite(zg));
+      add(L,g,isFinite(zg)?zg:0,isFinite(zg),drape);
       return;
     }
-    g.forEach((q,i)=>scan(L,q,Array.isArray(z)?z[i]:z));
+    g.forEach((q,i)=>scan(L,q,Array.isArray(z)?z[i]:z,drape));
   };
   (S.layers||[]).forEach(L=>{
     if(!['line','polygon','point'].includes(L.gtype))return;
@@ -431,7 +432,7 @@ function v3VectorExtent(){
       rings.forEach((ring,ri)=>{
         const zr=typeof resolveFeatureZRing==='function'?
           resolveFeatureZRing(f,ring,ri,nested,true):null;
-        scan(L,ring,zr||v3AtributoZ(f));
+        scan(L,ring,zr||v3AtributoZ(f),window.GeoMineVectorDrape?.resolve(L,f)||null);
       });
     });
   });
@@ -889,6 +890,7 @@ async function build3D(){
   let VE=parseFloat(String(document.getElementById('v3dVE').value).replace(',','.'));
   if(!isFinite(VE)||VE<1) VE=1;                      // 0/vazio/negativo => escala real
   VE=Math.min(8,VE);
+  v3SyncVEControls(VE);
   V3._lastVE=VE;
   const drawVec=document.getElementById('v3dVec').checked;
   const perf3=alagisPerf3D();
@@ -1464,6 +1466,7 @@ function v3AtualizaFitas(force=false){
   V3._ribbonSig=sig;
   V3.vecGroup.traverse(obj=>{
     if(window.GeoMineLineArrows?.updateThree(obj,V3.cam,v3WorldPixelAt))return;
+    if(window.GeoMine3DLines?.update(obj,V3.cam,V3.ren))return;
     const d=obj.userData&&obj.userData.alagisRibbon;
     if(!d||!obj.geometry)return;
     const a=obj.geometry.getAttribute('position'),P=d.points,w=d.weight;
@@ -1513,8 +1516,9 @@ function v3BuildVectors(){
 
   // passo de densificação: ~2 células do MDT
   const eVec=v3VectorExtent();
-  const passo=dRef?Math.max(1,dRef.cs*2):
+  const passoBase=dRef?Math.max(1,dRef.cs*2):
     Math.max(0.25,eVec?Math.hypot(eVec.xmax-eVec.xmin,eVec.ymax-eVec.ymin)/1200:1);
+  let passo=passoBase,drape=null;
 
   // Amostra Z em TODAS as superfícies da cena e usa a de menor cota no ponto
   // (a cava está ABAIXO do terreno; a curva da cava deve pousar na cava, não
@@ -1533,8 +1537,10 @@ function v3BuildVectors(){
   // Vz: quando a linha traz cota própria (zg), usa-a — a curva pousa na cota
   // exata e acompanha o relevo. Sem zg, amostra as superfícies (zAll).
   const Vz=(x,y,zGeom,recortaNoMdt=false,semLift=false,ocultaAcima=false,semOffset=false)=>{
-    const zSup=zAll(x,y),temSuperficie=isFinite(zSup);
-    let z=(zGeom!=null && isFinite(zGeom))? zGeom : zSup;
+    const zSup=drape?GeoMineVectorDrape.sample(drape,x,y):zAll(x,y),temSuperficie=isFinite(zSup);
+    if(drape&&!Number.isFinite(zSup))return null;
+    semOffset=semOffset||!!drape;
+    let z=drape?zSup:(zGeom!=null && isFinite(zGeom))? zGeom : zSup;
     /* Cena exclusivamente vetorial: feições 2D ficam no plano local. Isso é
        visualização vetorial 3D válida e não deve exigir um raster artificial. */
     if(isNaN(z)&&!surfs.length)z=0;
@@ -1569,7 +1575,7 @@ function v3BuildVectors(){
      era por isso que só elas apareciam. */
   const amostraSeg=(a,b,push,za,zb,recortaNoMdt=false,ocultaAcima=false,semOffset=false,semLift=false)=>{
     const dx=b[0]-a[0], dy=b[1]-a[1];
-    const n=Math.max(1, Math.ceil(Math.hypot(dx,dy)/passo));
+    const n=Math.max(1,Math.min(drape?8192:Infinity,Math.ceil(Math.hypot(dx,dy)/passo)));
     const hasZ=(za!=null&&isFinite(za)&&zb!=null&&isFinite(zb));
     for(let i=0;i<=n;i++){
       const t=i/n;
@@ -1580,24 +1586,21 @@ function v3BuildVectors(){
 
   const corrigidasCamadas=new Set();
   escolhidas.forEach(L=>{
+    drape=null;passo=passoBase;
     const sym=L.sym||{};
-    const mats=new Map(),matsFita=new Map();
-    /* A espessura da simbologia é medida em pixels de tela. No 3D ela não
-       pode virar metros lineares sem controle: uma linha de 8 px sobre uma
-       cava de quilômetros acabava como uma faixa de muitos metros. Mantém a
-       hierarquia visual com compressão por raiz e limita a 3 px. */
-    const peso3D=w=>Math.max(1,Math.min(3,0.55+0.58*Math.sqrt(Math.max(1,+w||1))));
+    const mats=new Map();
+    /* O mesmo peso do 2D, em pixels CSS, é aplicado à cena sem compressão. */
     /* Resolve a simbologia POR FEIÇÃO. Antes o 3D usava cor3D(L) uma única
        vez por camada e, portanto, todas as categorias viravam a mesma cor. */
     const estiloDe=f=>{
       const st=featureStyle(L,f)||sym;
       let hex=(L.gtype==='polygon'?(st.stroke||st.color):(L.gtype==='point'?(st.color||st.stroke):(st.stroke||st.color)))||cor3D(L);
       if(corrige){const h2=afastaDoFundo(hex,'#'+bg);if(h2!==hex){hex=h2;corrigidasCamadas.add(L.id);}}
-      const weight=Math.max(1,+st.weight||1.5);
-      return {hex,weight,weight3d:peso3D(weight),dash:String(st.dash||'').trim(),size:Math.max(2,+st.size||7),arrowEnd:st.arrowEnd,arrowSize:st.arrowSize,arrowWeight:Number(st.weight)};
+      const weight=Number.isFinite(+st.weight)?Math.max(0,+st.weight):1.5;
+      return {hex,weight,opacity:(Number.isFinite(+st.opacity)?Math.max(0,Math.min(1,+st.opacity)):1)*Math.max(0,Math.min(1,Number(sym.opacity??1))),weight3d:weight,dash:String(st.dash||'').trim(),size:Math.max(2,+st.size||7),arrowEnd:st.arrowEnd,arrowSize:st.arrowSize,arrowWeight:Number(st.weight)};
     };
     const materialDe=f=>{
-      const st=estiloDe(f),key=[st.hex,st.weight3d,st.dash].join('|');
+      const st=estiloDe(f),key=[st.hex,st.weight3d,st.dash,st.opacity].join('|');
       if(mats.has(key))return mats.get(key);
       const tracejada=!!st.dash;
       /* linewidth>1 depende do driver WebGL; onde houver suporte, acompanha
@@ -1607,38 +1610,14 @@ function v3BuildVectors(){
             depthTest:true,depthWrite:false,transparent:false})
         :new THREE.LineBasicMaterial({color:st.hex,linewidth:st.weight3d,
             depthTest:true,depthWrite:false,transparent:false});
+      m.opacity=st.opacity;m.transparent=st.opacity<1;
       m._alagisDash=tracejada;mats.set(key,m);return m;
     };
-    /* WebGL fixa THREE.Line em 1 px na maioria dos navegadores, ignorando
-       linewidth. Para linhas sólidas com peso > 1 criamos uma fita horizontal
-       triangulada: é geometria real e, portanto, a espessura aparece em Chrome,
-       Edge, macOS, Windows e Android sem depender do driver. */
-    const fitaDe=(pontos,st)=>{
-      if(!pontos||pontos.length<2||!(st.weight3d>1.05)||st.dash)return null;
-      /* remove vértices consecutivos coincidentes, que não definem normal */
-      const P=[];
-      pontos.forEach(p=>{const q=P[P.length-1];if(!q||Math.hypot(p.x-q.x,p.z-q.z)>1e-8)P.push(p);});
-      if(P.length<2)return null;
-      const pos=[],ind=[];
-      for(let i=0;i<P.length;i++){
-        const a=P[Math.max(0,i-1)],b=P[Math.min(P.length-1,i+1)],
-          dx=b.x-a.x,dz=b.z-a.z,n=Math.hypot(dx,dz)||1,
-          p=P[i],meia=v3WorldPixelAt(p)*.5*st.weight3d,
-          ox=-dz/n*meia,oz=dx/n*meia;
-        pos.push(p.x+ox,p.y,p.z+oz,p.x-ox,p.y,p.z-oz);
-        if(i){const k=i*2;ind.push(k-2,k-1,k,k-1,k+1,k);}
-      }
-      const geo=new THREE.BufferGeometry();
-      geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setIndex(ind);
-      const key=st.hex;
-      let ma=matsFita.get(key);
-      if(!ma){ma=new THREE.MeshBasicMaterial({color:st.hex,side:THREE.DoubleSide,
-          depthTest:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
-        matsFita.set(key,ma);}
-      const obj=new THREE.Mesh(geo,ma);
-      obj.userData.alagisRibbon={points:P,weight:st.weight3d};
-      return obj;
-    };
+    /* Triângulos projetados em pixels CSS respeitam o peso e o tracejado do
+       mapa, inclusive no iPad, sem depender do linewidth do driver WebGL. */
+    const fitaDe=(pontos,st)=>window.GeoMine3DLines?.create(THREE,pontos,{
+      color:st.hex,width:st.weight,dash:st.dash,opacity:st.opacity})||null;
+
     /* Vetores ligados aparecem completos. A existência de um MDT serve para
        fornecer Z/drape, não para apagar automaticamente trechos fora dele. */
     const recortaNoMdt=false;
@@ -1697,7 +1676,8 @@ function v3BuildVectors(){
            no 3D a mesma cor que possui no 2D. */
         geo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
         const pm=new THREE.PointsMaterial({vertexColors:true,
-          size:pts.length>50000?2.5:7,sizeAttenuation:false});
+          size:pts.length>50000?2.5:7,sizeAttenuation:false,
+          opacity:Math.max(0,Math.min(1,Number(sym.opacity??1))),transparent:Number(sym.opacity??1)<1});
         const obj=new THREE.Points(geo,pm);
         obj.userData={alagisVector:true,displayOffset:0,layerId:L.id,measurePoints:pts};
         V3.vecGroup.add(obj); }
@@ -1706,6 +1686,7 @@ function v3BuildVectors(){
 
     L.features.forEach(f=>{
       if(!f.geom||!featureVisible(L,f)) return;
+      drape=window.GeoMineVectorDrape?.resolve(L,f)||null;passo=drape?.step||passoBase;
       // This vector pass draws polygon outlines only. Respect an explicitly
       // disabled outline instead of promoting weight 0 to a visible 3D line.
       // In civil corridors those edges are calculation strips, not benches.
@@ -1713,7 +1694,7 @@ function v3BuildVectors(){
         const style=featureStyle(L,f)||sym;
         if(style.weight!=null&&Number(style.weight)===0)return;
       }
-      const st3=estiloDe(f),mat=materialDe(f);
+      const st3=estiloDe(f);if(st3.weight<=0)return;const mat=materialDe(f);
       const nested=(f.multi&&Array.isArray(f.geom[0][0]));
       const rings=nested?f.geom:[f.geom];
       rings.forEach((ring,ri)=>{
@@ -1736,7 +1717,7 @@ function v3BuildVectors(){
             if(!obj){obj=new THREE.Line(new THREE.BufferGeometry().setFromPoints(trecho),mat);
               if(mat._alagisDash)obj.computeLineDistances();}/* sem isto o tracejado sai contínuo */
             Object.assign(obj.userData||(obj.userData={}),
-              {alagisVector:true,displayOffset:OFF,layerId:L.id,measurePoints:trecho.slice()});
+              {alagisVector:true,displayOffset:drape?0:OFF,layerId:L.id,measurePoints:trecho.slice(),drapeRasterId:drape?.r?.id??null});
             V3.vecGroup.add(obj); }
           trecho=[]; };
         for(let i=0;i<pr.length-1;i++){
@@ -1749,7 +1730,7 @@ function v3BuildVectors(){
             if(!v){ fecha(); return; }               // fora do MDT: corta o traçado
             trecho.push(v);
           };
-          if(ehCava&&corteD&&corteD!==terrenoD){
+          if(!drape&&ehCava&&corteD&&corteD!==terrenoD){
             const a=pr[i],b=pr[i+1],dx=b[0]-a[0],dy=b[1]-a[1],
               nn=Math.max(1,Math.ceil(Math.hypot(dx,dy)/passo)),hasZ=Number.isFinite(za)&&Number.isFinite(zb);
             for(let k=0;k<=nn;k++){
@@ -1769,7 +1750,7 @@ function v3BuildVectors(){
           if(terminal){
             const vertex=(p,i)=>{
               const z=zr?zr[i]:null;
-              if(ehCava&&corteD&&corteD!==terrenoD){
+              if(!drape&&ehCava&&corteD&&corteD!==terrenoD){
                 const zt=v3SampleZ(corteD,p[0],p[1]),tol=Math.max(.05,(corteD.cs||1)*.35);
                 if(Number.isFinite(z)&&Number.isFinite(zt)&&(corteUp?z<zt-tol:z>zt+tol))return null;
               }
@@ -1840,12 +1821,15 @@ function v3SyncTreeVisibility(n,vis){
 }
 /* Exagero vertical AO VIVO: rescala as malhas (scale.y), refaz o drape dos
    vetores e reposiciona o alvo — sem reconstruir geometria nenhuma.        */
+function v3SyncVEControls(v){
+  v=Math.max(1,Math.min(8,parseFloat(String(v).replace(',','.'))||1));
+  const nInp=document.getElementById('v3dVE'),rInp=document.getElementById('v3dVER'),tag=document.getElementById('v3dVEv');
+  if(nInp)nInp.value=v;if(rInp)rInp.value=v;
+  if(tag)tag.textContent=v.toFixed(1).replace('.',',')+'×'+(v===1?' · escala real':' · exagerado');
+  return v;
+}
 function v3SetVE(v){
-  v=Math.max(1, Math.min(8, parseFloat(String(v).replace(',','.'))||1));
-  const nInp=document.getElementById('v3dVE'), rInp=document.getElementById('v3dVER'),
-        tag=document.getElementById('v3dVEv');
-  if(nInp) nInp.value=v; if(rInp) rInp.value=v;
-  if(tag) tag.textContent=v.toFixed(1).replace('.',',')+'×';
+  v=v3SyncVEControls(v);
   if(!V3.scene){ return; }
   V3.meshes.forEach(m=>{ m.scale.y=v; });
   V3.VE=v;
@@ -1858,7 +1842,8 @@ function v3SetVE(v){
 }
 (function(){
   const n=document.getElementById('v3dVE'), r=document.getElementById('v3dVER');
-  const go=e=>v3SetVE(e.target.value);
+  const go=e=>{v3SetVE(e.target.value);window.GeoMineSessionAutosave?.markDirty('exagero vertical');};
+  const reset=document.getElementById('btnV3RealScale');if(reset)reset.onclick=()=>{v3SetVE(1);window.GeoMineSessionAutosave?.markDirty('escala real 3D');};
   if(n){ n.addEventListener('input',go); n.addEventListener('change',go); }
   if(r){ r.addEventListener('input',go); }
 })();

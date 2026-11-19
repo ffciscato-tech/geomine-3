@@ -529,7 +529,7 @@ function endDrawing(){
 }
 // Camada de eixos-guia já usada pela ferramenta: novos rios entram nela.
 function guideLayer(){
-  const usable=L=>L.gtype==='line'&&!L._channelLink&&!L.locked&&(typeof collabCanEditLayer!=='function'||collabCanEditLayer(L,false))&&
+  const usable=L=>L.gtype==='line'&&!L._channelLink&&!L.locked&&(typeof canEditLayer!=='function'||canEditLayer(L,false))&&
     (L.name===GUIDE||(L.features||[]).length>0&&L.features.every(f=>f.props?.TIPO===GUIDE_TYPE));
   const chosen=S.layers.find(L=>String(L.id)===$('Layer')?.value);
   return chosen&&usable(chosen)?chosen:S.layers.filter(usable).at(-1)||null;
@@ -572,5 +572,5 @@ const base=window.ribbonBuild;if(base)window.ribbonBuild=function(){install();re
   ribbonBuild();map.on('mousemove',e=>{if(drawing&&S.tool===TOOL)renderAxis(e.latlng);});
   map.on('dblclick',e=>{if(drawing&&S.tool===TOOL){L2.DomEvent.stop(e);finishAxis();}});
 },0);
-window.GeoMineChannelExtraction={open,generate,commit,cancel,mapClick,endDrawing,beginDraw,finishAxis,buildSpecs,fields,sourceSignature,workerSource,sampleLayoutBatch,analyzeNative};
+window.GeoMineChannelExtraction={open,generate,commit,cancel,mapClick,endDrawing,beginDraw,finishAxis,buildSpecs,fields,sourceSignature,workerSource,sampleLayoutBatch,analyzeNative,draftPoints:()=>drawing?.points,redrawDraft:()=>renderAxis()};
 })();

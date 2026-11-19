@@ -16,7 +16,7 @@ function sameSelection(a,b){
 function editable(L){
   if(!L||!S.layers.includes(L)||!['line','polygon'].includes(L.gtype))throw Error('Escolha uma camada de linhas ou polígonos.');
   if(L.locked)throw Error('A camada está bloqueada.');
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false))throw Error('Sem permissão para editar esta camada.');
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false))throw Error('Sem permissão para editar esta camada.');
 }
 function simplifyFeature(L,f,tolerance){
   const projection=proj4(S.workCRS).oProj;

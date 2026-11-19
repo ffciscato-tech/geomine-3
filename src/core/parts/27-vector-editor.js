@@ -168,7 +168,7 @@ function edSnapshot(msg){
 }
 function edAplicar(rings, msg){
   const {L,f}=ED.sel;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return false;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return false;}
   edSetRings(L,f,rings);
   /* Inserir/apagar/suavizar vértices deve alterar XY e Z em conjunto. O
      resolvedor também recupera arquivos antigos já dessincronizados. */
@@ -226,7 +226,7 @@ function edRedraw(){
   ED.lay.clearLayers(); ED.pts=[]; ED.mids=[]; ED._glyphs=null;
   if(GeoMineVertexHandles.legacyActive())return;
   if(!ED.on || !ED.sel) return;
-  const {L,f}=ED.sel; if(!collabCanEditLayer(L,false))return;
+  const {L,f}=ED.sel; if(!canEditLayer(L,false))return;
   const rings=edRings(L,f); if(!rings.length) return;
   const fechado=edFechado(L);
   const nv=rings.reduce((s,r)=>s+r.length,0);
@@ -348,7 +348,7 @@ function edBindPointer(){
     if(!ED.on || ev.button===2) return;
     if(GeoMineVertexHandles.legacyActive())return;
     if(S.tool && S.tool!=='pan' && S.tool!=='select' && S.tool!=='vertex') return;
-    if(ED.sel&&ED.sel.L&&typeof collabCanEditLayer==='function'&&!collabCanEditLayer(ED.sel.L,false)){collabCanEditLayer(ED.sel.L,true);return;}
+    if(ED.sel&&ED.sel.L&&typeof canEditLayer==='function'&&!canEditLayer(ED.sel.L,false)){canEditLayer(ED.sel.L,true);return;}
     const r=cont.getBoundingClientRect(); const p0={x:ev.clientX-r.left, y:ev.clientY-r.top};
     const ll=map.containerPointToLatLng([p0.x,p0.y]);
     if(ED.pend){
@@ -405,7 +405,7 @@ function edBindPointer(){
   const applyDragPoint=ev=>{
     if(!ED.on||!ED.drag||!ED.sel||ED.drag!==ev.drag||ED.sel!==ev.sel)return;
     if(GeoMineVertexHandles.legacyActive())return;
-    if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(ED.sel.L,false))return;
+    if(typeof canEditLayer==='function'&&!canEditLayer(ED.sel.L,false))return;
     const r=cont.getBoundingClientRect();
     let ll=map.containerPointToLatLng([ev.clientX-r.left, ev.clientY-r.top]);
     const Led=(ED.sel&&ED.sel.L)||null;
@@ -428,8 +428,8 @@ function edBindPointer(){
     if(ED.drag&&ev.pointerType!=='touch'&&ev.buttons===0){fim(ev);return;}
     if(!ED.on || !ED.drag || !ED.sel) return;
     if(GeoMineVertexHandles.legacyActive()){moveFrame?.cancel();ED.drag=null;return;}
-    if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(ED.sel.L,false)){
-      moveFrame?.cancel();ED.drag=null;mapaPanPadrao();collabCanEditLayer(ED.sel.L,true);return;
+    if(typeof canEditLayer==='function'&&!canEditLayer(ED.sel.L,false)){
+      moveFrame?.cancel();ED.drag=null;mapaPanPadrao();canEditLayer(ED.sel.L,true);return;
     }
     if(!moveFrame)moveFrame=GeoMineVertexHandles.dragFrame(applyDragPoint);
     moveFrame.push({clientX:ev.clientX,clientY:ev.clientY,drag:ED.drag,sel:ED.sel});
@@ -470,7 +470,7 @@ function edBindPointer(){
 /* ---------- comandos ---------- */
 function edPrecisa(){
   if(!ED.sel){toast('Selecione uma feição primeiro');return false;}
-  if(!collabCanEditLayer(ED.sel.L,true))return false;
+  if(!canEditLayer(ED.sel.L,true))return false;
   /* a feição marcada NO EDITOR é a intenção do usuário. Exigir que a camada
      ativa da árvore coincidisse derrubava qualquer comando depois de um
      clique na árvore ou nas propriedades ("ferramenta não funciona") —
@@ -2202,8 +2202,8 @@ function edMapClick(latlng){
 /* ---------- ícones (convenção do app: traço âmbar + destaque no alvo) ---------- */
 var EDI={};
 (function(){
-  const S0='<svg viewBox="0 0 24 24">', S1='</svg>';
-  const g='stroke="#8b949e"';                       // contexto (cinza)
+  const S0='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="var(--icon-line,#173B57)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">', S1='</svg>';
+  const g='stroke="var(--ink-dim,#536b7e)"';         // contexto legível nos dois temas
   EDI.sel     = S0+'<path '+g+' d="M3 18l6-13 5 8 4-4 3 9"/><circle class="fillamb" cx="9" cy="5" r="2.4"/>'+S1;
   EDI.vdel    = S0+'<path '+g+' d="M3 18l6-13 5 8 4-4 3 9"/><path d="M12.6 3.6l4.8 4.8M17.4 3.6l-4.8 4.8" stroke-width="2"/>'+S1;
   EDI.vadd    = S0+'<path '+g+' d="M3 18l6-13 5 8 4-4 3 9"/><path d="M15 4.5v5M12.5 7h5" stroke-width="2"/>'+S1;
@@ -2233,14 +2233,14 @@ var EDI={};
   EDI.suaviz  = S0+'<path '+g+' d="M3 17l7-8 5 5 6-7" stroke-dasharray="2 2"/><path d="M3 17c4-8 8 3 11-2s5-6 7-6"/>'+S1;
 })();
 /* grupo Polígono (dividir): 24 px na paleta, 48 px na faixa de opções */
-EDI.psplit_reta='<svg viewBox="0 0 24 24"><path stroke="#8b949e" d="M3 8l9-4 9 7-5 9-11-2z"/><path d="M6 22L19 2" stroke-dasharray="3 2"/></svg>';
-EDI.psplit_iguais='<svg viewBox="0 0 24 24"><path stroke="#8b949e" d="M3 5h18v14H3z"/><path d="M9 5v14M15 5v14" stroke-dasharray="3 2"/></svg>';
+EDI.psplit_reta='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="var(--icon-line,#173B57)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path stroke="#8b949e" d="M3 8l9-4 9 7-5 9-11-2z"/><path d="M6 22L19 2" stroke="var(--amber,#d99016)" stroke-dasharray="3 2"/></svg>';
+EDI.psplit_iguais='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="var(--icon-line,#173B57)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path stroke="#8b949e" d="M3 5h18v14H3z"/><path d="M9 5v14M15 5v14" stroke="var(--amber,#d99016)" stroke-dasharray="3 2"/></svg>';
 if(typeof RIB_SVG==='object'){
   RIB_SVG.cad_psplit_reta='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M8 15l19-7 13 15-11 17-21-5z" fill="#37c0aa" fill-opacity=".28" stroke="#73bbde" stroke-width="2.5" stroke-linejoin="round"/><path d="M12 44L37 4" stroke="#f5a524" stroke-width="3" stroke-dasharray="5 3" stroke-linecap="round"/></svg>';
   RIB_SVG.cad_psplit_iguais='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M6 11h36v26H6z" fill="#37c0aa" fill-opacity=".28" stroke="#73bbde" stroke-width="2.5"/><path d="M18 11v26M30 11v26" stroke="#f5a524" stroke-width="2.6" stroke-dasharray="4 3"/></svg>';
 }
 /* continuar desenho: traço existente (cinza) + trecho novo tracejado */
-EDI.continuar='<svg viewBox="0 0 24 24"><path stroke="#8b949e" d="M3 19l5-9 5 4"/><path d="M13 14l4-7 4 3" stroke-dasharray="2.5 2"/><circle class="fillamb" cx="13" cy="14" r="2.3"/></svg>';
+EDI.continuar='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="var(--icon-line,#173B57)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path stroke="#8b949e" d="M3 19l5-9 5 4"/><path d="M13 14l4-7 4 3" stroke="var(--amber,#d99016)" stroke-dasharray="2.5 2"/><circle class="fillamb" cx="13" cy="14" r="2.3"/></svg>';
 if(typeof RIB_SVG==='object')
   RIB_SVG.cad_continuar='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><path d="M6 38l10-18 10 8" fill="none" stroke="#73bbde" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/><path d="M26 28l8-14 8 6" fill="none" stroke="#f5a524" stroke-width="3" stroke-dasharray="5 4" stroke-linecap="round"/><circle cx="26" cy="28" r="4.5" fill="#f5a524"/></svg>';
 function edDividir(modo){
@@ -2467,7 +2467,9 @@ document.addEventListener('keydown',e=>{
       CATS.splice(pos>=0?pos+1:1, 0, {id:'editor', nome:'EDITOR DE VETORES', view:'map',
         get grupos(){
           const cava=S._view==='cava2',supported=new Set(['sel','vadd','vdel','vmove','simplif','densif','suaviz']);
+          if(window.GeoMineCommandCatalog?.editorGroups)return window.GeoMineCommandCatalog.editorGroups(cava);
           return ED_CMDS.map(G=>({label:G.g,it:G.it.filter(c=>!cava||supported.has(c.k)).map(c=>({
+          editorKey:c.k,commandId:'editor:'+c.k,
           ic:ED_PNG_ICONS[c.ic]||'selecionar', nome:c.n,
           act:()=>{try{
             if(S._view==='cava2')return window.CCMGISCava2?.vectorCommand(c.k);

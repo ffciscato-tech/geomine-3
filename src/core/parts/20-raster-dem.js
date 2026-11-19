@@ -302,8 +302,10 @@ function reduceGrid(g, maxCells, maxSide){
 
 /* PLOTAGEM — imagem do raster no CRS de trabalho (a grade pode ser reduzida
    somente para caber no canvas). Cacheada por estilo, grade e revisão.       */
-async function rasterURLPlot(r){
-  let g=await gridProd(r,'plotar a superfície');
+async function rasterURLPlot(r,options={}){
+  // Ajustar a escala da prévia usa a grade já carregada. TIFF nativo só é
+  // necessário na saída em alta resolução, não a cada movimento da barra.
+  let g=options.preview&&r.d?.z?r.d:await gridProd(r,'plotar a superfície');
   /* `_url` pertence exclusivamente ao Mapa 2D: renderRaster() reprojeta sua
      grade para Web Mercator antes de criar esse bitmap. Reutilizar `_url` na
      prancha e posicioná-lo nos bounds UTM deformava/deslocava o DEM em relação
@@ -319,7 +321,7 @@ async function rasterURLPlot(r){
     solidColor:r.style&&r.style.solidColor,
     classes:((r.style&&r.style.classes)||[]).map(c=>({
       min:c&&c.min,max:c&&c.max,value:c&&c.value,color:c&&c.color,vis:c&&c.vis}))});
-  const key=[styleKey,(+r._rev||0),g.nc+'x'+g.nr,g.xll,g.yll,g.cs,g.csy,
+  const key=[options.preview?'preview':'native',styleKey,(+r._rev||0),g.nc+'x'+g.nr,g.xll,g.yll,g.cs,g.csy,
     plotBounds.join(',')].join('|');
   r._urlPlotBounds=plotBounds;
   if(r._urlHi && r._hiKey===key) return r._urlHi;
@@ -2161,7 +2163,7 @@ function rasUnidadeValor(r){
   if(r&&r.quantity==='mcfIndex') return '';
   if(rasEhDeclividade(r)) return r.unit==='pct'?'%':'°';
   if(r&&r.quantity==='aspect') return '°';
-  if(r&&r._cnOrto) return '';
+  if(r&&(r._cnOrto||r._runoffOrto)) return '';
   return 'm';
 }
 function rasClassAttr(v){
@@ -2402,6 +2404,7 @@ function openRasProps(r){
     if(sel&&slope)sel.value=r.unit==='pct'?'pct':'deg'; }
   fillCRSSelect(document.getElementById('rasCRS'), S.workCRS);
   document.getElementById('rasOp').value=r.style.opacity;
+  GeoMineStyleSliders.syncRange(document.getElementById('rasOp'),document.getElementById('rasOpV'));
   rasClassListRender();
   // reaproveita o cache de geometria (min/max já calculados) para não varrer
   // a grade de novo — em MDT grande, varrer duas vezes é o que travava
@@ -3169,7 +3172,6 @@ function bindRasModal(){
   };
   document.getElementById('rasDel').onclick=()=>{
     if(!rasCur)return;
-    if(!confirm(`Remover a superfície "${rasCur.name}"?\nEsta ação não pode ser desfeita.`)) return;
     const r=rasCur; rasCur=null; close(); deleteRaster(r);
   };
 }

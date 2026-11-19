@@ -86,8 +86,19 @@ function destinationOptions(){
   if(dissolve){dissolve.disabled=!!job||value==='new';dissolve.checked=value!=='new'&&S.hidro.inundDissolve===true;}
   return value;
 }
+function barrierOptions(){
+  const select=el('hInundBarrier');if(!select)return '';
+  const layers=(S.layers||[]).filter(L=>L.gtype==='line'&&L.features?.length),
+    wanted=String(S.hidro.inundBarrierId??''),value=layers.some(L=>String(L.id)===wanted)?wanted:'',
+    signature=JSON.stringify(layers.map(L=>[L.id,L.name]));
+  if(select.dataset.barriers!==signature){
+    select.replaceChildren(new Option('Sem barramento',''),...layers.map(L=>new Option(L.name,String(L.id))));
+    select.dataset.barriers=signature;
+  }
+  select.value=value;S.hidro.inundBarrierId=value||null;return value;
+}
 function refresh(force=false){
-  const item=selected();preview();if(!job)destinationOptions();
+  const item=selected();preview();if(!job){destinationOptions();barrierOptions();}
   if(job)return item;
   if(!item){if(el('hInundInfo'))el('hInundInfo').textContent='Selecione o MDT para usar sua resolução nativa.';return null;}
   const r=item.r,d=r.d;
@@ -110,11 +121,12 @@ function resetProject(){
   if(el('hInundOut'))el('hInundOut').textContent='Nenhuma simulação por cotas gerada.';
   if(el('hInundDestination')){el('hInundDestination').replaceChildren(new Option('Criar nova camada','new'));delete el('hInundDestination').dataset.destinations;}
   if(el('hInundDissolve')){el('hInundDissolve').checked=false;el('hInundDissolve').disabled=true;}
+  if(el('hInundBarrier')){el('hInundBarrier').replaceChildren(new Option('Sem barramento',''));delete el('hInundBarrier').dataset.barriers;}
 }
 function busy(on){
-  for(const id of ['btnInundRun','btnInundFundo','btnInundTudo','btnInundLimpa','hInundRaster','hInundDestination','hInundDissolve'])if(el(id))el(id).disabled=on;
+  for(const id of ['btnInundRun','btnInundFundo','btnInundTudo','btnInundLimpa','hInundRaster','hInundDestination','hInundDissolve','hInundBarrier'])if(el(id))el(id).disabled=on;
   if(el('btnInundCancel'))el('btnInundCancel').hidden=!on;
-  if(!on)destinationOptions();
+  if(!on){destinationOptions();barrierOptions();}
 }
 function signature(r){
   const rev=g=>typeof projectNativeGridRevision==='function'?projectNativeGridRevision(g):'';
@@ -138,13 +150,14 @@ async function barrierHeights(sampler,barrier,check){
 async function run(seedLatLng,mode='ponto'){
   if(job){toast('Já existe uma inundação em cálculo.');return;}
   const item=selected();if(!item){toast('Selecione o MDT da inundação.');return;}
+  barrierOptions();
   const inc=num('hInundInc'),count=Math.max(1,Math.min(200,Math.floor(num('hInundIter')||1))),typed=num('hInundIni');
   if(!(inc>0&&Number.isFinite(inc))){toast('Confira o incremento.');return;}
   if(!['ponto','fundo','tudo'].includes(mode)){toast('Modo de inundação inválido.');return;}
   let destination;try{destination=root.GeoMineNativeFloodDestination.capture(destinationOptions(),el('hInundDissolve')?.checked===true);}catch(e){toast(e.message);return;}
   const r=item.r,d=r.d,q={controller:new AbortController(),project:S.projectId,gen:generation(),workCRS:S.workCRS,r,d,listed:(S.rasters||[]).includes(r)};
   job=q;describing++;busy(true);let sampler=null,outcome='error';
-  const out=el('hInundOut'),params=()=>['hInundIni','hInundInc','hInundIter','hBarrLay'].map(id=>el(id)?.value).concat(el('hInundDestination')?.value,!!el('hInundDissolve')?.checked).join('|'),initialParams=params();
+  const out=el('hInundOut'),params=()=>['hInundIni','hInundInc','hInundIter','hInundBarrier'].map(id=>el(id)?.value).concat(el('hInundDestination')?.value,!!el('hInundDissolve')?.checked).join('|'),initialParams=params();
   let barrier=null,barrierFeatures=null,originalBarrier='';
   const barrierSignature=()=>barrier?JSON.stringify([barrier.L.crs,barrier.L.features.map(f=>f.geom)]):'';
   const current=()=>job===q&&!q.controller.signal.aborted&&root.GeoMineNativeFloodDestination.current(destination)&&S.projectId===q.project&&generation()===q.gen&&S.workCRS===q.workCRS&&(!q.listed||(S.rasters||[]).includes(r))&&selected()?.r===r&&r.d===d&&params()===initialParams&&(!barrier||S.layers.includes(barrier.L)&&barrier.L.features===barrierFeatures);
@@ -156,7 +169,9 @@ async function run(seedLatLng,mode='ponto'){
   };
   try{
     showLoad('Abrindo o MDT na resolução nativa…');if(out)out.textContent='Abrindo o MDT original…';
-    barrier=typeof barrLinhas==='function'?barrLinhas():null;barrierFeatures=barrier?.L.features;originalBarrier=barrierSignature();
+    // Cotas usam somente o barramento escolhido neste painel. A seleção da
+    // chuva pode ser uma rede de drenagem e nunca deve criar paredes ocultas.
+    barrier=typeof barrLinhas==='function'?barrLinhas(el('hInundBarrier')?.value||''):null;barrierFeatures=barrier?.L.features;originalBarrier=barrierSignature();
     const originalSignature=signature(r);
     sampler=await root.GeoMineChannelDEM.prepare(r,{workCRS:q.workCRS,signal:q.controller.signal,isCurrent:current});check();
     const scale=info(sampler,r),g=sampler.grid,source={...g,unitScale:scale,readWindow:sampler.readWindow,isCurrent:current},engine=root.GeoMineNativeFloodEngine;
@@ -229,10 +244,11 @@ function clearResults(){
   catch(e){toast('Não foi possível limpar: '+e.message);return false;}
 }
 root.GeoMineNativeFlood={run,refresh,preview,cancel,resetProject,bindSource,clearResults,hasSource:()=>!!selected()};
+el('hInundBarrier')?.addEventListener('change',()=>{cancel();S.hidro.inundBarrierId=el('hInundBarrier').value||null;barrierOptions();});
 el('hInundDestination')?.addEventListener('change',()=>{cancel();S.hidro.inundDestination=el('hInundDestination').value;destinationOptions();});
 el('hInundDissolve')?.addEventListener('change',()=>{cancel();S.hidro.inundDissolve=el('hInundDissolve').checked;});
 el('hInundRaster')?.addEventListener('change',()=>{cancel();S.hidro.inundRasterId=el('hInundRaster').value;description=null;refresh(true);});
 el('btnInundCancel')?.addEventListener('click',cancel);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&job)cancel();});
-for(const id of ['hInundIni','hInundInc','hInundIter','hBarrLay'])el(id)?.addEventListener('input',()=>{cancel();preview();});
+for(const id of ['hInundIni','hInundInc','hInundIter','hInundBarrier'])el(id)?.addEventListener('input',()=>{cancel();preview();});
 })(window);

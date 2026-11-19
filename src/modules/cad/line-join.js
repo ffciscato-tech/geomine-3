@@ -14,8 +14,8 @@ function writable(L,items){
   if(L._geology||L.cavaDesign||L.tinSurface||L._cava2DesignId||L._rb31Recipe||L._channelLink||
     items.some(i=>root.rb134EhDerivadaProtegida?.(L,i.f)||root.GeoMineDimensions?.isFeature?.(L,i.f)))
     throw Error('A camada “'+L.name+'” possui geometria calculada; ajuste-a pela ferramenta que a gerou.');
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){
-    collabCanEditLayer(L,true);throw Error('Reserve a camada “'+L.name+'” antes de unir.');
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){
+    canEditLayer(L,true);throw Error('Desbloqueie a camada “'+L.name+'” antes de unir.');
   }
 }
 function selected(items){

@@ -449,7 +449,7 @@ function fvPoligonosDasClasses(res){
 function abreCalculadoraCampo(){
   const L=activeLayer();
   if(!L){ toast('Selecione uma camada vetorial'); return; }
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
   const campos=(L.fields||[]).map(f=>f.name);
   const bg=document.createElement('div'); bg.className='modal-bg on';
   const opt=a=>a.map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');
@@ -599,7 +599,7 @@ function abreCalculadoraCampo(){
   };
   $('fcTestar').onclick=testar;
   $('fcOk').onclick=()=>{
-    if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
+    if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
     const r=testar(); if(!r) return;
     let nome, tipo;
     if($('fcNovo').checked){

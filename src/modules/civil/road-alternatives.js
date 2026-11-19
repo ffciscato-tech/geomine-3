@@ -228,7 +228,7 @@ function apply(C,index){
  const saved=C.alternatives.params;if(!GeoMineCivil.readParams(C))return;
  if(C.alternatives.A&&JSON.stringify([C.A,C.B])!==JSON.stringify([C.alternatives.A,C.alternatives.B])){toast('Os pontos mudaram. Compare novamente.');return;}
  if(saved&&JSON.stringify(saved)!==JSON.stringify(C.params)){toast('Os parâmetros mudaram. Compare as alternativas novamente.');return;}
- if(S.layers.some(l=>l._civilDesignId===C.id&&(l.locked||(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(l,false))))){toast('Desbloqueie as camadas da estrada.');return;}
+ if(S.layers.some(l=>l._civilDesignId===C.id&&(l.locked||(typeof canEditLayer==='function'&&!canEditLayer(l,false))))){toast('Desbloqueie as camadas da estrada.');return;}
  clearPreview();GeoMineRoadEditor.close();GeoMineCorridor.invalidate(C);
  Object.assign(C,{eixo:copy(q.axis),horizontalControls:copy(q.controls),verticalDesign:copy(q.design),horizontalCurved:true,alignmentPending:false,alignmentConfirmed:false,selectedAlternative:index,W:C.params.civW});
  const feature={geom:q.axis.map(p=>[p.x,p.y]),zg:q.axis.map(p=>p.z),multi:false,props:{TIPO:'Alternativa '+(index+1),COMP_M:q.total,RAMPA_MAX:q.grade,CORTE_M3:q.volumes.cut,ATERRO_M3:q.volumes.fill,RAIO_MIN:q.radius,LARGURA:C.params.civW}};
@@ -243,7 +243,7 @@ async function compare(){
  if(!R||!C.A||!C.B){toast('Marque A e B e selecione o MDT.');return;}
  if(C.crs!==S.workCRS){toast('Volte ao CRS da estrada: '+C.crs);return;}
  if(!GeoMineCivil.readParams(C))return;
- if(S.layers.some(l=>l._civilDesignId===C.id&&(l.locked||(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(l,false))))){toast('Desbloqueie as camadas da estrada para gerar novas opções.');return;}
+ if(S.layers.some(l=>l._civilDesignId===C.id&&(l.locked||(typeof canEditLayer==='function'&&!canEditLayer(l,false))))){toast('Desbloqueie as camadas da estrada para gerar novas opções.');return;}
  const job=++token,project=S.projectId,params=copy(C.params),A=C.A.slice(),B=C.B.slice(),signature=JSON.stringify([A,B,params]),g=R.d;
  busy=true;clearPreview();GeoMineRoadEditor.close();civUpdateSteps();
  const check=()=>{if(job!==token||project!==S.projectId||C!==S._civ||R!==civMdt()||g!==R.d||signature!==JSON.stringify([C.A,C.B,Object.fromEntries(Object.keys(params).map(k=>[k,typeof params[k]==='number'?+el(k).value:el(k).value]))]))throw Error('Comparação cancelada: pontos, MDT ou parâmetros mudaram.');};

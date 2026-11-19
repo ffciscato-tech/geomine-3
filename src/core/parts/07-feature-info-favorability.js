@@ -710,10 +710,10 @@ async function infoClick(latlng){
       }
       tela();
     }else{
-      if(c.r&&c.r._cnOrto){
+      if(c.r&&(c.r._cnOrto||c.r._runoffOrto)){
         const cl=((c.r.style&&c.r.style.classes)||[]).reduce((a,x)=>
           (!a||Math.abs(I.zi-x.value)<Math.abs(I.zi-a.value))?x:a,null);
-        li('CN',n(I.zi,0),'var(--amber)');
+        li(c.r._runoffOrto?'C de deflúvio':'CN',n(I.zi,c.r._runoffOrto?3:0),'var(--amber)');
         if(cl)li('Classe',esc(cl.label||''));
       }else if(rasEhDeclividade(c.r)){
         const un=rasUnidadeValor(c.r);

@@ -1,0 +1,24 @@
+.gm-work-card{border:1px solid var(--line,#b8c7d4);border-radius:9px;background:var(--panel,#f8fbff);padding:10px;margin:0 0 10px;min-width:0}
+.gm-card-heading{display:flex;align-items:center;gap:7px;margin-bottom:7px;font-size:12px}
+.gm-card-step{display:inline-flex;align-items:center;justify-content:center;flex:none;width:22px;height:22px;border-radius:6px;background:#2177a8;color:white;font-weight:700;font-size:11px}
+.gm-card-info{margin-left:auto;font-size:11px;font-weight:400}
+.gm-card-info summary{list-style:none;cursor:pointer;font-size:17px;line-height:24px;min-width:30px;min-height:30px;text-align:center;border-radius:5px;color:var(--muted,#526c80)}
+.gm-card-info summary::-webkit-details-marker{display:none}
+.gm-card-info[open]{flex-basis:100%;margin-left:0;order:3}
+.gm-card-heading:has(.gm-card-info[open]){flex-wrap:wrap}
+.gm-card-info[open] summary{text-align:left}
+.gm-card-info p{margin:4px 0;line-height:1.45;color:var(--muted,#526c80)}
+.gm-card-primary{width:100%;justify-content:center!important;margin-top:10px;background:var(--amber,#f5a524)!important;color:#1a1206!important;font-weight:600}
+#secBacia>.body{padding:0!important}#secBacia .gm-work-card select,#secBacia .gm-work-card input:not([type=checkbox]){width:100%;box-sizing:border-box}
+#secBacia .gm-work-card .field{margin-top:6px}#secBacia .gm-work-card .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}#secBacia .gm-work-card .hout{white-space:normal}
+#secHydraulicStairs>.body{padding:0!important}#secHydraulicStairs [hidden],#stairsReport [hidden]{display:none!important}
+#secHydraulicStairs input,#secHydraulicStairs select{width:100%;box-sizing:border-box}#secHydraulicStairs .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#secHydraulicStairs .field{margin-top:7px;display:block}#secHydraulicStairs .row2{display:flex;gap:6px;flex-wrap:wrap}#secHydraulicStairs .row2>*{flex:1}
+#secHydraulicStairs button{min-height:32px}#secHydraulicStairs .hint,#secHydraulicStairs output{line-height:1.5;overflow-wrap:anywhere}
+.stairs-chart svg{width:100%;height:auto;display:block}.stairs-chip{display:inline-block;padding:2px 6px;border-radius:4px;background:#e0edf5;color:#233e52;font-size:11px;margin:2px}
+#stairsDrawHud{position:fixed;z-index:25000;top:280px;left:50%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;background:var(--panel,#fff);border:1px solid var(--line,#aaa);border-radius:8px;padding:9px;box-shadow:0 3px 12px #0003;max-width:85vw;font-size:12px}
+#stairsDrawHud[hidden]{display:none}#stairsStatus:empty{display:none}#stairsStatus{padding:7px 0;font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+#stairsReport .modal{width:min(1000px,95vw);max-height:92dvh;display:flex;flex-direction:column}#stairsReport .modal-b{overflow:auto;min-height:0}
+body.alagis3 #stairsReport>.modal{width:min(1000px,100%)!important;resize:none}
+#stairsReport .command-resize-grip{display:none!important}
+#stairsReport table{width:100%;border-collapse:collapse;font-size:11px}#stairsReport td,#stairsReport th{padding:5px;border-bottom:1px solid #b9c8d4;text-align:right}#stairsReport th:first-child,#stairsReport td:first-child{text-align:left}

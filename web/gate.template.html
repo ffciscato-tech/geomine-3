@@ -86,15 +86,14 @@
     </div>
 
     <p class="rodape">
-      O processamento continua no seu navegador. Dados só são enviados ao Firebase
-      quando você entra ou cria uma sala de colaboração; fora dela, o projeto permanece local.
+      O processamento continua no seu navegador. Use Salvar para gravar o projeto no destino escolhido.
     </p>
   </div>
 </div>
 
 <div id="gmSessao" hidden aria-hidden="true" title="Sair da conta"><img id="gmFoto" alt=""><span id="gmNome"></span></div>
 
-<script type="module">
+<!-- GEOMINE_APP_MODULES --><script type="module">
 /* Portão de sessão da versão publicada — mesmo endereço do aplicativo.
 
    Os controles reproduzem os do BlastPal: e-mail e senha, Entrar, Criar
@@ -112,12 +111,8 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRe
          signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail,
          onAuthStateChanged, signOut, reauthenticateWithPopup }
   from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js';
-import { getFirestore, collection, collectionGroup, doc, getDoc, getDocs, setDoc,
-         updateDoc, deleteDoc, query, where, orderBy, limit, onSnapshot,
-         runTransaction, writeBatch, serverTimestamp, Timestamp }
+import { getFirestore, doc, getDoc }
   from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js';
-import { getStorage, ref as storageRef, uploadBytes, getBytes, deleteObject }
-  from 'https://www.gstatic.com/firebasejs/12.0.0/firebase-storage.js';
 
 const firebaseConfig = __FIREBASE_CONFIG__;
 
@@ -132,22 +127,8 @@ const DOMINIOS = ['ccmeng.net'];
 const dominioOk = e => !!e && DOMINIOS.some(d => e.toLowerCase().endsWith('@' + d));
 const recusa = 'Acesso restrito a contas @' + DOMINIOS.join(' ou @') + '.';
 
-/* Ponte entre o aplicativo offline e os serviços da versão publicada.
-
-   O núcleo do GeoMine não importa Firebase e, por isso, continua abrindo como
-   arquivo local. Na publicação, esta ponte aparece em
-   window.GeoMineCloudProvider depois do login e emite `geomine:cloud-ready`.
-
-   Modelo de colaboração:
-   - salas e metadados: Cloud Firestore;
-   - snapshots e payloads grandes: Cloud Storage;
-   - presença: batimento renovável;
-   - uma trava (lease) por recurso evita duas pessoas editarem a mesma camada;
-   - operações layer.replace recebem sequência global da sala e revisão própria
-     do recurso dentro de uma única transação.
-
-   A trava é uma proteção cooperativa, não um substituto para o histórico: uma
-   conexão que cai deixa a lease expirar, e toda publicação continua registrada. */
+/* Ponte autenticada para o Google Drive e para a leitura das atualizações
+   de projeto destinadas ao próprio usuário. O núcleo continua utilizável offline. */
 window.GeoMineCloudProvider = null;
 
 function criaErro(codigo, mensagem, detalhes){
@@ -160,107 +141,16 @@ function criaErro(codigo, mensagem, detalhes){
 
 function criaGeoMineCloudProvider(firebaseApp, auth){
   const db = getFirestore(firebaseApp);
-  const storage = getStorage(firebaseApp);
-  const cancelamentos = new Set();
-  const batimentos = new Map();
-  const minhasLeases = new Map();
-  const MAX_ARQUIVO = 500 * 1024 * 1024;
-  const dispositivoDaPonte = (() => {
-    const chave='geomine.cloud.device.v1';
-    try{
-      let valor=sessionStorage.getItem(chave);
-      if(!valor){ valor='web-'+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)); sessionStorage.setItem(chave,valor); }
-      return valor;
-    }catch(_){ return 'web-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2); }
-  })();
-
   const usuario = () => {
     const u = auth.currentUser;
     if(!u || !dominioOk(u.email) || !u.emailVerified)
-      throw criaErro('auth-required', 'Entre com uma conta CCM com o e-mail verificado para colaborar.');
+      throw criaErro('auth-required', 'Entre com uma conta CCM com o e-mail verificado.');
     return u;
   };
   const perfil = () => {
     const u = usuario();
-    return { uid:u.uid, email:(u.email || '').toLowerCase(), displayName:u.displayName || u.email || '', photoURL:u.photoURL || '' };
+    return {uid:u.uid,email:(u.email||'').toLowerCase(),displayName:u.displayName||u.email||'',photoURL:u.photoURL||''};
   };
-  const validaSala = id => {
-    id = String(id || '').trim();
-    if(!/^[A-Za-z0-9_-]{8,128}$/.test(id)) throw criaErro('invalid-room', 'Identificador de sala inválido.');
-    return id;
-  };
-  const limpaNome = (v, padrao='arquivo') => String(v || padrao).normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g,'').replace(/[^A-Za-z0-9._-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,120) || padrao;
-  const limitaLease = ms => Math.max(30000, Math.min(10 * 60 * 1000, Number(ms) || 120000));
-  const idDispositivo = opcoes => String(opcoes && (opcoes.clientId || opcoes.deviceId) || dispositivoDaPonte).slice(0,160);
-  const millis = t => t && typeof t.toMillis === 'function' ? t.toMillis() : Number(t || 0);
-  const materializa = s => s && s.exists() ? ({ id:s.id, ...s.data() }) : null;
-  const salaPublica = (s, papel) => {
-    const dados=materializa(s); if(!dados) return null;
-    /* baseSnapshot no Firestore é um descritor do Storage, não o projeto.
-       Evita que o consumidor tente carregá-lo como se fosse um .ccmgis. */
-    if(dados.baseSnapshot){ dados.snapshotRef=dados.baseSnapshot; delete dados.baseSnapshot; }
-    if(papel !== undefined) dados.myRole=papel;
-    return dados;
-  };
-  const semIndefinidos = valor => {
-    if(valor === undefined) return null;
-    if(valor === null || typeof valor !== 'object') return valor;
-    if(valor instanceof Date || valor instanceof Blob || valor instanceof ArrayBuffer || ArrayBuffer.isView(valor)) return valor;
-    if(Array.isArray(valor)) return valor.map(semIndefinidos);
-    const saida = {};
-    Object.keys(valor).forEach(k => { if(valor[k] !== undefined) saida[k] = semIndefinidos(valor[k]); });
-    return saida;
-  };
-  async function chaveRecurso(valor){
-    const bytes = new TextEncoder().encode(String(valor || ''));
-    const hash = await crypto.subtle.digest('SHA-256', bytes);
-    return 'r_' + Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2,'0')).join('');
-  }
-  const chaveConvite = email => chaveRecurso('invite:' + String(email || '').trim().toLowerCase());
-  function acompanha(cancelar){
-    cancelamentos.add(cancelar);
-    return () => { if(cancelamentos.delete(cancelar)) cancelar(); };
-  }
-  function observa(q, retorno, erro){
-    const cancelar = onSnapshot(q, snap => {
-      if(typeof snap.exists === 'function') retorno(materializa(snap));
-      else retorno(snap.docs.map(materializa), snap.docChanges().map(c => ({ type:c.type, data:materializa(c.doc) })));
-    }, e => { if(erro) erro(e); else console.error('GeoMine colaboração:', e); });
-    return acompanha(cancelar);
-  }
-  const salaRef = id => doc(db, 'rooms', validaSala(id));
-  const membroRef = (id, uid=usuario().uid) => doc(db, 'rooms', validaSala(id), 'members', uid);
-  const recursoRef = async (id, recurso) => doc(db, 'rooms', validaSala(id), 'resources', await chaveRecurso(recurso));
-
-  function dadosArquivo(dados, tipo){
-    if(dados instanceof Blob) return dados;
-    if(dados instanceof ArrayBuffer || ArrayBuffer.isView(dados)) return new Blob([dados], {type:tipo || 'application/octet-stream'});
-    if(typeof dados === 'string') return new Blob([dados], {type:tipo || 'text/plain;charset=utf-8'});
-    return new Blob([JSON.stringify(semIndefinidos(dados))], {type:tipo || 'application/json'});
-  }
-  async function envia(caminho, dados, opcoes={}){
-    const blob = dadosArquivo(dados, opcoes.contentType);
-    if(blob.size > MAX_ARQUIVO) throw criaErro('file-too-large', 'O arquivo excede o limite de 500 MB desta colaboração.');
-    const resultado = await uploadBytes(storageRef(storage, caminho), blob, {
-      contentType: blob.type || opcoes.contentType || 'application/octet-stream',
-      customMetadata: semIndefinidos(opcoes.customMetadata || {})
-    });
-    return { path:caminho, name:resultado.metadata.name, size:resultado.metadata.size,
-      contentType:resultado.metadata.contentType || blob.type || 'application/octet-stream',
-      generation:resultado.metadata.generation || null };
-  }
-  async function baixa(descritor, formato='json'){
-    const caminho = typeof descritor === 'string' ? descritor : descritor && descritor.path;
-    if(!caminho) throw criaErro('missing-path', 'O arquivo remoto não tem caminho.');
-    const bytes = await getBytes(storageRef(storage, caminho));
-    if(formato === 'arrayBuffer') return bytes;
-    const blob = new Blob([bytes], {type:(descritor && descritor.contentType) || 'application/octet-stream'});
-    if(formato === 'blob') return blob;
-    const texto = await blob.text();
-    return formato === 'text' ? texto : JSON.parse(texto);
-  }
-
   let driveSession=null;
   /* AUTORIZAÇÃO DO DRIVE NO iPAD
      A janela do Google abre em outra guia e, enquanto ela está na frente, o
@@ -296,8 +186,7 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
   }
   const api = {
     kind:'firebase', version:1, ready:true,
-    capabilities:{ rooms:true, invitations:true, roles:['owner','editor','viewer'], presence:true, leases:true,
-      snapshots:true, operations:['layer.replace'], maxUploadBytes:MAX_ARQUIVO },
+    capabilities:{drive:true,projectUpdates:true},
     get user(){ return perfil(); },
     get drivePickerConfig(){return {appId:firebaseConfig.messagingSenderId,key:firebaseConfig.pickerBrowserKey};},
     clearDriveAccess(){driveSession=null;try{sessionStorage.removeItem('geomine.drive.access.v2');}catch(_){}},
@@ -364,259 +253,6 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
       return token;
     },
 
-    async createRoom(opcoes={}){
-      const u = perfil();
-      const refSala = doc(collection(db, 'rooms'));
-      const lote = writeBatch(db);
-      lote.set(refSala, { name:String(opcoes.name || 'Projeto colaborativo').trim().slice(0,120),
-        description:String(opcoes.description || '').trim().slice(0,500), ownerUid:u.uid,
-        nextSeq:0,
-        createdAt:serverTimestamp(), updatedAt:serverTimestamp() });
-      lote.set(doc(refSala, 'members', u.uid), { ...u, role:'owner', joinedAt:serverTimestamp() });
-      await lote.commit();
-      if(opcoes.baseSnapshot !== undefined && opcoes.baseSnapshot !== null){
-        const b = opcoes.baseSnapshot;
-        await api.uploadSnapshot(refSala.id, b && Object.prototype.hasOwnProperty.call(b,'data') ? b.data : b,
-          b && Object.prototype.hasOwnProperty.call(b,'data') ? b : {});
-      }
-      return api.getRoom(refSala.id);
-    },
-    async listRooms(){
-      const u = perfil();
-      const membros = await getDocs(query(collectionGroup(db,'members'), where('uid','==',u.uid)));
-      const salas = await Promise.all(membros.docs.map(async m => {
-        const r = await getDoc(m.ref.parent.parent);
-        return r.exists() ? salaPublica(r,m.data().role) : null;
-      }));
-      return salas.filter(Boolean).sort((a,b) => millis(b.updatedAt) - millis(a.updatedAt));
-    },
-    async getRoom(id){
-      const sala = await getDoc(salaRef(id));
-      if(!sala.exists()) throw criaErro('room-not-found', 'Sala não encontrada ou sem acesso.');
-      const membro = await getDoc(membroRef(id));
-      return salaPublica(sala,membro.exists() ? membro.data().role : null);
-    },
-    async joinRoom(id, opcoes={}){
-      id = validaSala(id); const u = perfil();
-      const inviteId=String(opcoes.inviteId || await chaveConvite(u.email));
-      const refMembro=membroRef(id,u.uid), refConvite=doc(db,'rooms',id,'invites',inviteId);
-      await runTransaction(db,async tx=>{
-        const [existente,convite]=await Promise.all([tx.get(refMembro),tx.get(refConvite)]);
-        if(existente.exists()) return;
-        if(!convite.exists() || String(convite.data().emailLower||'').toLowerCase()!==u.email)
-          throw criaErro('invite-required','Não há convite ativo para esta conta nesta sala.');
-        if(millis(convite.data().expiresAt)<=Date.now()) throw criaErro('invite-expired','Este convite expirou. Peça um novo ao responsável.');
-        const role=convite.data().role==='viewer'?'viewer':'editor';
-        tx.set(refMembro,{...u,role,inviteId,joinedAt:serverTimestamp()});
-        tx.delete(refConvite);
-      });
-      return api.getRoom(id);
-    },
-    async leaveRoom(id){
-      const u = perfil();
-      api.stopHeartbeat(id);
-      /* "Sair" encerra apenas a presença desta sessão. A associação à sala
-         permanece, permitindo retomar o projeto sem consumir outro convite. */
-      await deleteDoc(doc(db,'rooms',validaSala(id),'presence',u.uid)).catch(()=>{});
-    },
-    async removeSelfFromRoom(id){
-      const u=perfil();
-      api.stopHeartbeat(id);
-      await deleteDoc(doc(db,'rooms',validaSala(id),'presence',u.uid)).catch(()=>{});
-      await deleteDoc(membroRef(id,u.uid));
-    },
-    async listMembers(id){
-      const s = await getDocs(collection(db,'rooms',validaSala(id),'members'));
-      return s.docs.map(materializa);
-    },
-    watchMembers(id, retorno, erro){ return observa(collection(db,'rooms',validaSala(id),'members'), retorno, erro); },
-    async addMember(id, membro){
-      if(!membro || !membro.uid) throw criaErro('member-uid-required','Informe o UID do colaborador.');
-      const role = ['owner','editor','viewer'].includes(membro.role) ? membro.role : 'viewer';
-      await setDoc(membroRef(id,String(membro.uid)), { uid:String(membro.uid),
-        email:String(membro.email || '').toLowerCase(), displayName:String(membro.displayName || membro.email || ''),
-        photoURL:String(membro.photoURL || ''), role, joinedAt:serverTimestamp() });
-    },
-    async inviteMember(id, email, role='editor'){
-      id=validaSala(id); email=String(email||'').trim().toLowerCase();
-      if(!dominioOk(email)) throw criaErro('invalid-member-email','O convite deve usar uma conta @ccmeng.net.');
-      role=role==='viewer'?'viewer':'editor';
-      const inviteId=await chaveConvite(email), u=perfil();
-      const convite={inviteId,emailLower:email,role,invitedBy:u.uid,invitedByEmail:u.email,
-        createdAt:serverTimestamp(),expiresAt:Timestamp.fromMillis(Date.now()+7*24*60*60*1000)};
-      await setDoc(doc(db,'rooms',id,'invites',inviteId),convite);
-      return {...convite,roomId:id};
-    },
-    async listInvitations(){
-      const u=perfil();
-      const s=await getDocs(query(collectionGroup(db,'invites'),where('emailLower','==',u.email)));
-      return s.docs.map(d=>({...materializa(d),roomId:d.ref.parent.parent.id}));
-    },
-    watchInvites(id, retorno, erro){ return observa(collection(db,'rooms',validaSala(id),'invites'),retorno,erro); },
-    async setMemberRole(id, uid, role){
-      /* Transferência de propriedade exige um fluxo administrativo próprio.
-         Aqui o proprietário só alterna colaboradores entre editor/viewer. */
-      if(!['editor','viewer'].includes(role)) throw criaErro('invalid-role','Papel inválido.');
-      await updateDoc(membroRef(id,String(uid)), { role, updatedAt:serverTimestamp() });
-    },
-    async updateMemberRole(id, uid, role){ return api.setMemberRole(id,uid,role); },
-    async removeMember(id, uid){ await deleteDoc(membroRef(id,String(uid))); },
-    watchRoom(id, retorno, erro){ return observa(salaRef(id), retorno, erro); },
-
-    async heartbeat(id, opcoes={}){
-      const u = perfil(); const ttl = Math.max(30000, Math.min(180000, Number(opcoes.ttlMs) || 70000));
-      await setDoc(doc(db,'rooms',validaSala(id),'presence',u.uid), { ...u,
-        state:String(opcoes.state || 'online').slice(0,40), lastSeen:serverTimestamp(),
-        expiresAt:Timestamp.fromMillis(Date.now()+ttl) }, {merge:true});
-      /* O módulo de domínio chama heartbeat uma vez ao entrar. A ponte assume
-         a renovação enquanto a sala estiver ligada e stopHeartbeat a encerra. */
-      if(!batimentos.has(id)){
-        const intervalo=Math.max(10000,Math.min(60000,Number(opcoes.intervalMs)||25000));
-        const bate=()=>api.heartbeat(id,{...opcoes,_renewing:true}).catch(e=>console.warn('Presença GeoMine:',e));
-        batimentos.set(id,setInterval(bate,intervalo));
-      }
-    },
-    startHeartbeat(id, opcoes={}){
-      id = validaSala(id); api.stopHeartbeat(id);
-      api.heartbeat(id,opcoes).catch(e => console.warn('Presença GeoMine:',e));
-      return () => api.stopHeartbeat(id);
-    },
-    stopHeartbeat(id){
-      if(id===undefined || id===null || id===''){
-        batimentos.forEach(clearInterval); batimentos.clear(); return;
-      }
-      id = String(id); const timer = batimentos.get(id);
-      if(timer) clearInterval(timer); batimentos.delete(id);
-    },
-    watchPresence(id, retorno, erro){
-      return observa(collection(db,'rooms',validaSala(id),'presence'), (lista,mudancas) => {
-        const agora=Date.now(); retorno(lista.map(p => ({...p,online:millis(p.expiresAt)>agora})),mudancas);
-      }, erro);
-    },
-
-    async acquireLock(id, resourceId, opcoes={}){
-      const u=perfil(), key=await chaveRecurso(resourceId), refLock=doc(db,'rooms',validaSala(id),'locks',key);
-      const ttl=limitaLease(opcoes.ttlMs), agora=Date.now(), deviceId=idDispositivo(opcoes,u);
-      const resultado=await runTransaction(db, async tx => {
-        const atual=await tx.get(refLock), dados=atual.exists()?atual.data():null;
-        const mesmaAba=dados&&dados.holderUid===u.uid&&String(dados.holderDeviceId||dados.deviceId||'')===deviceId;
-        if(dados && !mesmaAba && millis(dados.expiresAt)>agora)
-          throw criaErro('resource-locked','Este recurso está sendo editado por '+(dados.holderName||dados.holderEmail||'outro usuário')+'.',dados);
-        const novo={ resourceId:String(resourceId), resourceKey:key, label:String(opcoes.label||resourceId).slice(0,160),
-          holderUid:u.uid, holderEmail:u.email, holderName:u.displayName, holderDeviceId:deviceId, deviceId,
-          acquiredAt:serverTimestamp(), updatedAt:serverTimestamp(), expiresAt:Timestamp.fromMillis(agora+ttl) };
-        tx.set(refLock,novo); return {...novo,expiresAtMs:agora+ttl};
-      });
-      minhasLeases.set(validaSala(id)+'/'+key,deviceId);
-      return resultado;
-    },
-    async renewLock(id, resourceId, opcoes={}){
-      const u=perfil(), key=await chaveRecurso(resourceId), refLock=doc(db,'rooms',validaSala(id),'locks',key);
-      const ttl=limitaLease(opcoes.ttlMs), expira=Date.now()+ttl,
-        deviceId=opcoes.clientId||opcoes.deviceId?idDispositivo(opcoes,u):(minhasLeases.get(validaSala(id)+'/'+key)||idDispositivo(opcoes,u));
-      await runTransaction(db, async tx => {
-        const s=await tx.get(refLock);
-        if(!s.exists() || s.data().holderUid!==u.uid || String(s.data().holderDeviceId||s.data().deviceId||'')!==deviceId)
-          throw criaErro('lock-lost','A trava deste recurso pertence a outra aba ou não está mais ativa.');
-        tx.update(refLock,{updatedAt:serverTimestamp(),expiresAt:Timestamp.fromMillis(expira)});
-      });
-      return {resourceId:String(resourceId),resourceKey:key,holderUid:u.uid,holderDeviceId:deviceId,deviceId,expiresAtMs:expira};
-    },
-    async releaseLock(id, resourceId, opcoes={}){
-      const u=perfil(), key=await chaveRecurso(resourceId), refLock=doc(db,'rooms',validaSala(id),'locks',key),
-        deviceId=opcoes.clientId||opcoes.deviceId?idDispositivo(opcoes,u):(minhasLeases.get(validaSala(id)+'/'+key)||idDispositivo(opcoes,u));
-      await runTransaction(db, async tx => {
-        const s=await tx.get(refLock);
-        if(s.exists() && s.data().holderUid===u.uid && String(s.data().holderDeviceId||s.data().deviceId||'')===deviceId) tx.delete(refLock);
-      });
-      minhasLeases.delete(validaSala(id)+'/'+key);
-    },
-    watchLocks(id, retorno, erro){
-      return observa(collection(db,'rooms',validaSala(id),'locks'), (lista,mudancas) => {
-        const agora=Date.now(); retorno(lista.filter(l=>millis(l.expiresAt)>agora).map(l => ({...l,active:true})),mudancas);
-      }, erro);
-    },
-
-    async uploadSnapshot(id, dados, opcoes={}){
-      id=validaSala(id); const nome=limpaNome(opcoes.name || ('projeto-'+Date.now()+'.ccmgis'));
-      const descriptor=await envia(`rooms/${id}/snapshots/${Date.now()}-${nome}`,dados,opcoes);
-      if(opcoes.setAsCurrent !== false)
-        await updateDoc(salaRef(id),{baseSnapshot:descriptor,updatedAt:serverTimestamp()});
-      return descriptor;
-    },
-    async downloadSnapshot(id, descriptor, opcoes={}){
-      id=validaSala(id);
-      if(!descriptor){ const s=await getDoc(salaRef(id)); descriptor=s.exists()?s.data().baseSnapshot:null; }
-      const path=typeof descriptor==='string'?descriptor:descriptor&&descriptor.path;
-      if(!path || !path.startsWith(`rooms/${id}/snapshots/`)) throw criaErro('invalid-path','Snapshot fora desta sala.');
-      return baixa(descriptor,opcoes.as || 'json');
-    },
-    async uploadPayload(id, resourceId, dados, opcoes={}){
-      id=validaSala(id); const key=await chaveRecurso(resourceId);
-      const nome=limpaNome(opcoes.name || ((opcoes.operationId || Date.now())+'.json'));
-      return envia(`rooms/${id}/payloads/${key}/${nome}`,dados,opcoes);
-    },
-    async downloadPayload(id, descriptor, opcoes={}){
-      id=validaSala(id); const path=typeof descriptor==='string'?descriptor:descriptor&&descriptor.path;
-      if(!path || !path.startsWith(`rooms/${id}/payloads/`)) throw criaErro('invalid-path','Payload fora desta sala.');
-      return baixa(descriptor,opcoes.as || 'json');
-    },
-    async publishLayerReplace(id, entrada={}){
-      id=validaSala(id); const u=perfil();
-      const resourceId=String(entrada.resourceId || entrada.layerId || '').trim();
-      if(!resourceId) throw criaErro('resource-required','Informe a camada/recurso a publicar.');
-      const key=await chaveRecurso(resourceId);
-      const refOperacao=doc(collection(db,'rooms',id,'operations'));
-      const descriptor=entrada.payloadRef || await api.uploadPayload(id,resourceId,entrada.payload,{
-        operationId:refOperacao.id,name:refOperacao.id+'.json',contentType:'application/json',
-        customMetadata:{operationId:refOperacao.id,resourceId}
-      });
-      const deviceId=minhasLeases.get(id+'/'+key)
-        || idDispositivo({clientId:entrada.clientId || entrada.metadata&&entrada.metadata.clientId},u);
-      const refSala=salaRef(id), refRecurso=doc(db,'rooms',id,'resources',key), refLock=doc(db,'rooms',id,'locks',key);
-      try{
-        return await runTransaction(db,async tx=>{
-          const [sala,recurso,lock]=await Promise.all([tx.get(refSala),tx.get(refRecurso),tx.get(refLock)]);
-          if(!sala.exists()) throw criaErro('room-not-found','Sala não encontrada.');
-          if(!lock.exists() || lock.data().holderUid!==u.uid
-            || String(lock.data().holderDeviceId||lock.data().deviceId||'')!==deviceId
-            || millis(lock.data().expiresAt)<=Date.now())
-            throw criaErro('lock-required','Reserve a camada antes de publicar esta revisão.');
-          const atual=recurso.exists()?Number(recurso.data().revision||0):0;
-          if(entrada.baseRevision===undefined || entrada.baseRevision===null || Number(entrada.baseRevision)!==atual)
-            throw criaErro('revision-conflict','A camada mudou no servidor. Atualize antes de publicar.',{expected:Number(entrada.baseRevision),actual:atual});
-          const seq=Number(sala.data().nextSeq||0)+1, revision=atual+1;
-          const metadados=semIndefinidos({...entrada.metadata,clientId:deviceId,
-            authorId:entrada.metadata&&entrada.metadata.authorId||u.uid,
-            authorName:entrada.metadata&&entrada.metadata.authorName||u.displayName});
-          tx.update(refSala,{nextSeq:seq,updatedAt:serverTimestamp()});
-          tx.set(refRecurso,{resourceId,resourceKey:key,layerId:String(entrada.layerId||resourceId),revision,lastSeq:seq,
-            payloadRef:descriptor,metadata:metadados,updatedAt:serverTimestamp(),updatedBy:u.uid,updatedByDevice:deviceId});
-          tx.set(refOperacao,{type:'layer.replace',seq,revision,resourceId,resourceKey:key,
-            layerId:String(entrada.layerId||resourceId),payloadRef:descriptor,baseRevision:atual,metadata:metadados,
-            authorUid:u.uid,authorEmail:u.email,authorName:u.displayName,clientId:deviceId,createdAt:serverTimestamp()});
-          return {id:refOperacao.id,type:'layer.replace',seq,revision,baseRevision:atual,
-            resourceId,resourceKey:key,payloadRef:descriptor,metadata:metadados};
-        });
-      }catch(e){
-        if(!entrada.payloadRef) deleteObject(storageRef(storage,descriptor.path)).catch(()=>{});
-        throw e;
-      }
-    },
-    watchOperations(id, retorno, opcoes={}){
-      id=validaSala(id); const base=collection(db,'rooms',id,'operations');
-      const depois=Number(opcoes.afterSeq||0);
-      /* Um limite ascendente prenderia o listener às primeiras operações e
-         faria a 501ª desaparecer. O histórico visual continua limitado. */
-      const q=depois>0 ? query(base,where('seq','>',depois),orderBy('seq','asc'))
-        : query(base,orderBy('seq','asc'));
-      return observa(q,retorno,opcoes.onError);
-    },
-    watchHistory(id, retorno, opcoes={}){
-      const q=query(collection(db,'rooms',validaSala(id),'operations'),orderBy('seq','desc'),limit(Number(opcoes.limit)||100));
-      return observa(q,retorno,opcoes.onError);
-    },
-    async getResource(id, resourceId){ return materializa(await getDoc(await recursoRef(id,resourceId))); },
     /* ATUALIZAÇÕES DE PROJETO ENTREGUES AO DONO (coleção projectUpdates)
        Só leitura: quem grava é tools/enviar_atualizacao_projeto.py, com a conta
        de serviço. O id do documento é o SHA-256 de "e-mail\nprojectId", de modo
@@ -645,11 +281,7 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
       return dados && typeof dados.toUint8Array === 'function' ? dados.toUint8Array() : new Uint8Array(0);
     },
 
-    dispose(){
-      batimentos.forEach(clearInterval); batimentos.clear();
-      minhasLeases.clear();
-      Array.from(cancelamentos).forEach(c=>{try{c();}catch(_){}}); cancelamentos.clear();
-    }
+    dispose(){ api.clearDriveAccess(); }
   };
   return Object.freeze(api);
 }

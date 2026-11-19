@@ -96,9 +96,7 @@
       "kind": "style",
       "path": "styles/app.css",
       "open_tag": "<style>",
-      "close_tag": "</style>",
-      "sha256": "abc292dbaba7ebee28ca49f0e056d2b68a7a65797c608a50a6a524edca91cf8f",
-      "lines": 1617
+      "close_tag": "</style>"
     },
     {
       "order": 10,
@@ -156,8 +154,6 @@
       "kind": "script",
       "open_tag": "<script>",
       "close_tag": "</script>",
-      "sha256": "344e39f1fbc79f0092c2f6060d9c19f399a383995e31378f19d2083e5961cfdf",
-      "lines": 57159,
       "parts": [
         "core/parts/01-bootstrap-crs-state-command.js",
         "core/parts/02-shapefile-dbf.js",
@@ -239,9 +235,7 @@
         "modules/data-sources/latin-america-ogc.js"
       ],
       "open_tag": "<script>",
-      "close_tag": "</script>",
-      "sha256": "3d22450f8912924f251a1c0c5d6cc20e42fb77427b6658fe0a6c84f174f5f890",
-      "lines": 634
+      "close_tag": "</script>"
     },
     {
       "order": 17,
@@ -385,9 +379,7 @@
       "kind": "script",
       "path": "modules/data-sources/alagis-car-sicar.js",
       "open_tag": "<script id=\"alagis-car-sicar\">",
-      "close_tag": "</script>",
-      "sha256": "7afd1440901f09b79b0b982cf196fa5bd242ae21c9fb296d2280790b41b86853",
-      "lines": 257
+      "close_tag": "</script>"
     },
     {
       "order": 25,
@@ -485,9 +477,7 @@
       "kind": "script",
       "path": "modules/visualization/alagis-vis-real.js",
       "open_tag": "<script id=\"alagis-vis-real\">",
-      "close_tag": "</script>",
-      "sha256": "c62410e2ee3de03107ac9f7f96d7051e413e1b4b569619642c1558344aec1e15",
-      "lines": 137
+      "close_tag": "</script>"
     },
     {
       "order": 35,
@@ -705,9 +695,7 @@
       "kind": "script",
       "path": "modules/analysis/alagis-119-filtro-tabela-qgis.js",
       "open_tag": "<script id=\"alagis-119-filtro-tabela-qgis\">",
-      "close_tag": "</script>",
-      "sha256": "d51da938efe463030aecf42a18390e3165a4f85dd890f9067983f11b14006ab6",
-      "lines": 107
+      "close_tag": "</script>"
     },
     {
       "order": 57,
@@ -715,9 +703,7 @@
       "kind": "script",
       "path": "modules/environmental/alagis-120-multicriterio-favorabilidade.js",
       "open_tag": "<script id=\"alagis-120-multicriterio-favorabilidade\">",
-      "close_tag": "</script>",
-      "sha256": "a2e3b0182fe5bcb1dd2288d163930622e6a102c0a468289d0e3d7cd7acfe3af8",
-      "lines": 3867
+      "close_tag": "</script>"
     },
     {
       "order": 58,
@@ -745,9 +731,7 @@
       "kind": "script",
       "path": "modules/layout/alagis-123-escala-passos-redondos.js",
       "open_tag": "<script id=\"alagis-123-escala-passos-redondos\">",
-      "close_tag": "</script>",
-      "sha256": "b4ec0bbb728eb5918c3f449354d2e9260afeedb443924cdea22a4068718532c4",
-      "lines": 258
+      "close_tag": "</script>"
     },
     {
       "order": 61,
@@ -815,9 +799,7 @@
       "kind": "script",
       "path": "modules/persistence/alagis-130-gravacao-por-partes.js",
       "open_tag": "<script id=\"alagis-130-gravacao-por-partes\">",
-      "close_tag": "</script>",
-      "sha256": "3aa972efc531c8f7f0f4be5f72b9f307b0ab6c65edb1108d6bd3669dc039d8f1",
-      "lines": 251
+      "close_tag": "</script>"
     },
     {
       "order": 68,
@@ -875,9 +857,7 @@
       "kind": "style",
       "path": "styles/modules/cava2-workspace.css",
       "open_tag": "<style id=\"cava2-workspace-style\">",
-      "close_tag": "</style>",
-      "sha256": "5d6ae1780370b7c8aa24e71999c1b86bd040862c45322ce4caa0cc07ee8bfc4c",
-      "lines": 75
+      "close_tag": "</style>"
     },
     {
       "order": 74,
@@ -890,10 +870,11 @@
       ],
       "open_tag": "<script id=\"cava2-workspace-module\">",
       "close_tag": "</script>",
-      "sha256": "b6c5fe432d6d58d0595bacf1302017cfad9c7a25fe951284aa953b7617036f8e",
-      "lines": 1638,
       "embed_files": {
-        "__GEOMINE_CAVA_V106_SOURCE__": "modules/mining/cava2/cava-pilha-v106.html"
+        "__GEOMINE_CAVA_V106_SOURCE__": {
+          "path": "modules/mining/cava2/cava-pilha-v106.html",
+          "close_tags": "all"
+        }
       }
     },
     {
@@ -962,9 +943,7 @@
       "kind": "script",
       "path": "modules/geology/geology-workspace.js",
       "open_tag": "<script id=\"geomine-geology-workspace-module\">",
-      "close_tag": "</script>",
-      "sha256": "b6200742b1efd012249d8ef46bb934a0c8d5f707356e2c3fe5b5f8042d180813",
-      "lines": 355
+      "close_tag": "</script>"
     },
     {
       "order": 82,
@@ -982,9 +961,7 @@
       "kind": "script",
       "path": "modules/geology/geological-sections.js",
       "open_tag": "<script id=\"geomine-geological-sections-module\">",
-      "close_tag": "</script>",
-      "sha256": "910b97375b2883f4df9ab7859b8b1648a3d40e9b151a512e3607e9aa6963b675",
-      "lines": 834
+      "close_tag": "</script>"
     },
     {
       "order": 84,
@@ -998,36 +975,14 @@
     },
     {
       "order": 85,
-      "slot": "asset-085",
-      "kind": "style",
-      "path": "styles/modules/collaboration.css",
-      "open_tag": "<style id=\"geomine-collaboration-style\">",
-      "close_tag": "</style>",
-      "sha256": "8ae4ed5e7b830ed37d5c1a1bb733a68cf3a2ca366fd42e2589d0da457b88a3de",
-      "lines": 76
-    },
-    {
-      "order": 86,
-      "slot": "asset-086",
-      "kind": "script",
-      "path": "modules/collaboration/cloud-collaboration.js",
-      "open_tag": "<script id=\"geomine-collaboration-module\">",
-      "close_tag": "</script>",
-      "sha256": "c11fc156b74c54caf060b65c4d9ea6084db9f2e429b6326519b000bfee94ff1b",
-      "lines": 1011
-    },
-    {
-      "order": 87,
       "slot": "asset-087",
       "kind": "script",
       "path": "modules/persistence/session-autosave.js",
       "open_tag": "<script id=\"geomine-session-autosave-module\">",
-      "close_tag": "</script>",
-      "sha256": "95ba23f34288c79913a4d8cb867fbdcec0a9a8ed78a4dad6a126de78eaa13c15",
-      "lines": 309
+      "close_tag": "</script>"
     },
     {
-      "order": 88,
+      "order": 86,
       "slot": "asset-088",
       "kind": "script",
       "path": "modules/geology/surpac-reader.js",
@@ -1035,7 +990,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 89,
+      "order": 87,
       "slot": "asset-089",
       "kind": "script",
       "path": "modules/geology/mesh-section-engine.js",
@@ -1043,7 +998,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 90,
+      "order": 88,
       "slot": "asset-090",
       "kind": "style",
       "path": "styles/modules/geological-meshes.css",
@@ -1051,7 +1006,7 @@
       "close_tag": "</style>"
     },
     {
-      "order": 91,
+      "order": 89,
       "slot": "asset-091",
       "kind": "script",
       "path": "modules/geology/geological-meshes.js",
@@ -1059,7 +1014,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 92,
+      "order": 90,
       "slot": "asset-092",
       "kind": "script",
       "path": "modules/geology/borehole-reader.js",
@@ -1067,7 +1022,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 93,
+      "order": 91,
       "slot": "asset-093",
       "kind": "style",
       "path": "styles/modules/borehole-import.css",
@@ -1075,7 +1030,7 @@
       "close_tag": "</style>"
     },
     {
-      "order": 94,
+      "order": 92,
       "slot": "asset-094",
       "kind": "script",
       "path": "modules/geology/borehole-import.js",
@@ -1083,7 +1038,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 95,
+      "order": 93,
       "slot": "asset-095",
       "kind": "script",
       "path": "modules/geology/mesh-rendering.js",
@@ -1091,7 +1046,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 96,
+      "order": 94,
       "slot": "asset-096",
       "kind": "style",
       "path": "styles/modules/borehole-properties.css",
@@ -1099,7 +1054,7 @@
       "close_tag": "</style>"
     },
     {
-      "order": 97,
+      "order": 95,
       "slot": "asset-097",
       "kind": "script",
       "path": "modules/geology/borehole-properties.js",
@@ -1107,7 +1062,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 98,
+      "order": 96,
       "slot": "asset-098",
       "kind": "script",
       "path": "modules/geology/borehole-preview-geometry.js",
@@ -1115,7 +1070,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 99,
+      "order": 97,
       "slot": "asset-099",
       "kind": "style",
       "path": "styles/modules/borehole-preview.css",
@@ -1123,7 +1078,7 @@
       "close_tag": "</style>"
     },
     {
-      "order": 100,
+      "order": 98,
       "slot": "asset-100",
       "kind": "script",
       "path": "modules/geology/borehole-preview.js",
@@ -1131,7 +1086,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 101,
+      "order": 99,
       "slot": "asset-101",
       "kind": "script",
       "path": "modules/geology/structural-standards.js",
@@ -1139,7 +1094,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 102,
+      "order": 100,
       "slot": "asset-102",
       "kind": "script",
       "path": "modules/cartography/line-arrows.js",
@@ -1147,7 +1102,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 103,
+      "order": 101,
       "slot": "asset-103",
       "kind": "script",
       "path": "modules/geology/section-raster-profiles.js",
@@ -1155,7 +1110,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 104,
+      "order": 102,
       "slot": "asset-104",
       "kind": "script",
       "path": "modules/topography/longitudinal-comparison.js",
@@ -1163,7 +1118,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 105,
+      "order": 103,
       "slot": "asset-105",
       "kind": "script",
       "path": "modules/geology/borehole-plan.js",
@@ -1171,7 +1126,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 106,
+      "order": 104,
       "slot": "asset-106",
       "kind": "script",
       "path": "modules/cartography/city-catalog.js",
@@ -1179,7 +1134,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 107,
+      "order": 105,
       "slot": "asset-107",
       "kind": "script",
       "path": "modules/cartography/crs-city-navigation.js",
@@ -1187,7 +1142,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 108,
+      "order": 106,
       "slot": "asset-108",
       "kind": "script",
       "path": "modules/environmental/riparian-width.js",
@@ -1195,7 +1150,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 109,
+      "order": 107,
       "slot": "asset-109",
       "kind": "script",
       "path": "modules/environmental/riparian-app.js",
@@ -1206,7 +1161,7 @@
       }
     },
     {
-      "order": 110,
+      "order": 108,
       "slot": "asset-110",
       "kind": "script",
       "path": "modules/environmental/channel-extraction-engine.js",
@@ -1221,7 +1176,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 111,
+      "order": 109,
       "slot": "asset-111",
       "kind": "script",
       "path": "modules/environmental/channel-dem-sampler.js",
@@ -1233,7 +1188,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 112,
+      "order": 110,
       "slot": "asset-112",
       "kind": "script",
       "path": "modules/environmental/channel-extraction.js",
@@ -1245,7 +1200,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 113,
+      "order": 111,
       "slot": "asset-113",
       "kind": "script",
       "path": "modules/environmental/channel-live.js",
@@ -1253,7 +1208,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 114,
+      "order": 112,
       "slot": "asset-114",
       "kind": "script",
       "path": "modules/environmental/channel-search-policy.js",
@@ -1261,7 +1216,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 115,
+      "order": 113,
       "slot": "asset-115",
       "kind": "script",
       "path": "modules/environmental/channel-details.js",
@@ -1269,16 +1224,22 @@
       "close_tag": "</script>"
     },
     {
-      "order": 116,
+      "order": 114,
       "slot": "asset-116",
       "kind": "script",
       "path": "modules/persistence/project-tab-session.js",
-      "parts": ["modules/persistence/drive-project-source.js", "modules/persistence/drive-project-save.js", "modules/persistence/drive-folder-browser.js", "modules/persistence/project-tab-session.js", "modules/persistence/drive-originals.js"],
+      "parts": [
+        "modules/persistence/drive-project-source.js",
+        "modules/persistence/drive-project-save.js",
+        "modules/persistence/drive-folder-browser.js",
+        "modules/persistence/project-tab-session.js",
+        "modules/persistence/drive-originals.js"
+      ],
       "open_tag": "<script id=\"geomine-project-tab-session\">",
       "close_tag": "</script>"
     },
     {
-      "order": 117,
+      "order": 115,
       "slot": "asset-117",
       "kind": "script",
       "path": "modules/cad/mouse-rotation.js",
@@ -1286,7 +1247,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 118,
+      "order": 116,
       "slot": "asset-118",
       "kind": "script",
       "path": "modules/data-sources/sanepar-maps.js",
@@ -1294,7 +1255,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 119,
+      "order": 117,
       "slot": "asset-119",
       "kind": "script",
       "path": "modules/cad/dimensions-geometry.js",
@@ -1302,7 +1263,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 120,
+      "order": 118,
       "slot": "asset-120",
       "kind": "script",
       "path": "modules/cad/dimensions.js",
@@ -1310,7 +1271,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 121,
+      "order": 119,
       "slot": "asset-121",
       "kind": "script",
       "path": "modules/cad/feature-copy.js",
@@ -1318,7 +1279,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 122,
+      "order": 120,
       "slot": "asset-122",
       "kind": "script",
       "path": "modules/cad/polygon-split.js",
@@ -1326,7 +1287,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 123,
+      "order": 121,
       "slot": "asset-123",
       "kind": "script",
       "path": "modules/cad/vector-destination.js",
@@ -1334,7 +1295,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 124,
+      "order": 122,
       "slot": "asset-124",
       "kind": "script",
       "path": "modules/persistence/project-screen.js",
@@ -1342,7 +1303,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 125,
+      "order": 123,
       "slot": "asset-125",
       "kind": "script",
       "path": "modules/symbology/style-transfer.js",
@@ -1350,7 +1311,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 126,
+      "order": 124,
       "slot": "asset-126",
       "kind": "script",
       "path": "modules/cad/feature-clipboard.js",
@@ -1358,7 +1319,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 127,
+      "order": 125,
       "slot": "asset-127",
       "kind": "script",
       "path": "modules/cad/vertex-guides.js",
@@ -1366,7 +1327,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 128,
+      "order": 126,
       "slot": "asset-128",
       "kind": "script",
       "path": "modules/mining/research-request.js",
@@ -1374,7 +1335,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 129,
+      "order": 127,
       "slot": "asset-129",
       "kind": "script",
       "path": "modules/hydrology/native-flood-engine.js",
@@ -1382,7 +1343,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 130,
+      "order": 128,
       "slot": "asset-130",
       "kind": "script",
       "path": "modules/hydrology/native-flood.js",
@@ -1390,7 +1351,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 131,
+      "order": 129,
       "slot": "asset-131",
       "kind": "script",
       "path": "modules/cad/buffer-worker.js",
@@ -1398,7 +1359,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 132,
+      "order": 130,
       "slot": "asset-132",
       "kind": "script",
       "open_tag": "<script id=\"geomine-native-flood-destination\">",
@@ -1419,7 +1380,7 @@
       ]
     },
     {
-      "order": 133,
+      "order": 131,
       "slot": "asset-133",
       "kind": "script",
       "path": "modules/environmental/thalweg-engine.js",
@@ -1427,7 +1388,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 134,
+      "order": 132,
       "slot": "asset-134",
       "kind": "script",
       "path": "modules/environmental/thalweg.js",
@@ -1435,7 +1396,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 135,
+      "order": 133,
       "slot": "asset-135",
       "kind": "script",
       "path": "modules/environmental/channel-native-fill.js",
@@ -1443,7 +1404,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 136,
+      "order": 134,
       "slot": "asset-136",
       "kind": "script",
       "parts": [
@@ -1457,7 +1418,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 137,
+      "order": 135,
       "slot": "asset-137",
       "kind": "style",
       "path": "styles/modules/blasting-workspace.css",
@@ -1465,7 +1426,7 @@
       "close_tag": "</style>"
     },
     {
-      "order": 138,
+      "order": 136,
       "slot": "asset-138",
       "kind": "style",
       "path": "styles/modules/licenses.css",
@@ -1473,7 +1434,7 @@
       "close_tag": "</style>"
     },
     {
-      "order": 139,
+      "order": 137,
       "slot": "asset-139",
       "kind": "script",
       "parts": [
@@ -1489,7 +1450,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 140,
+      "order": 138,
       "slot": "asset-140",
       "kind": "script",
       "path": "vendor/meshopt-simplifier.js",
@@ -1497,7 +1458,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 141,
+      "order": 139,
       "slot": "asset-141",
       "kind": "script",
       "path": "modules/geology/mesh-simplification.js",
@@ -1505,7 +1466,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 142,
+      "order": 140,
       "slot": "asset-142",
       "kind": "style",
       "path": "styles/modules/tpi-refinement.css",
@@ -1513,7 +1474,7 @@
       "close_tag": "</style>"
     },
     {
-      "order": 143,
+      "order": 141,
       "slot": "asset-143",
       "kind": "script",
       "parts": [
@@ -1536,7 +1497,7 @@
       "close_tag": "</script>"
     },
     {
-      "order": 144,
+      "order": 142,
       "slot": "asset-144",
       "kind": "style",
       "parts": [
@@ -1548,7 +1509,7 @@
       "close_tag": "</style>"
     },
     {
-      "order": 145,
+      "order": 143,
       "slot": "asset-145",
       "kind": "script",
       "parts": [
@@ -1565,6 +1526,102 @@
         "modules/mining/geostatistics-panel.js"
       ],
       "open_tag": "<script id=\"geomine-touch-workspace\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 144,
+      "slot": "asset-146",
+      "kind": "script",
+      "path": "modules/ui/command-catalog.js",
+      "open_tag": "<script id=\"geomine-command-catalog\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 145,
+      "slot": "asset-147",
+      "kind": "script",
+      "path": "modules/hydrology/original-d8.js",
+      "open_tag": "<script id=\"geomine-original-d8\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 146,
+      "slot": "asset-148",
+      "kind": "script",
+      "path": "modules/hydrology/automatic-catchment.js",
+      "open_tag": "<script id=\"geomine-automatic-catchment\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 147,
+      "slot": "asset-149",
+      "kind": "script",
+      "path": "modules/hydrology/rational-zones.js",
+      "open_tag": "<script id=\"geomine-rational-zones\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 148,
+      "slot": "asset-150",
+      "kind": "script",
+      "path": "modules/visualization/vector-drape.js",
+      "open_tag": "<script id=\"geomine-vector-drape\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 149,
+      "slot": "asset-151",
+      "kind": "script",
+      "path": "modules/visualization/screen-lines-3d.js",
+      "open_tag": "<script id=\"geomine-screen-lines-3d\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 150,
+      "slot": "asset-152",
+      "kind": "script",
+      "path": "modules/topography/slope-hachures.js",
+      "open_tag": "<script id=\"geomine-slope-hachures\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 151,
+      "slot": "asset-153",
+      "kind": "style",
+      "path": "styles/modules/work-cards.css",
+      "open_tag": "<style>",
+      "close_tag": "</style>"
+    },
+    {
+      "order": 152,
+      "slot": "asset-154",
+      "kind": "script",
+      "path": "modules/hydrology/stepped-chute.js",
+      "open_tag": "<script>",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 153,
+      "slot": "asset-155",
+      "kind": "style",
+      "path": "styles/modules/panel-cards.css",
+      "open_tag": "<style id=\"geomine-panel-cards-style\">",
+      "close_tag": "</style>"
+    },
+    {
+      "order": 154,
+      "slot": "asset-156",
+      "kind": "script",
+      "path": "modules/ui/panel-cards.js",
+      "open_tag": "<script id=\"geomine-panel-cards\">",
+      "close_tag": "</script>"
+    },
+    {
+      "order": 155,
+      "slot": "asset-157",
+      "kind": "script",
+      "path": "modules/hydrology/drainage-routing.js",
+      "open_tag": "<script id=\"geomine-drainage-routing\">",
       "close_tag": "</script>"
     }
   ]

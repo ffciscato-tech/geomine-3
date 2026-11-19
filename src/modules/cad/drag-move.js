@@ -10,7 +10,7 @@
    O conjunto vem da seleção do app na mesma precedência do Delete: seleção
    múltipla (S.msel.items), depois a simples (S.selFeat), depois a feição do
    editor (ED.sel). A geometria só muda ao soltar: a prévia é um canvas
-   privado, então Esc não deixa rastro no autosave, na colaboração nem nos
+   privado, então Esc não deixa rastro no autosave nem nos
    derivados. O deslocamento é calculado POR CAMADA, no CRS dela, e o gesto
    inteiro vira uma única entrada de desfazer ('geomlote'). */
 (function(root){
@@ -78,7 +78,7 @@ function conjunto(){
   for(const e of out){e.partes=e.inteira?null:comFuros(e);delete e.inteira;}
   return out;
 }
-/* null = pode mover; texto = motivo ('' quando a colaboração já avisou). */
+/* null = pode mover; texto = motivo (vazio quando o bloqueio já foi informado). */
 function bloqueio(es){
   for(const {L,f} of es){
     if(!S.layers.includes(L)||!L.features.includes(f))return 'A seleção mudou. Selecione as feições de novo.';
@@ -86,7 +86,7 @@ function bloqueio(es){
     if(L.locked)return 'A camada "'+L.name+'" está bloqueada. Desbloqueie-a para mover.';
     if(typeof featureVisible==='function'&&!featureVisible(L,f))return 'Há feição selecionada oculta pelo filtro da camada "'+L.name+'".';
     if(root.rb134EhDerivadaProtegida&&root.rb134EhDerivadaProtegida(L,f))return 'A camada "'+L.name+'" tem geometria calculada pelo projeto; ajuste-a pelos parâmetros.';
-    if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return '';}
+    if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return '';}
   }
   return null;
 }
@@ -521,7 +521,7 @@ function bloqueio0(es){
   return es.some(({L,f})=>L.visible===false||L.locked||
     (typeof featureVisible==='function'&&!featureVisible(L,f))||
     (root.rb134EhDerivadaProtegida&&root.rb134EhDerivadaProtegida(L,f))||
-    (typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)));
+    (typeof canEditLayer==='function'&&!canEditLayer(L,false)));
 }
 function onMove(ev){
   const d=g;

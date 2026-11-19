@@ -28,6 +28,12 @@ async function analyze(source,options={}){
   function direct(x,y,zAt){
     const old=code(x,y);if(old)return old;
     const z=zAt(x,y);if(!c.valid(z)){put(x,y,9);return 9;}
+    if(source.directionEncoding==='grass'){
+      if(!Number.isInteger(z)||z<-8||z>8)throw Error('Código inválido na direção D8 original.');
+      // GRASS: 1 NE, 2 N, ... 8 E. Zero/negativo é saída/sumidouro;
+      // somente vizinhos que APONTAM para a célula entram na contribuição.
+      const d=z>0?9-z:11;put(x,y,d);return d;
+    }
     let best=0,drop=0,equal=false;
     for(let j=0;j<8;j++){
       const [dx,dy]=N[j],v=zAt(x+dx,y+dy);if(!c.valid(v))continue;
@@ -86,6 +92,13 @@ async function analyze(source,options={}){
     if(seedCode===10){await resolveFlat(seed.col,seed.row);seedCode=code(seed.col,seed.row);
       if(seedCode===11)throw Error('O ponto está numa área plana fechada, sem direção de saída definida no MDT. Marque um ponto da linha com escoamento definido.');}
     enqueue(seed.col,seed.row);c.reserve(c.tileSize*c.tileSize*4);
+    let seedTile='';
+    for(const p of options.seeds||[]){
+      if(!inside(p.col,p.row)||options.blockedCells?.[p.row*c.nc+p.col])continue;
+      const tile=Math.floor(p.col/c.tileSize)+','+Math.floor(p.row/c.tileSize);
+      if(tile!==seedTile){zAt=await neighborhood(Math.floor(p.col/c.tileSize),Math.floor(p.row/c.tileSize));seedTile=tile;}
+      if(c.valid(zAt(p.col,p.row)))enqueue(p.col,p.row);
+    }
     const queue=new Uint32Array(c.tileSize*c.tileSize);
     while(head){
       const tile=head;head=tile.next;if(!head)tail=null;tile.next=null;tile.queued=false;
@@ -95,7 +108,7 @@ async function analyze(source,options={}){
       while(start<end){
         const i=queue[start++],x=tile.tx*c.tileSize+i%tile.w,y=tile.ty*c.tileSize+Math.floor(i/tile.w);
         for(let j=0;j<8;j++){
-          const [dx,dy]=N[j],a=x+dx,b=y+dy;if(!inside(a,b)||c.isWet(a,b))continue;
+          const [dx,dy]=N[j],a=x+dx,b=y+dy;if(!inside(a,b)||c.isWet(a,b)||options.blockedCells?.[b*c.nc+a])continue;
           let d=direct(a,b,zAt);if(d===9){touchesNoData=true;continue;}
           if(d===10){await resolveFlat(a,b);d=code(a,b);}
           if(d!==((j+4)%8+1))continue;
@@ -117,7 +130,8 @@ async function analyze(source,options={}){
     return {...geometry,cells:count,areaM2:count*c.areaCell,seed:{...seed},seedZ,
       outlet:[c.xll+(seed.col+.5)*c.cs,c.yll+(c.nr-seed.row-.5)*c.csy],
       nativeResolution:true,filled:false,touchesEdge,touchesNoData,flatCells,
-      outletDepression:seedCode===11,cellBounds:bounds,resolution:{x:c.cs*c.unitScale,y:c.csy*c.unitScale},...c.stats};
+      outletDepression:source.directionEncoding==='grass'?false:seedCode===11,
+      directionEncoding:source.directionEncoding||null,cellBounds:bounds,resolution:{x:c.cs*c.unitScale,y:c.csy*c.unitScale},...c.stats};
   }catch(e){
     if(e.code==='GEOMINE_FLOOD_MEMORY_LIMIT')throw Error('A área contribuinte excedeu a memória disponível. O cálculo foi interrompido sem reduzir a resolução do MDT e sem salvar resultado parcial.');
     throw e;

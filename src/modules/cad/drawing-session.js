@@ -23,8 +23,8 @@ function acquire(){
     toast('A camada de destino não corresponde ao tipo do desenho.');return null;
   }
   if(L.locked){toast('A camada "'+L.name+'" está bloqueada. O traçado foi preservado.');return null;}
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){
-    collabCanEditLayer(L,true);return null;
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){
+    canEditLayer(L,true);return null;
   }
   if(!draft)draft={layer:L,project:S.projectId,tool:S.tool,crs:L.crs,gtype:L.gtype};
   return L;

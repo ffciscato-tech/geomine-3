@@ -41,7 +41,7 @@ function vertical(axis,design,maxGrade){
 }
 function check(){
  const s=session;if(!s||S.projectId!==s.project||S._civ!==s.C||S.workCRS!==s.C.crs)throw Error('A estrada ou o projeto mudou. Abra o perfil novamente.');
- if(S.layers.some(l=>l._civilDesignId===s.C.id&&(l.locked||(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(l,false)))))throw Error('Desbloqueie as camadas da estrada para editar.');
+ if(S.layers.some(l=>l._civilDesignId===s.C.id&&(l.locked||(typeof canEditLayer==='function'&&!canEditLayer(l,false)))))throw Error('Desbloqueie as camadas da estrada para editar.');
  if(civMdt()!==s.R||s.R.d!==s.grid)throw Error('O MDT mudou. Abra o perfil novamente.');
  if(!GeoMineCivil.readParams(s.C))throw Error('Confira os parâmetros da estrada.');
  return s;

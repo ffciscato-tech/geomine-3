@@ -64,13 +64,23 @@ def build(project_root: Path, verify_reference: bool) -> Path:
         # O conteúdo é transformado em literal JavaScript durante a montagem,
         # mantendo o `dist` como um único arquivo offline sem achatar o código
         # da aplicação incorporada dentro do orquestrador principal.
-        for token, relative in (asset.get("embed_files") or {}).items():
+        for token, entry in (asset.get("embed_files") or {}).items():
+            # Uma entrada pode ser só o caminho ou {"path": ..., "close_tags": "all"}.
+            if isinstance(entry, str):
+                relative, close_tags = entry, "script"
+            else:
+                relative, close_tags = entry["path"], entry.get("close_tags", "script")
             embedded = (project_root / "src" / relative).read_text(encoding="utf-8")
             literal = json.dumps(embedded, ensure_ascii=False)
             # O parser HTML reconhece </script> mesmo dentro de uma string JS.
             # Escapar a barra conserva o valor do literal e evita encerrar o
-            # bloco que hospeda o módulo antes da hora.
-            literal = re.sub(r"</script", r"<\\/script", literal, flags=re.IGNORECASE)
+            # bloco que hospeda o módulo antes da hora. "all" escapa a barra de
+            # todo fechamento de tag (</title>, </div>...), como a versão
+            # publicada em 18/11/2026 faz com o editor de cava incorporado.
+            if close_tags == "all":
+                literal = literal.replace("</", "<\\/")
+            else:
+                literal = re.sub(r"</script", r"<\\/script", literal, flags=re.IGNORECASE)
             if body.count(token) != 1:
                 raise SystemExit(f"Token de incorporação ausente ou duplicado: {token}")
             body = body.replace(token, literal)

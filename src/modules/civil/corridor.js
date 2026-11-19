@@ -165,7 +165,7 @@ function settings(C){
  C.corridorSettings={step:o.step,adjust:o.adjust,fixed:el('civFixed').value};return o;
 }
 function layers(C){return S.layers.filter(l=>l._civilDesignId===C.id);}
-function editable(C){if(layers(C).some(l=>l.locked||(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(l,false))))throw Error('Desbloqueie as camadas da estrada para atualizar o corredor.');}
+function editable(C){if(layers(C).some(l=>l.locked||(typeof canEditLayer==='function'&&!canEditLayer(l,false))))throw Error('Desbloqueie as camadas da estrada para atualizar o corredor.');}
 function stamp(C){return JSON.stringify({axis:C.eixo,params:C.params,crs:S.workCRS});}
 function uiStamp(){return JSON.stringify([...document.querySelectorAll('#secCivil input,#secCivil select')].map(e=>[e.id,e.value]));}
 function replace(C,kind,name,gtype,features,fields,color){

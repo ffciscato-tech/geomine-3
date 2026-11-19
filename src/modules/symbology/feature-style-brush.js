@@ -23,7 +23,7 @@ function pointStyle(L,f){
  if(!p||typeof p.shape!=='string'||!Number.isFinite(p.size))return null;
  return {shape:p.shape,size:ptSizePx(p.size,14),rot:p.rot,dip:p.dip,params:p.params||null};
 }
-function editable(L){return S.layers.includes(L)&&!L.locked&&(typeof collabCanEditLayer!=='function'||collabCanEditLayer(L,false));}
+function editable(L){return S.layers.includes(L)&&!L.locked&&(typeof canEditLayer!=='function'||canEditLayer(L,false));}
 function isActive(L,idx){
  const q=S.selFeat,f=L?.features?.[idx];
  return !!(f&&S.layers.includes(L)&&S.activeId===L.id&&S.selRaster==null&&q&&
@@ -182,7 +182,7 @@ function edit(L,idx,next){
    padrão. Não cria um undo só da limpeza: o estilo geral é aplicado junto
    pelo editor da camada, que já administra a transação de propriedades. */
 function resetLayer(L,{predicate}={}){
- if(!S.layers.includes(L)||(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)))return 0;
+ if(!S.layers.includes(L)||(typeof canEditLayer==='function'&&!canEditLayer(L,false)))return 0;
  let n=0;
  for(const f of L.features||[])if(own(f,KEY)&&(!predicate||predicate(f))){delete f[KEY];n++;}
  if(n)window.GeoMineSessionAutosave?.markDirty('estilo da camada restaurado nas feições');

@@ -101,6 +101,6 @@
     let panel=document.getElementById('attrFilterPanel');if(!panel){panel=document.createElement('div');panel.id='attrFilterPanel';panel.hidden=true;body.parentNode.insertBefore(panel,body);}
     btn.onclick=()=>{const L=activeLayer();if(!L)return toast('Sem camada ativa');panel.hidden=!panel.hidden;if(!panel.hidden)render(L);};
   }
-  window.openAttr=function(selIdx){instala();baseOpen(selIdx);const L=activeLayer(),p=document.getElementById('attrFilterPanel');atualizaBotao(L);if(p&&!p.hidden)render(L);};
+  window.openAttr=function(selIdx,options={}){instala();baseOpen(selIdx,options);const L=activeLayer(),p=document.getElementById('attrFilterPanel'),b=document.getElementById('attrFilterToggle');atualizaBotao(L);if(b){b.hidden=!!options.featureOnly;b.style.display=options.featureOnly?'none':'';}if(options.featureOnly&&p)p.hidden=true;else if(p&&!p.hidden)render(L);};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',instala,{once:true});else instala();
 })();

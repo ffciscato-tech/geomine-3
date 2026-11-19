@@ -18,7 +18,7 @@ const SECONDARY_ICON='<svg viewBox="0 0 24 24" width="18" height="18" fill="none
 const contacts=new Set(),installed=new WeakSet();
 const mapElement=()=>typeof map!=='undefined'?map?.getContainer?.():null;
 const $=id=>document.getElementById(id),input=t=>t?.closest?.('input,textarea,select,[contenteditable="true"],button,a,.leaflet-control,.gm-touch-actions,.modal-bg,.modal,.feat-menu,.a3-float-menu');
-const vertex=t=>t?.closest?.('.gm-vtx-hit,.vtx,.vtx-mid,.vtx-mover,.leaflet-marker-icon');
+const vertex=t=>!t?.closest?.('.gm-dimension-label')&&t?.closest?.('.gm-vtx-hit,.vtx,.vtx-mid,.vtx-mover,.leaflet-marker-icon');
 function cancelHold(){if(hold)clearTimeout(hold.timer);hold=null;}
 function enable(){enabled=true;document.body.classList.add('gm-touch-ui');mount();sync();}
 function key(value,modifiers={}){
@@ -50,8 +50,64 @@ function actions(){
  toast('Toque em uma feição ou mantenha o dedo parado sobre ela para abrir as ações.');return false;
 }
 function suppressTap(e){return !!consumed&&Date.now()<consumed.until&&Math.hypot((e.clientX??consumed.x)-consumed.x,(e.clientY??consumed.y)-consumed.y)<28;}
+const nativeSurface='#map,#sheetWrap,#cava2Workspace,#v3d,#ribbonPop,#propDock,#propBox,#edBox,#selBox,#measBox,#right,.feat-menu,.a3-float-menu,.ribmini,.gm-touch-actions,canvas';
+const nativeEditor=t=>{
+ const e=t?.nodeType===1?t:t?.parentElement;
+ if(!e)return false;if(e.closest?.('input,textarea,select'))return true;
+ const boundary=e.closest?.('[contenteditable]');return boundary?String(boundary.getAttribute('contenteditable')).toLowerCase()!=='false':!!e.isContentEditable;
+};
+function clearNativeEditing(doc=document){
+ const active=doc.activeElement;
+ if(active?.tagName==='IFRAME'){
+  try{if(active.contentDocument)clearNativeEditing(active.contentDocument);}catch(_){}
+  active.blur();
+ }else if(nativeEditor(active))active.blur();
+ const selection=doc.defaultView?.getSelection?.();if(selection&&!selection.isCollapsed)selection.removeAllRanges();
+}
+function installNativeContextGuard(doc){
+ const scope=t=>{const e=t?.nodeType===1?t:t?.parentElement;return !!e?.closest?.(nativeSurface)&&!nativeEditor(e);};
+ const clearEditing=()=>clearNativeEditing(doc);
+ const style=doc.createElement('style');style.id='gmNativeContextGuard';
+ style.textContent=`:where(${nativeSurface}),:where(${nativeSurface}) *{-webkit-touch-callout:none!important;-webkit-user-select:none!important;user-select:none!important}
+ :where(${nativeSurface}) :is(input,textarea,[contenteditable]:not([contenteditable="false"])),:where(${nativeSurface}) :is(input,textarea,[contenteditable]:not([contenteditable="false"])) *{-webkit-touch-callout:default!important;-webkit-user-select:text!important;user-select:text!important}
+ .feat-menu{touch-action:none;-webkit-user-drag:none}.feat-menu .fm-it:focus-visible,.feat-menu .fm-x:focus-visible{outline:2px solid var(--amber,#f5a524);outline-offset:-3px}`;
+ (doc.head||doc.documentElement).appendChild(style);
+ // O clique direito continua chegando ao menu do GeoMine. Apenas a ação
+ // nativa de texto do navegador é cancelada, inclusive em mouse no iPad.
+ doc.addEventListener('contextmenu',e=>{if(!scope(e.target))return;clearEditing();e.preventDefault();},{capture:true,passive:false});
+ doc.addEventListener('selectstart',e=>{if(scope(e.target))e.preventDefault();},{capture:true,passive:false});
+ doc.addEventListener('pointerdown',e=>{if(scope(e.target))clearEditing();},{capture:true,passive:true});
+ doc.addEventListener('selectionchange',()=>{const s=doc.defaultView?.getSelection?.();if(s&&!s.isCollapsed&&(scope(s.anchorNode)||scope(s.focusNode)))s.removeAllRanges();});
+ // WebKit can show its writing/paste bar without emitting contextmenu.
+ // Command rows therefore use an explicit tap; no editable text gesture is
+ // started. A drag scrolls this menu and never activates a command.
+ let menuPointer=null,compatibility=null;
+ const commandMenu=t=>{const e=t?.nodeType===1?t:t?.parentElement;return !nativeEditor(e)?e?.closest?.('.feat-menu'):null;};
+ doc.addEventListener('touchstart',e=>{if(commandMenu(e.target)&&e.cancelable)e.preventDefault();},{capture:true,passive:false});
+ doc.addEventListener('pointerdown',e=>{
+  compatibility=null;const menu=commandMenu(e.target);if(!menu)return;
+  if(e.pointerType==='touch'&&penActive()){if(e.cancelable)e.preventDefault();return;}
+  if(e.isPrimary===false||e.button!==0){menuPointer=null;clearEditing();if(e.cancelable)e.preventDefault();return;}
+  const action=e.target.closest?.('.fm-it,.fm-x');menuPointer={id:e.pointerId,menu,action,x:e.clientX,y:e.clientY,top:menu.scrollTop,at:Date.now(),project:S.projectId,moved:false,pointerType:e.pointerType};
+  clearEditing();if(e.cancelable)e.preventDefault();
+ },{capture:true,passive:false});
+ doc.addEventListener('pointermove',e=>{const q=menuPointer;if(!q||q.id!==e.pointerId)return;
+  if(Math.hypot(e.clientX-q.x,e.clientY-q.y)>10)q.moved=true;
+  if(q.moved)q.menu.scrollTop=q.top+q.y-e.clientY;if(e.cancelable)e.preventDefault();
+ },{capture:true,passive:false});
+ doc.addEventListener('pointerup',e=>{const q=menuPointer;if(!q||q.id!==e.pointerId)return;menuPointer=null;if(e.cancelable)e.preventDefault();
+  compatibility={x:e.clientX,y:e.clientY,until:Date.now()+500};
+  if(q.moved||(q.pointerType!=='mouse'&&Date.now()-q.at>650)||S.projectId!==q.project||!q.action?.isConnected||q.action.disabled)return;
+  const r=q.action.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)return;
+  clearEditing();q.action.click();
+ },{capture:true,passive:false});
+ doc.addEventListener('pointercancel',e=>{if(menuPointer?.id===e.pointerId)menuPointer=null;},{capture:true,passive:true});
+ doc.addEventListener('click',e=>{const c=compatibility;if(c&&e.isTrusted&&Date.now()<c.until&&Math.hypot(e.clientX-c.x,e.clientY-c.y)<4){compatibility=null;e.preventDefault();e.stopImmediatePropagation();}},{capture:true});
+ doc.defaultView?.addEventListener('blur',()=>{menuPointer=null;compatibility=null;});
+}
 function install(doc){
  if(!doc||installed.has(doc))return;installed.add(doc);
+ installNativeContextGuard(doc);
  doc.addEventListener('pointerdown',e=>{
   if(!contacts.size)consumed=null;
   if(e.pointerType!=='touch'&&e.pointerType!=='pen')return;enable();
@@ -67,8 +123,9 @@ function install(doc){
    if(doc===document){const r=container.getBoundingClientRect();lastPoint={project:S.projectId,ll:map.containerPointToLatLng([e.clientX-r.left,e.clientY-r.top])};}}
   if(contacts.size!==1||e.isPrimary===false||input(t)||vertex(t)||!row&&!inMap)return;
   // Botão direito armado: este toque vale como botão direito ao soltar.
-  if(secondary){tap=null;sec={id:e.pointerId,x:e.clientX,y:e.clientY,target:row||container,project:S.projectId};return;}
-  const q=hold={id:e.pointerId,x:e.clientX,y:e.clientY,target:row||container,project:S.projectId,timer:0,pen:e.pointerType==='pen'};
+  const actionTarget=t.closest?.('.gm-dimension-label,.gm-dimension-part')||row||container;
+  if(secondary){tap=null;sec={id:e.pointerId,x:e.clientX,y:e.clientY,target:actionTarget,project:S.projectId};return;}
+  const q=hold={id:e.pointerId,x:e.clientX,y:e.clientY,target:actionTarget,project:S.projectId,timer:0,pen:e.pointerType==='pen'};
   q.timer=setTimeout(()=>{
    if(hold!==q||contacts.size!==1||S.projectId!==q.project||!q.target.isConnected)return;
    hold=null;consumed={x:q.x,y:q.y,until:Date.now()+900};
@@ -184,7 +241,7 @@ function sync(){
 }
 function boot(){
  install(document);mount();if(enabled)enable();else sync();
- const editable=t=>t?.closest?.('input,textarea,select,[contenteditable="true"],#cmdLog');
+ const editable=t=>nativeEditor(t)||t?.closest?.('#cmdLog');
  const grips='.gm-panel-resizer,.command-resize-grip,.gm-layer-hscroll,.gm-layer-scroll,.modal-h,.drag,#cmdGrip,#cmdBar';
  document.addEventListener('selectstart',e=>{if(!editable(e.target)&&(enabled||e.target.closest?.(grips)))e.preventDefault();});
  document.addEventListener('pointerdown',e=>{if(!editable(e.target)&&e.target.closest?.(grips)){const s=root.getSelection?.();if(s&&!s.isCollapsed)s.removeAllRanges();}},{capture:true,passive:true});
@@ -198,6 +255,6 @@ function boot(){
 /* release: outro módulo assumiu o gesto em andamento (o traço à mão livre);
    o "segurar" e o toque pendentes deixam de valer. */
 function release(){cancelHold();tap=null;sec=null;}
-root.GeoMineTouchWorkspace={get enabled(){return enabled;},get additive(){return additive;},get boxSelection(){return boxSelection;},get pan3D(){return pan3D;},get secondaryArmed(){return secondary;},actions,key,finish,sync,suppressTap,install,release};
+root.GeoMineTouchWorkspace={get enabled(){return enabled;},get additive(){return additive;},get boxSelection(){return boxSelection;},get pan3D(){return pan3D;},get secondaryArmed(){return secondary;},actions,key,finish,sync,suppressTap,install,release,clearNativeEditing};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);

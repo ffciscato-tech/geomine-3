@@ -150,11 +150,12 @@ const maisProxima=v=>{ let b=0,d=Infinity;
 
 let redesenhar=null;
 function agenda(){
-  clearTimeout(redesenhar);
+  if(redesenhar)return; // Agrupa eventos, mas atualiza também durante o arrasto.
   redesenhar=setTimeout(()=>{
+    redesenhar=null;
     try{ if(typeof plateCapture==='function') plateCapture(); }catch(e){}
     try{ buildLayout(); }catch(e){}
-  },170);
+  },60);
 }
 
 function abrirEscala(){

@@ -58,8 +58,8 @@ const selected=()=>rasters().find(r=>String(r.id)===$('pointCatchmentRaster').va
 const isArrows=l=>/^Direção de fluxo D8/.test(l.name||'')||(l.fields||[]).some(f=>f.name==='AZIMUTE')&&(l.fields||[]).some(f=>f.name==='CELULA');
 const snapLines=()=>S.layers.filter(l=>l.visible!==false&&l.llayer&&map.hasLayer(l.llayer)&&!isArrows(l));
 function d8Sources(){
-  const out=[],seen=new Set(),ok=d=>d&&d.dir&&d.z&&d.dir.length===d.nc*d.nr&&d.z.length===d.nc*d.nr&&!seen.has(d);
-  const add=(key,d,name)=>{if(ok(d)){seen.add(d);out.push({key,d,name});}};
+  const out=(root.GeoMineOriginalD8?.sources()||[]).map(r=>({key:'d8:original:'+r.id,d:root.GeoMineOriginalD8.descriptor(r),r,name:'Direção original · '+r.name,original:true})),seen=new Set(),ok=d=>d&&d.dir&&d.z&&d.dir.length===d.nc*d.nr&&d.z.length===d.nc*d.nr&&!seen.has(d);
+  const add=(key,d,name)=>{if(ok(d)&&!root.GeoMineOriginalD8?.matching(d)){seen.add(d);out.push({key,d,name});}};
   try{add('d8:hidro',S.hidro?.dem,S.hidro?.demName||'MDE do Hidro');}catch(_){}
   // Acumulações geradas nesta sessão sobre outro MDE do Hidro guardam a grade de origem.
   for(const r of S.rasters||[])try{add('d8:r'+r.id,r.d?._d8Source,r.name);}catch(_){}
@@ -77,26 +77,46 @@ let routedD8=null;
    temporário, que some sozinho. Os campos são os da camada antiga, para os
    pontos novos entrarem numa camada "Exutórios" que o projeto já tenha. */
 const OUTLET_FIELDS=[{name:'NOME',type:'C',length:40},{name:'E',type:'N',length:14,decimal:2},{name:'N',type:'N',length:14,decimal:2},
-  {name:'AREA_M2',type:'N',length:14,decimal:0},{name:'AREA_HA',type:'N',length:12,decimal:3},{name:'ACUM_CEL',type:'N',length:12,decimal:0},
-  {name:'COTA',type:'N',length:10,decimal:2},{name:'DESLOC_M',type:'N',length:8,decimal:2}];
+  {name:'AREA_M2',type:'N',length:20,decimal:6},{name:'AREA_HA',type:'N',length:20,decimal:8},{name:'ACUM_CEL',type:'N',length:12,decimal:0},
+  {name:'COTA',type:'N',length:10,decimal:2},{name:'DESLOC_M',type:'N',length:8,decimal:2},
+  {name:'BACIA_ID',type:'C',length:64},{name:'BACIA',type:'C',length:160}];
 const outletLayer=()=>(S.layers||[]).find(l=>l._exutorios)||
   (S.layers||[]).find(l=>l.gtype==='point'&&l.name==='Exutórios'&&['NOME','AREA_HA','DESLOC_M'].every(n=>(l.fields||[]).some(f=>f.name===n)))||null;
 function registerOutlet(crs,point,info,sourceLayer){
   try{
     let L=outletLayer(),xy=point;
     if(L&&L.crs&&L.crs!==crs)xy=proj4(crs,L.crs,[point[0],point[1]]);
-    const nome='Exutório '+((L?.features?.length||0)+1),z=Number(info.z),
-      props={NOME:nome,E:+xy[0].toFixed(2),N:+xy[1].toFixed(2),AREA_M2:+info.areaM2.toFixed(0),AREA_HA:+(info.areaM2/10000).toFixed(3),
+    const used=new Set((L?.features||[]).map(f=>f.props?.NOME));let n=1;while(used.has('Exutório '+n))n++;
+    const nome='Exutório '+n,z=info.z==null?NaN:Number(info.z),
+      props={NOME:nome,E:+xy[0].toFixed(2),N:+xy[1].toFixed(2),AREA_M2:info.areaM2,AREA_HA:info.areaM2/10000,
         ACUM_CEL:Math.round(info.cells||0),COTA:Number.isFinite(z)?+z.toFixed(2):null,DESLOC_M:+(info.adjust||0).toFixed(2)},
       feature={geom:[[xy[0],xy[1]]],multi:false,zg:Number.isFinite(z)?[+z]:null,props};
     if(!L){
-      L=addLayer({...(sourceLayer?{sourceLayer}:{}),name:'Exutórios',gtype:'point',crs,features:[feature],fields:OUTLET_FIELDS.map(f=>({...f})),color:'#f5a524'});
+      L=addLayer({...(sourceLayer?{sourceLayer}:{}),name:'Exutórios',gtype:'point',crs,features:[feature],fields:OUTLET_FIELDS.map(f=>({...f})),labelField:'NOME',color:'#f5a524'});
       if(!L)return null;
       L._exutorios=true;return {L,feature,created:true,nome};
     }
-    L._exutorios=true;L.features.push(feature);try{drawLayer(L);}catch(_){}
+    L._exutorios=true;
+    L.fields=L.fields||[];for(const field of OUTLET_FIELDS)if(!L.fields.some(f=>f.name===field.name))L.fields.push({...field});
+    L.features.push(feature);try{drawLayer(L);}catch(_){}
     return {L,feature,created:false,nome};
   }catch(e){console.warn('exutório não registrado',e);return null;}
+}
+function linkOutlet(layer,outlet){
+  if(!layer||!outlet)return;
+  Object.assign(outlet.feature.props,{BACIA_ID:String(layer.id),BACIA:layer.name});
+  for(const f of layer.features||[])Object.assign(f.props||(f.props={}),{EXUTORIO:outlet.nome});
+  layer.fields=layer.fields||[];
+  if(!layer.fields.some(f=>f.name==='EXUTORIO'))layer.fields.push({name:'EXUTORIO',type:'C',length:40});
+}
+// Entrada comum para os resultados pelo D8 original e pela mancha de chuva.
+function recordOutlet(layer,info){
+  if(!layer)return null;
+  const previous=info.previousActive??S.activeId,outlet=registerOutlet(layer.crs,info.point,info,info.sourceLayer);
+  linkOutlet(layer,outlet);
+  S.activeId=layer.id;
+  undoPush({t:'catchmentresult',L:layer,project:S.projectId,active:previous,outlet});
+  return outlet;
 }
 /* Desfazer a área contribuinte tira também o exutório que ela registrou (e a
    camada "Exutórios", se foi criada por ela e ficou vazia). */
@@ -228,6 +248,7 @@ async function describe(){
   const pronto=selectedD8();
   if(pronto){
     ++describing;resampleOptions(null);$('pointCatchmentLocate').style.display='none';
+    if(pronto.original){$('pointCatchmentInfo').textContent='Direção original da rede importada · '+fmt(pronto.d.cs,4)+' m · leitura nativa por blocos. O ponto marcado é o exutório; só entram células que drenam para ele.';return;}
     let texto='';
     try{const d=pronto.d,k=scale({sourceCRS:S.workCRS});
       texto='D8 já calculado no Hidro: '+fmt(d.cs*k,4)+' × '+fmt((d.csy||d.cs)*k,4)+' m · '+fmt(d.nc,0)+' × '+fmt(d.nr,0)+' células. '+
@@ -238,6 +259,13 @@ async function describe(){
   const r=selected(),token=++describing,project=S.projectId,generation=gen();let s;
   const current=()=>token===describing&&selected()===r&&project===S.projectId&&generation===gen()&&!job;
   if(!r){resampleOptions(null);$('pointCatchmentInfo').textContent='Selecione o MDT.';$('pointCatchmentLocate').style.display=(true)?'none':'flex';return;}
+  if(root.GeoMineHydrologyAuto){
+    try{const existing=await root.GeoMineHydrologyAuto.cached(r,{isCurrent:current});if(!current())return;
+      resampleOptions(null);$('pointCatchmentLocate').style.display='none';
+      $('pointCatchmentInfo').textContent=r.name+' · '+(existing?'D8 já disponível: será reutilizado, sem preencher depressões nem calcular de novo.':'Marque o exutório. O D8 deste modelo será recuperado ou calculado automaticamente, se faltar.');
+    }catch(e){if(current())$('pointCatchmentInfo').textContent=e.message;}
+    return;
+  }
   $('pointCatchmentInfo').textContent='Conferindo a resolução…';
   try{s=await root.GeoMineChannelDEM.prepare(r,{workCRS:S.workCRS,isCurrent:current});if(!current())return;
     const k=scale(s);
@@ -264,10 +292,12 @@ function refresh(){
   const prontos=d8Sources(),grupo=document.createElement('optgroup');grupo.label='D8 já calculado (sem reler o MDT)';
   for(const x of prontos)grupo.appendChild(new Option('D8 pronto — '+x.name+' · célula de '+fmt(x.d.cs,2)+' m · '+fmt(x.d.nc,0)+' × '+fmt(x.d.nr,0)+' células',x.key));
   $('pointCatchmentRaster').replaceChildren(new Option('— selecione o MDT —',''),...list.map(r=>new Option(r.name,String(r.id))),...(prontos.length?[grupo]:[]));
-  $('pointCatchmentRaster').value=prontos.some(x=>x.key===previous)?previous:r?String(r.id):'';controls();describe();
+  const auto=prontos.find(x=>x.original&&(!S.hidro?.dem||root.GeoMineOriginalD8?.matching(S.hidro.dem)===x.r))||prontos.find(x=>!x.original&&x.d===S.hidro?.dem);
+  $('pointCatchmentRaster').value=prontos.some(x=>x.key===previous)?previous:!previous&&auto?auto.key:r?String(r.id):'';controls();describe();
 }
 function open(button){anchor=button||anchor||$('pointCatchmentMark');RIB_CAT_ATUAL='hidrologia';refresh();ribbonOpen(panel,anchor,'Área contribuinte no ponto');}
 function arm(){
+  root.GeoMineOriginalD8?.clearReconnect('pointCatchmentMark');
   if(job||armed&&S.tool==='basin'){cancel();status('Consulta cancelada.');return;}
   const r=selected(),pronto=selectedD8();if(!r&&!pronto){status(rasters().length?'Escolha o MDT no campo acima e toque em Marcar ponto.':'Carregue um MDT original para marcar o ponto.');$('pointCatchmentRaster').focus();return;}
   if(!mapaVista2D())switchView('map');
@@ -296,7 +326,42 @@ function snapPreview(latlng){
 /* Área contribuinte a partir do D8 já calculado no Hidro. Mesmo snap, mesmo
    raio de busca do talvegue e mesmo contorno do cálculo pelo MDT; o que muda é
    a origem das direções de fluxo, que já estão prontas. */
+function offerPointReconnect(error,latlng){
+  const project=S.projectId,generation=gen(),crs=S.workCRS,value=$('pointCatchmentRaster').value;
+  return root.GeoMineOriginalD8?.offerReconnect(error,{anchor:$('pointCatchmentMark'),target:$('pointCatchmentResult'),
+    isCurrent:()=>S.projectId===project&&gen()===generation&&S.workCRS===crs&&$('pointCatchmentRaster').value===value,
+    retry:async()=>{refresh();if([...$('pointCatchmentRaster').options].some(o=>o.value===value))$('pointCatchmentRaster').value=value;arm();await click(latlng);}});
+}
 async function clickD8(fonte,latlng){
+  if(!fonte.original&&root.GeoMineHydrologyAuto){
+    const model=root.GeoMineHydrologyAuto.models().find(r=>root.GeoMineHydrologyAuto.grid(r)===fonte.d);
+    if(model){$('pointCatchmentRaster').value=String(model.id);armed={r:model,project:S.projectId,generation:gen()};return click(latlng);}
+  }
+  if(!fonte.original&&root.GeoMineOriginalD8){
+    const warm=job={controller:new AbortController(),project:S.projectId,generation:gen()},
+      current=()=>job===warm&&!warm.controller.signal.aborted&&S.projectId===warm.project&&gen()===warm.generation;
+    controls();
+    try{
+      const r=await root.GeoMineOriginalD8.ensure(fonte.d,{signal:warm.controller.signal,isCurrent:current,onProgress:status,localOnly:true});
+      if(!current())throw aborted();
+      if(r){refresh();fonte=d8Sources().find(x=>x.original&&x.r===r);$('pointCatchmentRaster').value=fonte.key;}
+    }catch(e){status(e.name==='AbortError'?'Consulta cancelada.':e.message);offerPointReconnect(e,latlng);return;}
+    finally{if(job===warm)job=null;controls();}
+  }
+  if(fonte.original){
+    const q=job={controller:new AbortController(),project:S.projectId,generation:gen(),crs:S.workCRS,d8:fonte.d};
+    const current=()=>job===q&&!q.controller.signal.aborted&&q.project===S.projectId&&q.generation===gen()&&q.crs===S.workCRS&&selectedD8()?.d===fonte.d;
+    let complete=false;controls();describing++;markerPlace(root.GeoMineOriginalD8.snap(latlng).latlng);
+    try{
+      const result=await root.GeoMineOriginalD8.query(latlng,{raster:fonte.r,signal:q.controller.signal,isCurrent:current,
+        onProgress:p=>status('Direção original · buscando a montante · '+fmt(p.cells||0,0)+' células')});
+      if(!current())throw aborted();
+      root.GeoMineOriginalD8.addCatchment(result);refreshUI();
+      status('Área contribuinte: '+fmt(result.areaM2/10000,4)+' ha · direção original · exutório mantido na linha.');complete=true;
+    }catch(e){if(q.project===S.projectId)status(e.name==='AbortError'?'Consulta cancelada.':e.message);}
+    finally{if(job===q)job=null;markerOffSoon(complete?MARKER_AFTER_RESULT:MARKER_AFTER_FAILURE);controls();describe();}
+    return;
+  }
   const d=fonte.d,dir=d.dir,q=job={controller:new AbortController(),project:S.projectId,generation:gen(),crs:S.workCRS,d8:d};
   const current=()=>job===q&&!q.controller.signal.aborted&&q.project===S.projectId&&q.generation===gen()&&q.crs===S.workCRS&&d.dir===dir&&selectedD8()?.d===d;
   let concluido=false;
@@ -350,7 +415,7 @@ async function clickD8(fonte,latlng){
     const layer=addLayer({...(origem?{sourceLayer:origem}:{}),name:'Área contribuinte — '+fmt(props.AREA_HA,4)+' ha',gtype:'polygon',crs:q.crs,
       features:[{geom:result.rings.map(ring=>ring.map(xy=>[xy[0],xy[1]])),multi:true,props}],fields,color:'#328ad6'});
     if(layer){layer.weight=2;if(layer.sym){layer.sym.weight=2;layer.sym.fillOpacity=.14;}drawLayer(layer);}
-    if(layer)undoPush({t:'catchmentresult',L:layer,project:S.projectId,active:activeBefore,outlet:exutorio});else unregisterOutlet(exutorio);
+    if(layer){linkOutlet(layer,exutorio);undoPush({t:'catchmentresult',L:layer,project:S.projectId,active:activeBefore,outlet:exutorio});}else unregisterOutlet(exutorio);
     refreshUI();
     const text='Área contribuinte: '+fmt(props.AREA_HA,4)+' ha\n'+fmt(props.AREA_M2,4)+' m² · '+fmt(props.CELULAS,0)+' células'+
       (partial?'\nA área toca a borda ou células sem dados da grade; pode haver contribuição fora dos dados disponíveis.':'')+
@@ -374,6 +439,19 @@ async function click(latlng){
   const check=()=>{if(!current()||sampler&&!sampler.isCurrent())throw aborted();};
   controls();describing++;
   try{
+    if(root.GeoMineHydrologyAuto){
+        root.GeoMineHydrologyAuto.bind(r);
+        const w=await root.GeoMineHydrologyAuto.query(r,latlng,{signal:q.controller.signal,isCurrent:current,onStatus:status,
+          onProgress:p=>status('D8 existente · delimitando a montante · '+fmt(p.cells||0,0)+' células')});check();
+        const props={AREA_M2:w.areaM2,AREA_HA:w.areaM2/10000,CELULAS:w.cells,MDT:r.name,FONTE_D8:w.fonte,RES_X_M:w.resolution.x,RES_Y_M:w.resolution.y,
+          E_PONTO:w.point[0],N_PONTO:w.point[1],E_CELULA:w.outlet[0],N_CELULA:w.outlet[1],AJUSTE_M:w.snapM,METODO:w.method},
+          fields=Object.entries(props).map(([name,v])=>({name,type:typeof v==='number'?'N':'C',length:typeof v==='number'?20:160,decimal:6})),
+          previous=S.activeId,outlet=registerOutlet(q.crs,w.point,{areaM2:w.areaM2,cells:w.cells,adjust:w.snapM},'R:'+r.id),
+          layer=addLayer({sourceLayer:'R:'+r.id,name:'Área contribuinte — '+fmt(props.AREA_HA,4)+' ha',gtype:'polygon',crs:q.crs,features:[{geom:w.rings,multi:true,props}],fields,color:'#328ad6'});
+        if(layer){linkOutlet(layer,outlet);undoPush({t:'catchmentresult',L:layer,project:S.projectId,active:previous,outlet});}else unregisterOutlet(outlet);
+        const ll=toWGS(q.crs,...w.point);markerPlace(L.latLng(ll[1],ll[0]));refreshUI();
+        status('Área contribuinte: '+fmt(props.AREA_HA,4)+' ha · '+(w.reusedD8?'D8 existente reutilizado':'D8 calculado automaticamente')+' · '+r.name);concluido=true;return;
+    }
     // Acknowledge the tap before opening a potentially slow original file.
     markerPlace(latlng);
     status('Ponto marcado. Lendo o MDT…');
@@ -512,7 +590,7 @@ async function click(latlng){
     const layer=addLayer({sourceLayer:'R:'+r.id,name:'Área contribuinte — '+fmt(props.AREA_HA,4)+' ha',gtype:'polygon',crs:q.crs,
       features:[{geom,multi:true,props}],fields,color:'#328ad6'});
     if(layer){layer.weight=2;if(layer.sym){layer.sym.weight=2;layer.sym.fillOpacity=.14;}drawLayer(layer);}
-    if(layer)undoPush({t:'catchmentresult',L:layer,project:S.projectId,active:activeBefore,outlet:exutorio});else unregisterOutlet(exutorio);
+    if(layer){linkOutlet(layer,exutorio);undoPush({t:'catchmentresult',L:layer,project:S.projectId,active:activeBefore,outlet:exutorio});}else unregisterOutlet(exutorio);
     refreshUI();
     const text='Área contribuinte: '+fmt(props.AREA_HA,4)+' ha\n'+fmt(props.AREA_M2,4)+' m² · '+fmt(props.CELULAS,0)+' células'+
       (partial?'\nA área toca a borda ou células sem dados do MDT; pode haver contribuição fora dos dados disponíveis.':'')+
@@ -527,7 +605,7 @@ async function click(latlng){
       (factor>1&&!byChoice?'\nATENÇÃO: NÃO é o resultado do TIFF nativo. Por escolha sua, foi calculado em grade de '+fmt(result.resolution.x,2)+' m com média das cotas (TIFF de '+fmt(nativeRes,2)+' m), porque a bacia não coube na memória deste aparelho.':'')+
 '';
     statusHead='';status(text);cmdLog(text.replaceAll('\n',' · '),'ok');concluido=true;
-  }catch(e){statusHead='';if(q.project===S.projectId&&q.generation===gen()){status(e.name==='AbortError'?'Consulta cancelada.':e.message);if(e.name!=='AbortError')cmdLog('Área contribuinte: '+e.message,'warn');}}
+  }catch(e){statusHead='';if(q.project===S.projectId&&q.generation===gen()){status(e.name==='AbortError'?'Consulta cancelada.':e.message);offerPointReconnect(e,latlng);if(e.name!=='AbortError')cmdLog('Área contribuinte: '+e.message,'warn');}}
   finally{statusHead='';clearInterval(timer);sampler?.close();if(job===q){job=null;markerOffSoon(concluido?MARKER_AFTER_RESULT:MARKER_AFTER_FAILURE);}controls();describe();}
 }
 /* Ctrl+Z logo depois de gerar: sai a camada da área contribuinte recém-criada
@@ -590,7 +668,6 @@ $('pointCatchmentRain').onclick=()=>{cancel();ribbonOpen($('secHidroMancha'),anc
 const category=CATS.find(c=>c.id==='hidrologia');
 for(const group of category?.grupos||[])for(const item of group.it||[]){
   if(item.ic==='bacia-hidrografica'){item.nome='Área Contribuinte';item.desc='Toque no exutório, na linha de fluxo ou no MDT · área que drena até o ponto';item.act=open;}
-  if(item.ic==='mancha-inundacao')item.act=open;
 }
 $('btnBasin').onclick=()=>{refresh();arm();};
 /* Painel fechado no × ou trocado por outro comando: o marcador sai na hora. */
@@ -600,5 +677,5 @@ $('btnBasin').onclick=()=>{refresh();arm();};
     new MutationObserver(()=>{if(!pop.contains(panel))markerClear();}).observe(pop,{childList:true});};
   if(document.getElementById('ribbonPop'))start();else document.addEventListener('DOMContentLoaded',start,{once:true});
 })();
-root.GeoMinePointCatchment={open,refresh,arm,click,cancel,snapPreview,undo,projectChanged:()=>{cancel();markerClear();context=null;routed=null;routedD8=null;}};
+root.GeoMinePointCatchment={open,refresh,arm,click,cancel,snapPreview,undo,recordOutlet,projectChanged:()=>{cancel();markerClear();context=null;routed=null;routedD8=null;}};
 })(window);

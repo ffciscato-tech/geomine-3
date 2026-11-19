@@ -1648,7 +1648,7 @@
     const props=sectionProps(q),feat={geom:line.map(p=>p.slice()),multi:false,props};let L;
     if(found){
       L=found.L;
-      if(L.locked||(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false))){notify('A camada da seção está bloqueada para edição');return null;}
+      if(L.locked||(typeof canEditLayer==='function'&&!canEditLayer(L,false))){notify('A camada da seção está bloqueada para edição');return null;}
       if(String(L.crs||S.workCRS)!==String(S.workCRS)){
         try{feat.geom=feat.geom.map(p=>{const xy=reproj(S.workCRS,L.crs,p[0],p[1]);if(!xy||!xy.every(Number.isFinite))throw new Error('CRS');return xy;});}
         catch(e){notify('Não foi possível converter o eixo para o sistema da camada');return null;}

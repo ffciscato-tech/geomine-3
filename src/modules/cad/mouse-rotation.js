@@ -99,7 +99,7 @@ function commit(degrees){
  const a=current;
  if(degrees===null||!Number.isFinite(degrees))return;
  if(a.grupo){const g=a.grupo,c=a.center;cancel();if(Math.abs(degrees)>=1e-10)grupoAplica(g,c,degrees);return;}
- if(a.L.locked||(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(a.L,false))||JSON.stringify(a.f.geom)!==a.original){cancel();toast('A feição mudou ou está bloqueada. Repita Girar.');return;}
+ if(a.L.locked||(typeof canEditLayer==='function'&&!canEditLayer(a.L,false))||JSON.stringify(a.f.geom)!==a.original){cancel();toast('A feição mudou ou está bloqueada. Repita Girar.');return;}
  const rings=toLayer(ringsAt(degrees));
  if(!rings.every(r=>r.every(p=>Number.isFinite(p[0])&&Number.isFinite(p[1])))){cancel();toast('Não foi possível transformar as coordenadas.');return;}
  cancel();if(Math.abs(degrees)<1e-10)return;
@@ -167,7 +167,7 @@ function grupoBloqueio(g){
   if(L.locked)return 'A camada "'+L.name+'" está bloqueada (cadeado). Desbloqueie-a para girar.';
   if(L.visible===false)return 'A camada "'+L.name+'" está oculta.';
   if(window.rb134EhDerivadaProtegida&&window.rb134EhDerivadaProtegida(L,f))return 'A camada "'+L.name+'" tem geometria calculada pelo projeto; ajuste-a pelos parâmetros.';
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return '';}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return '';}
  }
  return null;
 }

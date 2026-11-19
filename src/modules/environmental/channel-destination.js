@@ -5,7 +5,7 @@
 const clone=x=>JSON.parse(JSON.stringify(x));
 const uid=prefix=>prefix+(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
 const live=()=>window.GeoMineChannelLive;
-const editable=L=>!L.locked&&(typeof collabCanEditLayer!=='function'||collabCanEditLayer(L,false));
+const editable=L=>!L.locked&&(typeof canEditLayer!=='function'||canEditLayer(L,false));
 const stamp=L=>JSON.stringify({features:L.features,fields:L.fields,crs:L.crs,link:L._channelLink});
 const snap=L=>({L,features:L.features,fields:L.fields,link:L._channelLink,crs:L.crs});
 // Calha (margens no MDT) e massa d'água (preenchimento por altura ou

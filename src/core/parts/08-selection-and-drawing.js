@@ -23,6 +23,7 @@ function mselClear(tudo){
        simples feita depois dela. */
   }
   mselCount();
+  window.GeoMineDimensions?.syncSelection?.();
 }
 
 /* Teste espacial completo para a seleção por polígono/retângulo. A versão
@@ -113,6 +114,13 @@ function mselSelect(anelLL,opts={}){
       const rs=L.gtype==='point'
         ? (multipart?f.geom.map(p=>[p]):[f.geom])
         : (multipart?f.geom:[f.geom]);
+      if(window.GeoMineDimensions?.isFeature(L,f)){
+        const text=GeoMineDimensions.selectionLabelHit(L,f,anelLL,modo);
+        const hit=modo==='dentro'?(rs.every(r=>mselParteDentro(r,fech))&&text!==false):
+          (rs.some(r=>mselParteTocaAnel(r,anel,fech))||text===true);
+        if(hit)itens.push({layerId:L.id,idx:i});
+        continue;
+      }
       if(modo==='dentro'){
         const dentro=rs.map((r,pi)=>mselParteDentro(r,fech)?pi:-1).filter(pi=>pi>=0);
         if(dentro.length===rs.length)itens.push({layerId:L.id,idx:i});          // inteira
@@ -153,6 +161,7 @@ function mselSelect(anelLL,opts={}){
     (travadas?` · ${travadas} camada(s) com cadeado ignorada(s)`:''));
 }
 function mselHL(){
+  window.GeoMineDimensions?.syncSelection?.();
   if(S.msel.hl){ map.removeLayer(S.msel.hl); S.msel.hl=null; }
   if(!S.msel.items.length) return;
   const PN={pane:'alagis_desenho', interactive:false};
@@ -174,7 +183,7 @@ function mselHL(){
       }
     } else {
       const partes=Array.isArray(lls[0][0])? lls : [lls];
-      const alvo=Number.isInteger(it.partIdx)?[partes[it.partIdx]].filter(Boolean):partes;
+      const alvo=selParteValida(it,L,f)?[partes[it.partIdx]].filter(Boolean):partes;
       for(const pr of alvo){
         g.addLayer(L2.polyline(pr,{color:'#03202a',weight:5,opacity:.5,...PN}));
         g.addLayer(L2.polyline(pr,{color:'#22d3ee',weight:2,...PN}));
@@ -186,8 +195,8 @@ function mselHL(){
 }
 function mselDelete(){
   if(!S.msel.items.length){ toast('Nada selecionado'); return; }
-  const bloqueada=[...new Set(S.msel.items.map(i=>i.layerId))].map(id=>S.layers.find(L=>L.id===id)).find(L=>L&&typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false));
-  if(bloqueada){collabCanEditLayer(bloqueada,true);return;}
+  const bloqueada=[...new Set(S.msel.items.map(i=>i.layerId))].map(id=>S.layers.find(L=>L.id===id)).find(L=>L&&typeof canEditLayer==='function'&&!canEditLayer(L,false));
+  if(bloqueada){canEditLayer(bloqueada,true);return;}
   const porCamada=new Map();
   for(const it of S.msel.items){
     if(!porCamada.has(it.layerId)) porCamada.set(it.layerId,[]);
@@ -201,7 +210,7 @@ function mselDelete(){
     for(const idx of [...porFeat.keys()].sort((a,b)=>b-a)){
       const f=L.features[idx];if(!f)continue;
       const before=JSON.parse(JSON.stringify(f)), sels=porFeat.get(idx);
-      const inteira=sels.some(x=>!Number.isInteger(x.partIdx))||!f.multi;
+      const inteira=sels.some(x=>!selParteValida(x,L,f))||!f.multi;
       if(inteira){L.features.splice(idx,1);ops.push({idx,before,whole:true});continue;}
       const partes=featPartesLatLng(L,f), apagar=[...new Set(sels.map(x=>x.partIdx))].sort((a,b)=>b-a);
       for(const p of apagar)if(p>=0&&p<partes.length)f.geom.splice(p,1);
@@ -219,7 +228,7 @@ function mselMove(){
   const lids=[...new Set(S.msel.items.map(i=>i.layerId))];
   if(lids.length>1){ toast('Para mover, selecione feições de UMA camada só'); return; }
   const L=S.layers.find(l=>l.id===lids[0]); if(!L) return;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
   const idxs=S.msel.items.map(i=>i.idx).sort((a,b)=>b-a);
   const feats=[]; const rem=[];
   for(const i of idxs){ rem.push({idx:i, feat:L.features[i]}); feats.unshift(L.features[i]); L.features.splice(i,1); }
@@ -609,7 +618,7 @@ function continuarDesenho(alvo){
   if(!A){ toast('Nada para continuar: selecione uma linha ou um polígono, ou desenhe um primeiro'); return false; }
   const {L,f}=A, tool=L.gtype==='polygon'?'poly':'line';
   if(L.locked){ toast('A camada "'+L.name+'" está bloqueada'); return false; }
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){ collabCanEditLayer(L,true); return false; }
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){ canEditLayer(L,true); return false; }
   let partes=(Array.isArray(f.geom)&&Array.isArray(f.geom[0])&&Array.isArray(f.geom[0][0]))?f.geom:[f.geom];
   if(partes.length!==1){
     toast(tool==='poly'?'Polígono com furo ou várias partes: ajuste pelos vértices no Editor de vetores'
@@ -661,7 +670,7 @@ function continuarConclui(C,geom){
     toast('A feição ou o projeto mudou durante a continuação. O original não foi sobrescrito.');return false;
   }
   if(L.locked){toast('A camada "'+L.name+'" está bloqueada. O traçado foi preservado.');return false;}
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){ collabCanEditLayer(L,true); return false; }
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){ canEditLayer(L,true); return false; }
   const copia=x=>x==null?x:JSON.parse(JSON.stringify(x));
   /* Os pontos anteriores não atravessam outra reprojeção XY, que alterava
      suas coordenadas e descartava Z embutido. Novos pontos só recebem cota
@@ -723,7 +732,7 @@ function continuarChip(mostra){
 }
 
 function addFeature(L, geomInCRS, multi, options={}){
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return null;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return null;}
   // geomInCRS já no CRS da camada (para point recebemos latlng — tratar)
   let geom=geomInCRS;
   if(L.gtype==='point' && Array.isArray(geomInCRS[0]) && geomInCRS[0].length===2 && Math.abs(geomInCRS[0][0])<=90){
@@ -813,9 +822,9 @@ function openFeatForm(L, feat){
     <input type="${f.type==='N'||f.type==='F'?'number':'text'}" class="ff-in" data-f="${esc(f.name)}"
       value="${esc(feat.props[f.name]??'')}" ${f.type==='C'?`maxlength="${f.length||254}"`:''} ${geologyRange(f.name)?`min="${geologyRange(f.name)[0]}" max="${geologyRange(f.name)[1]}"`:''}>`).join('');
   bg.classList.add('on');
-  const first=box.querySelector('input'); if(first) setTimeout(()=>first.focus(),60);
+  const first=box.querySelector('input'); if(first&&!navigator.maxTouchPoints) setTimeout(()=>first.focus(),60);
   const commit=()=>{
-    if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
+    if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
     let invalid='';
     box.querySelectorAll('.ff-in').forEach(inp=>{
       const f=(L.fields||[]).find(q=>q.name===inp.dataset.f);

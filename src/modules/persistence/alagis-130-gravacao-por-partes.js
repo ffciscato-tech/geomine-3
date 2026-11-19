@@ -137,8 +137,9 @@ async function guardaCopiaManual(d,key,ownerUid,name,knownBytes,blob){
       blob=new Blob(parts,{type:'application/octet-stream'});
     }
     if(blob.size>TETO_IDB)return false;
-    const txt=await blob.text();
-    await idbSet(key,{projectId:d.projectId||null,ownerUid,name,at:new Date().toISOString(),txt});
+    // IndexedDB can persist the immutable Blob directly. Turning a large
+    // vector project into another JS string duplicates it and blocks the UI.
+    await idbSet(key,{projectId:d.projectId||null,ownerUid,name,at:new Date().toISOString(),blob});
     const button=document.getElementById('btnRestore');if(button)button.style.display='';
     return true;
   }catch(error){
@@ -268,13 +269,24 @@ window.saveProject=async function(salvarComo,opcoes){
   showLoad('Gravando projeto por partes…');
   await new Promise(r=>setTimeout(r,30));
 
-  let d;
+  let d,snapshotContext,snapshotBlob=null;
   try{
     /* As escolhas de raster e de destino podem ceder a execução. Se nesse
        intervalo outro projeto foi aberto, nunca serializamos o novo conteúdo
        para o handle capturado do projeto anterior. */
     if(!mesmoProjeto())throw new Error('o projeto mudou durante a preparação; salvamento cancelado');
-    d=projectData();d.projectFileName=fname;
+    d=projectData(planoDrive?{borrowGeometry:true}:undefined);d.projectFileName=fname;
+    if(planoDrive){
+      // Capture AND serialize in the same synchronous turn. No event/await
+      // can edit borrowed geometry before it becomes an immutable Blob.
+      // The uploader/recovery use only this Blob, never those live features.
+      snapshotBlob=projectBlob(d);
+      d={projectId:d.projectId,workCRS:d.workCRS,rasters:d.rasters.map(q=>({
+        rid:q.rid,d:{nc:q.d?.nc,nr:q.d?.nr,cs:q.d?.cs,csy:q.d?.csy,xll:q.d?.xll,yll:q.d?.yll}
+      }))};
+    }
+    snapshotContext={project:projectIdAtual,generation:geracaoAtual,
+      version:window.GeoMineSessionAutosave?.state?.version,owner:donoCopia};
   }
   catch(e){
     hideLoad();if(mesmoProjeto())S._saveTargetCell=null;
@@ -283,7 +295,7 @@ window.saveProject=async function(salvarComo,opcoes){
   }
 
   const andar=b=>showLoad('Gravando… '+(b/1048576).toFixed(0)+' MB');
-  let bytes=0,salvo=false,snapshotBlob=null;
+  let bytes=snapshotBlob?.size||0,salvo=false;
   try{
     if(!salvarComo){
       if(!await ensureRW(handleAtual,true)) throw new Error('permissão de escrita recusada para '+fname);
@@ -292,7 +304,7 @@ window.saveProject=async function(salvarComo,opcoes){
       if(mesmoProjeto())startAutosave((handleAtual.name||fname),handleAtual);
       toast('Projeto atualizado em '+(handleAtual.name||fname)+' ('+(bytes/1048576).toFixed(1)+' MB)');
     } else if(planoDrive){
-      snapshotBlob=projectBlob(d);bytes=snapshotBlob.size;
+      bytes=snapshotBlob.size;
       const origem=await GeoMineDriveSave.commit(planoDrive,snapshotBlob,
         (feito,total)=>showLoad('Gravando no Google Drive… '+Math.round(100*feito/Math.max(1,total))+'% de '+(total/1048576).toFixed(1)+' MB'));
       if(mesmoProjeto())startAutosave(origem.name||fname,null,origem);
@@ -323,6 +335,12 @@ window.saveProject=async function(salvarComo,opcoes){
       }
     }
     salvo=true;
+    /* The Drive/download Blob already contains this immutable snapshot.
+       Reuse it for session continuity rather than serializing every feature
+       and raster a second time after the destination has confirmed writing. */
+    if(snapshotBlob&&mesmoProjeto())try{
+      window.GeoMineWorkspaceResume?.offerSavedSnapshot(d,snapshotBlob,snapshotContext);
+    }catch(error){console.warn('retomada do projeto:',error);}
     if(mesmoProjeto())S._saveTargetCell=null;
 
     if(bytes>TETO_IDB&&typeof cmdLog==='function'){

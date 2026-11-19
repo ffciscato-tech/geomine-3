@@ -18,7 +18,7 @@ function open(L,idx){
  try{
   const B=brush(),f=L?.features?.[idx];
   if(!B||!f||!S.layers.includes(L))throw Error('Selecione uma feição para editar o estilo.');
-  if(L.locked||(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)))throw Error('A camada está congelada ou sem permissão de edição.');
+  if(L.locked||(typeof canEditLayer==='function'&&!canEditLayer(L,false)))throw Error('A camada está congelada ou sem permissão de edição.');
   if(!['point','line','polygon'].includes(L.gtype))throw Error('Este tipo de feição não permite edição de estilo.');
   B.cancel();close();closeFeatMenu();
   B.activate(L,idx,f);
@@ -45,6 +45,7 @@ function open(L,idx){
   const s=draft.style;
   set('[data-color]',hex(line?s.stroke:s.color));set('[data-stroke]',hex(s.stroke));
   set('[data-weight]',Number.isFinite(+s.weight)?+s.weight:2);set('[data-fill]',Math.round((s.fill??0.35)*100));
+  GeoMineStyleSliders.enhance(bg);
   if(poly){$('[data-hatch]').innerHTML=hatchOptionsHTML(s.hatch);set('[data-hatch-scale]',s.hatchScale??1);}
   if(!point){
    const dash=$('[data-dash]');

@@ -65,15 +65,6 @@ function projectData(options){
        feições (inclusive logs/testemunhos) já seguem dentro das camadas. */
     geology:(window.GeoMineGeology&&typeof window.GeoMineGeology.snapshot==='function')
       ?window.GeoMineGeology.snapshot():(S.geology||null),
-    /* A sala e a revisão não são credenciais; apenas permitem que um projeto
-       local reconheça novamente sua contraparte na nuvem. Tokens Firebase
-       nunca entram no .ccmgis. */
-    collaboration:S.collaboration?{
-      roomId:S.collaboration.roomId||null,
-      roomName:S.collaboration.roomName||null,
-      baseRevision:Number.isFinite(+S.collaboration.baseRevision)?+S.collaboration.baseRevision:0,
-      lastSeq:Number.isFinite(+S.collaboration.lastSeq)?+S.collaboration.lastSeq:0
-    }:null,
     groups:S.groups.map(g=>({id:g.id,name:g.name,parentId:groupParentValue(g),collapsed:!!g.collapsed,
       visibilityResume:Array.isArray(g.visibilityResume)?g.visibilityResume.filter(k=>typeof k==='string'):[],
       _collabId:g._collabId||null})),
@@ -137,6 +128,10 @@ function projectData(options){
       _geology:L._geology?layoutClone(L._geology):null,
       /* Blasting shares the ordinary vector model. Keep the source engine,
          conventions and batch identity independently from editable names. */
+      _runoffZones:L._runoffZones?layoutClone(L._runoffZones):null,
+      _drapeMDT:L._drapeMDT?layoutClone(L._drapeMDT):null,
+      _slopeHachures:L._slopeHachures?layoutClone(L._slopeHachures):null,
+      _hydraulicStairs:L._hydraulicStairs?layoutClone(L._hydraulicStairs):null,
       _blasting:L._blasting?layoutClone(L._blasting):null
     });}),
     layout:{basemap:gv('loBasemap'),title:gv('loTitle'), sub:gv('loSub'), scale:gv('loScale'),
@@ -178,6 +173,8 @@ function projectData(options){
       name:r.name, visible:visSalva('R',r.id,r.visible!==false),
       dispFull:!!r.dispFull, demHD:!!r.demHD,
       src:r.src||null, groupId:r.groupId??null, rid:r.id,
+      flowDirectionNative:window.GeoMineOriginalD8?.descriptor(r)||r.flowDirectionNative||null,
+      hydroRouting:r.hydroRouting||null,
       _collabId:r._collabId||null,
       projectFile:r.projectFile||null, projectSavedAt:r.projectSavedAt||null,
       originalSource:window.GeoMineOriginalSources?.forSave(r,'raster',g)||null,
@@ -190,7 +187,7 @@ function projectData(options){
       exactClipRings:r._exactClipRings||null, v3:r._v3?{...r._v3}:null,
       style:(s=>({mode:s.mode, opacity:s.opacity, classes:s.classes||null,
              solidColor:s.solidColor||null,localRelief:s.localRelief?{...s.localRelief}:null}))((c&&c.style)||r.style),
-      cnMeta:r.cnMeta||null, cnOrto:!!r._cnOrto,
+      cnMeta:r.cnMeta||null, cnOrto:!!r._cnOrto,runoffMeta:r.runoffMeta||null,runoffOrto:!!r._runoffOrto,
       srcName:r.srcName||null,
       sig:(r.d && (r.d._sig || (r.src&&r.src.sig))) || (function(){ try{ return assinaturaMDT(r.d._full||r.d); }catch(e){ return null; } })(),
       tinPuro:!!r.tinPuro,
@@ -216,7 +213,14 @@ function projectData(options){
     });}),
     /* sólidos: propriedades e geometria em coordenadas reais (antes só viviam na sessão) */
     solidos:typeof solParaSalvar==='function'?solParaSalvar():[],
-    img:(S.img && S.img.url && S.img.b)?{url:S.img.url, b:S.img.b, src:S.img.src||null,
+    /* Archived project orthos are selectable analysis sources, independent
+       of the current map background. Keep one preview per stable source id. */
+    ortofotos:(S.ortofotos||[]).filter(o=>o&&o.url&&Array.isArray(o.b)&&
+      !(S.img&&(o.id===S.img._ortoId||o.url===S.img.url&&String(o.b)===String(S.img.b))))
+      .map(o=>({id:String(o.id),name:o.name||'Ortofoto',url:o.url,b:o.b.slice(),
+        _warpWM:!!o._warpWM,_llbounds:o._llbounds||null,_crsFixo:o._crsFixo||o._sourceCRS||S.workCRS,
+        _sourceCRS:o._sourceCRS||o._crsFixo||S.workCRS,src:o.src||null})),
+    img:(S.img && S.img.url && S.img.b)?{url:S.img.url, b:S.img.b, src:S.img.src||null,orthoId:S.img._ortoId||null,
       // Persiste somente a prévia WM. A cópia UTM temporária usada pelo Layout
       // na sessão de migração não é duplicada dentro do arquivo .ccmgis.
       llb:S.img._llbounds||null, warpWM:!!S.img._warpWM,
@@ -231,8 +235,9 @@ function projectData(options){
         ?projectNativeForSave(S.img,'ortho'):(S.img.projectNativeSource||null),
       projectSavePending:!!S.img.projectSavePending,
       srcCRS:S.img._crsFixo||null,orthoHD:!!S.orthoHD,orthoDispFull:!!S.orthoDispFull}:null,
-    hidro:{ inundRasterId:S.hidro.inundRasterId||null, sourceRasterId:S.hidro.sourceRasterId??null,
-      inundDestination:S.hidro.inundDestination||null,inundDissolve:S.hidro.inundDissolve===true,serie:S.hidro.serie||null,
+    hidro:{ cnProduct:document.getElementById('hCnProduct')?.value||'cn',cSettings:cCoverageSettings(),cZoneRasterId:document.getElementById('hCZoneRaster')?.value||null,cZoneLayerId:document.getElementById('hCZoneLayer')?.value||null,cnGroup:document.getElementById('hCnGrupoOrto')?.value||'C',cnOrthoId:S.hidro.cnOrthoId||null,cnRasterId:S._cnRaster?.id??null,cRasterId:S._runoffRaster?.id??null,inundRasterId:S.hidro.inundRasterId||null, sourceRasterId:S.hidro.sourceRasterId??null,
+      rainUpstreamOnly:document.getElementById('hLamUpstreamOnly')?.checked!==false,
+      inundDestination:S.hidro.inundDestination||null,inundDissolve:S.hidro.inundDissolve===true,inundBarrierId:S.hidro.inundBarrierId||null,serie:S.hidro.serie||null,
       idf:S.hidro.idf?{K:S.hidro.idf.K,a:S.hidro.idf.a,b:S.hidro.idf.b,c:S.hidro.idf.c,
         Ts:S.hidro.idf.Ts||[],r2:S.hidro.idf.r2??null,rows:[]}:null }
   };
@@ -549,11 +554,14 @@ function reparaGeom(d){
 }
 
 function loadProject(d){
+  window.GeoMineCZonal?.cancel();
   window.GeoMineCadHatch?.cancel();
   window.GeoMineFeatureStyleEditor?.close();
   window.GeoMineFeatureStyleBrush?.cancel();
   window.GeoMineBlasting?.projectChanged?.();
   window.GeoMinePointCatchment?.projectChanged?.();
+  window.GeoMineSlopeHachures?.projectChanged?.();
+  window.GeoMineHydraulicStairs?.projectChanged?.();
   window.GeoMineBlastingPresentation?.resetProject();
   const openingScope=GeoMineProjectOpening.begin();
   try{
@@ -579,14 +587,13 @@ function loadProject(d){
   window.GeoMineProjectScreen?.prepare(d);
   window.GeoMineNativeFlood?.resetProject();
   if(typeof hShadeOff==='function')hShadeOff(true);
-  S.hidro=S.hidro||{};S.hidro.serie=null;S.hidro.idf=null;S.hidro.inundRasterId=null;S.hidro.sourceRasterId=null;S.hidro.inundDestination=null;S.hidro.inundDissolve=false;
-  S.hidro.dem=null;S.hidro.demBase=null;S.hidro.pilha=[];
+  S.hidro=S.hidro||{};S.hidro.serie=null;S.hidro.idf=null;S.hidro.inundRasterId=null;S.hidro.sourceRasterId=null;S.hidro.inundDestination=null;S.hidro.inundDissolve=false;S.hidro.inundBarrierId=null;S.hidro.cnOrthoId=null;S._cnRaster=null;S._runoffRaster=null;
+  if(document.getElementById('hCnProduct'))document.getElementById('hCnProduct').value='cn';
+  cCoverageRestore(null);S.hidro.cZoneRasterId=d.hidro?.cZoneRasterId||null;S.hidro.cZoneLayerId=d.hidro?.cZoneLayerId||null;
+  if(document.getElementById('hCnGrupoOrto'))document.getElementById('hCnGrupoOrto').value='C';
+  S.hidro.dem=null;S.hidro.demBase=null;S.hidro.pilha=[];S.hidro.rainUpstreamOnly=true;
   for(const id of ['btnFill','btnShade','btnRaw','btnD8Dir','btnD8Acc','btnStreams','btnBasin']){const e=document.getElementById(id);if(e)e.disabled=true;}
   if(document.getElementById('hDemOut'))document.getElementById('hDemOut').textContent='Selecione o MDT deste projeto para usar no Hidro.';
-  /* Um arquivo aberto manualmente não pode herdar a sala do projeto anterior.
-     A carga remota da própria colaboração marca applyingRemote e é ignorada
-     por este gancho. */
-  try{if(window.GeoMineCollaboration&&typeof window.GeoMineCollaboration.prepareProjectReplacement==='function')window.GeoMineCollaboration.prepareProjectReplacement();}catch(e){console.warn('desconexão colaborativa',e);}
   const rep=reparaGeom(d);          // conserta formatos antigos antes de montar
   // limpar estado atual
   /* o modo 3.1 não sobrevive à troca de projeto: o estado apontaria
@@ -612,16 +619,15 @@ function loadProject(d){
   (S.wms||[]).forEach(w=>{ if(w.llayer) map.removeLayer(w.llayer); });
   if(S.img && S.img.overlay) map.removeLayer(S.img.overlay);
   S.layers=[]; S.wms=[]; S.selFeat=null; S.img=null; S.stack=[]; S.plates=[]; S.plateId=null;
+  S.ortofotos=(Array.isArray(d.ortofotos)?d.ortofotos:[]).filter(o=>o&&typeof o.url==='string'&&Array.isArray(o.b)&&o.b.length===4)
+    .map(o=>({...o,b:o.b.slice(),_llbounds:o._llbounds||null}));
+
   S.projectId=d.projectId||('gm_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10));
   window.GeoMineLicenses?.restore(d.environmentalLicenses);
   S.geology={schemaVersion:1,sections:[],settings:{}};
   S._v3SurfOn={...((d.v3&&d.v3.surfOn)||{})};
   S._v3TexTipo=(d.v3&&d.v3.texTipo)||'hipso';
   S._v3TexCor=(d.v3&&d.v3.texCor)||'#8d5524';
-  S.collaboration=d.collaboration&&typeof d.collaboration==='object'
-    ?{roomId:d.collaboration.roomId||null,roomName:d.collaboration.roomName||null,
-      baseRevision:+d.collaboration.baseRevision||0,lastSeq:+d.collaboration.lastSeq||0}
-    :null;
   S.groups=(d.groups||[]).map(g=>({id:g.id,name:g.name,parentId:groupParentValue(g),collapsed:!!g.collapsed,
       visibilityResume:Array.isArray(g.visibilityResume)?g.visibilityResume.filter(k=>typeof k==='string'):[],
     _collabId:g._collabId||null}));
@@ -691,7 +697,7 @@ function loadProject(d){
       _baciaTopoVersion:o._baciaTopoVersion??null,
       _containerCount:o._containerCount||null,
       _geology:o._geology&&typeof o._geology==='object'?layoutClone(o._geology):null,
-      _blasting:o._blasting&&typeof o._blasting==='object'?layoutClone(o._blasting):null,
+      _runoffZones:o._runoffZones||null,_drapeMDT:o._drapeMDT||null,_slopeHachures:o._slopeHachures?layoutClone(o._slopeHachures):null,_hydraulicStairs:o._hydraulicStairs?layoutClone(o._hydraulicStairs):null,_blasting:o._blasting&&typeof o._blasting==='object'?layoutClone(o._blasting):null,
       llayer:null};
     if(L.id>=uid) uid=L.id+1;         // evita colisão com futuras camadas
     /* Projetos antigos de sinalização guardavam todos os pontos com um único
@@ -734,6 +740,8 @@ function loadProject(d){
       originalSource:o.originalSource||null,
       projectSavedAt:o.projectSavedAt||null,
       projectNativeSource:o.projectNativeSource||null,
+      flowDirectionNative:o.flowDirectionNative||null,
+      hydroRouting:o.hydroRouting||null,
       projectSavePending:!!o.projectSavePending,
       quantity:o.quantity||null, unit:o.unit||null,
       groupId:o.groupId??null,
@@ -741,17 +749,20 @@ function loadProject(d){
              classes:(o.style&&o.style.classes)||null,
              solidColor:(o.style&&o.style.solidColor)||null,
              localRelief:o.style?.localRelief?{...o.style.localRelief}:null},
-      overlay:null, cnMeta:o.cnMeta||null, _cnOrto:!!o.cnOrto,
+      overlay:null, cnMeta:o.cnMeta||null, _cnOrto:!!o.cnOrto,runoffMeta:o.runoffMeta||null,_runoffOrto:!!o.runoffOrto,
       _tinMethod:o.tinMethod||null,_tinSourceId:o.tinSourceId??null,
       _tinAutoClip:typeof o.tinAutoClip==='boolean'?o.tinAutoClip:undefined,
       _exactClipRings:Array.isArray(o.exactClipRings)?o.exactClipRings:null,
       _v3:o.v3?{...o.v3}:null};
-    if(r._cnOrto&&r.cnMeta){
-      const m=r.cnMeta,cl=new Uint8Array(g.z.length);
-      for(let k=0;k<g.z.length;k++){const v=g.z[k];if(!isFinite(v))continue;
-        cl[k]=(Math.abs(v-m.veg)<=Math.abs(v-m.ant)&&Math.abs(v-m.veg)<=Math.abs(v-m.rock))?3:
+    if(r._runoffOrto&&r.runoffMeta?.method==='rational-coverage')S._runoffRaster=r;
+    if(r._runoffOrto&&r.runoffMeta?.method==='SCS-CN')r.name=r.name.replace(/^C \(SCS-CN\)/,'C equivalente (SCS-CN)');
+    if((r._cnOrto&&r.cnMeta)||(r._runoffOrto&&r.runoffMeta)){
+      const m=r.cnMeta||r.runoffMeta,packed=cnCoverUnpack(m.coverCodes,g.z.length),cl=packed||new Uint8Array(g.z.length);
+      if(!packed)for(let k=0;k<g.z.length;k++){const v=g.z[k];if(!isFinite(v))continue;
+        const exact=m.classes?.find(c=>Math.abs((r._runoffOrto?c.c:c.cn)-v)<1e-6&&c.broad);
+        cl[k]=exact?exact.broad:(Math.abs(v-m.veg)<=Math.abs(v-m.ant)&&Math.abs(v-m.veg)<=Math.abs(v-m.rock))?3:
           (Math.abs(v-m.ant)<=Math.abs(v-m.rock)?2:1);}
-      g._cnClass=cl;S._cnRaster=r;
+      g._cnClass=cl;if(r._cnOrto)S._cnRaster=r;
     }
     /* Superfície TIN salva: reanexa a triangulação exata (coords relativas
        f32 + índices u32; o filtro de aresta/recorte já veio aplicado) */
@@ -972,7 +983,7 @@ function loadProject(d){
     const previewURL=d.img.url;
     const ov=L2.imageOverlay(previewURL, ll, {opacity:0.85}).addTo(map);
     ov.bringToBack&&ov.bringToBack();
-    S.img={url:d.img.url, overlay:ov, b, name:d.img.name||'ortofoto', src:d.img.src||null,
+    S.img={url:d.img.url, overlay:ov, b, name:d.img.name||'ortofoto', src:d.img.src||null,_ortoId:d.img.orthoId||null,
            _llbounds:(d.img.llb||null), _warpWM:!!d.img.warpWM,
            _crsFixo:d.img.srcCRS||null, _sourceCRS:crsOrto,
            projectFile:d.img.projectFile||null, projectSavedAt:d.img.projectSavedAt||null,
@@ -990,8 +1001,16 @@ function loadProject(d){
       orthoMigrateLegacyPreview(S.img,S.workCRS).catch(e=>console.warn('migração da ortofoto:',e));
   }
   if(d.hidro){
+    S.hidro.cnOrthoId=d.hidro.cnOrthoId||null;
+    if(document.getElementById('hCnProduct'))document.getElementById('hCnProduct').value=d.hidro.cnProduct==='c'?'c':'cn';
+    cCoverageRestore(d.hidro.cSettings||null);
+    if(document.getElementById('hCnGrupoOrto')&&['A','B','C','D'].includes(d.hidro.cnGroup))document.getElementById('hCnGrupoOrto').value=d.hidro.cnGroup;
+    S._cnRaster=S.rasters.find(r=>r._cnOrto&&String(r.id)===String(d.hidro.cnRasterId))||S._cnRaster;
+    S._runoffRaster=S.rasters.find(r=>r._runoffOrto&&r.runoffMeta?.method==='rational-coverage'&&String(r.id)===String(d.hidro.cRasterId))||S._runoffRaster;
     S.hidro.inundRasterId=d.hidro.inundRasterId||null;S.hidro.sourceRasterId=d.hidro.sourceRasterId??null;
+    S.hidro.rainUpstreamOnly=d.hidro.rainUpstreamOnly!==false;
     S.hidro.inundDestination=typeof d.hidro.inundDestination==='string'?d.hidro.inundDestination:null;S.hidro.inundDissolve=d.hidro.inundDissolve===true;
+    S.hidro.inundBarrierId=d.hidro.inundBarrierId!=null?String(d.hidro.inundBarrierId):null;
     if(Array.isArray(d.hidro.serie)&&d.hidro.serie.length) setSerie(d.hidro.serie);
     if(d.hidro.idf) S.hidro.idf=d.hidro.idf;
   }
@@ -1054,7 +1073,7 @@ async function recuperarAutosave(){
   try{
     const key=typeof autosaveStorageKey==='function'?autosaveStorageKey(S.projectId):'autosave';
     const a=await idbGet(key);
-    if(!a || !a.txt){ toast('Nenhum autosave no navegador'); return; }
+    if(!a || (!a.txt&&!(a.blob instanceof Blob))){ toast('Nenhum autosave no navegador'); return; }
     const owner=typeof autosaveOwnerUid==='function'?autosaveOwnerUid():null;
     if((a.ownerUid||null)!==(owner||null)||
        (a.projectId&&S.projectId&&a.projectId!==S.projectId)){
@@ -1065,7 +1084,8 @@ async function recuperarAutosave(){
     const confirmedVersion=window.GeoMineSessionAutosave?.state?.version;
     opening=window.GeoMineProjectOpenProgress?.begin({title:'Recuperando cópia do projeto…',current:()=>owner===(typeof autosaveOwnerUid==='function'?autosaveOwnerUid():null)&&confirmedVersion===window.GeoMineSessionAutosave?.state?.version});
     if(!opening)showLoad('Recuperando autosave…');
-    const data=opening?await opening.parse(a.txt):JSON.parse(a.txt);
+    const text=a.blob instanceof Blob?await a.blob.text():a.txt;
+    const data=opening?await opening.parse(text):JSON.parse(text);
     /* Recuperar é abrir um rascunho, não confirmar um destino. Reutilizar o
        handle anterior permitiria sobrescrever outro projeto no autosave. */
     if(opening)await opening.commit(data,()=>startAutosave(a.name,null));
@@ -1079,7 +1099,7 @@ document.getElementById('autoTag').onclick=()=>{
 };
 /* no boot: se existir autosave guardado, habilita o botão Recuperar (se houver) */
 (async()=>{ try{ const a=await idbGet(autosaveStorageKey(S.projectId));
-  if(a && a.txt){ const br=document.getElementById('btnRestore'); if(br) br.style.display=''; S._temAutosave=true; }
+  if(a && (a.txt||a.blob instanceof Blob)){ const br=document.getElementById('btnRestore'); if(br) br.style.display=''; S._temAutosave=true; }
 }catch(_){} })();
 /* aviso ao fechar com trabalho não salvo */
 window.addEventListener('beforeunload',e=>{

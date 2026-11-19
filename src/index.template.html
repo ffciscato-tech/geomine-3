@@ -326,7 +326,13 @@
       <div class="sec collapsed" id="secBacia">
         <h3>Bacia de retenção / contenção <span class="chev">▾</span></h3>
         <div class="body">
-          <div class="hint" style="margin-bottom:6px">Você define a <b>BOCA</b> (topo, no terreno). O programa amostra as cotas no MDT, faz o <b>talude interno</b> descer até o fundo e o <b>talude de corte</b> subir até encontrar a superfície (linha de <b>borda/daylight</b>).</div>
+          <section class="gm-work-card" id="bcCardTerrain">
+          <div class="gm-card-heading"><span class="gm-card-step">1</span><b>Terreno</b><details class="gm-card-info"><summary aria-label="Sobre o terreno">ⓘ</summary><p>O MDT fornece as cotas da boca, do fundo e do encontro dos taludes com o terreno. O fundo fica abaixo da menor cota da boca pela profundidade informada.</p></details></div>
+          <label class="field" for="bcMDT">MDT de trabalho</label><select id="bcMDT"></select>
+          <div class="hout" id="bcCaixaAtual" style="display:none;margin-top:6px"></div>
+          </section>
+          <section class="gm-work-card" id="bcCardShape">
+          <div class="gm-card-heading"><span class="gm-card-step">2</span><b>Boca e taludes</b><details class="gm-card-info"><summary aria-label="Sobre a geometria">ⓘ</summary><p>Defina a boca por um retângulo ou um polígono existente. O talude interno desce ao fundo; o talude de corte encontra o MDT. Ao editar a área do retângulo, a dimensão fixada é mantida; sem fixação, mantém-se a proporção.</p></details></div>
           <label class="field">Como definir a boca</label>
           <select id="bcModo">
             <option value="ret">Retângulo paramétrico (C×L) — desenho no mapa</option>
@@ -341,14 +347,12 @@
             </div>
             <label class="field">Área da boca (m²)</label>
             <input type="number" id="bcA" step="any" min="1">
-            <div class="hint" style="margin-top:3px">Digite a área: a medida marcada com 🔒 fica fixa e a outra se ajusta; sem nenhuma marcada, a proporção é mantida.</div>
             <label class="field">Ângulo / azimute do retângulo (°)</label>
             <input type="number" id="bcAng" value="0" step="1">
           </div>
           <div id="bcFeicParams" style="display:none">
             <label class="field">Polígono base</label>
             <select id="bcFeic"></select>
-            <div class="hint">Escolha um polígono fechado já desenhado. Ele será a boca da bacia.</div>
           </div>
           <div class="grid2" style="margin-top:8px">
             <div><label class="field">Profundidade P (m)</label><input type="number" id="bcP" value="3" step="0.1" min="0.2"></div>
@@ -361,9 +365,12 @@
             <div><label class="field" title="Talude que sobe da boca até encontrar o terreno (corte)">Talude de corte (°)</label>
               <input type="number" id="bcAngCorte" value="45" step="1" min="10" max="89"></div>
           </div>
+          </section>
+          <section class="gm-work-card" id="bcCardBerms">
+          <div class="gm-card-heading"><span class="gm-card-step">3</span><b>Bermas e geração</b><details class="gm-card-info"><summary aria-label="Sobre as bermas">ⓘ</summary><p>A berma na boca é uma faixa horizontal antes do corte. As bermas intermediárias dividem taludes altos. Depois de configurar, gere a caixa e indique sua posição no mapa.</p></details></div>
           <label class="field" title="Faixa horizontal na cota da aresta, entre a aresta da caixa e o pé do talude de corte. 0 = o corte nasce na aresta">Berma na boca (m)</label>
           <input type="number" id="bcBermBoca" value="0" step="0.5" min="0">
-          <div style="border-top:1px solid var(--line);margin:8px 0;padding-top:6px">
+          <div>
             <label class="field" style="display:flex;align-items:center;gap:6px">
               <input type="checkbox" id="bcBermOn" checked style="width:auto;accent-color:var(--amber)">
               Escalonar taludes altos com bermas</label>
@@ -377,7 +384,12 @@
             <input type="number" id="bcBermMinH" value="10" step="0.5" min="0">
             <input type="checkbox" id="bcTalSym" style="display:none">
           </div>
-          <div style="border-top:1px solid var(--line);margin:8px 0;padding-top:6px">
+          <button class="tbtn gm-card-primary" id="btnBaciaArma">◎ Gerar caixa</button>
+          <div class="hint" id="bcOut" style="margin-top:8px" role="status"></div>
+          </section>
+          <section class="gm-work-card" id="bcCardRamp">
+          <div class="gm-card-heading"><span class="gm-card-step">4</span><b>Rampa de acesso</b><details class="gm-card-info"><summary aria-label="Sobre a rampa">ⓘ</summary><p>Gere a caixa primeiro. Em seguida, indique a chegada da rampa na borda do fundo. Relocar e limpar alteram apenas a rampa da caixa atual.</p></details></div>
+          <div>
             <label class="field" style="display:flex;align-items:center;gap:6px">
               <input type="checkbox" id="bcRampaOn" checked style="width:auto;accent-color:var(--amber)"> Rampa de acesso p/ limpeza</label>
             <div class="grid2" style="margin-top:4px">
@@ -387,7 +399,13 @@
             <label class="field">Azimute da rampa (° — de onde ela desce)</label>
             <input type="number" id="bcRampaAz" value="0" step="1">
           </div>
-          <div style="border-top:1px solid var(--line);margin:8px 0;padding-top:7px">
+          <button class="tbtn" id="btnBaciaRampa" title="Toque na borda do fundo para gerar a rampa" style="width:100%;justify-content:center;margin-top:6px;display:none">Gerar rampa — indicar chegada</button>
+          <button class="tbtn" id="btnBaciaRelocar" title="Remove a rampa atual e permite escolher uma nova chegada sem recriar a caixa" style="width:100%;justify-content:center;margin-top:6px;display:none">Relocar rampa</button>
+          <button class="tbtn" id="btnBaciaLimparRampa" title="Remove somente a rampa e restaura integralmente a caixa original" style="width:100%;justify-content:center;margin-top:6px;display:none">Limpar rampa</button>
+          </section>
+          <section class="gm-work-card" id="bcCardOutlet">
+          <div class="gm-card-heading"><span class="gm-card-step">5</span><b>Saída d’água</b><details class="gm-card-info"><summary aria-label="Sobre a saída">ⓘ</summary><p>Informe a vazão e a carga hidráulica, dimensione a saída e posicione-a na borda da caixa. O azimute vazio orienta a saída perpendicularmente à borda.</p></details></div>
+          <div>
             <label class="field" style="display:flex;align-items:center;gap:6px">
               <input type="checkbox" id="bcExtOn" checked style="width:auto;accent-color:var(--amber)">
               Dimensionar saída / extravasor</label>
@@ -418,18 +436,14 @@
             <input type="number" id="bcExtAz" placeholder="automático" step="1">
             <button class="mini" id="btnBaciaExt" style="width:100%;justify-content:center">Dimensionar extravasor</button>
             <button class="mini" id="btnBaciaExtDesenhar" title="Toque a borda da bacia para posicionar o extravasor com as dimensões calculadas" style="width:100%;justify-content:center;margin-top:5px" disabled>✎ Posicionar e desenhar extravasor</button>
-            <div class="hout" id="bcCaixaAtual" style="display:none;margin-top:6px"></div>
             <div class="hout" id="bcExtOut" style="margin-top:5px">Informe Q e H para dimensionar.</div>
           </div>
-          <label class="field" style="margin-top:6px">MDT de trabalho</label>
-          <select id="bcMDT"></select>
-          <button class="tbtn" id="btnBaciaArma" style="width:100%;justify-content:center;margin-top:8px;background:var(--amber);color:#1a1206;font-weight:600">◎ Gerar bacia</button>
-          <button class="tbtn" id="btnBaciaRampa" title="Toque na borda do fundo para gerar a rampa" style="width:100%;justify-content:center;margin-top:6px;display:none">⛰ Gerar rampa — indicar chegada</button>
-          <button class="tbtn" id="btnBaciaRelocar" title="Remove a rampa atual e permite escolher uma nova chegada sem recriar a caixa" style="width:100%;justify-content:center;margin-top:6px;display:none">✥ Relocar rampa</button>
-          <button class="tbtn" id="btnBaciaLimparRampa" title="Remove somente a rampa e restaura integralmente a caixa original" style="width:100%;justify-content:center;margin-top:6px;display:none">↶ Limpar rampa</button>
+          </section>
+          <section class="gm-work-card" id="bcCardResults">
+          <div class="gm-card-heading"><span class="gm-card-step">6</span><b>Superfície e relatório</b><details class="gm-card-info"><summary aria-label="Sobre os resultados">ⓘ</summary><p>As ações ficam disponíveis depois de gerar a caixa. A superfície inclui a geometria da caixa e da rampa atual; o relatório apresenta os dados técnicos e a figura.</p></details></div>
           <button class="tbtn" id="btnBaciaMDT" style="width:100%;justify-content:center;margin-top:6px;display:none">⛏ Gerar superfície da bacia (p/ perfil)</button>
           <button class="tbtn" id="btnBaciaDetalhe" style="width:100%;justify-content:center;margin-top:6px;display:none">📄 Relatório técnico e figura</button>
-          <div class="hint" id="bcOut" style="margin-top:8px"></div>
+          </section>
         </div>
       </div>
 
@@ -872,6 +886,8 @@
               <input type="checkbox" id="hInundDissolve" disabled>
               Dissolver com as feições existentes
             </label>
+            <label class="field" for="hInundBarrier">Barramento desta simulação (opcional)</label>
+            <select id="hInundBarrier" aria-label="Barramento da simulação por cotas"><option value="">Sem barramento</option></select>
             <div class="row2">
               <div><label class="field">Cota inicial (m)</label>
                 <input type="number" id="hInundIni" step="0.5" placeholder="cota mínima do MDT"></div>
@@ -882,7 +898,7 @@
               <div><label class="field">Nº de níveis</label>
                 <input type="number" id="hInundIter" value="5" min="1" max="200" step="1"></div>
               <div style="display:flex;align-items:flex-end">
-                <button class="tbtn" id="btnInundRun" style="flex:1;justify-content:center;background:var(--amber);color:#1a1206;font-weight:600">🌊 Indicar ponto inicial</button></div>
+                <button type="button" class="tbtn inund-point-action" id="btnInundRun" title="Marcar ponto no mapa para iniciar a simulação" aria-label="Marcar ponto no mapa" aria-pressed="false"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg><span class="inund-point-label">Marcar ponto no mapa</span></button></div>
             </div>
             <div class="hint" id="hInundPrev" style="margin-top:4px"></div>
             <div class="row2" style="margin-top:6px">
@@ -895,46 +911,84 @@
           </div>
 
           <div class="hsec" id="secCNOrto">
-            <h2>Determinação automática do CN <span class="tag">ortofoto · cobertura</span></h2>
-            <div class="hint">Classifica preliminarmente vegetação, superfície antropizada e
-              solo/rocha exposta. O grupo hidrológico do solo completa a conversão para CN.</div>
-            <label class="field" style="margin-top:7px">Grupo hidrológico do solo</label>
+            <h2 class="cn-panel-title">CN / C pela ortofoto <button type="button" class="mini cn-info-button" id="btnCnInfo" aria-label="Informações sobre CN e C" aria-expanded="false" aria-controls="hCnInfo"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7" r="1" fill="currentColor" stroke="none"/></svg></button></h2>
+            <div class="hint" id="hCnInfo" hidden>
+              Estima a cobertura por cor e textura da ortofoto. O CN combina essa estimativa
+              com o grupo do solo informado: A, alta infiltração; B, moderadamente alta;
+              C, moderadamente baixa; D, baixa. O MDT é opcional e refina a classe de rocha
+              pela declividade. Revise a classificação antes de usar no dimensionamento.
+              A análise usa a prévia georreferenciada, em uma grade limitada para este aparelho.
+              Cada execução cria uma camada independente, com a ortofoto de origem identificada.
+              Para C, os coeficientes são automáticos: estimativa rural por componentes da
+              <a href="https://www.txdot.gov/manuals/des/hyd/chapter-4--hydrology/section-12--rational-method.html" target="_blank" rel="noopener">referência TxDOT, tabelas 4-10 e 4-11</a>.
+              C = relevo + infiltração + cobertura + armazenamento. Adota os limites superiores;
+              pavimentos: C = 0,95. O MDT fornece a declividade; a chuva só entra na vazão.
+              As descrições de solo e os grupos SUCS seguem o
+              <a href="https://www.gov.br/dnit/pt-br/assuntos/planejamento-e-pesquisa/ipr/coletanea-de-manuais/vigentes/719_manual_de_pavimentacao.pdf" target="_blank" rel="noopener">DNIT, Manual de Pavimentação, tabela 8</a>.
+              Você indica o solo; a ortofoto não determina granulometria nem plasticidade.
+              A associação hidráulica é uma hipótese preliminar do GeoMine: granulares limpos
+              bem drenados; siltes, argilas e orgânicos com infiltração lenta; rocha e superfície
+              compactada com infiltração desprezível. O solo arenoargiloso anterior passa à
+              hipótese lenta nas novas análises. Os resultados já salvos permanecem intactos.
+              Armazenamento desprezível é a hipótese inicial conservadora, ajustável abaixo.
+              A aplicação por célula adapta o método por segmentos; não é uma calibração local.
+              A referência trata de pequenas bacias, aproximadamente até 80 ha, sem retenção
+              significativa; retenções e grandes bacias exigem método apropriado no dimensionamento.
+              C médio = soma de C × área válida / soma das áreas válidas dentro do polígono.
+              Trechos sem C ou fora da ortofoto não entram na média; área utilizada e
+              percentual de cobertura acompanham o resultado. Ajustes manuais são opcionais.
+            </div>
+            <label class="field" for="hCnProduct">Gerar</label>
+            <select id="hCnProduct"><option value="cn">CN — Curve Number</option><option value="c">C — deflúvio (Racional)</option></select>
+            <div id="hCnCInputs" hidden>
+              <label class="field" for="hCSoil" style="margin-top:7px">Tipo de solo — mecânica dos solos</label>
+              <select id="hCSoil"><option value="">Indique o solo</option></select>
+              <label class="field" for="hCSlope" style="margin-top:7px">Declividade sem MDT / sem dado</label>
+              <select id="hCSlope"><option value="">Usar somente o MDT</option><option value="flat">0 a 5%</option><option value="rolling">Acima de 5 a 10%</option><option value="steep">Acima de 10 a 30%</option><option value="mountain">Acima de 30%</option></select>
+              <details id="hCCoefficients"><summary>Ajustes de C (opcionais)</summary>
+                <label class="field" for="hCStorage">Armazenamento superficial</label>
+                <select id="hCStorage"><option value="negligible">Desprezível — conservador</option><option value="defined">Drenagem definida, sem lagoas</option><option value="normal">Depressões e armazenamento moderado</option><option value="much">Armazenamento elevado</option></select>
+                <div class="c-cover-list"><div class="c-cover-row"><label for="hCRef_vd">Vegetação densa</label><select id="hCRef_vd" aria-label="Referência de Vegetação densa"><option value="auto" selected>Automático</option><option value="manual">Ajuste manual</option></select><input id="hCValue_vd" type="number" min="0" max="1" step="0.01" inputmode="decimal" aria-label="C de Vegetação densa"></div><div class="c-cover-row"><label for="hCRef_vm">Vegetação média</label><select id="hCRef_vm" aria-label="Referência de Vegetação média"><option value="auto" selected>Automático</option><option value="manual">Ajuste manual</option></select><input id="hCValue_vm" type="number" min="0" max="1" step="0.01" inputmode="decimal" aria-label="C de Vegetação média"></div><div class="c-cover-row"><label for="hCRef_vr">Vegetação rala</label><select id="hCRef_vr" aria-label="Referência de Vegetação rala"><option value="auto" selected>Automático</option><option value="manual">Ajuste manual</option></select><input id="hCValue_vr" type="number" min="0" max="1" step="0.01" inputmode="decimal" aria-label="C de Vegetação rala"></div><div class="c-cover-row"><label for="hCRef_solo">Solo exposto</label><select id="hCRef_solo" aria-label="Referência de Solo exposto"><option value="auto" selected>Automático</option><option value="manual">Ajuste manual</option></select><input id="hCValue_solo" type="number" min="0" max="1" step="0.01" inputmode="decimal" aria-label="C de Solo exposto"></div><div class="c-cover-row"><label for="hCRef_rocha">Rocha exposta</label><select id="hCRef_rocha" aria-label="Referência de Rocha exposta"><option value="auto" selected>Automático</option><option value="manual">Ajuste manual</option></select><input id="hCValue_rocha" type="number" min="0" max="1" step="0.01" inputmode="decimal" aria-label="C de Rocha exposta"></div><div class="c-cover-row"><label for="hCRef_compact">Solo compactado / antropizado</label><select id="hCRef_compact" aria-label="Referência de Solo compactado / antropizado"><option value="auto" selected>Automático</option><option value="manual">Ajuste manual</option></select><input id="hCValue_compact" type="number" min="0" max="1" step="0.01" inputmode="decimal" aria-label="C de Solo compactado / antropizado"></div><div class="c-cover-row"><label for="hCRef_imperv">Superfície impermeável</label><select id="hCRef_imperv" aria-label="Referência de Superfície impermeável"><option value="auto" selected>Automático</option><option value="manual">Ajuste manual</option></select><input id="hCValue_imperv" type="number" min="0" max="1" step="0.01" inputmode="decimal" aria-label="C de Superfície impermeável"></div></div>
+              </details>
+            </div>
+            <label class="field" for="hCnOrtoSource">Ortofoto</label>
+            <select id="hCnOrtoSource"><option value="">Carregue uma ortofoto no projeto</option></select>
+            <label class="field" for="hCnGrupoOrto" style="margin-top:7px">Grupo hidrológico do solo</label>
             <select id="hCnGrupoOrto">
               <option value="A">A · alta infiltração</option>
               <option value="B">B · permeável</option>
               <option value="C" selected>C · intermediário</option>
               <option value="D">D · baixa permeabilidade</option>
             </select>
-            <div class="hint">A = areia/cascalho, alta infiltração · B = moderadamente alta ·
-              C = moderadamente baixa · D = argila, rocha rasa ou solo saturado, baixa infiltração.</div>
-            <label class="field" style="margin-top:7px">Ortofoto para classificação</label>
-            <div class="row2">
-              <div class="hout" id="hCnOrtoSrc" style="margin:0">Usará a ortofoto carregada no mapa.</div>
-              <button type="button" class="mini" id="btnCnOrtoFile" style="display:flex;align-items:center;justify-content:center;cursor:pointer">Escolher GeoTIFF…</button>
-            </div>
-            <input id="hCnOrtoFile" type="file" accept=".tif,.tiff,application/octet-stream" style="display:none">
-            <label class="field" style="margin-top:7px">MDT auxiliar — classes de declividade</label>
-            <select id="hCnMDT"><option value="">— sem MDT auxiliar —</option></select>
-            <div class="hint">O MDT separa terreno plano, suave, moderado e íngreme. Ele refina a
-              condição da cobertura, mas não substitui o grupo hidrológico do solo.</div>
-            <label class="field" style="margin-top:7px">Limite para calcular as porcentagens</label>
+            <label class="field" for="hCnMDT" style="margin-top:7px">MDT auxiliar (opcional)</label>
+            <select id="hCnMDT"><option value="">Sem MDT</option></select>
+            <label class="field" for="hCnLimite" style="margin-top:7px">Área da análise</label>
             <div class="row2">
               <select id="hCnLimite">
-                <option value="selecionado">Polígono selecionado no mapa</option>
-                <option value="desenhado">Desenhar limite da análise</option>
-                <option value="orto">Toda a extensão válida da ortofoto</option>
+                <option value="selecionado">Polígono selecionado</option>
+                <option value="desenhado">Limite desenhado</option>
+                <option value="orto">Toda a ortofoto</option>
               </select>
-              <button class="mini" id="btnCnLimite">✏ Indicar limite</button>
+              <button type="button" class="mini" id="btnCnLimite">Selecionar polígono</button>
             </div>
-            <div class="hint" id="hCnLimiteOut" style="margin-top:4px">Selecione um polígono que represente a bacia ou área do projeto.</div>
-            <div class="hint" style="margin-top:7px">O resultado será um raster temático classificado.
-              Cada cobertura aparecerá na legenda com nome, cor e valor de CN.</div>
-            <button class="tbtn" id="btnCnOrto" style="width:100%;justify-content:center;margin-top:7px">◫ Classificar coberturas e gerar camada CN</button>
-            <div class="hout" id="hCnOrtoOut" style="margin-top:6px">Nenhuma camada CN estimada.</div>
+            <div class="hint" id="hCnLimiteOut" style="margin-top:4px">Selecione o polígono no mapa.</div>
+            <button type="button" class="tbtn" id="btnCnOrto" style="width:100%;justify-content:center;margin-top:7px">Gerar CN</button>
+            <div class="hout" id="hCnOrtoOut" role="status" style="margin-top:6px">Nenhum CN gerado.</div>
+            <details id="hCZoneSection" hidden style="margin-top:8px"><summary>C médio por áreas de contribuição</summary>
+              <label class="field" for="hCZoneRaster" style="margin-top:7px">Camada C</label>
+              <select id="hCZoneRaster" data-explicit-source="true"><option value="">Gere primeiro a camada C</option></select>
+              <label class="field" for="hCZoneLayer" style="margin-top:7px">Camada de polígonos</label>
+              <select id="hCZoneLayer" data-explicit-source="true"><option value="">Escolha a camada de áreas</option></select>
+              <button type="button" class="tbtn" id="btnCZones" style="width:100%;justify-content:center;margin-top:7px">Gerar C médio por área</button>
+              <button type="button" class="mini" id="btnCZonesCancel" hidden>Cancelar cálculo</button>
+              <div id="hCZoneOut" class="hint" role="status" style="margin-top:6px">C ponderado somente na área com dados; área utilizada e cobertura nos atributos.</div>
+            </details>
           </div>
 
           <div class="hsec" id="secHidroMancha">
             <h2>Mancha de inundação <span class="tag">chuva ANA · volume</span></h2>
+            <label class="field" for="hLamModel">Modelo de elevação (MDT / MDE)</label>
+            <select id="hLamModel" aria-label="Modelo de elevação da área contribuinte e da chuva"></select>
             <div class="hint">Calcula o volume de escoamento da bacia contribuinte e mostra onde ele
               fica armazenado no ponto receptor sobre o MDE.</div>
             <div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:8px">
@@ -953,7 +1007,7 @@
               <label class="field">Área contribuinte</label>
               <div class="row2">
                 <select id="hLamBacia">
-                  <option value="d8">Automática pelo ponto marcado (D8 preenchido)</option>
+                  <option value="d8">Automática pelo exutório — reutiliza o D8 existente</option>
                   <option value="selecionada">Alternativa: usar polígono selecionado</option>
                   <option value="contem">Alternativa: desenhar a área tributária</option>
                 </select>
@@ -1092,7 +1146,7 @@
             <div class="row2">
               <div><label class="field">T (anos)</label><input type="number" id="rT" value="25"></div>
               <div><label class="field">C (escoamento)</label>
-                <select id="rC"><option value="auto" selected>Automático — polígonos CN da área</option>
+                <select id="rC"><option value="auto" selected>Automático — camada C da área</option>
                   <option value="0.9">0,90 — piso de mina / rocha exposta</option>
                   <option value="0.7">0,70 — solo compactado / acessos</option>
                   <option value="0.5">0,50 — solo exposto</option>
@@ -1242,7 +1296,7 @@
         </div>
         <div class="hsec" id="secCAR">
           <h2>CAR — Cadastro Ambiental Rural <span class="tag">SICAR</span></h2>
-          <div class="hint">Baixa os imóveis rurais do SICAR (mesma base do consulta.car.gov.br) recortados pela área escolhida, em camada vetorial com código, status e condição de cada imóvel.</div>
+          <div class="hint">Escolha a UF, a área e os temas do CAR. Baixe os dados oficiais e importe o ZIP neste painel.</div>
           <div class="row2" style="margin-top:8px">
             <div><label class="field">UF</label><select id="carUF"></select></div>
             <div><label class="field">Área</label><select id="carArea"><option value="vista">Extensão da tela</option></select></div>
@@ -1252,7 +1306,13 @@
           <div id="carTemas" style="display:grid;grid-template-columns:1fr 1fr;gap:2px 10px"></div>
           <div class="hint" id="carTemasNota" style="margin-top:4px">—</div>
           <div class="hint" id="carInfo">—</div>
-          <button class="tbtn" id="carBaixar" type="button" style="width:100%;justify-content:center;margin-top:8px;background:var(--amber);color:#1a1206;font-weight:600">⭳ Baixar temas da área</button>
+          <button class="tbtn" id="carBaixar" type="button" style="width:100%;justify-content:center;margin-top:8px">Adicionar área do imóvel ao mapa</button>
+          <form id="carZipForm" method="post" target="_blank" rel="noopener noreferrer" action="https://consulta.car.gov.br/geoserver-download/consulta_publica/ows">
+            <div id="carZipParams" hidden></div>
+            <button class="tbtn" id="carZipDownload" type="submit" disabled style="width:100%;justify-content:center;margin-top:8px;background:var(--amber);color:#1a1206;font-weight:600">Baixar ZIP dos temas selecionados</button>
+          </form>
+          <button class="tbtn" id="carZipImport" type="button" style="width:100%;justify-content:center;margin-top:6px">Importar ZIP do SICAR</button>
+          <input id="carZipInput" type="file" accept=".zip" multiple hidden>
           <div class="hout" id="carOut" style="margin-top:6px">Enquadre a área e escolha a UF.</div>
         </div>
         <div class="hsec" id="secMDE">
@@ -1963,12 +2023,15 @@
         </div>
         <div class="hsec">
           <h2>Exagero vertical</h2>
-          <label class="field">Exagero vertical <span class="tag" id="v3dVEv">1,0×</span></label>
-          <div class="row2" style="grid-template-columns:1fr 74px;align-items:center">
-            <input type="range" id="v3dVER" min="1" max="8" step="0.5" value="1" style="width:100%;accent-color:var(--amber)">
-            <input type="number" id="v3dVE" value="1" step="0.5" min="1" max="8">
+        <div id="v3dVEBar" class="v3-ve-controls" role="group" aria-label="Exagero vertical da cena">
+          <label for="v3dVER">Exagero vertical <strong id="v3dVEv">1,0× · escala real</strong></label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="range" id="v3dVER" aria-label="Exagero vertical" min="1" max="8" step="0.5" value="1" style="flex:1;min-width:100px;accent-color:var(--amber)">
+            <input type="number" id="v3dVE" aria-label="Valor do exagero vertical" value="1" step="0.5" min="1" max="8" style="width:55px">
+            <button type="button" id="btnV3RealScale" class="mini" title="Voltar à escala real, sem exagero">1×</button>
           </div>
-          <div class="hint">1 = escala real. Aplicado NA HORA (arraste e veja o relevo esticar).</div>
+        </div>
+          <div class="hint">1× = escala real.</div>
           
         </div>
         <div class="hsec">
@@ -2847,6 +2910,7 @@ Pode usar a mesma linha ou linhas diferentes.</div>
           <div class="spacer" style="flex:1"></div>
           <select id="attrMDT" class="tbtn" style="display:none;max-width:200px" title="MDT usado no recálculo das cotas"></select>
           <button class="tbtn" id="btnAttrRecalc" style="display:none">↻ Recalcular pelo MDT</button>
+          <button class="tbtn" id="attrAllRows" style="display:none">Tabela da camada</button>
           <button class="tbtn" id="btnAddField">+ Campo</button>
           <button class="tbtn" id="btnDeleteFields">Excluir colunas…</button>
           <button class="tbtn" id="attrClose">Fechar</button>
@@ -3044,12 +3108,6 @@ Pode usar a mesma linha ou linhas diferentes.</div>
             <button class="tbtn" type="button" data-export="png">PNG</button>
             <button class="tbtn" type="button" data-export="svg">SVG</button>
           </div>
-          <span class="lo-zoom">
-            <button class="tbtn" id="btnZoomOut" title="Afastar (roda do mouse)">−</button>
-            <button class="tbtn" id="btnZoomFit" title="Ajustar à janela (duplo clique fora da folha)"
-              style="font-family:var(--mono);min-width:62px;justify-content:center">100%</button>
-            <button class="tbtn" id="btnZoomIn" title="Aproximar (roda do mouse)">+</button>
-          </span>
           <div class="lo-plate-strip" id="loPlateStrip" aria-label="Pranchas do formato ativo">
             <span class="lo-plate-format" id="loPlateFormat">A4</span>
             <div id="plateTabs" role="tablist" aria-label="Pranchas"></div>
@@ -3205,9 +3263,9 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
         <summary><span class="gmp-t">Estilo</span><span class="gmp-st"></span>
           <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Transparência" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>A transparência pode ser ajustada na prévia salva e no TIFF original.</span></button></summary>
         <div class="gmp-c">
-          <div class="gmp-row">
+          <div class="gmp-row gm-style-row">
             <label for="imModOp">Opacidade</label>
-            <input type="range" id="imModOp" min="0" max="1" step="0.01" value="1">
+            <input class="gm-style-range" type="range" id="imModOp" min="0" max="1" step="0.01" value="1">
             <span id="imModOpv" class="gmp-val">100%</span>
           </div>
           <label class="gmp-sw"><span>Descartar células sem dado (transparente)</span>
@@ -3478,9 +3536,10 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           </div>
           <div id="rasClassList"></div>
           <div id="rasClassMsg" class="ras-class-msg" style="display:none"></div>
-          <div class="gmp-row">
-            <label for="rasOp" class="grow">Opacidade (0 a 1)</label>
-            <input type="number" id="rasOp" value="0.8" min="0" max="1" step="0.05">
+          <div class="gmp-row gm-style-row">
+            <label for="rasOp">Opacidade</label>
+            <input class="gm-style-range" type="range" id="rasOp" value="0.8" min="0" max="1" step="0.01">
+            <span id="rasOpV" class="gmp-val">80%</span>
           </div>
         </div>
       </details>
@@ -3763,6 +3822,13 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
       </div>
 
       <div class="lp-pane" id="lpPaneSym">
+      <div class="gmp-sec"><div class="gmp-c">
+        <div class="gmp-row gm-style-row">
+          <label for="lpOpacity">Opacidade</label>
+          <input class="gm-style-range" id="lpOpacity" type="range" min="0" max="1" step="0.01" value="1">
+          <span id="lpOpacityV" class="gmp-val">100%</span>
+        </div>
+      </div></div>
       <div class="gmp-sec">
         <div class="gmp-hd"><span class="gmp-t">Transferir estilo entre camadas</span><span class="gmp-st"></span>
           <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Transferir estilo" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Copia simbologia e rótulos; não altera geometria, atributos, filtro ou visibilidade.</span></button></div>
@@ -3797,6 +3863,21 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <option value="grad">Graduado (por valor numérico)</option>
           <option value="cat">Categorizado (por nome/valor)</option>
         </select>
+        <div class="gmp-row" style="margin-top:8px">
+          <label for="lpDecimals" class="grow">Casas decimais</label>
+          <select id="lpDecimals" class="gmp-curto" aria-label="Casas decimais da camada">
+            <option value="0">0</option>
+            <option value="1">1</option>
+            <option value="2" selected>2 (padrão)</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+          </select>
+          <button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Casas decimais" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Formata números em categorias, legendas, atributos e rótulos automáticos. O padrão é 2 casas. Os valores completos continuam nos dados e nos cálculos.</span></button>
+        </div>
 
         <div id="cnBox" style="display:none;border:1px dashed var(--line);border-radius:10px;padding:8px;margin-top:8px">
           <label class="field" style="margin-top:0">⛰ Classificar curvas de nível</label>
@@ -3874,7 +3955,10 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           <div class="gmp-txt" id="lpPtSizeInfo"></div>
         </div>
       </div>
-      <div id="lpClasses"></div>
+      <section class="gm-work-card gm-panel-card" role="group" aria-label="Símbolo e classes">
+        <div class="gm-card-heading"><span class="gm-card-step" aria-hidden="true"></span><b>Símbolo e classes</b></div>
+        <div id="lpClasses"></div>
+      </section>
       </div><!-- /lpPaneSym -->
 
       <div class="lp-pane" id="lpPaneLbl" style="display:none">
@@ -4002,7 +4086,7 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
           </div>
 
           <div class="lp-cls-ctrl">
-            <div class="gmp-hd"><span class="gmp-t">Formato do texto</span><span class="gmp-st"></span><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Formato do texto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Casas decimais −1 = não formatar. Prefixo e sufixo entram junto ao valor do atributo.</span></button></div>
+            <div class="gmp-hd"><span class="gmp-t">Formato do texto</span><span class="gmp-st"></span><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Formato do texto" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Casas decimais −1 = usar a configuração da camada (padrão: 2). Prefixo e sufixo entram junto ao valor do atributo.</span></button></div>
             <div class="row2 gmp-2">
               <select id="lbCase">
                 <option value="">Como está</option>
@@ -4191,8 +4275,8 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
 <!-- CCMGIS_MODULE:asset-082 -->
 <!-- CCMGIS_MODULE:asset-083 -->
 <!-- CCMGIS_MODULE:asset-084 -->
-<!-- CCMGIS_MODULE:asset-085 -->
-<!-- CCMGIS_MODULE:asset-086 -->
+
+
 <!-- CCMGIS_MODULE:asset-087 -->
 <!-- CCMGIS_MODULE:asset-088 -->
 <!-- CCMGIS_MODULE:asset-089 -->
@@ -4253,5 +4337,18 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
 <!-- CCMGIS_MODULE:asset-143 -->
 <!-- CCMGIS_MODULE:asset-144 -->
 <!-- CCMGIS_MODULE:asset-145 -->
-</body>
+<!-- GEOMINE_GATE:HEAD --><!-- CCMGIS_MODULE:asset-146 -->
+
+<!-- CCMGIS_MODULE:asset-147 -->
+<!-- CCMGIS_MODULE:asset-148 -->
+<!-- CCMGIS_MODULE:asset-149 -->
+<!-- CCMGIS_MODULE:asset-150 -->
+<!-- CCMGIS_MODULE:asset-151 -->
+<!-- CCMGIS_MODULE:asset-152 -->
+<!-- CCMGIS_MODULE:asset-153 -->
+<!-- CCMGIS_MODULE:asset-154 -->
+<!-- CCMGIS_MODULE:asset-155 -->
+<!-- CCMGIS_MODULE:asset-156 -->
+<!-- CCMGIS_MODULE:asset-157 -->
+<!-- GEOMINE_GATE:SCRIPT --></body>
 </html>

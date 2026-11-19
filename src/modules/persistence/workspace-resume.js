@@ -3,7 +3,7 @@
 (function(root){
 'use strict';if(root.GeoMineWorkspaceResume)return;
 const POINTER='geomine.workspace.resume.v1',VIEW='geomine.workspace.resume.view.v1',PREFIX='workspaceResume:v1:',LAST='workspaceResume:tab:v2:',LAST_VIEW='geomine.workspace.tabView.v2:',MAX=200*1048576,MAX_PARTS=2000;
-let ready=false,restoring=false,finding=false,busy=null,wanted=true,lastStamp='',changedAt=0,lastSaved='',savedAt=0,warning='',epoch=0,pointerQueue=Promise.resolve();
+let ready=false,restoring=false,finding=false,busy=null,wanted=true,lastStamp='',changedAt=0,lastSaved='',savedAt=0,warning='',epoch=0,pointerQueue=Promise.resolve(),savedSnapshot=null;
 const state=()=>root.GeoMineSessionAutosave?.state,owner=()=>root.GeoMineCloudProvider?.user?.uid||state()?.ownerUid||null,
  gen=()=>state()?.generation,has=()=>typeof hasContent==='function'&&hasContent(),parse=k=>{try{return JSON.parse(sessionStorage.getItem(k)||'null');}catch(_){return null;}},
  own=p=>p?.v===1&&p.owner===owner()&&typeof p.key==='string'&&p.key.startsWith(PREFIX+encodeURIComponent(p.owner||'offline')+':');
@@ -39,6 +39,26 @@ function view(){const q=screen();if(!q||!has())return;const v={owner:owner(),tab
 }
 function stamp(){return JSON.stringify([tabId(),owner(),S.projectId,gen(),state()?.version]);}
 function request(){wanted=true;changedAt=Date.now();}
+function offerSavedSnapshot(data,blob,context){
+ if(!(blob instanceof Blob)||blob.size>MAX||!context||context.project!==S.projectId||
+    context.generation!==gen()||context.version!==state()?.version||context.owner!==owner())return false;
+ // A deliberately reduced file must not replace the workspace's finer grid.
+ const rasters=S.rasters||[];
+ if(data.workCRS!==S.workCRS||data.rasters?.length!==rasters.length||data.rasters.some(q=>{
+  const r=rasters.find(r=>r.id===q.rid),d=r?.d,g=q.d;
+  return !d||!g||['nc','nr','cs','xll','yll'].some(k=>d[k]!==g[k])||(d.csy||d.cs)!==(g.csy||g.cs);
+ }))return false;
+ savedSnapshot={blob,project:context.project,g:context.generation,version:context.version,o:context.owner,id:tabId()};
+ return true;
+}
+async function* snapshotParts(snapshot){
+ if(snapshot){for(let offset=0;offset<snapshot.size;offset+=256*1024)
+  yield new Uint8Array(await snapshot.slice(offset,offset+256*1024).arrayBuffer());
+ }else{
+  const data=projectData({borrowGeometry:true}),encoder=new TextEncoder();
+  for(const text of root.GeoMineImportRecovery.serializeChunks(data))yield encoder.encode(text);
+ }
+}
 async function hash(bytes){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');}
 async function remove(meta){if(!meta||!own(meta)||meta.tab!==tabId()||!Number.isInteger(meta.count)||meta.count<0||meta.count>MAX_PARTS)return;
  try{const db=await idb();await new Promise((resolve,reject)=>{const tx=db.transaction('kv','readwrite'),s=tx.objectStore('kv');s.delete(meta.key);for(let i=0;i<meta.count;i++)s.delete(meta.key+':'+i);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});}catch(_){}
@@ -46,13 +66,15 @@ async function remove(meta){if(!meta||!own(meta)||meta.tab!==tabId()||!Number.is
 async function write(){
  const project=S.projectId,g=gen(),o=owner(),id=tabId(),token=epoch,old=parse(POINTER),version=state()?.version;
  const identity=()=>id===tabId()&&project===S.projectId&&g===gen()&&o===owner()&&token===epoch,
-  valid=()=>identity()&&version===state()?.version;
+  valid=()=>identity()&&version===state()?.version&&!state()?.writeActive;
  const check=()=>{if(!valid())throw new DOMException('A sessão mudou.','AbortError');};
- const key=PREFIX+encodeURIComponent(o||'offline')+':'+encodeURIComponent(id)+':'+crypto.randomUUID(),encoder=new TextEncoder();let count=0,bytes=0,committed=false;
+ const offered=savedSnapshot;savedSnapshot=null;
+ const snapshot=offered&&offered.project===project&&offered.g===g&&offered.o===o&&offered.id===id&&offered.version===version?offered.blob:null;
+ const key=PREFIX+encodeURIComponent(o||'offline')+':'+encodeURIComponent(id)+':'+crypto.randomUUID();let count=0,bytes=0,committed=false;
  try{
-  const data=projectData({borrowGeometry:true});
-  for(const text of root.GeoMineImportRecovery.serializeChunks(data)){
-   check();const part=encoder.encode(text);bytes+=part.byteLength;if(bytes>MAX||count>=MAX_PARTS)throw Error('A sessão excede o limite local de 200 MB.');
+  check();
+  for await(const part of snapshotParts(snapshot)){
+   check();bytes+=part.byteLength;if(bytes>MAX||count>=MAX_PARTS)throw Error('A sessão excede o limite local de 200 MB.');
    const sha256=await hash(part.buffer);check();await idbSet(key+':'+count,{bytes:part.buffer,sha256});count++;
   }
   check();const record=root.GeoMineProjectTabSession?.state?.().record;
@@ -111,7 +133,7 @@ async function sweep(){
  }catch(_){return 0;}
 }
 async function flush(options={}){
- if((!ready&&!options.startup)||restoring||!has()||state()?.suspend||!state()?.booted||S._rasterImportController&&S._rasterImportController!==options.importController)return false;
+ if((!ready&&!options.startup)||restoring||!has()||state()?.suspend||!state()?.booted||state()?.writeActive||S._rasterImportController&&S._rasterImportController!==options.importController)return false;
  if(options.importController&&(S._rasterImportController!==options.importController||options.importController.signal.aborted))return false;
  if(busy){await busy;return flush(options);}
  if(!wanted&&lastSaved===stamp()){view();return true;}
@@ -153,7 +175,7 @@ async function restore(){
  }catch(e){if(valid())toast('Não foi possível retomar a sessão: '+(e.message||e));return false;}
  finally{restoring=false;hideLoad();}
 }
-function forget(){const old=parse(POINTER),o=owner(),project=S.projectId;epoch++;wanted=false;lastSaved='';lastStamp='';savedAt=0;
+function forget(){const old=parse(POINTER),o=owner(),project=S.projectId;epoch++;wanted=false;lastSaved='';lastStamp='';savedAt=0;savedSnapshot=null;
  try{sessionStorage.removeItem(POINTER);sessionStorage.removeItem(VIEW);}catch(_){}
  // Clear only this tab before starting a new project. A delayed write
  // from the old generation cannot bring it back after this queued tombstone.
@@ -175,7 +197,7 @@ async function start(){
 }
 function boot(){
  const load=root.loadProject;root.loadProject=function(){if(!restoring&&(ready||!root.GeoMineProjectTabSession?.state?.().busy))forget();const out=load.apply(this,arguments);if(!restoring){request();setTimeout(()=>void flush(),0);}return out;};
- const save=root.saveProject;if(typeof save==='function')root.saveProject=async function(){const out=await save.apply(this,arguments);if(out===true){request();await flush();}return out;};
+ const save=root.saveProject;if(typeof save==='function')root.saveProject=async function(){const out=await save.apply(this,arguments);if(out===true){request();void flush();}return out;};
  const prepare=root.GeoMineSessionAutosave?.prepareNewProject;if(prepare)root.GeoMineSessionAutosave.prepareNewProject=async function(){forget();return prepare.apply(this,arguments);};
  if(state()?.booted)void start();else root.addEventListener('geomine:cloud-ready',()=>void start(),{once:true});
  setInterval(()=>{if(!ready||restoring||!has()||state()?.suspend)return;view();const s=stamp();if(s!==lastStamp){lastStamp=s;request();}if(wanted&&(Date.now()-changedAt>=800||Date.now()-savedAt>=3000)&&!busy&&!S._rasterImportController&&!S._vtxDragging&&!(typeof ED!=='undefined'&&ED.drag))void flush();},600);
@@ -188,6 +210,6 @@ function boot(){
 async function pendingSnapshot(project){
  const p=await previous();return bound(p)&&p.project===project?p:null;
 }
-root.GeoMineWorkspaceResume={request,flush,restore,forget,pendingSnapshot,sweep,get state(){return {ready,restoring,busy:!!busy,pointer:parse(POINTER),warning};}};
+root.GeoMineWorkspaceResume={request,flush,restore,forget,pendingSnapshot,sweep,offerSavedSnapshot,get state(){return {ready,restoring,busy:!!busy,pointer:parse(POINTER),warning};}};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);

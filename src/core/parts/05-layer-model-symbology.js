@@ -906,7 +906,7 @@ function labelFormulaTexto(L,f,expr,idx,pointIndex=0){
   const c=labelCfg(L);if(!labelPassaFiltro(L,f,c,pointIndex))return null;
   const r=labelFormulaAvalia(L,f,expr,idx,pointIndex);if(!r.ok){L._labelExprError=r.error;return null;}
   L._labelExprError='';let v=r.value;if(v==null||v==='')return null;
-  if(c.dec>=0&&typeof v==='number')v=v.toLocaleString('pt-BR',{minimumFractionDigits:c.dec,maximumFractionDigits:c.dec});
+  if(typeof v==='number')v=GeoMineNumberFormat.format(v,c.dec>=0?c.dec:GeoMineNumberFormat.decimals(L));
   let t=typeof v==='boolean'?(v?'sim':'não'):String(v);
   if(c.case==='upper')t=t.toUpperCase();else if(c.case==='lower')t=t.toLowerCase();
   else if(c.case==='title')t=t.replace(/\S+/g,w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase());
@@ -1108,9 +1108,10 @@ function labelValor(L, f, fld, c, pointIndex=0){
   if((v==null||v==='')&&L.gtype==='point'&&labelCampoEhCota(fld))v=geomValor(L,f,'$Z',pointIndex);
   if(v==null || v==='') return null;
   if(c.dec>=0){
-    const n=parseFloat(String(v).replace(',','.'));
-    if(isFinite(n)) v=n.toLocaleString('pt-BR',{minimumFractionDigits:c.dec, maximumFractionDigits:c.dec});
-  }
+    const n=GeoMineNumberFormat.number(typeof v==='string'?v.replace(',','.'):v);
+    if(n!==null)v=GeoMineNumberFormat.format(n,c.dec);
+  }else if(fld.charAt(0)==='$'&&typeof v==='number'&&fld!=='$ID')v=GeoMineNumberFormat.format(v,GeoMineNumberFormat.decimals(L));
+  else v=GeoMineNumberFormat.field(L,fld,v);
   let t=String(v);
   if(c.case==='upper') t=t.toUpperCase();
   else if(c.case==='lower') t=t.toLowerCase();
@@ -1417,6 +1418,7 @@ function featPartesLatLng(L,f){
   return (f.multi&&Array.isArray(lls?.[0]?.[0]))?lls:[lls];
 }
 function featParteMaisProxima(L,f,latlng){
+  if(window.GeoMineDimensions?.isFeature(L,f))return null;
   if(!map||!f||!latlng)return null;
   const ps=featPartesLatLng(L,f);
   if(ps.length<=1)return null;
@@ -1439,6 +1441,7 @@ function featParteMaisProxima(L,f,latlng){
   return bi;
 }
 function selParteValida(q,L,f){
+  if(window.GeoMineDimensions?.isFeature(L,f))return false;
   return !!(q&&Number.isInteger(q.partIdx)&&f&&(
     (L.gtype==='point'&&Array.isArray(f.geom)&&f.geom.length>1)||
     (f.multi&&Array.isArray(f.geom?.[0]?.[0])&&f.geom.length>1)));
@@ -1446,6 +1449,7 @@ function selParteValida(q,L,f){
 function apagarSelecao(q,semConfirmar){
   const L=q&&(q.layer||S.layers.find(x=>x.id===q.layerId)),f=L&&L.features[q.idx];
   if(!L||!f)return false;
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return false;}
   const parte=selParteValida(q,L,f);
   if(parte){
     const antes=JSON.parse(JSON.stringify(f));
@@ -1671,6 +1675,7 @@ function finishVertexRender(L){
   if(S._view==='v3d'&&typeof v3Auto==='function')v3Auto();
 }
 function drawLayer(L,options){
+  window.GeoMineDimensions?.beginRender?.(L);
   // Appending an operation result must not rebuild a million unchanged
   // vertices. Reuse the rendered group only while its prefix and renderer
   // are still current; global unique labels require a complete redraw.
@@ -1684,6 +1689,7 @@ function drawLayer(L,options){
   if(L){
     delete L._projectDrawDeferred;
     map.getPane(panelDaCamada('L'+L.id)).style.opacity=String(L.sym?.opacity??1);
+    map.getPane(panelDosRotulos('L'+L.id)).style.opacity=String(L.sym?.opacity??1);
   }
   /* Todo redesenho causado por edição atualiza primeiro os atributos de área.
      Isso cobre vértices, movimento da feição, undo, clip, união e dissolve. */
@@ -1730,7 +1736,7 @@ function drawLayer(L,options){
   // vetores (um único <svg>) ficavam sempre acima das imagens dos rasters —
   // por isso um polígono "embaixo" na lista ainda tingia o MDT. Com um pane
   // por camada, o z-index passa a valer entre tipos diferentes.
-  const paneNome=panelDaCamada('L'+L.id);
+  const paneNome=panelDaCamada('L'+L.id),paneRotulos=panelDosRotulos('L'+L.id);
   /* Canvas POR CAMADA, no pane DELA. O canvas compartilhado é um único
      elemento que mora num pane só: toda camada grande desenhava lá, fora da
      pilha, e ficava presa embaixo dos rasters por mais que subisse na árvore
@@ -1796,6 +1802,7 @@ function drawLayer(L,options){
          apenas uma condição de profundidade na cena 3D; usá-la para cortar a
          polyline 2D fazia parecer que a cava/rampa nem haviam sido geradas. */
       const lls=featToLatLngs(L,f); const lyr=L2.polyline(lls,style); lyr._fidx=idx; layers.push(lyr);L._vertexPaths.set(f,lyr);
+      if(window.GeoMineDimensions?.isFeature(L,f))GeoMineDimensions.registerGeometry(L,f,lyr);
       if(window.GeoMineLineArrows)layers.push(...GeoMineLineArrows.leaflet(lls,st,R));
     } else {
       const lls=featToLatLngs(L,f); const lyr=L2.polygon(lls,style); lyr._fidx=idx; layers.push(lyr);L._vertexPaths.set(f,lyr);
@@ -1833,7 +1840,7 @@ function drawLayer(L,options){
           if(!Array.isArray(w)||!Number.isFinite(w[0])||!Number.isFinite(w[1]))continue;
           const rot=d>=1000 ? (d/1000).toFixed(2).replace('.',',')+' km'
                             : d.toFixed(d<10?2:1).replace('.',',')+' m';
-          layers.push(L2.marker([w[1],w[0]],{interactive:false, keyboard:false, pane:paneNome,
+          layers.push(L2.marker([w[1],w[0]],{interactive:false, keyboard:false, pane:paneRotulos,
             icon:L2.divIcon({className:'gc-label', iconSize:[0,0],
               html:`<div style="${labelCSS(cfg,px)};transform:translate(-50%,-50%)">${esc(rot)}</div>`})}));
         }
@@ -1855,9 +1862,12 @@ function drawLayer(L,options){
         const desloc=(ddx||ddy)?` translate(${ddx*3}px,${ddy*3}px)`:'';
         labelPontosCurva(L,f,+cfg.rep||0).forEach(pt=>{
           const rot = gira? ` rotate(${pt.ang.toFixed(1)}deg)` : '';
-          layers.push(L2.marker(pt.ll,{interactive:false, keyboard:false, pane:paneNome,
-            icon:L2.divIcon({className:'gc-label', iconSize:[0,0],
-              html:`<div style="${labelCSS(cfg,px)};transform:translate(-50%,-50%)${desloc}${rot};white-space:nowrap;text-align:center;line-height:1.15">${labelHTML(txt)}</div>`})}));
+          const dimension=!!window.GeoMineDimensions?.isFeature(L,f);
+          const textMarker=L2.marker(pt.ll,{interactive:dimension, keyboard:dimension, pane:paneRotulos,
+            icon:L2.divIcon({className:'gc-label'+(dimension?' gm-dimension-label':''), iconSize:[0,0],
+              html:`<div${dimension?' class="gm-dimension-text"':''} style="${labelCSS(cfg,px)};transform:translate(-50%,-50%)${desloc}${rot};white-space:nowrap;text-align:center;line-height:1.15">${labelHTML(txt)}</div>`})});
+          if(dimension)GeoMineDimensions.registerLabel(L,f,textMarker);
+          layers.push(textMarker);
         });
       }
       else if(cfg.onMap!==false){
@@ -1876,9 +1886,11 @@ function drawLayer(L,options){
           // ATENÇÃO: nada de {opacity:0} aqui. O Leaflet aplica essa opacidade ao
           // elemento do ícone — e o rótulo, que vive dentro dele, sumia por completo.
           // Era esse o motivo de os rótulos nunca aparecerem no mapa.
-          const t=L2.marker([w[1],w[0]],{interactive:false, keyboard:false, pane:paneNome,
-            icon:L2.divIcon({className:'gc-label', iconSize:[0,0],
-              html:`<div style="${labelCSS(cfg,px)};transform:translate(${tx},-50%) translate(${ddx*3}px,${ddy*3}px);line-height:1.15;text-align:${cfg.anchor==='end'?'right':cfg.anchor==='start'?'left':'center'}">${labelHTML(txtP)}</div>`})});
+          const dimension=!!window.GeoMineDimensions?.isFeature(L,f);
+          const t=L2.marker([w[1],w[0]],{interactive:dimension, keyboard:dimension, pane:paneRotulos,
+            icon:L2.divIcon({className:'gc-label'+(dimension?' gm-dimension-label':''), iconSize:[0,0],
+              html:`<div${dimension?' class="gm-dimension-text"':''} style="${labelCSS(cfg,px)};transform:translate(${tx},-50%) translate(${ddx*3}px,${ddy*3}px);line-height:1.15;text-align:${cfg.anchor==='end'?'right':cfg.anchor==='start'?'left':'center'}">${labelHTML(txtP)}</div>`})});
+          if(dimension)GeoMineDimensions.registerLabel(L,f,t);
           layers.push(t);
         });
       }
@@ -1911,7 +1923,7 @@ function drawLayer(L,options){
     // O ponto real do cursor consulta a hierarquia inteira antes de selecionar.
     if(['select','del','pan','vertex'].includes(S.tool)){
       const ll=(e.originalEvent&&map.mouseEventToLatLng)?map.mouseEventToLatLng(e.originalEvent):e.latlng;
-      const hit=feicaoSobPonto(ll,S.touch?Math.round(SNAP_PX*1.6):SNAP_PX);
+      const hit=window.GeoMineDimensions?.componentOwner?.(e)||feicaoSobPonto(ll,S.touch?Math.round(SNAP_PX*1.6):SNAP_PX);
       if(hit)pickFeature(hit.L,hit.idx,ll,{partIdx:hit.ringIndex,originalEvent:e.originalEvent});
       L2.DomEvent.stop(e);return;
     }

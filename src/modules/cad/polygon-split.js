@@ -217,7 +217,7 @@ const sharedChannel=L=>L._channelLink?.version===2&&L._channelLink.role==='polyg
 const especial=L=>!!(L._geology||L.cavaDesign||L.tinSurface||L._cava2DesignId||L._rb31Recipe||L._channelLink&&!sharedChannel(L));
 function liberada(L){
   if(L.locked){toast('A camada "'+L.name+'" está bloqueada');return false;}
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return false;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return false;}
   if(especial(L)){toast('"'+L.name+'" é gerada por uma ferramenta própria e não pode ser dividida aqui');return false;}
   return true;
 }
@@ -270,8 +270,8 @@ function fidLivre(L){
 }
 function undo(a){
   const grupos=(a.grupos||[]).filter(g=>S.layers.includes(g.L));
-  const travada=grupos.find(g=>typeof collabCanEditLayer==='function'&&!collabCanEditLayer(g.L,false));
-  if(travada){collabCanEditLayer(travada.L,true);return;}
+  const travada=grupos.find(g=>typeof canEditLayer==='function'&&!canEditLayer(g.L,false));
+  if(travada){canEditLayer(travada.L,true);return;}
   const release=window.GeoMineChannelLive?.suspend?.()||(()=>{});
   try{
   if(S.undo.at(-1)===a)S.undo.pop();

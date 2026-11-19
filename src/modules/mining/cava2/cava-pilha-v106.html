@@ -173,11 +173,14 @@
     background:#0f766e;border-color:#2dd4bf;color:#fff;
   }
   #ccmgisV74Toolbar .ccmgis-cota-command{
-    position:relative;display:grid;grid-template-columns:auto auto minmax(82px,1fr) auto auto;
-    align-items:center;gap:5px;width:245px;height:29px;min-width:205px;padding:0 7px;
+    position:relative;display:grid;grid-template-columns:auto auto 28px minmax(70px,1fr) auto 28px auto;
+    align-items:center;gap:4px;width:295px;height:29px;min-width:270px;padding:0 5px;
     border:1px solid #2c4050;border-radius:5px;background:#111c26;color:#dfe9f0;
     font:600 10px/1 "Signika",sans-serif;white-space:nowrap;
   }
+  #ccmgisV74Toolbar .ccmgis-cota-step{width:28px;min-width:28px;height:27px;padding:0;border:1px solid #627c90;border-radius:4px;background:transparent;color:inherit;font:700 20px/1 Arial,sans-serif;touch-action:manipulation;user-select:none;-webkit-user-select:none;cursor:pointer;}
+  #ccmgisV74Toolbar .ccmgis-cota-step:hover:not(:disabled),#ccmgisV74Toolbar .ccmgis-cota-step:focus-visible{background:#14b8a633;border-color:#14b8a6;}
+  #ccmgisV74Toolbar .ccmgis-cota-step:disabled{opacity:.35;cursor:default;}
   #ccmgisV74Toolbar .ccmgis-cota-command[hidden]{display:none!important;}
   #ccmgisV74Toolbar .ccmgis-cota-caption{color:#4fd2e8;text-transform:uppercase;letter-spacing:.35px;}
   #ccmgisV74Toolbar .ccmgis-cota-bound{min-width:25px;color:#8fa7b8;text-align:center;font-variant-numeric:tabular-nums;}
@@ -398,13 +401,15 @@
       <select id="ccmgis_mdt" aria-label="Escolher MDT de trabalho"><option value="">Escolher MDT de trabalho</option></select>
       <button type="button" id="ccmgisMdtOpen" aria-label="Escolher MDT de trabalho" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="soft" d="M2 17 8 6l5 7 4-5 5 9Z"/><path d="m2 17 6-11 5 7 4-5 5 9M2 21h20M6 17h12M8 10l2 2 2-1"/></svg></button>
     </div>
-    <label id="ccmgisCotaCommand" class="ccmgis-cota-command" title="Cota de trabalho" aria-label="Cota de trabalho" hidden>
+    <div id="ccmgisCotaCommand" class="ccmgis-cota-command" role="group" title="Cota de trabalho" aria-label="Cota de trabalho" hidden>
       <span class="ccmgis-cota-caption">Cota</span>
       <span id="ccmgis_cota_min" class="ccmgis-cota-bound" aria-label="Cota mínima">—</span>
-      <input id="ccmgis_cota_trabalho" type="range" min="0" max="0" step="5" value="0" disabled aria-label="Cota de trabalho em intervalos de 5 metros">
+      <button type="button" id="ccmgis_cota_menos" class="ccmgis-cota-step" disabled title="Diminuir cota em 1 metro" aria-label="Diminuir cota em 1 metro">−</button>
+      <input id="ccmgis_cota_trabalho" type="range" min="0" max="0" step="1" value="0" disabled aria-label="Cota de trabalho em intervalos de 1 metro">
       <output id="ccmgis_cota_valor" for="ccmgis_cota_trabalho" aria-live="polite">—</output>
+      <button type="button" id="ccmgis_cota_mais" class="ccmgis-cota-step" disabled title="Aumentar cota em 1 metro" aria-label="Aumentar cota em 1 metro">+</button>
       <span id="ccmgis_cota_max" class="ccmgis-cota-bound" aria-label="Cota máxima">—</span>
-    </label>
+    </div>
 
     <span class="ccmgis-tool-sep" aria-hidden="true"></span>
 
@@ -432,6 +437,7 @@
 
     <div class="sep"></div>
 
+    <button type="button" id="b_grade" class="ccmgis-tool ativa" title="Ocultar quadrícula" aria-label="Ocultar quadrícula" aria-pressed="true" data-tooltip="Ocultar quadrícula"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></button>
     <button type="button" id="b_ajustar" class="ccmgis-tool" title="Ajustar vista ao desenho" aria-label="Ajustar vista ao desenho" data-tooltip="Ajustar vista ao desenho"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><path class="accent" d="m8 7 8 2 1 7-9 1-2-5Z"/></svg></button>
     <button type="button" id="b_dxf" class="ccmgis-tool" title="Exportar DXF" aria-label="Exportar DXF" data-tooltip="Exportar DXF"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2h10l5 5v15H5ZM15 2v6h5"/><path class="accent" d="m8 14 3-2 5 3-3 4-5-2Z"/></svg></button>
     <button type="button" id="b_png" class="ccmgis-tool" title="Exportar imagem PNG" aria-label="Exportar imagem PNG" data-tooltip="Exportar imagem PNG"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="18" rx="2"/><circle cx="8" cy="8" r="2"/><path class="soft" d="m3 18 5-5 4 4 4-6 5 7Z"/><path d="m3 18 5-5 4 4 4-6 5 7"/></svg></button>
@@ -2894,7 +2900,9 @@ function ajustarVista(){
   vistaManual=false;
 }
 
+let mostraGrade=true;
 function grade(){
+  if(!mostraGrade)return;
   const W=cv.clientWidth, H=cv.clientHeight;
   const passos=[1,2,5,10,20,25,50,100,200,500,1000,2000];
   const passo=passos.find(p=>p*escala>=55)||Math.pow(10, Math.ceil(Math.log10(55/escala)));
@@ -2969,6 +2977,7 @@ function desenhaContexto(frente){
     ctx.globalAlpha=Math.max(0,Math.min(1,Number.isFinite(+item.opacity)?+item.opacity:.8));
     try{desenhaImagemContexto(item,im);}catch(e){}
   }
+  if(!primeiroPlano&&window.GeoMineCavaBasemap?.draw()){grade();}
   ctx.globalAlpha=1;
   for(const item of contexto){
     if(!!item.foreground!==primeiroPlano)continue;
@@ -3509,6 +3518,8 @@ function redesenha(){
   desenhaContexto(false);
   // desenha TODOS os limites da cadeia (cava, cava#1, cava#2, ...) e depois a pilha
   for(const k of alvos()) desenhaObjeto(k);
+  // Only the intersection is foreground; reference layers keep their old order.
+  desenhaContexto(true);
 
   // O limite bruto acompanha a visibilidade do objeto, inclusive no recorte.
   if(ferramenta!=="editar"){
@@ -3596,7 +3607,6 @@ function redesenha(){
     rotuloHalo("A",ax-12,ay-10,"#2a7f52",12);
     rotuloHalo("A'",bx2+12,by2-10,"#2a7f52",12);
   }
-  desenhaContexto(true);
   if(alvos().some(k=>objs[k]?.base&&visibilidade[tipoDe(k)]?.on!==false))desenhaLegendaCotaTrabalho();
   // dica quando vazio
   if(!objs.cava.base && !objs.pilha.base && !contexto?.length && !(desenho&&desenho.pts.length)){
@@ -3604,6 +3614,7 @@ function redesenha(){
     ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText("Use ✏️ Desenhar cava / pilha e clique para digitalizar a linha fechada.", W/2, H/2);
   }
+  window.GeoMineCavaBasemap?.drawCredit();
 }
 
 /* ================= seção ================= */
@@ -5069,7 +5080,12 @@ window.addEventListener("resize", ()=>{redesenha(); desenhaSecPainel();});
 })();
 
 /* ================= boot ================= */
-window.__api={objs, geraDesign, offsetU, cotaEm, cotaTotal, parametros, parametrosDe, exemplo,
+function setGridVisible(v){
+  mostraGrade=v!==false;
+  const b=$("b_grade");if(b){b.classList.toggle("ativa",mostraGrade);b.setAttribute("aria-pressed",String(mostraGrade));b.title=b.dataset.tooltip=b.ariaLabel=mostraGrade?"Ocultar quadrícula":"Mostrar quadrícula";}
+  redesenha();return mostraGrade;
+}
+window.__api={get gridVisible(){return mostraGrade;},setGridVisible,objs, geraDesign, offsetU, cotaEm, cotaTotal, parametros, parametrosDe, exemplo,
               setVolumeSummary(value){volumeResumo=value;atualizaResultados();},
               regen, removeLacos, resample, faixaCorredorInt,
               anelComRampaInt, areaAssinada,
@@ -5178,6 +5194,7 @@ window.__api={objs, geraDesign, offsetU, cotaEm, cotaTotal, parametros, parametr
               iniciarDesenhoCava(){return this.beginDrawing("cava");},
               iniciarDesenhoDce(){return this.beginDrawing("pilha");},
               redesenha};
+$("b_grade").onclick=()=>{setGridVisible(!mostraGrade);window.dispatchEvent(new CustomEvent("cava2:grid-changed",{detail:{visible:mostraGrade}}));};
 defineTool("mover");
 if(!carregaEstado()){
   if(window.frameElement&&window.frameElement.id==="cava2Frame"){
@@ -5185,5 +5202,150 @@ if(!carregaEstado()){
   }else exemplo();
 }else{sincNb("cava");sincNb("pilha");regen();}
 </script>
-</body>
+<script>/* Cava: a caneta segue os manipuladores de edição existentes. Dedos permitem
+   pinça/pan em qualquer ferramenta; um toque parado mantém o clique normal. */
+(function(){
+'use strict';
+const fingers=new Map();let pen=null,sequence=null,suppressUntil=0;
+const position=e=>{const r=cv.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};};
+const stop=e=>{if(e.cancelable)e.preventDefault();e.stopImmediatePropagation();};
+const pair=()=>{const a=[...fingers.values()];return a.length<2?null:{x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2,d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)};};
+function clear(){fingers.clear();pen=null;sequence=null;cancelaArrasteCava();}
+cv.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='pen'){if(sequence?.native)cancelaArrasteCava();pen=e.pointerId;fingers.clear();sequence=null;return;}
+  if(e.pointerType!=='touch')return;
+  // Palma apoiada durante o desenho não inicia navegação.
+  if(pen!==null){stop(e);return;}
+  const p=position(e);fingers.set(e.pointerId,{...p,start:p});
+  if(fingers.size===1)sequence={drag:false,multi:false,native:ferramenta==='editar'};
+  else {sequence.multi=true;cancelaArrasteCava();}
+  // O arrasto dos vértices com um dedo conserva o fluxo de edição original.
+  if(sequence.native&&!sequence.multi)return;
+  stop(e);
+  try{cv.setPointerCapture(e.pointerId);}catch(_){}
+},{capture:true,passive:false});
+cv.addEventListener('pointermove',e=>{
+  if(e.pointerType!=='touch')return;
+  if(sequence?.native&&!sequence.multi&&editando)return;
+  stop(e);if(pen!==null||!fingers.has(e.pointerId))return;
+  const before=pair(),old=fingers.get(e.pointerId),p=position(e);
+  fingers.set(e.pointerId,{...p,start:old.start});
+  const after=pair();
+  if(before&&after&&before.d>1&&after.d>1){
+    const next=clamp(escala*after.d/before.d,1e-3,1e4),f=next/escala;
+    ox=after.x-(before.x-ox)*f;oy=after.y-(before.y-oy)*f;escala=next;
+  }else if(sequence&&!sequence.multi){
+    if(!sequence.drag&&Math.hypot(p.x-old.start.x,p.y-old.start.y)>8)sequence.drag=true;
+    if(!sequence.drag)return;
+    ox+=p.x-old.x;oy+=p.y-old.y;
+  }else return;
+  vistaManual=true;agendaInteracao(true);
+},{capture:true,passive:false});
+function finish(e){
+  if(e.pointerType==='pen'){if(pen===e.pointerId)pen=null;return;}
+  if(e.pointerType!=='touch')return;
+  if(sequence?.native&&!sequence.multi){
+    fingers.delete(e.pointerId);if(!fingers.size)sequence=null;return;
+  }
+  stop(e);const known=fingers.has(e.pointerId),s=sequence;
+  fingers.delete(e.pointerId);suppressUntil=performance.now()+500;
+  if(!fingers.size)sequence=null;
+  if(!known||pen!==null||e.type!=='pointerup'||!s||s.drag||s.multi||ferramenta==='mover')return;
+  // Apenas o adaptador de entrada: desenho/seleção continuam nos comandos
+  // desktop. O par não cria um clique extra de compatibilidade do navegador.
+  for(const type of ['pointerdown','pointerup'])cv.dispatchEvent(new PointerEvent(type,{
+    bubbles:true,cancelable:true,pointerId:e.pointerId,pointerType:'mouse',isPrimary:true,
+    button:0,buttons:type==='pointerdown'?1:0,clientX:e.clientX,clientY:e.clientY}));
+}
+for(const type of ['pointerup','pointercancel'])cv.addEventListener(type,finish,{capture:true,passive:false});
+cv.addEventListener('lostpointercapture',e=>{if(e.pointerType==='touch'){fingers.delete(e.pointerId);if(!fingers.size)sequence=null;}});
+cv.addEventListener('click',e=>{if(performance.now()<suppressUntil&&e.pointerType!=='pen')stop(e);},true);
+window.addEventListener('blur',clear);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState!=='visible')clear();});
+window.GeoMineCavaTouch={cancel:clear,get activeContacts(){return fingers.size;}};
+})();
+</script><script>/* Satellite and project ortho backgrounds are display-only: no geometry changes or
+   image payloads enter the project recipe. Meshes use the editor's own CRS. */
+(function(){
+'use strict';
+let tiles=[],provider='Sem fundo',viewKey='',paintFrame=0;
+const cache=new Map(),MAX_CACHE=96;
+const credits={
+ 'Satélite (Google)':'Imagens © Google', 'Híbrido (Google)':'Imagens e dados © Google',
+ 'Satélite (Esri)':'Imagens © Esri e provedores', 'Ruas (OSM)':'© OpenStreetMap contributors',
+ 'Topográfico (OpenTopo)':'© OpenStreetMap · SRTM · OpenTopoMap (CC-BY-SA)'
+};
+// Extend the edge pixels and the clipping mask, keeping the affine mapping
+// exact. Otherwise adjacent antialiased triangles leave white hairlines.
+function paddedImage(image){
+ const w=image.naturalWidth,h=image.naturalHeight,c=document.createElement('canvas');c.width=w+2;c.height=h+2;
+ const p=c.getContext('2d');p.drawImage(image,1,1);
+ p.drawImage(image,0,0,w,1,1,0,w,1);p.drawImage(image,0,h-1,w,1,1,h+1,w,1);
+ p.drawImage(image,0,0,1,h,0,1,1,h);p.drawImage(image,w-1,0,1,h,w+1,1,1,h);
+ for(const [sx,sy,dx,dy] of [[0,0,0,0],[w-1,0,w+1,0],[0,h-1,0,h+1],[w-1,h-1,w+1,h+1]])p.drawImage(image,sx,sy,1,1,dx,dy,1,1);
+ return c;
+}
+function triangle(image,s0,s1,s2,p0,p1,p2){
+ const ux=s1[0]-s0[0],uy=s1[1]-s0[1],vx=s2[0]-s0[0],vy=s2[1]-s0[1],den=ux*vy-uy*vx;
+ if(Math.abs(den)<1e-9)return;
+ const ax=p1[0]-p0[0],ay=p1[1]-p0[1],bx=p2[0]-p0[0],by=p2[1]-p0[1],
+  a=(ax*vy-bx*uy)/den,b=(ay*vy-by*uy)/den,c=(ux*bx-vx*ax)/den,d=(ux*by-vx*ay)/den,
+  e=p0[0]-a*s0[0]-c*s0[1],f=p0[1]-b*s0[0]-d*s0[1],cx=(p0[0]+p1[0]+p2[0])/3,cy=(p0[1]+p1[1]+p2[1])/3;
+ const expanded=[p0,p1,p2].map(p=>{const dx=p[0]-cx,dy=p[1]-cy,len=Math.hypot(dx,dy)||1;return [p[0]+2*dx/len,p[1]+2*dy/len];});
+ ctx.save();ctx.beginPath();expanded.forEach((p,i)=>i?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();ctx.clip();
+ ctx.transform(a,b,c,d,e,f);ctx.drawImage(image,0,0);ctx.restore();
+}
+function drawTile(tile,image){
+ const m=tile.mesh,w=image.width-2,h=image.height-2,at=(r,c)=>m.points[r*(m.cols+1)+c],screen=p=>W2S(p.x,p.y);
+ for(let r=0;r<m.rows;r++)for(let c=0;c<m.cols;c++){
+  const p00=screen(at(r,c)),p10=screen(at(r,c+1)),p11=screen(at(r+1,c+1)),p01=screen(at(r+1,c)),
+   x0=1+c*w/m.cols,x1=1+(c+1)*w/m.cols,y0=1+r*h/m.rows,y1=1+(r+1)*h/m.rows;
+  triangle(image,[x0,y0],[x1,y0],[x1,y1],p00,p10,p11);triangle(image,[x0,y0],[x1,y1],[x0,y1],p00,p11,p01);
+ }
+}
+
+function repaint(){if(!paintFrame)paintFrame=requestAnimationFrame(()=>{paintFrame=0;redesenha();});}
+function stats(){
+ let loaded=0,failed=0;
+ for(const t of tiles){const r=cache.get(t.url);if(r?.loaded)loaded++;else if(r?.failed)failed++;}
+ return {provider,total:tiles.length,loaded,failed,loading:tiles.length-loaded-failed};
+}
+function status(){window.dispatchEvent(new CustomEvent('cava2:basemap-status',{detail:stats()}));}
+function get(url){
+ let item=cache.get(url);
+ if(item?.failed&&Date.now()-item.failedAt>5000){cache.delete(url);item=null;}
+ if(item){cache.delete(url);cache.set(url,item);return item;}
+ const image=new Image();image.crossOrigin='anonymous';image.decoding='async';
+ item={image,loaded:false,failed:false};cache.set(url,item);
+ image.onload=()=>{try{item.texture=paddedImage(image);item.loaded=!!image.naturalWidth;}catch(_){item.loaded=false;}item.failed=!item.loaded;if(item.failed)item.failedAt=Date.now();status();repaint();};
+ image.onerror=()=>{item.failed=true;item.failedAt=Date.now();status();repaint();};image.src=url;return item;
+}
+function setTiles(next,name){
+ provider=name||'Sem fundo';tiles=Array.isArray(next)?next:[];
+ const active=new Set(tiles.map(t=>t.url));for(const t of tiles){const r=get(t.url);if(t.kind==='ortho')r.ortho=true;}
+ // Keep only the active local ortho texture; large project previews must not
+ // accumulate alongside the satellite tile cache on the iPad.
+ for(const [url,r] of cache)if(r.ortho&&!active.has(url)){r.image.onload=r.image.onerror=null;if(!r.loaded&&!r.failed)r.image.src='';cache.delete(url);}
+ for(const [url,r] of cache){if(cache.size<=MAX_CACHE)break;if(active.has(url))continue;
+  r.image.onload=r.image.onerror=null;if(!r.loaded&&!r.failed)r.image.src='';cache.delete(url);
+ }
+ status();repaint();
+}
+function draw(){
+ const key=[escala,ox,oy,cv.clientWidth,cv.clientHeight].join('|');
+ if(key!==viewKey){viewKey=key;queueMicrotask(()=>window.dispatchEvent(new CustomEvent('cava2:view-changed')));}
+ let painted=false;ctx.save();ctx.globalAlpha=1;
+ for(const tile of tiles){const r=cache.get(tile.url);if(r?.loaded){drawTile(tile,r.texture);painted=true;}}
+ ctx.restore();return painted;
+}
+function drawCredit(){
+ if(!credits[provider]||!tiles.some(t=>cache.get(t.url)?.loaded))return;
+ const text=credits[provider],x=cv.clientWidth-6,y=cv.clientHeight-5;
+ ctx.save();ctx.font='10px system-ui,sans-serif';ctx.textAlign='right';ctx.textBaseline='bottom';
+ const width=ctx.measureText(text).width;ctx.fillStyle='rgba(255,255,255,.88)';ctx.fillRect(x-width-5,y-13,width+10,16);
+ ctx.fillStyle='#263238';ctx.fillText(text,x,y);ctx.restore();
+}
+window.GeoMineCavaBasemap={setTiles,draw,drawCredit,get state(){return {...stats(),cacheSize:cache.size,tiles:tiles.map(t=>({url:t.url,z:t.z,x:t.x,y:t.y,mesh:t.mesh}))};}};
+})();
+</script></body>
 </html>

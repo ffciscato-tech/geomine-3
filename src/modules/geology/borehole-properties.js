@@ -16,13 +16,10 @@
     const index=layer===explicit?Number(selection.index??selection.idx??0):layer===selected?Number(S.selFeat.idx):0;
     return {layer,index:Number.isInteger(index)&&layer.features[index]?index:0};
   }
-  function requireLocal(){
-    if(window.GeoMineCollaboration?.snapshot?.().roomId)throw new Error('Edite os dados completos de sondagem na cópia local, fora da sala colaborativa; salve o projeto para compartilhar trajetória, atributos e logs.');
-  }
   function requireTarget(layer,feature){
-    requireLocal();
+    
     if(!(S.layers||[]).includes(layer)||!layer.features.includes(feature))throw new Error('O furo não está mais neste projeto. Reabra suas propriedades.');
-    if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(layer,false))throw new Error('Esta camada não está disponível para edição.');
+    if(typeof canEditLayer==='function'&&!canEditLayer(layer,false))throw new Error('Esta camada não está disponível para edição.');
   }
   function validID(id,layer,feature){
     if(typeof id!=='string'||!id.trim()||id.trim().length>160||/[\x00-\x1f\x7f]/.test(id))throw new Error('Informe um código do furo com 1 a 160 caracteres, sem quebras de linha.');

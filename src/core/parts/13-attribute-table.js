@@ -22,18 +22,33 @@ function attrFieldTypeLabel(field){
   const code=String(field&&field.type||'C').toUpperCase();
   return ({C:'Texto',N:'Número',F:'Número',L:'Sim/Não',D:'Data',M:'Texto longo'})[code]||code;
 }
-function openAttr(selIdx){
-  const L=activeLayer(); const panel=document.getElementById('attrPanel');
+function openAttr(selIdx,options={}){
+  const L=options.layer||activeLayer(); const panel=document.getElementById('attrPanel');
   if(!L){toast('Sem camada ativa');return;}
-  const somenteLeitura=typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false);
-  if(L.gtype==='polygon')autoAreaSyncLayer(L);
+  const featureOnly=options.featureOnly===true,target=options.feature||L.features?.[selIdx];
+  if(featureOnly){
+    if(!S.layers.includes(L)||!target||(selIdx=L.features.indexOf(target))<0){toast('A feição não está mais disponível.');return;}
+    S.activeId=L.id;S.selRaster=null;S.selFeat={layer:L,layerId:L.id,idx:selIdx};
+  }
+  // Projetos legados podem trazer nomes simples ou somente props. A consulta
+  // da feição não pode falhar por uma definição de coluna ausente/incompleta.
+  const fields=(Array.isArray(L.fields)?L.fields:[]).map(f=>typeof f==='string'?{name:f,type:'C',length:254}:f).filter(f=>f&&f.name),
+    known=new Set(fields.map(f=>f.name)),samples=featureOnly?[target]:(L.features||[]).slice(0,200);
+  if(featureOnly||!fields.length)for(const f of samples)for(const [name,value] of Object.entries(f?.props||{}))if(!known.has(name)){
+    known.add(name);fields.push({name,type:typeof value==='number'?'N':typeof value==='boolean'?'L':'C',length:typeof value==='number'?20:254,decimal:typeof value==='number'?6:0});
+  }
+  L.fields=fields;
+  const somenteLeitura=typeof canEditLayer==='function'&&!canEditLayer(L,false);
+  if(L.gtype==='polygon'){if(featureOnly)autoAreaSyncFeature(L,target);else autoAreaSyncLayer(L);}
   // camada de drenagem: corrige nomes duplicados antes de listar (feições antigas)
   if(L.name && /^Drenagem — /.test(L.name) && typeof drenCorrigeDuplicados==='function'){
     try{ const t=L.name.replace(/^Drenagem — /,''); const n=drenCorrigeDuplicados(L, t);
       if(n){ try{ drawLayer(L); }catch(e){} toast(n+' nome(s) duplicado(s) corrigido(s)'); } }catch(e){}
   }
-  const nAttr=attrFilterCount(L),temAttr=!!(L.attrFilter&&L.attrFilter.enabled!==false&&L.attrFilter.field);
-  document.getElementById('attrTtl').textContent=`Atributos · ${L.name} (${temAttr?nAttr+' de ':''}${L.features.length})`;
+  const nAttr=featureOnly?1:attrFilterCount(L),temAttr=!!(L.attrFilter&&L.attrFilter.enabled!==false&&L.attrFilter.field);
+  document.getElementById('attrTtl').textContent=featureOnly?`Atributos da feição · ${L.name} (#${selIdx})`:`Atributos · ${L.name} (${temAttr?nAttr+' de ':''}${L.features.length})`;
+  const allRows=document.getElementById('attrAllRows');
+  if(allRows){allRows.style.display=featureOnly?'':'none';allRows.onclick=()=>{if(!S.layers.includes(L))return;S.activeId=L.id;openAttr(selIdx,{layer:L});};}
   // botão "Recalcular pelo MDT" + seletor de qual MDT usar: aparecem para
   // camadas de drenagem OU qualquer linha com os campos geométricos do terreno
   const bR=document.getElementById('btnAttrRecalc');
@@ -59,8 +74,9 @@ function openAttr(selIdx){
   }
   const body=document.getElementById('attrBody');
   body.dataset.lid=String(L.id);            // de qual camada é esta tabela
+  body.dataset.featureOnly=String(featureOnly);
   const soFID=(L.fields||[]).every(f=>f.name==='FID');
-  const banner=soFID? `<div style="background:#3a2b12;border:1px solid var(--amber);border-radius:8px;padding:8px 10px;margin:6px 8px;display:flex;gap:10px;align-items:center;font-size:12px">
+  const banner=soFID&&!featureOnly? `<div style="background:#3a2b12;border:1px solid var(--amber);border-radius:8px;padding:8px 10px;margin:6px 8px;display:flex;gap:10px;align-items:center;font-size:12px">
       ⚠ Esta camada veio <b>sem o .dbf</b> (só a geometria).
       <button class="tbtn" id="attrFixDbf" style="margin-left:auto">📎 Anexar .dbf…</button>
     </div>`:'';
@@ -84,44 +100,54 @@ function openAttr(selIdx){
     },60);
   }
   const avisoColab=somenteLeitura
-    ?'<div class="attr-collab-readonly">🔒 Tabela em modo leitura: a camada está reservada por outra pessoa ou seu papel é Leitor.</div>'
+    ?'<div class="attr-readonly">🔒 Tabela em modo leitura: a camada está congelada.</div>'
     :'';
-  let html=avisoColab+banner+'<table><thead><tr><th>#</th>'+L.fields.map(f=>{
+  let html=avisoColab+banner+(featureOnly&&!fields.length?'<div class="hint" style="padding:8px">Esta feição não possui atributos.</div>':'')+'<table><thead><tr><th>#</th>'+fields.map(f=>{
     const tipo=attrFieldTypeLabel(f),tam=f.length?' · '+f.length:'';
     return `<th>${esc(f.name)}<br><span title="Tipo DBF: ${esc(String(f.type||'C'))}" style="color:var(--ink-dim);font-weight:400">${esc(tipo)}${tam}</span></th>`;
   }).join('')+'</tr></thead><tbody>';
-  L.features.forEach((f,i)=>{
-    if(!attrFilterMatch(L,f))return;
+  const display=(f,fl)=>GeoMineNumberFormat.field(L,fl.name,f.props?.[fl.name]);
+  const renderedFeatures=new Map();
+  const rows=featureOnly?[[target,selIdx]]:L.features.map((f,i)=>[f,i]);
+  rows.forEach(([f,i])=>{
+    if(!f||(!featureOnly&&!attrFilterMatch(L,f)))return;
+    renderedFeatures.set(i,f);
     html+=`<tr data-i="${i}" class="${i===selIdx?'sel':''}"><td>${i}</td>`+
-      L.fields.map((fl,fi)=>autoAreaFieldReadOnly(fl)
-        ?`<td data-derived-area="1" title="Calculado automaticamente pela geometria" data-fi="${fi}" data-i="${i}">${esc(f.props[fl.name]??'')}</td>`
-        :`<td ${somenteLeitura?'data-collab-readonly="1" title="Somente leitura"':'contenteditable'} data-fi="${fi}" data-i="${i}">${esc(f.props[fl.name]??'')}</td>`).join('')+'</tr>';
+      fields.map((fl,fi)=>autoAreaFieldReadOnly(fl)
+        ?`<td data-derived-area="1" title="Calculado automaticamente pela geometria" data-fi="${fi}" data-i="${i}">${esc(display(f,fl))}</td>`
+        :`<td ${somenteLeitura?'data-readonly="1" title="Somente leitura"':'contenteditable'} data-fi="${fi}" data-i="${i}">${esc(display(f,fl))}</td>`).join('')+'</tr>';
   });
   body.innerHTML=html+'</tbody></table>';
   body.querySelectorAll('td[contenteditable]').forEach(td=>{
-    td.addEventListener('blur',()=>{ try{
-      if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);openAttr(selIdx);return;}
-      const i=+td.dataset.i, fld=(L.fields||[])[+td.dataset.fi],fn=fld&&fld.name;
-      const feat=L.features[i]; if(!feat) return;
-      if(!fld||!fn) return;
+    const fld=fields[+td.dataset.fi],feat=renderedFeatures.get(+td.dataset.i),fn=fld?.name;
+    let changed=false,editing=false;
+    const show=()=>{td.textContent=display(feat,fld);editing=false;changed=false;};
+    td.addEventListener('focus',()=>{
+      changed=false;editing=true;td.textContent=feat.props?.[fn]??'';
+    });
+    td.addEventListener('input',()=>{changed=true;});
+    td.addEventListener('blur',()=>{try{
+      if(!editing||!changed){show();return;}
+      if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);openAttr(selIdx,options);return;}
+      if(!S.layers.includes(L)||!L.features.includes(feat)){toast('A feição não está mais disponível.');return;}
+      if(!fld||!fn)return;
       let v=td.textContent.trim();
-      if(fld && (fld.type==='N'||fld.type==='F')){
-        v = v==='' ? null : Number(String(v).replace(',','.'));
-        if(v!==null && !isFinite(v)) v=null;          // texto inválido em campo numérico
-      } else if(fld && fld.type==='L'){ v=/^[yYtTvV1]/.test(v); }
-      if(!feat.props) feat.props={};
-      feat.props[fn]=v;
-      /* O campo editado pode ser justamente o campo de classificação. Nesse
-         caso mudam cor e visibilidade no 2D e no 3D, mesmo sem ser rótulo. */
-      L._rev=(+L._rev||0)+1;
-      drawLayer(L);
-      if(S._view==='v3d'&&typeof v3Auto==='function')v3Auto();
-    }catch(err){ toast('Não foi possível salvar a célula: '+(err.message||err)); } });
+      if(/^(?:N|F|I|B|O|INTEGER|REAL|DOUBLE|FLOAT|NUMBER|NUMERIC)$/i.test(fld.type||'')){
+        const text=v.includes(',')?v.replace(/\./g,'').replace(',','.'):v;
+        v=v===''?null:Number(text);if(v!==null&&!Number.isFinite(v))v=null;
+      }else if(fld.type==='L')v=/^[yYtTvV1]/.test(v);
+      if(!feat.props)feat.props={};
+      if(!Object.is(feat.props[fn],v)){
+        feat.props[fn]=v;L._rev=(+L._rev||0)+1;drawLayer(L);
+        if(S._view==='v3d'&&typeof v3Auto==='function')v3Auto();
+      }
+      show();
+    }catch(err){toast('Não foi possível salvar a célula: '+(err.message||err));}});
   });
   /* Recém-montada, a tabela já mostra a feição que estiver selecionada. */
   setTimeout(()=>{ try{ attrDestacaSelecao(); }catch(e){} },0);
   body.querySelectorAll('tr[data-i]').forEach(tr=>tr.addEventListener('click',e=>{
-    if(e.target.isContentEditable) return; const i=+tr.dataset.i;
+    if(e.target.isContentEditable) return; const i=L.features.indexOf(renderedFeatures.get(+tr.dataset.i));if(i<0)return;
     S.selFeat={layer:L, layerId:L.id, idx:i}; S.activeId=L.id;
     highlightSel(); zoomToSel();
     body.querySelectorAll('tr').forEach(r=>r.classList.remove('sel')); tr.classList.add('sel');
@@ -332,7 +358,7 @@ function fcNumera(L,o){
 
 /* Excluir campos atua em todas as feições, mesmo com filtro na tabela. */
 function attrDeleteFields(L,names){
-  if(!L||!S.layers.includes(L)||!collabCanEditLayer(L,true))return false;
+  if(!L||!S.layers.includes(L)||!canEditLayer(L,true))return false;
   const removed=new Set(names.filter(n=>(L.fields||[]).some(f=>f.name===n)));
   if(!removed.size)return false;
   const keys=['fields','sym','labelField','labelFields','lbl','attrFilter','attrFilterRules','attrFilterLogic'];
@@ -369,7 +395,7 @@ function attrUndoDeleteFields(a){
 }
 function attrOpenDeleteFields(){
   const L=S.layers.find(l=>String(l.id)===document.getElementById('attrBody').dataset.lid);
-  if(!L||!collabCanEditLayer(L,true))return;
+  if(!L||!canEditLayer(L,true))return;
   if(!L.fields?.length){toast('Não há colunas para excluir');return;}
   document.getElementById('attrDeleteModal')?.remove();
   const m=document.createElement('div');m.id='attrDeleteModal';m.className='modal-bg on';

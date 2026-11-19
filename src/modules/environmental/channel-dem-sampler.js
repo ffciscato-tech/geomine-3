@@ -10,7 +10,7 @@
   function aborted(message){const e=new Error(message||'Leitura do MDT cancelada.');e.name='AbortError';return e;}
   function missing(){return Object.assign(new Error('O projeto contém a prévia, mas o TIFF original deste MDT não está acessível. Use “Localizar MDT original” e selecione o arquivo .tif.'),{code:'CHANNEL_NATIVE_MISSING'});}
   const tag=v=>String(v??'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f\s_-]/g,'');
-  const nonElevation=new Set(['slope','declividade','aspect','orientacao','mcfindex','cn','curvenumber',
+  const nonElevation=new Set(['slope','declividade','aspect','orientacao','mcfindex','cn','curvenumber','runoffcoefficient',
     'flowaccumulation','accumulation','d8accumulation','flowdirection','d8direction','hillshade','shadedrelief','classification']);
   const nonElevationUnits=new Set(['pct','%','percent','percentage','deg','degree','degrees','grau','graus','°','rad','radian','radians']);
   function isElevation(r){

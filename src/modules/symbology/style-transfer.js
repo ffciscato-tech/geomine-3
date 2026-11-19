@@ -9,7 +9,7 @@ const fold=n=>String(n).trim().toLocaleLowerCase('pt-BR');
 const empty=v=>v==null||v==='';
 function fields(L){return (L.fields||[]).map(f=>typeof f==='string'?{name:f,type:'C'}:clone(f)).filter(f=>f&&safe(f.name));}
 function resolve(schema,name){const exact=schema.find(f=>f.name===name);if(exact)return exact.name;const matches=schema.filter(f=>fold(f.name)===fold(name));return matches.length===1?matches[0].name:null;}
-function editable(L){return !!L&&S.layers.includes(L)&&!L.locked&&(typeof collabCanEditLayer!=='function'||collabCanEditLayer(L,false));}
+function editable(L){return !!L&&S.layers.includes(L)&&!L.locked&&(typeof canEditLayer!=='function'||canEditLayer(L,false));}
 function copy(L){
  if(!L?.sym)return false;
  const schema=fields(L),names=new Set(schema.map(f=>f.name));

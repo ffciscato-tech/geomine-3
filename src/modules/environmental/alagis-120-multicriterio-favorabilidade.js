@@ -3560,19 +3560,10 @@ function mcfSummary(res){
             'áreas prioritárias e auditoria — todas as etapas na mesma janela.'})]});
     cat.grupos=saida;
   }
-  function mcfFixGis(){
-    if(typeof CATS==='undefined') return;
-    const cat=CATS.find(c=>c.id==='gis'); if(!cat) return;
-    cat.grupos=cat.grupos||[];
-    let g=cat.grupos.find(x=>x.label==='Multicritério');
-    if(!g){ g={label:'Multicritério',it:[]}; cat.grupos.push(g); }
-    if(!g.it.some(x=>x.ic===ICON))
-      g.it.push({ic:ICON,nome:'Multicritério',act:abrirEm('grade')});
-  }
   const baseBuild=window.ribbonBuild;
   if(typeof baseBuild==='function'){
     window.ribbonBuild=function(){
-      try{ mcfFixAmbiente(); mcfFixGis(); }catch(e){ console.warn('MCF faixa:',e); }
+      try{ mcfFixAmbiente(); }catch(e){ console.warn('MCF faixa:',e); }
       return baseBuild.apply(this,arguments);
     };
   }

@@ -180,9 +180,12 @@ function autoAreaFieldReadOnly(field){
 }
 function ppMetricLine(k,v){return '<div style="display:flex;justify-content:space-between;gap:8px;padding:2px 0">'+
   '<span style="color:var(--ink-dim)">'+esc(k)+'</span><b style="text-align:right;font-size:11px">'+v+'</b></div>';}
+function ppCardStart(title,attrs=''){
+  return '<section class="gm-work-card gm-prop-card" '+attrs+'><div class="gm-card-heading"><span class="gm-card-step" aria-hidden="true"></span><b>'+esc(title)+'</b></div>';
+}
+function ppCardHTML(title,body,attrs=''){return ppCardStart(title,attrs)+body+'</section>';}
 function ppMetricBlock(L,title,M){
-  let h='<div style="border-top:1px dashed var(--line);margin-top:9px;padding-top:8px">'+
-    '<label class="field">'+esc(title)+'</label>';
+  let h=ppCardStart(title);
   h+=ppMetricLine('Feições',M.features.toLocaleString('pt-BR'));
   h+=ppMetricLine('Dimensão',M.z?'3D':'2D');
   if(L.gtype==='point')h+=ppMetricLine('Pontos',M.vertices.toLocaleString('pt-BR'));
@@ -192,13 +195,13 @@ function ppMetricBlock(L,title,M){
     h+=ppMetricLine('Vértices',M.vertices.toLocaleString('pt-BR'));
   }
   if(L.gtype==='polygon'){
-    h+=ppMetricLine('Área',fmtNum(M.area,2)+' m²');
-    h+=ppMetricLine('Área (ha)',fmtNum(M.area/10000,4)+' ha');
-    h+=ppMetricLine('Perímetro',fmtNum(M.per,2)+' m');
-  }else if(L.gtype==='line')h+=ppMetricLine('Comprimento',fmtNum(M.comp,2)+' m');
-  if(M.z){h+=ppMetricLine('Cota máx.',fmtNum(M.zmax,3)+' m');h+=ppMetricLine('Cota mín.',fmtNum(M.zmin,3)+' m');
-    h+=ppMetricLine('Desnível',fmtNum(M.zmax-M.zmin,3)+' m');}
-  return h+'</div>';
+    h+=ppMetricLine('Área',fmtNum(M.area,GeoMineNumberFormat.decimals(L))+' m²');
+    h+=ppMetricLine('Área (ha)',fmtNum(M.area/10000,GeoMineNumberFormat.decimals(L))+' ha');
+    h+=ppMetricLine('Perímetro',fmtNum(M.per,GeoMineNumberFormat.decimals(L))+' m');
+  }else if(L.gtype==='line')h+=ppMetricLine('Comprimento',fmtNum(M.comp,GeoMineNumberFormat.decimals(L))+' m');
+  if(M.z){h+=ppMetricLine('Cota máx.',fmtNum(M.zmax,GeoMineNumberFormat.decimals(L))+' m');h+=ppMetricLine('Cota mín.',fmtNum(M.zmin,GeoMineNumberFormat.decimals(L))+' m');
+    h+=ppMetricLine('Desnível',fmtNum(M.zmax-M.zmin,GeoMineNumberFormat.decimals(L))+' m');}
+  return h+'</section>';
 }
 /* O dock acompanha a seleção, inclusive quando há várias feições na mesma
    camada. Nunca usa a primeira feição como substituta de uma seleção vazia. */
@@ -603,8 +606,8 @@ function featureDimensionsHTML(L,f){
  const d=featureShapeDimensions(L,f);if(!d)return '';
  const rows=[['Forma',d.shape]];
  for(const [key,label] of [['width','Largura'],['length','Comprimento'],['side','Lado'],['radius','Raio'],['diameter','Diâmetro']])
-  if(d[key]!=null)rows.push([label,d[key].toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:3})+' m']);
- return '<div class="shape-dimensions" style="margin:8px 0;padding:8px;border:1px solid var(--line);border-radius:6px"><b>Dimensões da figura</b>'+rows.map(([k,v])=>'<div style="display:flex;justify-content:space-between;gap:12px"><span>'+k+'</span><b>'+v+'</b></div>').join('')+'</div>';
+  if(d[key]!=null)rows.push([label,GeoMineNumberFormat.format(d[key],GeoMineNumberFormat.decimals(L))+' m']);
+ return '<div class="shape-dimensions">'+ppCardHTML('Dimensões da figura',rows.map(([k,v])=>'<div style="display:flex;justify-content:space-between;gap:12px"><span>'+k+'</span><b>'+v+'</b></div>').join(''))+'</div>';
 }
 function selectedDimensionsHTML(L){
  const sel=S.selFeat,selected=sel&&(sel.layer===L||sel.layerId===L.id);
@@ -620,7 +623,7 @@ function featureContinueTarget(L,f){
 }
 function featureContinueHTML(L,f){
   const target=featureContinueTarget(L,f);if(!target)return '';
-  const disabled=L.locked||(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false));
+  const disabled=L.locked||(typeof canEditLayer==='function'&&!canEditLayer(L,false));
   return '<div data-feature-continue-box style="display:grid;grid-template-columns:'+(L.gtype==='line'?'minmax(0,1fr) 82px':'minmax(0,1fr)')+';gap:6px;margin:10px 0">'+
     '<button type="button" class="tbtn" data-feature-continue '+(disabled?'disabled title="Camada bloqueada para edição"':'')+' style="justify-content:center;min-width:0;font-size:12px">Continuar desenhando</button>'+
     (L.gtype==='line'?'<select data-continue-endpoint aria-label="Extremidade da linha" '+(disabled?'disabled':'')+' style="min-width:0;font-size:12px"><option value="end">Fim</option><option value="start">Início</option></select>':'')+'</div>';
@@ -982,6 +985,10 @@ function clsEditor(idx, item, label, count, layer){
         <div>${s.mode!=='single'?`<label class="field" style="display:flex;align-items:center;gap:7px;cursor:pointer"><input type="checkbox" class="ce-size-own" ${ownSize?'checked':''} style="width:auto;accent-color:var(--amber)"> Tamanho próprio</label>`:'<label class="field">Tamanho (px)</label>'}<input type="number" class="ce-size" value="${ownSize?ptSizePx(item.size,pcfg.size):ptSizePx(pcfg.size,14)}" min="6" max="96" step="1" ${s.mode!=='single'&&!ownSize?'disabled':''}>${s.mode!=='single'?`<div class="hint" style="margin-top:3px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Tamanho herdado" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Desmarcado: usa ${ptSizePx(pcfg.size,14)} px da camada.</span></button></div>`:''}</div>
         <div><label class="field">Espessura</label><input type="number" class="ce-weight" value="${item.weight??s.weight}" min="0" step="0.1"></div>
       </div>`:''}
+      ${isPt?'':`<div class="gm-style-stack">
+        <div><label class="field">Espessura</label><input type="number" class="ce-weight" value="${item.weight??s.weight}" min="0" step="0.1"></div>
+        ${isPoly?`<div><label class="field">Opacidade do preenchimento</label><input type="number" class="ce-fill" value="${item.fill??s.fill}" min="0" max="1" step="0.01"></div>`:''}
+      </div>`}
       <div class="row2">
         <div><label class="field">Preenchimento</label><button type="button" class="ce-color ce-color-pick active" data-target="fill" value="${item.color}" style="background:${item.color}" aria-pressed="true" title="Selecionar preenchimento"></button></div>
         <div><label class="field">Contorno</label><button type="button" class="ce-stroke ce-color-pick" data-target="stroke" value="${item.stroke||item.color}" style="background:${item.stroke||item.color}" aria-pressed="false" title="Selecionar contorno"></button></div>
@@ -993,11 +1000,7 @@ function clsEditor(idx, item, label, count, layer){
         <label class="field">Espaçamento da hachura (×)</label>
         <input type="number" class="ce-hatch-scale" value="${item.hatchScale??s.hatchScale??1}" min="0.25" max="8" step="0.25">
       </div>`:''}
-      ${isPt?'':`<div class="row2">
-        <div><label class="field">Espessura</label><input type="number" class="ce-weight" value="${item.weight??s.weight}" min="0" step="0.1"></div>
-        <div><label class="field">Opacid. preench.</label><input type="number" class="ce-fill" value="${item.fill??s.fill}" min="0" max="1" step="0.05"></div>
-      </div>
-      <label class="field">Estilo de linha</label>
+      ${isPt?'':`<label class="field">Estilo de linha</label>
       <select class="ce-dash" style="display:none">${dSel}</select>
       ${dsGaleriaHTML(item.dash??s.dash, item.stroke||item.color, item.weight??s.weight)}`}
       ${layer.gtype==='line'&&s.mode!=='single'?`<div class="row2">
@@ -1012,6 +1015,9 @@ function clsEditor(idx, item, label, count, layer){
 }
 function lpSyncCtrl(){
   const L=lpLayer; if(!L) return; const s=L.sym;
+  document.getElementById("lpDecimals").value=String(GeoMineNumberFormat.decimals(L));
+  document.getElementById("lpOpacity").value=s.opacity??1;
+  GeoMineStyleSliders.syncRange(document.getElementById("lpOpacity"),document.getElementById("lpOpacityV"));
   // bloco de orientação: só para camadas de ponto
   const po=document.getElementById('lpPtOrient');
   if(po){
@@ -1126,10 +1132,10 @@ function renderLpClasses(){
   }
   if(s.mode==='grad' && s.classes.length){
     html+='<label class="field">Classes (toque para personalizar cada uma)</label>';
-    s.classes.forEach((c,i)=>{ html+=clsEditor(i,c,`${fmt(c.min)} – ${fmt(c.max)}`,c.count,L); });
+    s.classes.forEach((c,i)=>{ html+=clsEditor(i,c,GeoMineNumberFormat.category(L,c),c.count,L); });
   } else if(s.mode==='cat' && s.cats.length){
     html+='<label class="field">Categorias (toque para personalizar cada uma)</label>';
-    s.cats.forEach((c,i)=>{ html+=clsEditor(i,c,String(c.value),c.count,L); });
+    s.cats.forEach((c,i)=>{ html+=clsEditor(i,c,GeoMineNumberFormat.category(L,c),c.count,L); });
   } else if(s.mode==='single'){
     html+='<label class="field">Símbolo único</label>';
     html+=clsEditor(0,{color:s.color,stroke:s.stroke,hatch:s.hatch,weight:s.weight,fill:s.fill,dash:s.dash},L.name,null,L);
@@ -1149,6 +1155,7 @@ function renderLpClasses(){
    contorno, hachura, tamanho próprio do ponto, galerias de símbolo e de linha.
    Usadas pela janela completa da camada e pela janela resumida da classe. */
 function clsBindEditors(box,camada){
+  GeoMineStyleSliders.enhance(box);
   box.querySelectorAll('.ce-color-pick').forEach(inp=>{
     inp.addEventListener('click',()=>{
       const cls=inp.closest('.cls'); if(!cls) return;
@@ -1349,7 +1356,7 @@ function lpFillFilter(L){
 }
 function lpApplyFilter(){
   const L=lpLayer;if(!L)return;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
   const field=document.getElementById('lpFltField').value,op=document.getElementById('lpFltOp').value,
     value=document.getElementById('lpFltValue').value,value2=document.getElementById('lpFltValue2').value,
     caseSensitive=document.getElementById('lpFltCase').checked;
@@ -1367,7 +1374,7 @@ function lpApplyFilter(){
 }
 function lpClearFilter(){
   const L=lpLayer;if(!L)return;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
   delete L.attrFilter;drawLayer(L);refreshUI();layoutSeVisivel();lpFillFilter(L);
   lpInfoRender(L);
   document.getElementById('lpMeta').textContent=`${L.gtype} · ${L.features.length} feições`;
@@ -1548,7 +1555,7 @@ document.getElementById('lbField').onchange=()=>{
   }; }
 document.getElementById('lbApply').onclick=()=>{
   const L=lpLayer; if(!L) return;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
   lpReadLabels();
   const expr=lpFormulaExpr(),check=labelFormulaValida(expr,L);
   if(!check.ok){toast('Fórmula inválida: '+check.error);lpPreview();return;}
@@ -1600,15 +1607,15 @@ function layerStyleAppearanceStamp(L,onlyClass){
 function openClassProps(L,ci){
   const s=L&&L.sym,arr=s&&(s.mode==='grad'?s.classes:s.mode==='cat'?s.cats:null),c=arr&&arr[ci];
   if(!c){toast('Classe não encontrada');return;}
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
   document.querySelectorAll('.ribmini').forEach(x=>x.remove());
   let m=document.getElementById('clsPropModal');
   if(!m){m=document.createElement('div');m.id='clsPropModal';m.className='modal-bg';document.body.appendChild(m);}
-  const nomeDe=()=>s.mode==='grad'?`${fmt(c.min)} – ${fmt(c.max)}`:String(c.value);
+  const nomeDe=()=>GeoMineNumberFormat.category(L,c);
   let rotulo=nomeDe(),t=null,el=null;
   const aplica=()=>{
     clearTimeout(t);t=null;
-    if(!el||typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false))return;
+    if(!el||typeof canEditLayer==='function'&&!canEditLayer(L,false))return;
     const before=layerStyleAppearanceStamp(L,c);
     clsLerEditor(el,c,L);
     if(layerStyleAppearanceStamp(L,c)!==before)window.GeoMineFeatureStyleBrush?.resetLayer(L,{predicate:f=>classOf(L,f)===c});
@@ -1621,7 +1628,7 @@ function openClassProps(L,ci){
       <div class="modal-h"><b>Classe “${esc(rotulo)}”</b><span style="color:var(--ink-dim);font-size:12px;margin-left:6px">${esc(L.name)}</span><div style="flex:1"></div><button class="tbtn" id="cpX">✕</button></div>
       <div class="modal-b" id="cpBody" style="overflow:auto;min-height:0">${s.mode==='cat'?`
         <label class="field" for="cpNome">Nome da classe</label>
-        <div style="display:flex;gap:8px;margin-bottom:8px"><input type="text" id="cpNome" maxlength="120" value="${esc(rotulo)}" autocomplete="off" style="flex:1">
+        <div style="display:flex;gap:8px;margin-bottom:8px"><input type="text" id="cpNome" maxlength="120" value="${esc(String(c.value))}" autocomplete="off" style="flex:1">
           <button class="tbtn" id="cpRenomear" title="Troca o valor no campo “${esc(s.field)}” de todas as feições desta classe">Renomear</button></div>
         <div class="hint" style="margin:-4px 0 8px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Nome da classe" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Renomear troca o valor do campo “${esc(s.field)}” nas ${c.count??''} feição(ões) desta classe; legenda, rótulos e tabela acompanham.</span></button></div>`:''}
         ${clsEditor(ci,c,rotulo,c.count,L)}</div>
@@ -1684,11 +1691,12 @@ function clsLerEditor(el,c,L){
 }
 function lpCollect(silencioso){
   const L=lpLayer; if(!L) return; const s=L.sym;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){
-    if(!silencioso)collabCanEditLayer(L,true);
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){
+    if(!silencioso)canEditLayer(L,true);
     return;
   }
   const before=layerStyleAppearanceStamp(L);
+  s.opacity=Math.max(0,Math.min(1,Number(document.getElementById("lpOpacity").value)));
   const rows=[...document.querySelectorAll('#lpClasses .cls')];
   const read=(el,sel)=>{const e=el.querySelector(sel);return e?e.value:undefined;};
   const isPt=L.gtype==='point';
@@ -1765,6 +1773,7 @@ function lpAplicaVivo(qual){
     const ehRotulo=el=>!!(el.id&&/^lb/.test(el.id));
     const trata=e=>{
       const el=e.target; if(!el||!el.id&&!el.className) return;
+      if(el.id==='lpOpacity') return lpAplicaVivo('simb');
       if(el.id==='lpRename') return;           // nome só muda no botão Renomear
       if(ehRotulo(el)) return lpAplicaVivo('rotulo');
       if(el.closest && el.closest('#lpClasses')) return lpAplicaVivo('simb');
@@ -1774,6 +1783,20 @@ function lpAplicaVivo(qual){
     modal.addEventListener('change',trata);
   }
 }
+document.getElementById('lpDecimals').addEventListener('change',()=>{
+  const L=lpLayer;if(!L)return;
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){
+    document.getElementById('lpDecimals').value=String(GeoMineNumberFormat.decimals(L));canEditLayer(L,true);return;
+  }
+  clearTimeout(_lpVivoT);lpCollect(true);
+  L.sym.decimals=Number(document.getElementById('lpDecimals').value);
+  renderLpClasses();drawLayer(L);refreshUI();renderClassList();lpPreview();layoutSeVisivel();
+  const body=document.getElementById('attrBody'),panel=document.getElementById('attrPanel');
+  if(panel.classList.contains('open')&&body.dataset.lid===String(L.id)){
+    const featureOnly=body.dataset.featureOnly==='true',idx=featureOnly?Number(body.querySelector('tbody tr[data-i]')?.dataset.i):(S.selFeat?.layerId===L.id?S.selFeat.idx:undefined);
+    openAttr(idx,{layer:L,featureOnly});
+  }
+});
 document.getElementById('lpClose').onclick=()=>document.getElementById('lpModal').classList.remove('on');
 
 document.getElementById('lpModal').addEventListener('click',e=>{
@@ -1787,7 +1810,7 @@ document.getElementById('lpModal').addEventListener('click',e=>{
 });
 document.getElementById('lpRenameBtn').onclick=()=>{
   const L=lpLayer; if(!L) return;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
   const n=document.getElementById('lpRename').value.trim();
   if(!n){ toast('Informe um nome'); return; }
   L.name=n; document.getElementById('lpName').textContent=n;
@@ -1863,8 +1886,8 @@ function gmUndoProdutoPendente(){
 function gmUndoProdutoDesfaz(ult){
   const fila=S._undoProdutos,grupo=[];
   while(fila.length&&fila[fila.length-1].grupo===ult.grupo){const q=fila.pop();if(q.project===S.projectId&&S.layers.includes(q.L))grupo.push(q);}
-  const travada=grupo.find(q=>typeof collabCanEditLayer==='function'&&!collabCanEditLayer(q.L,false));
-  if(travada){fila.push(...grupo.reverse());collabCanEditLayer(travada.L,true);return;}
+  const travada=grupo.find(q=>typeof canEditLayer==='function'&&!canEditLayer(q.L,false));
+  if(travada){fila.push(...grupo.reverse());canEditLayer(travada.L,true);return;}
   for(const {L} of grupo){
     if(S.selFeat&&(S.selFeat.layer===L||S.selFeat.layerId===L.id)){S.selFeat=null;try{clearVertices();}catch(_){}}
     if(L.llayer)try{map.removeLayer(L.llayer);}catch(_){}
@@ -1880,7 +1903,7 @@ function gmUndoProdutoDesfaz(ult){
 function doUndo(){
   // prioridade 1: vértice do traçado em andamento
   if(['line','poly'].includes(S.tool) && S.drawBuf.length){
-    const L=GeoMineDrawingSession.layer();if(L&&typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
+    const L=GeoMineDrawingSession.layer();if(L&&typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
     S.drawBuf.pop();if(S.drawBuf.length)redrawDraw();else clearDraw();
     toast(S.drawBuf.length? 'Vértice desfeito ('+S.drawBuf.length+' restantes)':'Traçado limpo');
     return;
@@ -1889,6 +1912,8 @@ function doUndo(){
   const produto=gmUndoProdutoPendente();
   if(produto){gmUndoProdutoDesfaz(produto);return;}
   const proxima=S.undo[S.undo.length-1];
+  if(proxima?.t==='hydraulicstairs'&&window.GeoMineHydraulicStairs){GeoMineHydraulicStairs.undo(proxima);return;}
+  if(proxima?.t==='slopehachures'&&window.GeoMineSlopeHachures){GeoMineSlopeHachures.undo(proxima);return;}
   if(proxima?.t==='blastingresult'&&window.GeoMineBlasting){GeoMineBlasting.undo(proxima);return;}
   if(proxima?.t==='linejoin'&&window.GeoMineLineJoin){GeoMineLineJoin.undo(proxima);return;}
   if(proxima?.t==='featurestylebrush'&&window.GeoMineFeatureStyleBrush){GeoMineFeatureStyleBrush.undo(proxima);return;}
@@ -1897,7 +1922,7 @@ function doUndo(){
   if(proxima?.t==='floodresult'&&window.GeoMineNativeFloodDestination){GeoMineNativeFloodDestination.undo(proxima);return;}
   if(proxima?.t==='channelresult'&&window.GeoMineChannelDestination){GeoMineChannelDestination.undo(proxima);return;}
   if(proxima?.t==='featsplit'&&window.GeoMinePolygonSplit){GeoMinePolygonSplit.undo(proxima);return;}
-  if(proxima&&proxima.L&&typeof collabCanEditLayer==='function'&&!collabCanEditLayer(proxima.L,false)){collabCanEditLayer(proxima.L,true);return;}
+  if(proxima&&proxima.L&&typeof canEditLayer==='function'&&!canEditLayer(proxima.L,false)){canEditLayer(proxima.L,true);return;}
   if(proxima?.t==='dimensionstyle'&&window.GeoMineDimensions){GeoMineDimensions.undoStyle(proxima);return;}
   if(proxima?.t==='catchmentresult'&&window.GeoMinePointCatchment?.undo){GeoMinePointCatchment.undo(proxima);return;}
   const a=S.undo.pop();
@@ -1927,8 +1952,8 @@ function doUndo(){
     /* um gesto de mover = uma entrada, mesmo com feições de várias camadas */
     const todos=(a.itens||[]).filter(i=>i&&i.L&&i.f);
     const itens=todos.filter(i=>S.layers.includes(i.L)&&i.L.features.includes(i.f));
-    const travada=itens.find(i=>typeof collabCanEditLayer==='function'&&!collabCanEditLayer(i.L,false));
-    if(travada){ S.undo.push(a); collabCanEditLayer(travada.L,true); return; }
+    const travada=itens.find(i=>typeof canEditLayer==='function'&&!canEditLayer(i.L,false));
+    if(travada){ S.undo.push(a); canEditLayer(travada.L,true); return; }
     /* não desfaz a ação anterior por conta própria quando as feições sumiram */
     if(!itens.length){ toast('Desfazer mover: as feições movidas não existem mais (apagadas ou recriadas); nada foi alterado'); return; }
     const faltam=todos.length-itens.length;
@@ -1956,8 +1981,8 @@ function doUndo(){
        somente elas (e os campos acrescentados) na camada que já existia; ao
        mover, cada feição volta à sua posição original na camada de origem */
     const camadas=[a.L,...(a.sources||[]).map(s=>s.L)];
-    const travada=camadas.find(L=>S.layers.includes(L)&&typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false));
-    if(travada){ S.undo.push(a); collabCanEditLayer(travada,true); return; }
+    const travada=camadas.find(L=>S.layers.includes(L)&&typeof canEditLayer==='function'&&!canEditLayer(L,false));
+    if(travada){ S.undo.push(a); canEditLayer(travada,true); return; }
     if(S.selFeat&&camadas.some(L=>S.selFeat.layer===L||S.selFeat.layerId===L.id)){ S.selFeat=null; try{highlightSel();}catch(e){} }
     if((S.msel&&S.msel.items||[]).some(i=>camadas.some(L=>i.layerId===L.id))) mselClear(true);
     if(a.created){
@@ -2073,11 +2098,7 @@ document.addEventListener('keydown',e=>{
 });
 function deleteVectorLayer(L){
   if(!L) return;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
-  try{
-    const cs=window.GeoMineCollaboration&&window.GeoMineCollaboration.snapshot&&window.GeoMineCollaboration.snapshot();
-    if(cs&&cs.roomId){toast('A exclusão compartilhada de camadas ainda não está disponível. Saia da sala para remover somente da cópia local.');return;}
-  }catch(e){}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
   let cava2Delete=null;
   try{cava2Delete=window.CCMGISCava2?.beforeLayerDelete?.(L)||null;}catch(e){console.warn('snapshot Cava/DCE',e);}
   undoPush({t:'layer', L, idx:S.layers.indexOf(L),cava2Delete});
@@ -2155,8 +2176,7 @@ async function exportLayerAs(L){
 document.getElementById('lpSave').onclick=()=>exportLayerAs(lpLayer);
 document.getElementById('lpDel').onclick=()=>{
   if(!lpLayer) return;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(lpLayer,false)){collabCanEditLayer(lpLayer,true);return;}
-  if(!confirm('Remover a camada "'+lpLayer.name+'" ('+lpLayer.features.length+' feições)?\nEsta ação não pode ser desfeita.')) return;
+  if(typeof canEditLayer==='function'&&!canEditLayer(lpLayer,false)){canEditLayer(lpLayer,true);return;}
   document.getElementById('lpModal').classList.remove('on');
   deleteVectorLayer(lpLayer); lpLayer=null;
 };
@@ -2168,14 +2188,14 @@ document.getElementById('lpAttr').onclick=()=>{ if(!lpLayer) return;
   openAttr(); };
 document.getElementById('lpMode').addEventListener('change',()=>{
   if(!lpLayer) return;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(lpLayer,false)){collabCanEditLayer(lpLayer,true);lpSyncCtrl();return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(lpLayer,false)){canEditLayer(lpLayer,true);lpSyncCtrl();return;}
   const mode=document.getElementById('lpMode').value,changed=lpLayer.sym.mode!==mode;
   lpLayer.sym.mode=mode;
   if(changed){window.GeoMineFeatureStyleBrush?.resetLayer(lpLayer);drawLayer(lpLayer);refreshUI();}
   lpSyncCtrl(); renderLpClasses(); syncSymPanel(); });
 document.getElementById('btnLpClassify').onclick=()=>{
   if(!lpLayer) return;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(lpLayer,false)){collabCanEditLayer(lpLayer,true);return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(lpLayer,false)){canEditLayer(lpLayer,true);return;}
   const ok=classifyCore(lpLayer, lpLayer.sym.mode,
     document.getElementById('lpField').value,
     +document.getElementById('lpNCls').value,
@@ -2185,7 +2205,7 @@ document.getElementById('btnLpClassify').onclick=()=>{
 };
 document.getElementById('btnLpPointSymbols').onclick=()=>{
   if(!lpLayer||!window.GeoMinePointSymbols)return;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(lpLayer,false)){collabCanEditLayer(lpLayer,true);return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(lpLayer,false)){canEditLayer(lpLayer,true);return;}
   const n=window.GeoMinePointSymbols.applyToLayer(lpLayer,{force:true});
   window.GeoMineFeatureStyleBrush?.resetLayer(lpLayer);
   renderLpClasses();drawLayer(lpLayer);refreshUI();renderClassList();layoutSeVisivel();
@@ -2195,7 +2215,7 @@ document.getElementById('btnLpPointSymbols').onclick=()=>{
 function lpApplyPointSizeAll(){
   const L=lpLayer,inp=document.getElementById('lpPtSize');
   if(!L||L.gtype!=='point'||!inp)return;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
   const n=lpPointSizeSetAll(L,inp.value);
   window.GeoMineFeatureStyleBrush?.resetLayer(L);
   inp.value=String(ptCfg(L).size);
@@ -2504,7 +2524,7 @@ async function cadHatchCreate(L,idx,cfg,options={}){
   if(!current())return false;
   if(!Number.isFinite(cfg.angle)||!Number.isFinite(cfg.spacing)||!(cfg.spacing>0)||!Number.isFinite(cfg.weight)||!(cfg.weight>0)){toast('Revise ângulo, espaçamento e espessura');return false;}
   const linked=cfg.dest==='same'&&real;
-  if(linked&&!collabCanEditLayer(L,true))return false;
+  if(linked&&!canEditLayer(L,true))return false;
   try{
     const rings=options.rings||cadHatchRingsWork(L,f,crs,options.partIdx,cfg.tolerance??.001);
     if(!rings.length){toast('Selecione um polígono ou uma polilinha realmente fechada.');return false;}
@@ -2512,7 +2532,7 @@ async function cadHatchCreate(L,idx,cfg,options={}){
     const segs=await GeoMineCadHatch.segments(rings,cfg);
     if(!current())return false;
     if(!segs.length){toast('Nenhuma linha dentro do contorno; reduza o espaçamento.');return false;}
-    if(linked&&!collabCanEditLayer(L,false))return false;
+    if(linked&&!canEditLayer(L,false))return false;
     const outputCRS=real?L.crs:S.workCRS,convert=crs===outputCRS?p=>p.slice():proj4(crs,outputCRS).forward,
       back=segs.map(s=>s.map(p=>convert(p.slice())));
     if(linked){

@@ -190,13 +190,13 @@ async function listarRascunhos(){
   const items=[];
   for(const candidate of candidates){
     let rec=null;try{rec=await baseIdbGet(candidate.k);}catch(_){}
-    if(!rec||typeof rec.txt!=='string')continue;
+    if(!rec||(typeof rec.txt!=='string'&&!(rec.blob instanceof Blob)))continue;
     /* A chave com conta é a autoridade para cópias antigas sem metadados.
        Uma cópia legada sem conta é acessível somente na sessão offline. */
     if(candidate.tipo==='legado'?(rec.ownerUid||null)!==account:
       (rec.ownerUid!==undefined&&(rec.ownerUid||null)!==account))continue;
     items.push({chave:candidate.k,tipo:candidate.tipo,nome:rec.name||'?',at:rec.at||rec.guardadoEm||null,
-      mb:rec.txt.length/1048576,tabId:rec.tabId||null,ownerUid:account,
+      mb:(rec.blob instanceof Blob?rec.blob.size:rec.txt.length)/1048576,tabId:rec.tabId||null,ownerUid:account,
       mesmoProjeto:!pid||!rec.projectId||rec.projectId===pid,rec});
   }
   items.sort((a,b)=>(Date.parse(b.at||0)||0)-(Date.parse(a.at||0)||0));
@@ -223,7 +223,8 @@ async function recuperarDe(item){
   const opening=window.GeoMineProjectOpenProgress?.begin({title:'Recuperando cópia do projeto…',current:()=>(item.ownerUid||null)===ownerUid()&&STATE.version===confirmedVersion});
   if(!opening)showLoad('Recuperando cópia…');
   try{
-    const data=opening?await opening.parse(item.rec.txt):JSON.parse(item.rec.txt);
+    const text=item.rec.blob instanceof Blob?await item.rec.blob.text():item.rec.txt;
+    const data=opening?await opening.parse(text):JSON.parse(text);
     if(!validProject(data))throw new Error('a cópia não é um projeto GeoMine válido');
     const restored=()=>{window.startAutosave(item.nome,null);
     /* Uma cópia recuperada ainda não foi salva em um arquivo pelo usuário. */

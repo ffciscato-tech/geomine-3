@@ -346,20 +346,14 @@ function treeMenuAnchor(anchor,e){
 const TREE_MENU_PERIGO='#e5534b';
 function treeConfirmDeleteLayer(L){
   if(!S.layers.includes(L))return;
-  const meshInfo=window.GeoMineGeology?.meshViews?.info(L);
-  const detail=meshInfo?`${meshInfo.count.toLocaleString('pt-BR')} ${meshInfo.label}`:`${L.features.length} feições`,
-    /* deleteVectorLayer registra a exclusão no desfazer: o aviso antigo ("não
-       pode ser desfeita") não correspondia ao que o programa faz. */
-    note=meshInfo?'Outras representações não serão alteradas. Use Desfazer para recuperar esta camada.':'Você pode desfazer com Ctrl+Z.';
-  if(confirm(`Remover a camada "${L.name}" (${detail})?\n${note}`))
-    deleteVectorLayer(L);
+  deleteVectorLayer(L);
 }
 function treeConfirmDeleteRaster(o,isRas){
   if(isRas){
     if(!(S.rasters||[]).includes(o))return;
-    if(confirm(`Remover a superfície "${o.name}" (${o.d.nc}×${o.d.nr})?\n${o.src?.kind==='cava2-clipped'?'Você pode desfazer com Ctrl+Z.':'Esta ação não pode ser desfeita.'}`)) deleteRaster(o);
+    deleteRaster(o);
   }else{
-    if(S.img!==o||!confirm('Remover a ortofoto/imagem de fundo?')) return;
+    if(S.img!==o) return;
     if(o.overlay) map.removeLayer(o.overlay); S.img=null; refreshUI();
   }
 }
@@ -369,7 +363,7 @@ function treeMenuLayer(L,anchor,e){
   const T=window.GeoMineStyleTransfer,vis=L.visible!==false;
   ribMiniMenu(treeMenuAnchor(anchor,e),L.name,[
     {ic:vis?'ctx_olho_off':'ctx_olho',nome:vis?'Ocultar camada':'Mostrar camada',run:()=>{
-      if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false,true)){collabCanEditLayer(L,true,true);return;}
+      if(typeof canEditLayer==='function'&&!canEditLayer(L,false,true)){canEditLayer(L,true,true);return;}
       nodeSetVis({t:'L',id:L.id,o:L},!vis);zApply();refreshUI();}},
     {ic:'ctx_zoom',nome:'Zoom na camada',run:()=>{if(S.layers.includes(L))fitLayer(L);}},
     {ic:L.locked?'ctx_cadeado_aberto':'ctx_cadeado',nome:L.locked?'Descongelar camada':'Congelar camada',
@@ -455,12 +449,6 @@ function layerMultiHandle(key,e){
 function layerMultiDelete(){
   const {grupos,nos:escolhidas}=layerMultiAlvos();
   if(!escolhidas.length&&!grupos.size){toast('Marque uma ou mais camadas ou grupos');return;}
-  const nomesGrupos=(S.groups||[]).filter(g=>grupos.has(g.id)).map(g=>g.name||'Grupo'),
-    nomes=escolhidas.map(n=>n.o.name||'Imagem de fundo'),lista=(a,limite)=>a.slice(0,limite).map(n=>'• '+n).join('\n')+(a.length>limite?`\n… e mais ${a.length-limite}`:'');
-  if(!confirm(`Excluir ${escolhidas.length} camada(s)`+(grupos.size?` e ${grupos.size} grupo(s)`:'')+'?\n\n'+
-    (grupos.size?'Grupos (com tudo o que está dentro):\n'+lista(nomesGrupos,10)+'\n\n':'')+
-    (escolhidas.length?'Camadas:\n'+lista(nomes,18)+'\n\n':'')+
-    'As camadas poderão ser desfeitas individualmente com Ctrl+Z'+(grupos.size?'; os grupos não voltam.':'.')))return;
   // Uma camada desfeita depois volta para o grupo acima dos que foram excluídos.
   const sobrevivente=id=>{const vistos=new Set();while(id!=null&&grupos.has(id)&&!vistos.has(id)){vistos.add(id);id=(S.groups||[]).find(g=>g.id===id)?.parentId??null;}return id;};
   escolhidas.forEach(n=>{if(n.o.groupId!=null&&grupos.has(n.o.groupId))n.o.groupId=sobrevivente(n.o.groupId);});
@@ -559,6 +547,7 @@ function refreshUI(){
   S._layerTreeRefreshQueued=false;
   try{ syncSideSecs(); }catch(e){}
   try{ if(typeof propRefresh==='function') propRefresh(); }catch(e){}
+  try{ if(typeof cnOrtoRefresh==='function')cnOrtoRefresh(); }catch(e){}
   try{ if(typeof hBarrSync==='function') hBarrSync(); }catch(e){}   // lista de barramentos
   try{layerMultiSync();}catch(e){}
   // os seletores da aba Geoproc precisam refletir camadas criadas AGORA
@@ -682,7 +671,6 @@ function refreshUI(){
     const meshInfo=window.GeoMineGeology?.meshViews?.info(L);
     const g=L.groupId!=null?S.groups.find(x=>x.id===L.groupId):null;
     const s=L.sym;
-    const collabLocked=typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false,true);
     const classed=(s.mode==='grad'&&s.classes.length)||(s.mode==='cat'&&s.cats.length);
     const keyL=nodeKey('L',L.id);
     const el=document.createElement('div'); el.className='layer tree-column-row'+(L.id===S.activeId?' active':'')+(g?' ingrp':'')+(S._layerMulti.has(keyL)||layerMultiHerdado(it)?' multi-selected':'');
@@ -696,13 +684,13 @@ function refreshUI(){
       ${L._cavaLimiteDin
         ?`<span class="swatch" title="Limite paramétrico — cópia editável que comanda a cava/pilha" style="background:#fff;border:2px dashed #7b3fd4;box-sizing:border-box;display:flex;align-items:center;justify-content:center;color:#7b3fd4;font-size:13px;font-weight:800;line-height:1">◈</span>`
         :swatchHTML(L)}
-      <span class="nm"${collabLocked?' title="Camada em edição por outra pessoa ou aberta como leitura"':''}>${esc(L.name)}</span></span>${extra}<span class="cnt"${meshInfo?' title="'+esc(meshInfo.label)+'"':''}>${meshInfo?meshInfo.count.toLocaleString('pt-BR'):L.features.length}</span>
-      <button class="lfreeze mini" type="button" aria-pressed="${!!L.locked}" title="${collabLocked?'Camada em edição por outra pessoa ou aberta como leitura':L.locked?'Descongelar camada — liberar edição':'Congelar camada — bloquear edição'}" aria-label="${L.locked?'Descongelar camada':'Congelar camada'}" style="padding:0;width:24px;min-width:24px;max-width:24px;height:22px;flex:none">${L.locked||collabLocked?'🔒':'🔓'}</button>
+      <span class="nm">${esc(L.name)}</span></span>${extra}<span class="cnt"${meshInfo?' title="'+esc(meshInfo.label)+'"':''}>${meshInfo?meshInfo.count.toLocaleString('pt-BR'):L.features.length}</span>
+      <button class="lfreeze mini" type="button" aria-pressed="${!!L.locked}" title="${L.locked?'Descongelar camada — liberar edição':'Congelar camada — bloquear edição'}" aria-label="${L.locked?'Descongelar camada':'Congelar camada'}" style="padding:0;width:24px;min-width:24px;max-width:24px;height:22px;flex:none">${L.locked?'🔒':'🔓'}</button>
       <span class="tree-row-actions"><button class="lstyle mini" type="button" title="Opções da camada — copiar e colar estilo" aria-label="Opções da camada" style="padding:0;width:22px;min-width:22px;height:22px;flex:none">⋮</button>
       <span class="lcfg" title="Simbologia e rótulos" style="cursor:pointer;padding:0 5px;opacity:.65">⚙</span>
       <span class="gdel ldel" title="Remover camada">✕</span></span>`;
     el.querySelector('.eye').onclick=e=>{e.stopPropagation();
-      if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false,true)){collabCanEditLayer(L,true,true);return;}
+      if(typeof canEditLayer==='function'&&!canEditLayer(L,false,true)){canEditLayer(L,true,true);return;}
       nodeSetVis({t:'L',id:L.id,o:L},!L.visible);zApply();refreshUI();};
     el.querySelector('.lfreeze').onclick=e=>{e.stopPropagation();setLayerFrozen(L,!L.locked);};
     el.querySelector('.ldel').onclick=e=>{e.stopPropagation();treeConfirmDeleteLayer(L);};
@@ -748,7 +736,7 @@ function refreshUI(){
       const arr=s.mode==='grad'?s.classes:s.cats;
       arr.forEach((c,ci)=>{
         const on=c.vis!==false;
-        const label=s.mode==='grad'?`${fmt(c.min)} – ${fmt(c.max)}`:String(c.value);
+        const label=GeoMineNumberFormat.category(L,c);
         const row=document.createElement('div');
         row.className='clsrow'+(g?' ingrp2':'');row.style.paddingLeft=(34+it.depth*16)+'px';
         row.innerHTML=`<span class="eye ${on?'on':''}">${on?'◉':'○'}</span>
@@ -849,10 +837,10 @@ function renderClassList(){
   const s=L.sym; let html='';
   if(s.mode==='grad'){ s.classes.forEach((c,i)=>{
     html+=`<div class="classrow"><input type="color" value="${c.color}" data-ci="${i}">
-      <span class="rng">${fmt(c.min)} – ${fmt(c.max)}</span><span class="n">${c.count??''}</span></div>`; }); }
+      <span class="rng">${esc(GeoMineNumberFormat.category(L,c))}</span><span class="n">${c.count??''}</span></div>`; }); }
   else if(s.mode==='cat'){ s.cats.forEach((c,i)=>{
     html+=`<div class="classrow"><input type="color" value="${c.color}" data-ci="${i}">
-      <span class="rng">${c.value}</span><span class="n">${c.count??''}</span></div>`; }); }
+      <span class="rng">${esc(GeoMineNumberFormat.category(L,c))}</span><span class="n">${c.count??''}</span></div>`; }); }
   box.innerHTML=html;
   box.querySelectorAll('input[type=color]').forEach(inp=>inp.onchange=()=>{
     const i=+inp.dataset.ci,c=(s.mode==='grad'?s.classes:s.cats)[i],before=layerStyleAppearanceStamp(L,c);
@@ -914,7 +902,7 @@ function classifyLayer(){
 }
 function applySym(event){
   const L=activeLayer(); if(!L)return; const s=L.sym;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);return;}
   const before=layerStyleAppearanceStamp(L);
   s.mode=document.getElementById('symMode').value;
   s.color=document.getElementById('stColor').value;
@@ -934,7 +922,7 @@ function applySym(event){
 }
 document.getElementById('symMode').addEventListener('change',()=>{
   const L=activeLayer();if(!L)return;
-  if(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false)){collabCanEditLayer(L,true);syncSymPanel();return;}
+  if(typeof canEditLayer==='function'&&!canEditLayer(L,false)){canEditLayer(L,true);syncSymPanel();return;}
   const mode=document.getElementById('symMode').value,changed=L.sym.mode!==mode;
   L.sym.mode=mode;
   if(changed){window.GeoMineFeatureStyleBrush?.resetLayer(L);drawLayer(L);refreshUI();}

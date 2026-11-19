@@ -1,0 +1,61 @@
+/* A mesma linguagem dos cards de Hidrologia, apenas nas interfaces de edição. */
+.gm-card-stack,#propDockContent,.lp-pane{counter-reset:gm-panel-card}
+.gm-panel-card,.gm-prop-card{counter-increment:gm-panel-card;box-sizing:border-box;overflow-wrap:anywhere}
+.gm-panel-card>.gm-card-heading>.gm-card-step:empty::before,.gm-prop-card>.gm-card-heading>.gm-card-step:empty::before{content:counter(gm-panel-card)}
+/* O número da janela atravessa os subgrupos, sem depender do escopo dos counters. */
+:where(.gm-panel-card,.gm-prop-card)>.gm-card-heading>.gm-card-step[data-gm-card-number]:empty::before{content:attr(data-gm-card-number)}
+.gm-panel-card>.gm-card-heading,.gm-prop-card>.gm-card-heading{min-height:26px;line-height:1.4;margin:0 0 8px;font-weight:600;color:var(--ink)}
+.gm-panel-card>.gm-card-heading>b,.gm-prop-card>.gm-card-heading>b{min-width:0;flex:1;font-size:12px}
+.gm-panel-card>.gm-card-heading>.gm-card-step,.gm-prop-card>.gm-card-heading>.gm-card-step{letter-spacing:0;font-style:normal}
+.gm-panel-card>h4,.gm-panel-card>h5{padding:0;border:0;text-transform:none;letter-spacing:0}
+.gm-panel-card>.field:first-of-type{margin-top:4px}
+.gm-panel-card input:not([type=checkbox]):not([type=radio]),.gm-panel-card select,.gm-panel-card textarea{max-width:100%;box-sizing:border-box}
+.gm-panel-card .row2,.gm-panel-card .row3{min-width:0}
+.gm-panel-card .row2>*,.gm-panel-card .row3>*{min-width:0}
+.gm-panel-card .hint{line-height:1.45}
+.gm-panel-card>details:not(.gm-card-info){margin-top:8px}
+.gm-panel-card>.gm-card-heading .gm-prop-info{flex:none;margin-left:auto}
+.gm-panel-card>summary.gm-card-heading{cursor:pointer;list-style:none;margin-bottom:0}
+.gm-panel-card>summary.gm-card-heading::-webkit-details-marker{display:none}
+details.gm-panel-card[open]>summary.gm-card-heading{margin-bottom:8px}
+details.gm-panel-card>summary.gm-card-heading::after{content:'›';flex:none;margin-left:auto;color:var(--ink-dim);font-size:18px;line-height:1}
+details.gm-panel-card[open]>summary.gm-card-heading::after{content:'⌄'}
+.gm-panel-card>.gm-card-heading .gm-card-info{flex:none}
+.gm-card-info[open]{flex-basis:100%!important}
+.gm-card-info>div{font-weight:400;font-size:12px;line-height:1.45;color:var(--ink-dim);margin:5px 0 0}
+.gm-panel-card>.gm-card-heading:has(.gm-card-info[open]){flex-wrap:wrap}
+/* As seções existentes continuam a controlar sua abertura e seus valores. */
+.gmp .gmp-sec.gm-panel-card,.gmp .lp-cls-ctrl.gm-panel-card{border:1px solid var(--line,#b8c7d4)!important;border-radius:9px;background:var(--panel,#f8fbff);padding:9px!important;margin:0 0 10px!important}
+.gmp .gmp-sec.gm-panel-card>.gmp-hd,.gmp .lp-cls-ctrl.gm-panel-card>.gmp-hd{padding:0;gap:7px;min-height:28px;font-size:12px}
+.gmp .gmp-sec.gm-panel-card>summary::before{display:none}
+.gmp .gmp-sec.gm-panel-card>.gmp-c{padding-bottom:0}
+.gmp>.modal-b{padding-top:10px}
+.gmp .lptabs{position:sticky;top:-10px;z-index:2;background:var(--panel2,var(--panel));padding:5px 0 8px;margin-bottom:8px}
+.gmp .gmp-acoes:empty{display:none}
+.gm-card-stack>.gm-panel-card[style*="border-top"]{border:1px solid var(--line,#b8c7d4)!important;padding:10px!important;margin:0 0 10px!important}
+.gm-card-stack>.gm-panel-card:last-child{margin-bottom:0}
+.gm-card-stack>.gm-panel-card>.gm-card-stack{margin-top:7px}
+.fv-step.gm-panel-card{padding:10px}
+.fv-step.gm-panel-card::before{display:none}
+.fv-step.gm-panel-card>header.gm-card-heading{flex-direction:row;flex-wrap:wrap;align-items:center;gap:7px}
+.fv-step.gm-panel-card>header.gm-card-heading>span:not(.gm-card-step){flex-basis:100%}
+.fv-step.gm-panel-card.is-done .gm-card-step:empty::before{content:'✓'}
+.fv-step.gm-panel-card.is-done .gm-card-step{background:#2e9e4f}
+/* O dock exibe os mesmos cards sem mudar medições, seleção ou atributos. */
+#propDockContent>.field{margin:0 0 10px}
+#propDockContent .gm-prop-card{padding:10px;margin-bottom:10px;font-size:11.5px;line-height:1.5}
+#propDockContent .gm-prop-card b{overflow-wrap:anywhere}
+#propDockContent .gm-prop-card .gm-card-heading{line-height:1.35}
+#propDockContent>.gm-prop-card:last-child{margin-bottom:0}
+/* Os comandos da feição continuam botões: nenhum campo editável nesta janela. */
+.feat-menu .gm-feature-card{margin:8px;border:1px solid var(--line,#b8c7d4);border-radius:9px;background:var(--panel,#f8fbff);overflow:hidden}
+.feat-menu .gm-feature-card>.gm-card-heading{padding:8px 9px;margin:0;font-size:12px;line-height:1.3}
+.feat-menu .gm-feature-card>.fm-it{border-top:1px solid var(--line,#b8c7d4)!important;padding:8px 9px!important}
+.feat-menu .gm-feature-card>.fm-it:hover,.feat-menu .gm-feature-card>.fm-it:focus-visible{background:var(--panel2,#eaf1f8)!important}
+.feat-menu .gm-feature-card>.fm-it:focus-visible{outline:2px solid var(--amber,#f5a524);outline-offset:-2px}
+@media(pointer:coarse){
+ .gm-panel-card>.gm-card-heading,.gm-prop-card>.gm-card-heading{min-height:30px}
+ .gm-panel-card .gm-prop-info,.gm-card-info summary{min-width:30px;min-height:30px}
+ .gm-panel-card button:not(.gm-prop-info):not(.ce-sw),.gm-panel-card select{min-height:32px}
+}
+@media(max-width:650px){.gm-panel-card,.gm-prop-card{padding:8px}.gm-panel-card .gm-card-heading{gap:6px}}

@@ -254,7 +254,9 @@ function feicaoSobPonto(ll,tolerancia){
     (S.tool==='select'&&ativa?[ativa,...camadasNaOrdemDeSelecao().filter(L=>L!==ativa)]:camadasNaOrdemDeSelecao());
   for(const L of ordem){
     if(!L||L.visible===false||!L.features?.length)continue;
-    if(editaVertices&&(L.locked||(typeof collabCanEditLayer==='function'&&!collabCanEditLayer(L,false))))continue;
+    if(editaVertices&&(L.locked||(typeof canEditLayer==='function'&&!canEditLayer(L,false))))continue;
+    const texto=window.GeoMineDimensions?.labelHit?.(L,ll,tolerancia);
+    if(texto)return texto;
     const traco=feicaoMaisProximaPx(ll,tolerancia,false,[L]);
     if(traco)return traco;
     if(L.gtype==='polygon'){
@@ -269,6 +271,7 @@ function feicaoSobPonto(ll,tolerancia){
 function bindRightSelect(){
   if(typeof map==='undefined'||!map||!map.getContainer)return false;
   const el=map.getContainer();if(el._alagisRightSelect)return true;el._alagisRightSelect=true;
+  const editing=t=>!!(t?.isContentEditable||t?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"])'));
   let st=null,last=null;
   const now=()=>typeof performance==='object'&&typeof performance.now==='function'?performance.now():Date.now();
   const repeated=(x,y)=>!!last&&now()-last.at<700&&Math.hypot(x-last.x,y-last.y)<=12;
@@ -293,7 +296,7 @@ function bindRightSelect(){
     const confirmed=!el.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true,cancelable:true}));
     if(confirmed||commandActive){mark(x,y);return true;}
     const r=el.getBoundingClientRect(),ll=map.containerPointToLatLng([x-r.left,y-r.top]);
-    const hit=feicaoSobPonto(ll,S.touch?Math.round(SNAP_PX*1.6):SNAP_PX);
+    const hit=window.GeoMineDimensions?.componentOwner?.(e)||feicaoSobPonto(ll,S.touch?Math.round(SNAP_PX*1.6):SNAP_PX);
     if(hit){
       S.selRaster=null;
       if(typeof ED!=='undefined'&&ED.on&&typeof edSelecionar==='function')
@@ -303,7 +306,7 @@ function bindRightSelect(){
     mark(x,y);return true;
   };
   el.addEventListener('pointerdown',e=>{
-    if(e.button!==2)return;
+    if(e.button!==2||editing(e.target))return;
     st={id:e.pointerId,x:e.clientX,y:e.clientY};
     e.preventDefault();e.stopPropagation();
   },true);
@@ -315,13 +318,14 @@ function bindRightSelect(){
   },true);
   el.addEventListener('pointercancel',()=>{st=null;},true);
   el.addEventListener('contextmenu',e=>{
+    if(editing(e.target))return;
     e.preventDefault();e.stopPropagation();
     /* Mac: Ctrl+clique continua sendo a seleção aditiva existente. Um
        contextmenu comum — inclusive button 0 do WebKit/iPad — abre as
        propriedades, como o botão direito do Windows. */
     if(e.button===0&&e.ctrlKey&&S.tool==='select'&&!(S.drawBuf&&S.drawBuf.length)){
       const r=el.getBoundingClientRect(),ll=map.containerPointToLatLng([e.clientX-r.left,e.clientY-r.top]);
-      const hit=feicaoSobPonto(ll,S.touch?Math.round(SNAP_PX*1.6):SNAP_PX);
+      const hit=window.GeoMineDimensions?.componentOwner?.(e)||feicaoSobPonto(ll,S.touch?Math.round(SNAP_PX*1.6):SNAP_PX);
       if(hit&&typeof pickFeature==='function')pickFeature(hit.L,hit.idx,ll,{partIdx:hit.ringIndex,originalEvent:e});
       return;
     }
@@ -434,10 +438,10 @@ function setTool(t){
   // roda/botão central, sem trocar de ferramenta.
   if(t==='pan') t='select';
   const trava=activeLayer();
-  const collabBloqueada=!!(trava&&typeof collabCanEditLayer==='function'&&!collabCanEditLayer(trava,false));
-  if(trava && (trava.locked || collabBloqueada) &&
+  const edicaoBloqueada=!!(trava&&typeof canEditLayer==='function'&&!canEditLayer(trava,false));
+  if(trava && (trava.locked || edicaoBloqueada) &&
      ['point','line','poly','vertex','forma','dren','bacia','baciaRampa','baciaExt'].includes(t)){
-    if(collabBloqueada)collabCanEditLayer(trava,true);
+    if(edicaoBloqueada)canEditLayer(trava,true);
     else toast('A camada "'+trava.name+'" está bloqueada. Desbloqueie-a na aba GIS.');
     t='select';
   }
@@ -457,6 +461,7 @@ function setTool(t){
     if(geology&&typeof geology.sectionEndPreview==='function')geology.sectionEndPreview();
   }
   S.tool=t; document.querySelectorAll('.mtool').forEach(b=>{ if(b.id==='btnSnap'||b.id==='btnVertexGuides') return; b.classList.toggle('on',b.dataset.tool===t); });
+  if(typeof inundPointButtonUI==='function')inundPointButtonUI(t==='inund');
   if(t!=='forma' && typeof formaLimpaPrev==='function'){ formaLimpaPrev(); if(typeof FORMA==='object'){ FORMA.tipo=null; FORMA.dim=null; } if(typeof formaArrastoFim==='function') formaArrastoFim(); }
   clearDraw(); clearVertices();
   {
@@ -993,6 +998,11 @@ function atualizaCursorSnap(latlng){
   /* Área contribuinte: com a marcação armada, a mira mostra a linha de fluxo
      em que o ponto vai grudar (a mesma busca que o toque usa). Sem isto o ímã
      parecia desligado nesta ferramenta, embora o toque grudasse. */
+  if(S.tool==='lamina'&&window.GeoMineOriginalD8){
+    const picked=GeoMineOriginalD8.snap(latlng);S._cursorSnapHit=null;el.classList.remove('cursor-snap');
+    if(picked.snap)mostraCursorSnap({latlng:picked.latlng,snapped:true,kind:'linha de drenagem'});else limpaCursorSnap();
+    return;
+  }
   if(S.tool==='basin'&&window.GeoMinePointCatchment?.snapPreview){
     const alvo=GeoMinePointCatchment.snapPreview(latlng);
     S._cursorSnapHit=null; el.classList.remove('cursor-snap');

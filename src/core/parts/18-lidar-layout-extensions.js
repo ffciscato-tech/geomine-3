@@ -3084,16 +3084,23 @@ function layoutFrozenApply(){
         if(!layoutStateEqual(vv,pl.vis))S._loDraftVis={...vv};
         if(!layoutConventionEqual(cc,pl.conv))S._loDraftConv=layoutClone(cc);
         if(!layoutStateEqual(ss,pl.stack))S._loDraftStack=ss;
+        // Escala e dimensões não mudam a composição: não redesenhar a árvore
+        // nem reaplicar estilos a todas as feições em cada passo do controle.
+        if(layoutStateEqual(vv,S._loDraftVis||pl.vis)&&
+           layoutConventionEqual(cc,S._loDraftConv||pl.conv)&&
+           layoutStateEqual(ss,S._loDraftStack||pl.stack))return;
       }
       layoutConventionApply(S._loDraftConv||pl.conv);
-      layoutStackApply(pl.stack);
-      layoutVisRestore(pl.vis);
+      layoutStackApply(S._loDraftStack||pl.stack);
+      layoutVisRestore(S._loDraftVis||pl.vis);
       S._loAppliedPlateId=pl.id;
     }
   }else if(S.loMode==='fig'){
     if(!layoutVisHasKnown(S._figFrozenVis)||(!layoutVisHasVisible(S._figFrozenVis)&&layoutVisHasVisible(atual)))
       S._figFrozenVis={...atual};
-    layoutVisRestore(S._figFrozenVis);
+    const desired=S._loDraftVis||S._figFrozenVis;
+    if(layoutStateEqual(layoutVisSnapshot(),desired))return;
+    layoutVisRestore(desired);
   }
   try{refreshUI();}catch(e){}
 }

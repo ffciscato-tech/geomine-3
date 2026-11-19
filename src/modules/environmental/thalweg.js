@@ -188,5 +188,5 @@ root.addEventListener('keydown',e=>{
   if(!drawing||S.tool!==TOOL||!['Enter','Escape','Backspace'].includes(e.key))return;
   e.preventDefault();e.stopImmediatePropagation();if(e.key==='Enter')finishRegion();else if(e.key==='Escape')cancelDrawing();else{drawing.points.pop();renderRegion();}
 },true);
-root.GeoMineThalweg={open,beginDraw,mapClick,endDrawing,finishRegion,useSelected,run,cancel,resetProject,state:()=>({drawing:!!drawing,busy:!!job,region:region?.rings})};
+root.GeoMineThalweg={open,beginDraw,mapClick,endDrawing,finishRegion,useSelected,run,cancel,resetProject,draftPoints:()=>drawing?.points,redrawDraft:()=>renderRegion(),state:()=>({drawing:!!drawing,busy:!!job,region:region?.rings})};
 })(window);

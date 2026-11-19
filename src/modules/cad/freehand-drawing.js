@@ -30,7 +30,7 @@ const mapOk=()=>typeof map!=='undefined'&&!!map&&typeof mapaVista2D==='function'
 const container=()=>map.getContainer();
 /* Ferramentas que recebem uma sequência livre de vértices. */
 function supports(tool){
-  if(['line','poly','dren','selpoly'].includes(tool))return true;
+  if(['line','poly','dren','selpoly','riverChannelAxis','thalwegRegion'].includes(tool))return true;
   if(tool==='measure')return typeof measMode!=='function'||measMode()==='points';
   return false;
 }
@@ -39,6 +39,8 @@ function buffer(tool){
   if(tool==='dren')return S._drenBuf||(S._drenBuf=[]);
   if(tool==='measure')return S.meas.buf;
   if(tool==='selpoly')return S.msel.buf;
+  if(tool==='riverChannelAxis')return root.GeoMineChannelExtraction?.draftPoints?.();
+  if(tool==='thalwegRegion')return root.GeoMineThalweg?.draftPoints?.();
   return null;
 }
 /* A caixa de comprimento/ângulo do CAD abre ao lado do último vértice. Com
@@ -52,6 +54,8 @@ function redraw(tool,type){
     else if(tool==='dren')drenRedrawTmp();
     else if(tool==='measure'){redrawMeas();void updateMeas();}
     else if(tool==='selpoly')mselSketch();
+    else if(tool==='riverChannelAxis')root.GeoMineChannelExtraction?.redrawDraft?.();
+    else if(tool==='thalwegRegion')root.GeoMineThalweg?.redrawDraft?.();
   }catch(e){console.warn('mão livre: redesenho',e);}
 }
 /* Douglas–Peucker em pixels de tela: mantém a forma e descarta o excesso. */
@@ -75,7 +79,7 @@ function feed(tool,lls,event,type){
   let buf=buffer(tool);if(!buf)return false;
   const before=buf.length,magnet=tool!=='measure'&&tool!=='selpoly';let loose=false;
   if(before){   // continua o rascunho: emenda quando o traço começa na ponta atual
-    const last=buf[before-1],p=map.latLngToContainerPoint(L2.latLng(last[0],last[1])),q=map.latLngToContainerPoint(lls[0]);
+    const last=coordinates(buf[before-1]),p=map.latLngToContainerPoint(L2.latLng(last[0],last[1])),q=map.latLngToContainerPoint(lls[0]);
     if(Math.hypot(p.x-q.x,p.y-q.y)<=JOIN_PX)lls=lls.slice(1);else loose=true;   // solto: a primeira ponta também usa o ímã
   }else{
     if(tool==='dren')S._drenLastClick=0;
@@ -86,12 +90,12 @@ function feed(tool,lls,event,type){
   if(!lls.length){redraw(tool,type);return true;}
   const end=lls.length-1;
   lls.forEach((ll,i)=>{
-    const p=magnet&&(i===end||loose&&i===0)?snapped(ll):ll,prev=buf[buf.length-1];
+    const p=magnet&&(i===end||loose&&i===0)?snapped(ll):ll,prev=coordinates(buf[buf.length-1]);
     if(prev&&Math.abs(prev[0]-p.lat)<1e-10&&Math.abs(prev[1]-p.lng)<1e-10)return;
     if(tool==='measure')(S.meas.pointRefs||(S.meas.pointRefs=[])).push(null);
-    buf.push([p.lat,p.lng]);
+    buf.push(tool==='riverChannelAxis'||tool==='thalwegRegion'?{lat:p.lat,lng:p.lng}:[p.lat,p.lng]);
   });
-  if(buf.length>before)strokes.push({tool,project:S.projectId,start:before,end:buf.length,first:buf[before].slice(),last:buf[buf.length-1].slice()});
+  if(buf.length>before)strokes.push({tool,project:S.projectId,start:before,end:buf.length,first:coordinates(buf[before]).slice(),last:coordinates(buf[buf.length-1]).slice()});
   redraw(tool,type);
   if(tool==='selpoly'){if(!before&&buf.length>=3)try{mselFinish();}catch(e){console.warn('mão livre: laço',e);}strokes.length=0;return true;}
   try{cmdLog('traço à mão livre: '+(buf.length-before)+' vértice(s)'+(tool==='dren'||tool==='line'||tool==='poly'?' — ✓ conclui':''),'info');}catch(_){}
@@ -100,7 +104,8 @@ function feed(tool,lls,event,type){
 /* Desfazer: o último traço sai inteiro, não vértice por vértice. */
 /* O registro só vale enquanto o rascunho ainda contém aquele traço, no mesmo
    lugar: depois de concluir ou cancelar, um rascunho novo não o herda. */
-const same=(p,q)=>!!p&&!!q&&p[0]===q[0]&&p[1]===q[1];
+const coordinates=p=>p?(Array.isArray(p)?p:[p.lat,p.lng]):null;
+const same=(p,q)=>!!p&&!!q&&coordinates(p)[0]===coordinates(q)[0]&&coordinates(p)[1]===coordinates(q)[1];
 function valid(t){
   if(t.tool!==S.tool||t.project!==S.projectId)return false;
   const buf=buffer(t.tool);

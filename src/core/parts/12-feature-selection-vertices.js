@@ -175,18 +175,31 @@ function featMenuColoca(el,L,f,latlng,idx){
 }
 function openFeatMenu(L, idx, latlng){
   closeFeatMenu();
+  window.GeoMineTouchWorkspace?.clearNativeEditing?.();
   const f=L.features[idx]; if(!f) return;
+  const menuProject=S.projectId;
   const p=map.latLngToContainerPoint(latlng);
   const r=map.getContainer().getBoundingClientRect();
   const nm=labelText(L,f,idx)||('#'+idx);
   featMenuEl=document.createElement('div');
   featMenuEl.className='feat-menu';
+  featMenuEl.setAttribute('role','menu');
+  featMenuEl.setAttribute('aria-label','Ações da feição');
+  featMenuEl.setAttribute('contenteditable','false');
+  featMenuEl.setAttribute('writingsuggestions','false');
+  featMenuEl.spellcheck=false;
+  featMenuEl.addEventListener('keydown',event=>{
+    const action=event.target.closest?.('button.fm-it,button.fm-x');
+    if(!action||!['Enter',' ','Spacebar'].includes(event.key))return;
+    event.preventDefault();event.stopPropagation();
+    if(!event.repeat&&action.isConnected&&!action.disabled)action.click();
+  });
   featMenuEl.style.cssText=
     `position:fixed;left:${Math.min(r.left+p.x+10, innerWidth-215)}px;top:${Math.min(r.top+p.y+10, innerHeight-260)}px;`+
     'z-index:3200;background:var(--panel,#151b26);border:1px solid var(--line,#2a3446);border-radius:10px;'+
     'box-shadow:0 8px 26px #000a;min-width:200px;overflow:hidden;font-size:13px;user-select:none';
-  const item=(act,ic,tx,sub)=>`<div class="fm-it" data-act="${act}" style="padding:9px 12px;cursor:pointer;display:flex;gap:9px;align-items:center;border-top:1px solid var(--line,#2a3446)">
-      <span style="width:18px;text-align:center">${ic}</span><div>${tx}${sub?`<br><span style="font-size:10.5px;color:var(--ink-dim)">${sub}</span>`:''}</div></div>`;
+  const item=(act,ic,tx,sub)=>`<button type="button" role="menuitem" class="fm-it" data-act="${act}" style="width:100%;margin:0;padding:9px 12px;cursor:pointer;display:flex;gap:9px;align-items:center;border:0;border-top:1px solid var(--line,#2a3446);background:transparent;color:inherit;font:inherit;text-align:left;appearance:none;border-radius:0">
+      <span style="width:18px;flex:none;text-align:center" aria-hidden="true">${ic}</span><span>${tx}${sub?`<br><span style="font-size:10.5px;color:var(--ink-dim)">${sub}</span>`:''}</span></button>`;
   /* Copiar/Mover levam a feição — ou a seleção múltipla que a contém — para
      outra camada; copiar não altera a origem, mover a retira dela. */
   const naSelecao=(S.msel&&S.msel.items||[]).some(x=>x.layerId===L.id&&x.idx===idx);
@@ -196,7 +209,7 @@ function openFeatMenu(L, idx, latlng){
   const canContinue=featureContinueTarget(L,f)&&!L.locked;
   featMenuEl.innerHTML=
     `<div style="padding:8px 12px;background:#0004;font-weight:600;display:flex;align-items:center;gap:8px">
-       ${esc(L.name)} · ${esc(String(nm))}<span style="margin-left:auto;cursor:pointer;color:var(--ink-dim)" class="fm-x">✕</span></div>`+
+       ${esc(L.name)} · ${esc(String(nm))}<button type="button" aria-label="Fechar ações da feição" style="margin-left:auto;cursor:pointer;color:var(--ink-dim);background:none;border:0;font:inherit;min-width:24px;min-height:24px" class="fm-x">✕</button></div>`+
     item('vertex','✏️','Editar vértices','arraste p/ mover · toque no ○ do meio p/ adicionar · 2 toques p/ remover')+
     (canContinue?item('continue','↪','Continuar desenhando',L.gtype==='line'?'pela extremidade mais próxima do clique':''):'')+
     (window.GeoMineDragMove?item('mover','✥',naSelecao&&copiar.length>1?'Mover seleção':parte?'Mover somente esta parte':'Mover',
@@ -214,12 +227,18 @@ function openFeatMenu(L, idx, latlng){
       item('move','⇪',copiar.length>1?'Mover seleção para outra camada':'Mover para outra camada',copiar.length>1?copiar.length+' feições/partes selecionadas':''):'')+
     item('del','🗑',selParteValida(S.selFeat,L,f)?'Apagar somente esta parte':'Apagar feição','');
   document.body.appendChild(featMenuEl);
+  window.GeoMinePanelCards?.enhance(featMenuEl);
   featMenuColoca(featMenuEl,L,f,latlng,idx);
   const acao=(k,fn)=>{ const el=featMenuEl.querySelector(`.fm-it[data-act="${k}"]`); if(el) el.onclick=fn; };
   acao('vertex',()=>{ closeFeatMenu(); setTool('vertex'); showVertices();
     toast('Edição de vértices — arraste, ○ do meio adiciona, 2 toques remove; Esc/pan encerra'); });
   acao('continue',()=>{closeFeatMenu();continuarDesenho({L,f,latlng});});
-  acao('attr',()=>{ closeFeatMenu(); openAttr(idx); });
+  acao('attr',()=>{
+    closeFeatMenu();
+    const currentIdx=L.features.indexOf(f);
+    if(S.projectId!==menuProject||!S.layers.includes(L)||currentIdx<0){toast('A feição não está mais disponível.');return;}
+    openAttr(currentIdx,{layer:L,feature:f,featureOnly:true});
+  });
   acao('styleedit',()=>{closeFeatMenu();window.GeoMineFeatureStyleEditor.open(L,idx);});
   acao('stylebrush',()=>{closeFeatMenu();window.GeoMineFeatureStyleBrush.start(L,idx);});
   acao('styleclear',()=>{
@@ -268,6 +287,7 @@ function openFeatMenu(L, idx, latlng){
 }
 let selHL;
 function highlightSel(){
+  window.GeoMineDimensions?.syncSelection?.();
   if(selHL){map.removeLayer(selHL);selHL=null;}
   try{ attrDestacaSelecao(); }catch(e){}      // a tabela segue a seleção
   try{ cavaSincronizaSelecao(); }catch(e){}   // o seletor do limite também
@@ -447,7 +467,7 @@ function showVertices(){
   clearVertices(); if(!S.selFeat){toast('Selecione uma feição (ferramenta ◈)');return;}
   const {layer:L,idx,partIdx}=S.selFeat; const f=L.features[idx]; if(!f) return;
   if(String(L.id)!==String(S.activeId)||L.locked)return;
-  if(!collabCanEditLayer(L,true))return;
+  if(!canEditLayer(L,true))return;
   GeoMineVertexHandles.beginLegacy(L,f,idx);
   // Em multipartes, edita exatamente o anel clicado, não o primeiro por acaso.
   /* ponto gravado como [x,y] ou com nível extra ([[[x,y]]]): normaliza para
@@ -572,7 +592,7 @@ function showVertices(){
   }
   const frame=apply=>{
     const job=GeoMineVertexHandles.dragFrame(ev=>{
-      if(S._vtxCtx?.f!==f||!S._vtxDragging||!collabCanEditLayer(L,false))return;
+      if(S._vtxCtx?.f!==f||!S._vtxDragging||!canEditLayer(L,false))return;
       apply(ev);
     });dragFrames.push(job);return job;
   };

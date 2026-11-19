@@ -17,8 +17,6 @@
     return {...m,color:validColor(surface?.color||m.color),visible:ls.some(l=>l.visible!==false)};
   });}
   function raw(id){return store().find(m=>m.id===String(id)&&proxy(m));}
-  function sharedRoom(){return !!window.GeoMineCollaboration?.snapshot?.().roomId;}
-  function requireLocalImport(){if(sharedRoom())throw new Error('Nesta etapa, importe malhas na cópia local, fora da sala colaborativa. As geometrias seguem no arquivo .ccmgis salvo, mas a importação não é sincronizada em tempo real.');}
   function metricCRS(code){
     if(!code||typeof proj4!=='function')throw new Error('Selecione um sistema de coordenadas projetado conhecido, em metros.');
     let p;try{p=new proj4.Proj(code);}catch(_){throw new Error('Sistema de coordenadas desconhecido: '+code);}
@@ -98,7 +96,7 @@
     try{zApply();}catch(_){}
   }
   function commitParsed(parsed,options){
-    requireLocalImport();
+    
     metricCRS(options.crs);
     if(!options.unitsConfirmed)throw new Error('Confirme o CRS e que X, Y e cotas Z estão em metros.');
     if(!parsed?.meshes?.length)throw new Error('Nenhuma superfície foi encontrada neste par de arquivos.');
@@ -202,7 +200,7 @@
     });
   }
   async function validateFiles(dtm,str,options={}){
-    requireLocalImport();
+    
     api.state();
     if(busy)throw new Error('Já existe uma importação Surpac em andamento.');
     if(!dtm||!str)throw new Error('Escolha o .dtm e seu .str ou .stx correspondente.');
@@ -247,7 +245,6 @@
     $('#gmMeshImport').disabled=true;
     $('#gmMeshImport').insertAdjacentHTML('beforebegin','<button class="mini" id="gmMeshVerify" disabled>Verificar arquivos novamente</button> ');
     root.querySelector('.gm-mesh-form').insertAdjacentHTML('beforeend','<p class="gm-mesh-hint">O fechamento é verificado pela topologia das faces; auto-interseções globais não são validadas. Malhas abertas ou com topologia inválida são representadas por linhas na seção.</p>');
-    if(sharedRoom())root.querySelector('.gm-mesh-form').insertAdjacentHTML('beforeend','<p class="gm-mesh-hint">Sala colaborativa ativa: a importação de novas malhas está disponível somente na cópia local, fora da sala. As malhas existentes seguem no arquivo .ccmgis salvo.</p>');
     const close=()=>{if(busy){setStatus('Cancele ou aguarde a importação antes de fechar.',true);return;}validationSerial++;validated=null;disposePreview?.();root.remove();};
     root.querySelector('[data-close]').onclick=close;
     root.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();close();}});
@@ -314,7 +311,7 @@
         row.querySelectorAll('[data-role]').forEach(el=>el.onchange=()=>{const v=ls.find(v=>v._geology.meshRole===el.dataset.role);if(v){v.visible=el.checked;drawLayer(v);refresh();}});
         row.querySelector('[data-opacity]').onchange=e=>{if(surface){surface.sym.opacity=Number(e.target.value)/100;drawLayer(surface);refresh();}};
         row.querySelector('[data-zoom]').onclick=()=>{close();switchView('map');fitLayer(l);};
-        row.querySelector('[data-remove]').onclick=()=>{if(busy)return;if(!confirm('Remover as duas representações de “'+item.name+'” deste projeto? Os arquivos originais não serão alterados.'))return;ls.forEach(v=>deleteVectorLayer(v));disposePreview?.();disposePreview=null;refresh();render();};
+        row.querySelector('[data-remove]').onclick=()=>{if(busy)return;ls.forEach(v=>deleteVectorLayer(v));disposePreview?.();disposePreview=null;refresh();render();};
         row.querySelector('[data-preview]').onclick=()=>{disposePreview?.();try{disposePreview=preview(item.id,root.querySelector('#gmMeshViewer'));}catch(e){setStatus(e.message,true);}};
         box.appendChild(row);
       }

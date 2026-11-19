@@ -1,3 +1,85 @@
+/* Presentation only: classification keys, attributes and calculations retain
+   their original precision. One setting per vector layer, two decimals by default. */
+(function(){
+ 'use strict';
+ const DEFAULT=2,MAX=8,formats=new Map();
+ const number=v=>{
+  if(typeof v==='number')return Number.isFinite(v)?v:null;
+  if(typeof v!=='string'||!/^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?$/i.test(v.trim()))return null;
+  const n=Number(v);return Number.isFinite(n)?n:null;
+ };
+ const valid=d=>d!==''&&d!=null&&Number.isInteger(Number(d))&&Number(d)>=0&&Number(d)<=MAX;
+ const decimals=L=>valid(L?.sym?.decimals)?Number(L.sym.decimals):DEFAULT;
+ function format(value,d=DEFAULT){
+  const n=number(value);if(n===null)return value==null?'':String(value);
+  d=valid(d)?Number(d):DEFAULT;
+  if(!formats.has(d))formats.set(d,new Intl.NumberFormat('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d}));
+  // Round-off must not print a misleading negative zero.
+  return formats.get(d).format(Math.abs(n)<.5*10**(-d)?0:n);
+ }
+ function numericField(L,name,value){
+  if(number(value)===null)return false;
+  // Identifiers remain identifiers, even when their DBF storage is numeric.
+  if(/^(?:\$?ID|FID|OBJECTID|OID|COD_IMOVEL)$/i.test(name||''))return false;
+  const f=(L?.fields||[]).find(f=>f&&typeof f==='object'&&f.name===name);
+  if(f?.type)return /^(?:N|F|I|B|O|INTEGER|REAL|DOUBLE|FLOAT|NUMBER|NUMERIC)$/i.test(f.type);
+  return typeof value==='number'||typeof value==='string'&&/[.e]/i.test(value);
+ }
+ const field=(L,name,value)=>numericField(L,name,value)?format(value,decimals(L)):value==null?'':String(value);
+ function category(L,c,mode=L?.sym?.mode){
+  return mode==='grad'?format(c.min,decimals(L))+' – '+format(c.max,decimals(L)):field(L,L?.sym?.field,c.value);
+ }
+ const raster=(R,c)=>c.label||(c.value!=null?format(c.value):format(c.min)+' – '+format(c.max));
+ window.GeoMineNumberFormat={DEFAULT,MAX,number,decimals,format,numericField,field,category,raster};
+})();
+/* Sliders reuse the existing numeric controls and their style handlers.
+   No style is changed while a panel is opened or rebuilt. */
+(function(){
+  'use strict';
+  const format=(v,percent)=>percent?Math.round(v*100)+'%':Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})+' px';
+  function enhance(root){
+    root.querySelectorAll('.ce-weight,.ce-fill,[data-weight],[data-fill]').forEach(input=>{
+      if(input.type!=='number')return;
+      if(input._gmSlider){input._gmSlider();return;}
+      const percent=input.matches('.ce-fill,[data-fill]'),scale=input.matches('[data-fill]')?100:1;
+      const row=document.createElement('div');row.className='gm-style-slider';
+      const slider=document.createElement('input');slider.type='range';slider.min='0';
+      slider.max=percent?String(scale):String(Math.max(20,Number(input.max)||0,Number(input.value)||0));
+      slider.step=percent?String(scale/100):'0.1';
+      slider.setAttribute('aria-label',percent?'Opacidade do preenchimento':'Espessura da linha');
+      const out=document.createElement('output');out.className='gmp-val';
+      input.before(row);row.append(slider,input);
+      if(percent){input.hidden=true;row.append(out);}
+      else{input.setAttribute('aria-label','Espessura da linha em pixels');input.classList.add('gm-style-number');const unit=document.createElement('span');unit.textContent='px';unit.className='gm-style-unit';row.append(unit);}
+      const sync=()=>{
+        const v=Number(input.value);if(!Number.isFinite(v))return;
+        if(!percent&&v>Number(slider.max))slider.max=String(v);
+        slider.value=String(v);slider.disabled=input.disabled;
+        const label=format(v/scale,percent);slider.setAttribute('aria-valuetext',label);
+        slider.style.setProperty('--gm-range-fill',Math.max(0,Math.min(100,(v-Number(slider.min))/(Number(slider.max)-Number(slider.min))*100))+'%');
+        if(percent)out.value=label;
+      };
+      input._gmSlider=sync;
+      for(const type of ['input','change']){
+        slider.addEventListener(type,e=>{e.stopPropagation();input.value=slider.value;sync();input.dispatchEvent(new Event(type,{bubbles:true}));});
+        input.addEventListener(type,sync);
+      }
+      sync();
+    });
+  }
+  function syncRange(input,output,percent=true){
+    if(!input)return;
+    const v=Number(input.value),min=Number(input.min),max=Number(input.max);
+    input.style.setProperty('--gm-range-fill',Math.max(0,Math.min(100,(v-min)/(max-min)*100))+'%');
+    const label=format(v,percent);input.setAttribute('aria-valuetext',label);
+    if(output)output.textContent=label;
+  }
+  document.addEventListener('input',e=>{
+    const id=e.target.id;
+    if(['lpOpacity','rasOp','imModOp'].includes(id))syncRange(e.target,document.getElementById(id==='lpOpacity'?'lpOpacityV':id==='rasOp'?'rasOpV':'imModOpv'));
+  },true);
+  window.GeoMineStyleSliders={enhance,syncRange};
+})();
 
 /* ---------------------------------------------------------------------------
    Rede de segurança: se algo estourar no carregamento, mostra o erro na tela
@@ -187,7 +269,6 @@ const S = {
   /* Identidade estável, independente do nome do arquivo. É persistida no
      .ccmgis e permite associar sessão, autosave e handle ao projeto certo. */
   projectId:'gm_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10),
-  collaboration:null, // metadados não sensíveis da sala de projeto na nuvem
   img:null,            // {url,overlay,bounds}
   stack:[],            // ordem unificada de desenho: 'L:1','R:2','I:0' (topo primeiro)
   drawBuf:[],          // pontos sendo desenhados (WGS lat/lng)
@@ -197,28 +278,18 @@ const S = {
 };
 let map, baseLayers={}, uid=1, gid=1;
 
-/* Ponto comum de proteção: congelamento manual e autorização cooperativa.
-   O congelamento também vale offline; numa sala, a lease e o papel do
-   usuário continuam sendo verificados independentemente do cadeado. */
-function collabCanEditLayer(L, avisar=false,ignoreLocalLock=false){
-  if(L?.locked&&!ignoreLocalLock){if(avisar)toast('A camada "'+L.name+'" está congelada. Descongele pelo cadeado da camada para editar.');return false;}
-  const C=window.GeoMineCollaboration;
-  let ok=true;
-  try{ if(C&&typeof C.canEditLayer==='function')ok=C.canEditLayer(L)!==false; }
-  catch(e){ ok=false; }
-  if(!ok&&avisar){
-    let msg='Esta camada está em edição por outra pessoa.';
-    try{if(C&&typeof C.lockMessage==='function')msg=C.lockMessage(L)||msg;}catch(e){}
-    try{toast(msg);}catch(e){}
+/* A proteção de edição respeita o congelamento manual da camada. */
+function canEditLayer(L, avisar=false,ignoreLocalLock=false){
+  if(L?.locked&&!ignoreLocalLock){
+    if(avisar)toast('A camada "'+L.name+'" está congelada. Descongele pelo cadeado da camada para editar.');
+    return false;
   }
-  return ok;
+  return true;
 }
 
-/* Local freeze is independent of collaborative ownership. Unlocking cannot
-   bypass the permissions of a shared project. */
 function setLayerFrozen(L,frozen){
   if(!L||!S.layers.includes(L))return false;
-  if(!collabCanEditLayer(L,true,true))return false;
+  if(!canEditLayer(L,true,true))return false;
   frozen=!!frozen;if(L.locked===frozen)return true;
   if(frozen){
     window.GeoMineMouseRotation?.cancel();window.GeoMineDragMove?.cancel();window.GeoMinePolygonEdgeDrag?.clear();
@@ -317,14 +388,30 @@ function panelDaCamada(chave){
   }
   return nome;
 }
+/* Rótulos compartilham a visibilidade do grupo da camada, mas são pintados
+   em panes separados: nenhum preenchimento, símbolo ou raster pode cobri-los. */
+function panelDosRotulos(chave){
+  const nome='alagis_rotulos_'+String(chave).replace(/[^\w]/g,'_');
+  if(!map.getPane(nome)){
+    const pn=map.createPane(nome);
+    pn.style.zIndex=650;
+    pn.style.pointerEvents='none';
+  }
+  return nome;
+}
 function zApply(){
   try{ if(typeof syncOrthoTiles==='function') syncOrthoTiles(); }catch(e){}
   try{ if(typeof syncDemTiles==='function') syncDemTiles(); }catch(e){}
   const nodes=stackSync();
   // z-index crescente de baixo para cima da pilha; vale entre vetor e raster
-  const N=nodes.length;
+  const N=nodes.length,labelBase=Math.max(650,410+(N+1)*2+5),labelTop=labelBase+N;
   nodes.forEach((n,i)=>{
     const z=410+(N-i)*2;                 // topo da pilha = maior z
+    if(n.t==='L'){
+      const pn=map.getPane(panelDosRotulos('L'+n.id));
+      pn.style.zIndex=labelBase+N-i;
+      pn.style.opacity=String(n.o.sym?.opacity??1);
+    }
     const lyr=nodeLayer(n);
     if(!lyr) return;
     if(n.t==='L' || n.t==='R'){
@@ -348,9 +435,13 @@ function zApply(){
   // a régua fica sempre por cima: z calculado a partir do topo da pilha,
   // senão um projeto com muitas camadas voltaria a encobri-la
   try{ const pr=map.getPane('alagis_regua');
-       if(pr) pr.style.zIndex=Math.max(690, 410+(N+1)*2+20); }catch(e){}
+       if(pr) pr.style.zIndex=Math.max(690,labelTop+20); }catch(e){}
   try{ const pd=map.getPane('alagis_desenho');
-       if(pd) pd.style.zIndex=Math.max(685, 410+(N+1)*2+15); }catch(e){}
+       if(pd) pd.style.zIndex=Math.max(685,labelTop+15); }catch(e){}
+  // As janelas de informação e os avisos do mapa seguem acima dos nomes.
+  const tooltip=map.getPane('tooltipPane'),popup=map.getPane('popupPane');
+  if(tooltip)tooltip.style.zIndex=Math.max(695,labelTop+30);
+  if(popup)popup.style.zIndex=Math.max(700,labelTop+40);
 }
 
 /* ---------- Toast ---------- */
@@ -493,7 +584,7 @@ function cmdToggle(mostrar){
   { const bf=document.getElementById('btnCmdFlut'); if(bf) bf.style.display=abrir?'none':'block'; }
   if(abrir){ cmdAplicaModo(); cmdPinta();
     const el=document.getElementById('cmdLog'); if(el) el.scrollTop=el.scrollHeight;
-    const i=document.getElementById('cmdIn'); if(i) i.focus(); }
+    const i=document.getElementById('cmdIn'); if(i&&!navigator.maxTouchPoints) i.focus(); }
 }
 function cmdExecuta(txt){
   const t=String(txt||'').trim().toLowerCase();

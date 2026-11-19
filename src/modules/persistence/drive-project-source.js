@@ -58,7 +58,7 @@ async function request(source,query,signal,extraHeaders){
   const headers={Authorization:'Bearer '+token,...(extraHeaders||{})};
   if(source.resourceKey && /^[\w-]+$/.test(source.resourceKey))headers['X-Goog-Drive-Resource-Keys']=source.id+'/'+source.resourceKey;
   const response=await fetch(url,{headers,signal,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
-  if(response.status===401){provider.clearDriveAccess();throw Error('Toque em ↻ ao lado do nome do projeto para reconectar ao Drive.');}
+  if(response.status===401){provider.clearDriveAccess();throw Object.assign(Error('A autorização do Google Drive expirou.'),{code:'drive/authorization-needed'});}
   if(!response.ok)throw Error(response.status===404?'O arquivo vinculado não está disponível para esta conta no Drive.':'O Google Drive não pôde ler o arquivo (HTTP '+response.status+').');
   return response;
 }
@@ -129,6 +129,23 @@ async function latest(source,projectId,signal){
   }
   return null;
 }
-root.GeoMineDriveProject={pick,isSource,metadata,read,latest,rememberFolder,lastFolder};
+/* Leitura automática de um projeto aberto pelo seletor do aparelho: aceita
+   somente nome e projectId iguais, sem escolher arbitrariamente entre cópias. */
+async function find(hint,signal){
+  if(!hint?.name||!hint.projectId)return null;
+  const token=await drive().driveAccess(false),url=new URL('https://www.googleapis.com/drive/v3/files');
+  url.search=new URLSearchParams({q:"name = '"+String(hint.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'")+"' and trashed = false",
+    pageSize:'25',fields:'files(id,name,version,modifiedTime,size,resourceKey)',supportsAllDrives:'true',includeItemsFromAllDrives:'true',corpora:'allDrives'});
+  const response=await fetch(url,{headers:{Authorization:'Bearer '+token},signal,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+  if(!response.ok)throw Error('Não foi possível localizar o projeto no Google Drive (HTTP '+response.status+').');
+  const matches=[];
+  for(const file of (await response.json()).files||[]){
+    const source={kind:'drive',id:file.id,resourceKey:file.resourceKey||''};if(!isSource(source))continue;
+    const text=await head(source,4096,signal),id=/"projectId"\s*:\s*"([^"\\]{1,200})"/.exec(text)?.[1];
+    if(id===hint.projectId)matches.push({...source,name:file.name,version:String(file.version||''),size:Number(file.size)||0});
+  }
+  return matches.length===1?matches[0]:null;
+}
+root.GeoMineDriveProject={pick,isSource,metadata,read,latest,find,rememberFolder,lastFolder};
 })(window);
 

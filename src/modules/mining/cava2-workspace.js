@@ -9,7 +9,7 @@ const IDS_VALORES=['cava_H','cava_banco','cava_nb','cava_face','cava_berma','cav
   'pilha_H','pilha_banco','pilha_nb','pilha_face','pilha_berma','pilha_rampa_larg','pilha_rampa_grad','pilha_rampa_raio'];
 const estado={frame:null,ready:false,crs:null,baseZ:0,fonte:null,alvo:'cava',syncTimer:0,
   projetoPendente:undefined,restaurando:false,desenhos:[],desenhoId:null,seq:0,
-  painelFechado:true,cutHashes:{},mdtTrabalhoId:null};
+  painelFechado:true,mostrarGrade:true,fundoMapa:null,cutHashes:{},mdtTrabalhoId:null};
 
 function fontePreparada(){
   return String(CAVA2_V106_SOURCE||'')
@@ -74,10 +74,13 @@ function criaInterface(){
     <div class="cava2-design-tabs" id="cava2DesignTabs" role="tablist" aria-label="Desenhos da cava"></div>
     <button id="cava2TabsNext" type="button" aria-label="Rolar abas para a direita" title="Próximas abas" disabled>›</button>
     <select id="cava2DesignList" aria-label="Ir para cava ou DCE" title="Todas as cavas e DCEs" disabled></select>
+    <select id="cava2Basemap" aria-label="Satélite ou ortofoto no modo Cava" title="Satélite ou ortofoto no modo Cava" disabled>${FUNDOS_CAVA.map(name=>`<option value="${esc(name)}">${esc(name)}</option>`).join('')}</select>
   </nav>
   <iframe id="cava2Frame" title="Área 2D — cava e DCE" sandbox="allow-scripts allow-same-origin allow-downloads"></iframe>`;
   estado.frame=document.getElementById('cava2Frame');
   const abas=document.getElementById('cava2DesignTabs'),novo=document.getElementById('cava2NewDesign'),listaAbas=document.getElementById('cava2DesignList');
+  document.getElementById('cava2Basemap').value=fundoCava();
+  document.getElementById('cava2Basemap').onchange=e=>selecionaFundoCava(e.target.value);
   novo.onchange=()=>{const tipo=novo.value;novo.value='';if(tipo)criaNovoDesenho(tipo);};
   listaAbas.onchange=()=>{const opt=listaAbas.selectedOptions[0];if(opt?.dataset.designId)trocaDesenho(opt.dataset.designId,opt.dataset.variant);};
   for(const [id,sentido] of [['cava2TabsPrev',-1],['cava2TabsNext',1]])document.getElementById(id).onclick=()=>{
@@ -105,13 +108,15 @@ function criaInterface(){
     lista.addEventListener('click',atualiza,true);lista.addEventListener('change',atualiza,true);
   }
   estado.frame.addEventListener('load',()=>{
-    estado.ready=true;aplicaTemaNoMotor();aplicaPainel();
+    estado.ready=true;document.getElementById('cava2Basemap').disabled=false;aplicaTemaNoMotor();aplicaPainel();
+    try{window.GeoMineTouchWorkspace?.install(estado.frame.contentDocument);}catch(_){}
     try{estado.frame.contentWindow.addEventListener('cava2:changed',()=>{
       if(!estado.restaurando)agendarSincronizacao();
     });}catch(e){console.warn('Área 2D: evento de alteração',e);}
     try{estado.frame.contentWindow.addEventListener('cava2:cleared',()=>{
       if(!estado.restaurando)limpaCamadasDoDesenho();
     });}catch(e){console.warn('Área 2D: limpeza das camadas',e);}
+    try{estado.frame.contentWindow.addEventListener('cava2:grid-changed',e=>{estado.mostrarGrade=e.detail?.visible!==false;salvaRegistroLocal();window.GeoMineSessionAutosave?.markDirty('quadrícula da cava');});}catch(e){}
     try{estado.frame.contentWindow.addEventListener('cava2:cursor',atualizaCursorGlobal);}catch(e){}
     try{estado.frame.contentWindow.addEventListener('cava2:drawing-blocked',exigeMdt);}catch(e){}
     try{estado.frame.contentWindow.addEventListener('cava2:tool-changed',e=>{
@@ -138,6 +143,10 @@ function criaInterface(){
         }
       }
     }
+    api()?.setGridVisible?.(estado.mostrarGrade);
+    estado.frame.contentWindow.addEventListener('cava2:view-changed',agendaFundoCava);
+    estado.frame.contentWindow.addEventListener('cava2:basemap-status',statusFundoCava);
+    fundoCavaKey='';agendaFundoCava();
     populaMdts();configuraMdtNoMotor();
     if(rasterDoDesenho(desenhoAtual()))status('MDT de trabalho pronto · a camada Interseção será atualizada automaticamente.');
     else status('Escolha primeiro o MDT de trabalho para liberar o desenho da cava/DCE.',true);
@@ -322,6 +331,101 @@ function georreferenciaDoOverlay(ov){
   }catch(e){return null;}
 }
 function limitesDoOverlay(ov){const g=georreferenciaDoOverlay(ov);return g&&g.bounds;}
+/* Same providers as the 2D map. Only provider identity is persisted; tiles
+   remain a bounded display cache in the iframe, under all project layers. */
+const FUNDOS_CAVA=['Satélite (Google)','Híbrido (Google)','Satélite (Esri)','Ruas (OSM)','Topográfico (OpenTopo)','Sem fundo'];
+const ZOOM_FUNDO_CAVA={'Satélite (Google)':22,'Híbrido (Google)':22,'Satélite (Esri)':19,'Ruas (OSM)':19,'Topográfico (OpenTopo)':17};
+let fundoCavaTimer=0,fundoCavaKey='',fundoCavaOrtoState=[];
+const ORTO_FUNDO_CAVA='ortofoto:';
+function fontesOrtoCava(){return typeof cnOrtoSources==='function'?cnOrtoSources():[];}
+function nomeFundoCavaValido(name){return typeof name==='string'&&(FUNDOS_CAVA.includes(name)||name.startsWith(ORTO_FUNDO_CAVA));}
+function atualizaOpcoesFundoCava(){
+ const el=document.getElementById('cava2Basemap');if(!el)return;
+ const fontes=fontesOrtoCava(),value=fundoCava(),opts=FUNDOS_CAVA.map(n=>[n,n]);
+ for(const {id,o} of fontes)opts.push([ORTO_FUNDO_CAVA+id,'Ortofoto · '+(o.name||'Ortofoto')]);
+ if(value.startsWith(ORTO_FUNDO_CAVA)&&!opts.some(q=>q[0]===value))opts.push([value,'Ortofoto indisponível']);
+ const key=JSON.stringify(opts);if(el.dataset.options!==key){el.replaceChildren(...opts.map(([v,n])=>new Option(n,v)));el.dataset.options=key;}el.value=value;
+}
+function planoOrtoFundoCava(source,crs){
+ const info=typeof v3OrthoTextureInfo==='function'?v3OrthoTextureInfo(source,crs):null;if(!info)return [];
+ const b=info.b,cols=8,rows=8,points=[];
+ for(let row=0;row<=rows;row++)for(let col=0;col<=cols;col++){
+  const x=b[0]+(b[2]-b[0])*col/cols,y=b[3]-(b[3]-b[1])*row/rows,
+   q=info.crs===crs?[x,y]:reproj(info.crs,crs,x,y);
+  if(!q?.every(Number.isFinite))return [];points.push({x:q[0],y:q[1]});
+ }
+ return [{kind:'ortho',url:info.url,mesh:{cols,rows,points}}];
+}
+function fundoCava(){
+ if(nomeFundoCavaValido(estado.fundoMapa))return estado.fundoMapa;
+ const main=S.img?.visible!==false&&S.img?.url?fontesOrtoCava().find(q=>q.o===S.img):null;
+ if(main)return ORTO_FUNDO_CAVA+main.id;
+ return FUNDOS_CAVA.includes(S.getBase?.()||S._base)?(S.getBase?.()||S._base):'Satélite (Google)';
+}
+function planoFundoCava(view,width,height,crs,name){
+ if(name==='Sem fundo'||!TILE_URLS[name]||!view||!(view.escala>0)||width<2||height<2)return [];
+ const s=view.escala,x0=-view.ox/s,x1=(width-view.ox)/s,y0=(view.oy-height)/s,y1=view.oy/s;
+ const ll=[];
+ for(const x of [x0,(x0+x1)/2,x1])for(const y of [y0,(y0+y1)/2,y1]){
+  const q=toWGS(crs,x,y);if(!q?.every(Number.isFinite)||Math.abs(q[0])>180||Math.abs(q[1])>85)return [];
+  ll.push(q);
+ }
+ const W=Math.min(...ll.map(p=>p[0])),E=Math.max(...ll.map(p=>p[0])),south=Math.min(...ll.map(p=>p[1])),north=Math.max(...ll.map(p=>p[1]));
+ if(E-W>180)return [];
+ const a=lonlat2tile(W,north,0),b=lonlat2tile(E,south,0),dx=b[0]-a[0],dy=b[1]-a[1];
+ if(!(dx>0&&dy>0))return [];
+ let z=Math.max(0,Math.min(ZOOM_FUNDO_CAVA[name],Math.floor(Math.log2(Math.max(width/(dx*256),height/(dy*256)))))),range;
+ for(;z>=0;z--){
+  const n=2**z,p=lonlat2tile(W,north,z),q=lonlat2tile(E,south,z);
+  range={x0:Math.max(0,Math.floor(p[0])-1),x1:Math.min(n-1,Math.floor(q[0])+1),y0:Math.max(0,Math.floor(p[1])-1),y1:Math.min(n-1,Math.floor(q[1])+1)};
+  if((range.x1-range.x0+1)*(range.y1-range.y0+1)<=64)break;
+ }
+ if(z<0||!range)return [];
+ const out=[],cols=2,rows=2;
+ for(let x=range.x0;x<=range.x1;x++)for(let y=range.y0;y<=range.y1;y++){
+  const points=[];
+  for(let row=0;row<=rows;row++)for(let col=0;col<=cols;col++){
+   const ll=tile2lonlat(x+col/cols,y+row/rows,z),p=fromWGS(crs,ll[0],ll[1]);
+   if(!p?.every(Number.isFinite))return [];points.push({x:p[0],y:p[1]});
+  }
+  out.push({x,y,z,url:TILE_URLS[name](z).replace('{x}',x).replace('{y}',y),mesh:{cols,rows,points}});
+ }
+ return out;
+}
+function atualizaFundoCava(){
+ clearTimeout(fundoCavaTimer);fundoCavaTimer=0;
+ const A=api(),renderer=estado.frame?.contentWindow?.GeoMineCavaBasemap,D=doc2D(),cv=D?.getElementById('cv');
+ if(!A||!renderer||!cv)return false;
+ atualizaOpcoesFundoCava();const name=fundoCava();
+ if(S._view!=='cava2'||!workspace()?.classList.contains('on'))return false;
+ const view=A.getView(),crs=estado.crs||S.workCRS,isOrtho=name.startsWith(ORTO_FUNDO_CAVA),
+  ortho=isOrtho?fontesOrtoCava().find(q=>ORTO_FUNDO_CAVA+q.id===name)?.o:null;
+ const imageState=[ortho,ortho?._workPreviewURL,ortho?.url,ortho?._crsFixo,ortho?._sourceCRS,...(ortho?.b||[]),ortho?._warpWM,...(ortho?._llbounds?.flat()||[])];
+ if(imageState.length!==fundoCavaOrtoState.length||imageState.some((v,i)=>v!==fundoCavaOrtoState[i])){fundoCavaKey='';fundoCavaOrtoState=imageState;}
+ const key=[S.projectId,crs,name,...(isOrtho?[]:[view.escala,view.ox,view.oy,cv.clientWidth,cv.clientHeight])].join('|');
+ if(key===fundoCavaKey)return true;fundoCavaKey=key;
+ let tiles=[];try{tiles=isOrtho?planoOrtoFundoCava(ortho,crs):planoFundoCava(view,cv.clientWidth,cv.clientHeight,crs,name);}catch(e){console.warn('Fundo da cava:',e.message);}
+
+ renderer.setTiles(tiles,name);return true;
+}
+function agendaFundoCava(){clearTimeout(fundoCavaTimer);fundoCavaTimer=setTimeout(atualizaFundoCava,70);}
+function selecionaFundoCava(name){
+ if(!FUNDOS_CAVA.includes(name)&&!fontesOrtoCava().some(q=>ORTO_FUNDO_CAVA+q.id===name))return false;
+ estado.fundoMapa=name;fundoCavaKey='';atualizaContexto();atualizaFundoCava();salvaRegistroLocal();
+ window.GeoMineSessionAutosave?.markDirty('fundo da cava');return true;
+}
+function statusFundoCava(e){
+ const q=e.detail,el=document.getElementById('cava2Basemap');if(!el||q?.provider!==fundoCava())return;
+ const text=q.loading?'Carregando fundo…':q.total&&q.failed===q.total?'Fundo indisponível. Escolha outra opção.':q.provider.startsWith(ORTO_FUNDO_CAVA)&&!q.total?'Ortofoto indisponível neste projeto.':'Fundo da cava';
+ el.title=text;el.setAttribute('aria-busy',String(!!q.loading));
+}
+
+function feicaoIntersecaoEmPrimeiroPlano(L,f){
+  if(L?.gtype!=='line')return false;
+  const labels=[f?.props?.ELEMENTO,f?.props?.TIPO,f?.props?.CLASSE].map(v=>
+    String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase());
+  return labels.some(v=>v==='intersecao'||v.startsWith('intersecao ')||v==='daylight'||v==='rb31-inter');
+}
 function contextoDasCamadas(){
   const atual=desenhoAtual(),temDesign=!!designRuntime(atual),out=[],candidatos=[];
   const limite=240000,camadas=[...(S.layers||[])].sort((a,b)=>(b._cava2Managed?1:0)-(a._cava2Managed?1:0));
@@ -357,7 +461,7 @@ function contextoDasCamadas(){
       reduzido=reduzCaminhoPreservandoForma(c.P0,alvo,c.closed),P=reduzido.map(p=>pontoNoTrabalho(c.L,p));
     if(!P.length)continue;
     if(c.closed&&gruposPoligonos.has(c.f)){gruposPoligonos.get(c.f).paths.push(P);continue;}
-    const item={paths:[P],foreground:!!c.L._cava2CutOf||c.L._cava2SnapshotRole==='line',color:c.st.stroke||c.st.color||c.L.color||'#687786',
+    const item={paths:[P],foreground:feicaoIntersecaoEmPrimeiroPlano(c.L,c.f),color:c.st.stroke||c.st.color||c.L.color||'#687786',
       fillColor:c.st.color||c.st.stroke||c.L.color||'#687786',
       weight:Number.isFinite(+c.st.weight)?+c.st.weight:1,dash:c.st.dash||'',opacity:Number.isFinite(+c.st.opacity)?+c.st.opacity:1,
       /* Mesma regra do Mapa 2D: hatch=none significa contorno sem qualquer
@@ -376,7 +480,7 @@ function contextoDasCamadas(){
       opacity:n(r.style?.opacity,.8),name:r.name||'Raster'});
   }
   const I=S.img;
-  if(I?.visible!==false&&I?.url){
+  if(!estado.fundoMapa&&I?.visible!==false&&I?.url){
     const op=Math.max(0,Math.min(1,n(I.overlay?.options?.opacity,n(I.opacity,1))));
     /* I.url é a prévia fixa integral. Nunca usamos os bounds atuais do overlay:
        durante o modo HD ele pode conter apenas a janela visível, o que antes
@@ -384,6 +488,13 @@ function contextoDasCamadas(){
     const geo=I._warpWM&&I._llbounds?georreferenciaMercatorDaImagem(I._llbounds,8):
       (Array.isArray(I.b)&&I.b.length===4?{bounds:I.b.slice(),mesh:null}:georreferenciaDoOverlay(I.overlay));
     if(geo)out.push({imageUrl:I.url,bounds:geo.bounds,mesh:geo.mesh,opacity:op,name:I.name||'Ortofoto'});
+  }
+  // A new/empty Cava must fit the selected ortho too. Background images are
+  // not vector geometry, so provide only their extent to the editor's fit.
+  if(!temDesign&&fundoCava().startsWith(ORTO_FUNDO_CAVA)){
+    const source=fontesOrtoCava().find(q=>ORTO_FUNDO_CAVA+q.id===fundoCava())?.o,
+      info=typeof v3OrthoTextureInfo==='function'?v3OrthoTextureInfo(source,estado.crs||S.workCRS):null;
+    if(info)out.push({bounds:info.workBounds.slice(),paths:[],name:source.name||'Ortofoto'});
   }
   return out;
 }
@@ -434,7 +545,7 @@ function atualizaContexto(){
   aplicaVarianteCava(desenhoAtual());
   A.setContextLayers(contextoDasCamadas(),false);aplicaVisibilidadeDesenho(false);aplicaEstiloDesenho(false);
   const d=desenhoAtual();A.setVolumeSummary?.(d?{name:d.nome,type:d.tipo,swelling:d.empolamento??null,
-    cut:d.variante==='recortada'?d.resultadoCorte?.volumes:null}:null);A.redesenha();return true;
+    cut:d.variante==='recortada'?d.resultadoCorte?.volumes:null}:null);A.redesenha();agendaFundoCava();return true;
 }
 function atualizaNavegacaoAbas(revelaAtiva){
   const box=document.getElementById('cava2DesignTabs');if(!box||!box.clientWidth)return;
@@ -631,7 +742,7 @@ function normalizaCotaDesenho(d,R){
   const lim=limitesCotaRedonda(R);if(!d||!lim)return null;
   let z=+d.baseZ;
   if(!Number.isFinite(z)||z<lim.min||z>lim.max)z=d.tipo==='pilha'?lim.min:lim.max;
-  z=cotaRedonda5(Math.max(lim.min,Math.min(lim.max,z)));
+  z=Math.round(Math.max(lim.min,Math.min(lim.max,z)));
   z=Math.max(lim.min,Math.min(lim.max,z));d.baseZ=z;estado.baseZ=z;
   return {...lim,value:z};
 }
@@ -641,8 +752,11 @@ function configuraCotaTrabalho(d,R){
   if(!box||!range||!minEl||!maxEl||!out)return false;
   d=d||desenhoAtual();R=R||rasterDoDesenho(d);const c=normalizaCotaDesenho(d,R);
   box.hidden=!c;range.disabled=!c;
+  const menos=D.getElementById('ccmgis_cota_menos'),mais=D.getElementById('ccmgis_cota_mais');
+  if(menos)menos.disabled=!c||c.value<=c.min;
+  if(mais)mais.disabled=!c||c.value>=c.max;
   if(!c){minEl.textContent=maxEl.textContent=out.textContent='—';return false;}
-  const passo=5;
+  const passo=1;
   range.min=String(c.min);range.max=String(c.max);range.step=String(passo);range.value=String(c.value);
   minEl.textContent=formataCota(c.min);maxEl.textContent=formataCota(c.max);out.value=out.textContent=formataCota(c.value);
   box.title=`Cota de trabalho · mínima ${formataCota(c.min)} m · máxima ${formataCota(c.max)} m`;
@@ -680,7 +794,7 @@ function sincronizaSuperficieTrabalhoNoMotor(d,R,redraw=true,forcar=false){
 function defineCotaTrabalho(valor,silencioso){
   const d=desenhoAtual(),R=rasterDoDesenho(d),lim=limitesCotaRedonda(R);if(!d||!R||!lim)return false;
   let z=+valor;if(!Number.isFinite(z))return false;
-  z=cotaRedonda5(Math.max(lim.min,Math.min(lim.max,z)));
+  z=Math.round(Math.max(lim.min,Math.min(lim.max,z)));
   z=Math.max(lim.min,Math.min(lim.max,z));
   d.baseZ=z;estado.baseZ=z;estado.cutHashes[d.id]=null;
   configuraCotaTrabalho(d,R);try{api()?.setWorkElevation?.(z);}catch(e){}
@@ -786,6 +900,8 @@ function configuraMdtNoMotor(){
     el.addEventListener('change',()=>selecionaMdtTrabalho(el.value));
     cota.addEventListener('input',()=>defineCotaTrabalho(cota.value,true));
     cota.addEventListener('change',()=>defineCotaTrabalho(cota.value,false));
+    D.getElementById('ccmgis_cota_menos')?.addEventListener('click',()=>defineCotaTrabalho(Number(cota.value)-1,false));
+    D.getElementById('ccmgis_cota_mais')?.addEventListener('click',()=>defineCotaTrabalho(Number(cota.value)+1,false));
     cut.addEventListener('click',()=>rasterDoDesenho(desenhoAtual())?cortaMdtAtual(true):exigeMdt());
     const swelling=D.getElementById('ccmgisEmpolamento');
     swelling?.addEventListener('input',()=>{
@@ -1222,7 +1338,7 @@ function leEstadoMotor(){
 }
 function dadosRegistro(){
   return {version:2,activeId:estado.desenhoId,seq:estado.seq,painelFechado:estado.painelFechado,
-    mdtTrabalhoId:estado.mdtTrabalhoId||null,designs:clone(estado.desenhos)};
+    mdtTrabalhoId:estado.mdtTrabalhoId||null,mostrarGrade:estado.mostrarGrade!==false,fundoMapa:estado.fundoMapa,designs:clone(estado.desenhos)};
 }
 function salvaRegistroLocal(){
   try{localStorage.setItem(REGISTRY_KEY,JSON.stringify(dadosRegistro()));return true;}catch(e){return false;}
@@ -1308,6 +1424,10 @@ function migraCamadasAntigas(){
 function aplicaEstadoProjeto(st){
   if(!estado.ready){estado.projetoPendente=clone(st);return false;}
   estado.outputKey=null;
+  estado.fundoMapa=nomeFundoCavaValido(st?.fundoMapa)?st.fundoMapa:null;fundoCavaKey='';fundoCavaOrtoState=[];
+  atualizaOpcoesFundoCava();
+  estado.frame?.contentWindow?.GeoMineCavaBasemap?.setTiles([],fundoCava());
+  estado.mostrarGrade=st?.mostrarGrade!==false;api()?.setGridVisible?.(estado.mostrarGrade);
   estado.projetoPendente=undefined;const m=migraEstado(st);
   estado.mdtTrabalhoId=m?.mdtTrabalhoId??m?.designs?.find(q=>q?.mdtId)?.mdtId??null;
   const usados=new Set();
@@ -1869,7 +1989,7 @@ function aplicaVarianteCava(d){
     if(cut){A.sel=null;A.setTool('mover');S.activeId=camadasResultadoCava(d).line?.id??S.activeId;}
   }
   D.body.classList.toggle('ccmgis-cut-preview',cut);
-  const liberados=new Set(['t_mover','t_cava','t_pilha','b_ajustar','b_png','b_dxf','ccmgisPainelCorner','ccmgisEmpolamento',...(!d.somenteRecortada?['ccmgis_cortar_cava']:[])]);
+  const liberados=new Set(['t_mover','t_cava','t_pilha','b_ajustar','b_grade','b_png','b_dxf','ccmgisPainelCorner','ccmgisEmpolamento',...(!d.somenteRecortada?['ccmgis_cortar_cava']:[])]);
   for(const el of D.querySelectorAll('button,input,select,textarea')){
     if(liberados.has(el.id)||el.closest('.cava-number')?.querySelector('#ccmgisEmpolamento'))continue;
     if(cut){if(el.dataset.cutDisabled==null)el.dataset.cutDisabled=el.disabled?'1':'0';el.disabled=true;}
@@ -2006,6 +2126,7 @@ function exportaDxfRecortado(){
 window.CCMGISCava2={open:abre,close:fecha,importSelected:importaSelecionada,
   exportToMap:()=>sincronizaCamadas(true),syncLayers:()=>sincronizaCamadas(true),snapshot,
   restoreProjectState:aplicaEstadoProjeto,frame:()=>estado.frame,state:estado,
+  setBasemap:selecionaFundoCava,getBasemap:fundoCava,refreshBasemap:atualizaFundoCava,_basemapPlan:planoFundoCava,
   openMiningMode:abreModoCava,newDesign:criaNovoDesenho,selectDesign:trocaDesenho,
   selectVariant:variante=>trocaDesenho(estado.desenhoId,variante),cutProject:()=>projetoDaCava(desenhoAtual()),
   syncTheme:aplicaTemaNoMotor,syncStyles:agendaContexto,

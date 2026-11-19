@@ -133,7 +133,7 @@ function output(result,params,sourceInfo,samples){
 }
 function undo(a){
  if(a.project!==S.projectId){toast('O projeto mudou.');return false;}
- if(a.layers.some(L=>L.locked||!collabCanEditLayer(L,false))){toast('Desbloqueie as camadas deste lote para desfazer.');return false;}
+ if(a.layers.some(L=>L.locked||!canEditLayer(L,false))){toast('Desbloqueie as camadas deste lote para desfazer.');return false;}
  const activeWasRemoved=a.layers.some(L=>L.id===S.activeId);
  for(const L of a.layers){if(L.llayer)map.removeLayer(L.llayer);S.layers=S.layers.filter(l=>l!==L);}
  S.groups=S.groups.filter(g=>g!==a.group);S.stack=S.stack.filter(v=>v!=='G:'+a.group.id&&!a.layers.some(l=>v==='L:'+l.id));

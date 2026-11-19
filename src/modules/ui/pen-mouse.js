@@ -29,7 +29,11 @@
 const KEY='geomine.canetaMouse.v1',TIP_KEY='geomine.canetaMouse.aviso.v1',TAP_PX=8;
 /* Ferramentas em que um clique marca um ponto: nelas, levantar a caneta depois
    de arrastar vale como o clique do mouse naquele lugar. */
-const AIM=['point','line','poly','dren','measure','profile','info','basin','barr','inund','lamina','cotado','estpick'];
+const AIM=['point','line','poly','dren','measure','profile','geoSection','info','basin','barr','inund','lamina','cotado','estpick',
+  'riverChannelAxis','thalwegRegion','forma','bacia','baciaRampa','baciaExt','contBusca','selpoly',
+  'blastingBoundary','blastingDirection','cad-hatch','feature-style-brush'];
+const pointCommand=()=>AIM.includes(S.tool)||typeof S._pickPonto==='function'||typeof S._pickLimite==='function'||
+  typeof ED!=='undefined'&&!!ED.pend;
 let asMouse=true,gesture=null,penDownAt=-1e9,penX=0,penY=0,penTouch=null,lastMapClick=-1e9,patched=false,penMode=false,delivered=null;
 try{asMouse=localStorage.getItem(KEY)!=='0';}catch(_){}
 const mapOk=()=>typeof map!=='undefined'&&!!map&&typeof mapaVista2D==='function'&&mapaVista2D();
@@ -129,7 +133,7 @@ function down(e){
   const plain=!control&&!handle&&!freehand;
   penMode=true;if(S.tool==='line'||S.tool==='poly')dynamicPen(true);
   gesture={id:e.pointerId,x:e.clientX,y:e.clientY,far:0,seen:now(),tool:S.tool,project:S.projectId,plain,fed:false,
-    aim:plain&&AIM.includes(S.tool)&&!root.GeoMineTouchWorkspace?.secondaryArmed};
+    aim:plain&&pointCommand()&&!root.GeoMineTouchWorkspace?.secondaryArmed};
   if(plain){feedback(e);gesture.fed=true;}
 }
 function move(e){

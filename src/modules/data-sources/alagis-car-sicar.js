@@ -1,10 +1,9 @@
 
 /* ============================================================================
    CAR / SICAR — imóveis rurais por WFS, recortados pela área
-   O catálogo global do GeoServer do SICAR esconde as camadas; o capabilities
-   RESTRITO AO WORKSPACE (…/geoserver/sicar/ows) revela as 27, uma por UF —
-   sicar_imoveis_ac … sicar_imoveis_to. É a mesma base que alimenta o mapa do
-   consulta.car.gov.br, sem o captcha da página de download.
+   Perímetros: WFS /sicar, uma camada por UF.
+   Temas ambientais: WFS /consulta_publica, download ZIP nativo pela área.
+   A importação preserva geometrias, atributos e projeção de cada shapefile.
    ========================================================================== */
 (function carSICAR(){
   const $=id=>document.getElementById(id);
@@ -14,51 +13,224 @@
   /* status do imóvel, com as cores do próprio visualizador público */
   const STATUS={AT:['Ativo','#e0a11e'],PE:['Pendente','#e0641e'],
                 SU:['Suspenso','#8a4fd4'],CA:['Cancelado','#c0392b']};
-  /* Temas do CAR e o prefixo da camada correspondente no GeoServer. A lista
-     de que temas EXISTEM não é fixa: vem do capabilities do workspace a cada
-     abertura. Hoje o SICAR só publica os imóveis por serviço; APP, reserva
-     legal e os demais saem apenas pelo download oficial com captcha — se um
-     dia entrarem no serviço, o painel os liga sozinho, sem mexer em código. */
+  /* Public theme names verified against the current official Consulta CAR
+     GetCapabilities and geoServices/getGeoServerLayerLink (17/11/2026).
+     The old /sicar workspace lists only perimeters. It cannot determine
+     availability of the separate /consulta_publica thematic workspace.
+     Native ZIP navigation is intentional: the thematic server does not
+     grant CORS to geomine-3.web.app. No third-party proxy is used. */
+  const ZIP_BASE='https://consulta.car.gov.br/geoserver-download/consulta_publica/ows';
   const CAR_TEMAS=[
-    {pref:'sicar_imoveis',               rot:'Área do imóvel',          cor:'#e0a11e'},
-    {pref:'sicar_app',                   rot:'APP',                     cor:'#1b7a3d'},
-    {pref:'sicar_reserva_legal',         rot:'Reserva legal',           cor:'#2e9b32'},
-    {pref:'sicar_servidao_administrativa',rot:'Servidão administrativa',cor:'#8a4fd4'},
-    {pref:'sicar_vegetacao_nativa',      rot:'Vegetação nativa',        cor:'#4f8b3a'},
-    {pref:'sicar_uso_restrito',          rot:'Uso restrito',            cor:'#b8860b'},
-    {pref:'sicar_area_consolidada',      rot:'Área consolidada',        cor:'#c07a3a'},
-    {pref:'sicar_pousio',                rot:'Área de pousio',          cor:'#9aa53a'},
-    {pref:'sicar_hidrografia',           rot:'Hidrografia',             cor:'#1565c0'}
-  ];
-  let CAR_DISP=null;      // Set de prefixos publicados, lido do capabilities
-  async function carDescobre(){
-    if(CAR_DISP) return CAR_DISP;
-    try{
-      const ctl=new AbortController(); const t=setTimeout(()=>ctl.abort(),15000);
-      const r=await fetch(BASE+'?service=WFS&request=GetCapabilities&version=2.0.0',{signal:ctl.signal});
-      clearTimeout(t);
-      const tx=await r.text();
-      const doc=new DOMParser().parseFromString(tx,'application/xml');
-      const tipos=[...doc.getElementsByTagName('*')].filter(n=>n.localName==='FeatureType');
-      const texto=(n,tag)=>{const e=[...n.children].find(c=>c.localName===tag);return e?e.textContent.trim():'';};
-      CAR_DISP=new Set(tipos.map(n=>texto(n,'Name').replace(/^sicar:/,'').replace(/_[a-z]{2}$/,'')));
-    }catch(e){ CAR_DISP=new Set(['sicar_imoveis']); }   // sem rede: o que se sabe que existe
-    return CAR_DISP;
+  {
+    "pref": "sicar_imoveis",
+    "code": "imovel_rural",
+    "rot": "Área do imóvel",
+    "cor": "#e0a11e",
+    "tipos": [
+      "consulta_publica:iru",
+      "consulta_publica:ast",
+      "consulta_publica:pct"
+    ]
+  },
+  {
+    "pref": "sicar_app",
+    "code": "app",
+    "rot": "APP",
+    "cor": "#1b7a3d",
+    "tipos": [
+      "consulta_publica:app_rio_ate_10",
+      "consulta_publica:app_escadinha_rio_ate_10",
+      "consulta_publica:app_escadinha_rio_10_a_50",
+      "consulta_publica:app_rio_10_a_50",
+      "consulta_publica:app_escadinha_rio_50_a_200",
+      "consulta_publica:app_rio_50_a_200",
+      "consulta_publica:app_escadinha_rio_200_a_600",
+      "consulta_publica:app_rio_200_a_600",
+      "consulta_publica:app_escadinha_rio_acima_600",
+      "consulta_publica:app_rio_acima_600",
+      "consulta_publica:app_escadinha_nascente_olho_dagua",
+      "consulta_publica:app_nascente_olho_dagua",
+      "consulta_publica:app_escadinha_lago_natural",
+      "consulta_publica:app_lago_natural",
+      "consulta_publica:app_reservatorio_artificial_decorrente_barramento",
+      "consulta_publica:app_vereda",
+      "consulta_publica:app_escadinha_vereda",
+      "consulta_publica:app_manguezal",
+      "consulta_publica:app_banhado",
+      "consulta_publica:app_restinga",
+      "consulta_publica:app_reservatorio_geracao_energia_ate_24_08_2001",
+      "consulta_publica:app_area_topo_morro",
+      "consulta_publica:app_area_altitude_superior_1800",
+      "consulta_publica:app_borda_chapada",
+      "consulta_publica:app_area_declividade_maior_45"
+    ]
+  },
+  {
+    "pref": "sicar_reserva_legal",
+    "code": "reserva_legal",
+    "rot": "Reserva legal",
+    "cor": "#2e9b32",
+    "tipos": [
+      "consulta_publica:arl_proposta",
+      "consulta_publica:arl_averbada",
+      "consulta_publica:arl_aprovada_nao_averbada"
+    ]
+  },
+  {
+    "pref": "sicar_servidao_administrativa",
+    "code": "servidao_administrativa",
+    "rot": "Servidão administrativa",
+    "cor": "#8a4fd4",
+    "tipos": [
+      "consulta_publica:area_infraestrutura_publica",
+      "consulta_publica:area_utilidade_publica",
+      "consulta_publica:reservatorio_energia"
+    ]
+  },
+  {
+    "pref": "sicar_vegetacao_nativa",
+    "code": "vegetacao_nativa",
+    "rot": "Vegetação nativa",
+    "cor": "#4f8b3a",
+    "tipos": [
+      "consulta_publica:vegetacao_nativa"
+    ]
+  },
+  {
+    "pref": "sicar_uso_restrito",
+    "code": "uso_restrito",
+    "rot": "Uso restrito",
+    "cor": "#b8860b",
+    "tipos": [
+      "consulta_publica:area_uso_restrito_declividade_25_a_45",
+      "consulta_publica:area_uso_restrito_pantaneira"
+    ]
+  },
+  {
+    "pref": "sicar_area_consolidada",
+    "code": "area_consolidada",
+    "rot": "Área consolidada",
+    "cor": "#c07a3a",
+    "tipos": [
+      "consulta_publica:area_consolidada"
+    ]
+  },
+  {
+    "pref": "sicar_pousio",
+    "code": "area_pousio",
+    "rot": "Área de pousio",
+    "cor": "#9aa53a",
+    "tipos": [
+      "consulta_publica:area_pousio"
+    ]
+  },
+  {
+    "pref": "sicar_hidrografia",
+    "code": "hidrografia",
+    "rot": "Hidrografia",
+    "cor": "#1565c0",
+    "tipos": [
+      "consulta_publica:rio_ate_10",
+      "consulta_publica:rio_10_a_50",
+      "consulta_publica:rio_50_a_200",
+      "consulta_publica:rio_200_a_600",
+      "consulta_publica:rio_acima_600",
+      "consulta_publica:lago_natural",
+      "consulta_publica:reservatorio_artificial_decorrente_barramento",
+      "consulta_publica:reservatorio_geracao_energia_ate_24_08_2001"
+    ]
   }
-  async function carMontaTemas(){
-    const box=$('carTemas'), nota=$('carTemasNota'); if(!box) return;
-    await carDescobre();
-    const disp=CAR_TEMAS.filter(t=>CAR_DISP.has(t.pref));
-    const indisp=CAR_TEMAS.filter(t=>!CAR_DISP.has(t.pref));
-    box.innerHTML=
-      disp.map(t=>`<label class="snap-opt" style="font-size:11.5px"><input type="checkbox" value="${t.pref}"${t.pref==='sicar_imoveis'?' checked':''}><span>${t.rot}</span></label>`).join('')+
-      indisp.map(t=>`<label class="snap-opt" style="font-size:11.5px;opacity:.55" title="O SICAR não publica este tema por serviço — confirmado no catálogo do servidor. Baixe no site oficial e arraste a pasta."><input type="checkbox" disabled><span>${t.rot} <a href="https://consultapublica.car.gov.br" target="_blank" rel="noopener" style="font-size:9.5px;color:var(--cyan)">site&nbsp;oficial ↗</a></span></label>`).join('');
-    if(nota) nota.innerHTML=indisp.length
-      ? `<b>Limitação do SICAR, não do CCMGIS:</b> o serviço público do governo publica apenas a Área do Imóvel `+
-        `(verificado no catálogo do servidor a cada abertura). Os demais temas saem só pelo `+
-        `<a href="https://consultapublica.car.gov.br" target="_blank" rel="noopener">download oficial por UF</a>, com captcha — `+
-        `baixe lá e <b>arraste a pasta para cá</b>. Se o órgão os publicar no serviço, eles acendem aqui sozinhos.`
-      : 'Todos os temas publicados pelo serviço estão disponíveis.';
+];
+  let ultimoZip=null,zipOcupado=false,diretoOcupado=false;
+  function temasMarcados(){return [...document.querySelectorAll('#carTemas input:checked')]
+    .map(x=>CAR_TEMAS.find(t=>t.pref===x.value)).filter(Boolean);}
+  function carMontaTemas(){
+    const box=$('carTemas');if(!box)return;
+    if(!box.dataset.montado){box.dataset.montado='1';box.innerHTML=CAR_TEMAS.map(t=>
+      `<label class="snap-opt" style="font-size:11.5px"><input type="checkbox" value="${t.pref}"${t.pref==='sicar_imoveis'?' checked':''}><span>${t.rot}</span></label>`).join('');}
+    const nota=$('carTemasNota');if(nota)nota.textContent='Selecione os temas e baixe o ZIP oficial da área. Depois use “Importar ZIP do SICAR”.';
+    atualizaZip();
+  }
+  function planoZip(){
+    const uf=$('carUF')?.value,c=caixa(),temas=temasMarcados();
+    if(!UFS.includes(uf)||!temas.length||!c||![c.w,c.s,c.e,c.n].every(Number.isFinite)||
+      c.w>=c.e||c.s>=c.n||c.w< -180||c.e>180||c.s< -90||c.n>90)return null;
+    const tipos=[...new Set(temas.flatMap(t=>t.tipos))],nums=[c.w,c.s,c.e,c.n].map(n=>String(+n.toFixed(8))),
+      filtro=`uf='${uf}' AND BBOX(geom,${nums.join(',')},'EPSG:4326')`;
+    // Parentheses mean independent WFS queries. A comma would be a JOIN and
+    // omit/fail unrelated thematic layers ("Join query must specify a filter").
+    const params={service:'WFS',version:'2.0.0',request:'GetFeature',
+      typeNames:tipos.map(n=>'('+n+')').join(''),outputFormat:'SHAPE-ZIP',srsName:'EPSG:4326',
+      cql_filter:tipos.map(()=>filtro).join(';'),format_options:`filename:CAR_${uf}_temas.zip`};
+    return {uf,temas,tipos,params,area:c.de};
+  }
+  function atualizaZip(){
+    const form=$('carZipForm'),fields=$('carZipParams'),button=$('carZipDownload');if(!form||!fields||!button)return;
+    const plan=planoZip();form.action=ZIP_BASE;button.disabled=!plan||zipOcupado||diretoOcupado;
+    fields.replaceChildren();if(plan)for(const [name,value] of Object.entries(plan.params)){
+      const input=document.createElement('input');input.type='hidden';input.name=name;input.value=value;fields.append(input);}
+    const direto=$('carBaixar');if(direto){direto.hidden=!temasMarcados().some(t=>t.pref==='sicar_imoveis');direto.disabled=!UFS.includes($('carUF')?.value)||zipOcupado||diretoOcupado;}
+    if($('carZipImport'))$('carZipImport').disabled=zipOcupado||diretoOcupado;
+  }
+  function iniciaZip(ev){
+    atualizaZip();const plan=planoZip();if(!plan||zipOcupado||diretoOcupado){ev.preventDefault();toast('Escolha a UF, a área e ao menos um tema');return;}
+    const areaId=$('carArea')?.value,poly=areaId&&areaId!=='vista'&&$('carClip')?.checked
+      ?S.layers.find(l=>String(l.id)===String(areaId)):null;
+    ultimoZip={projectId:S.projectId,uf:plan.uf,poly:poly?JSON.parse(JSON.stringify({gtype:poly.gtype,crs:poly.crs,features:poly.features})):null};
+    if($('carOut'))$('carOut').textContent='Download solicitado ao SICAR: '+plan.temas.map(t=>t.rot).join(', ')+'. Salve o ZIP e use “Importar ZIP do SICAR”.';
+    // Leave native form navigation intact. The browser can download the ZIP
+    // without reading a cross-origin response or circumventing CORS.
+  }
+  function temaDoArquivo(path){
+    const base=String(path).split('/').pop().replace(/\.[^.]+$/,'').toLowerCase(),
+      aliases=CAR_TEMAS.flatMap(t=>[t.code,t.pref,t.code==='imovel_rural'?'area_imovel':t.code,...t.tipos.map(n=>n.split(':')[1])].map(n=>({n,t})));
+    aliases.sort((a,b)=>b.n.length-a.n.length);
+    return aliases.find(({n})=>base===n||base.startsWith(n+'_')||base.startsWith(n+'-'))?.t||null;
+  }
+  async function importaZipSicar(files){
+    if(zipOcupado||diretoOcupado)return;
+    const projectId=S.projectId,plan=ultimoZip?.projectId===projectId?ultimoZip:null,staged=[];
+    zipOcupado=true;atualizaZip();
+    try{
+      for(const file of files){
+        if(!/\.zip$/i.test(file.name))throw Error('Escolha um arquivo ZIP com os shapefiles do SICAR.');
+        showLoad('Lendo ZIP do SICAR…');
+        const zip=await JSZip.loadAsync(await file.arrayBuffer()),bases=new Map();
+        zip.forEach((path,entry)=>{if(entry.dir)return;const m=path.match(/^(.*)\.(shp|dbf|prj|cpg|cst)$/i);if(!m)return;
+          const key=m[1].toLowerCase();if(!bases.has(key))bases.set(key,{name:m[1]});bases.get(key)[m[2].toLowerCase()]=entry;});
+        let shapes=0;
+        for(const g of bases.values()){
+          if(!g.shp)continue;shapes++;
+          if(!g.dbf||!g.prj)throw Error(g.name+': faltam .dbf ou .prj no ZIP. Nenhuma camada deste lote foi importada.');
+          const [shp,dbf,prj,cpg]=await Promise.all([g.shp.async('arraybuffer'),g.dbf.async('arraybuffer'),g.prj.async('string'),(g.cpg||g.cst)?(g.cpg||g.cst).async('string'):null]);
+          if(S.projectId!==projectId)throw Object.assign(Error('A importação foi cancelada porque outro projeto foi aberto.'),{name:'AbortError'});
+          const crs=guessCRSfromPRJ(prj);if(!crs)throw Error(g.name+': projeção não reconhecida. Nenhuma camada deste lote foi importada.');
+          const parsed=parseSHP(shp),attributes=parseDBF(dbf,cpg),theme=temaDoArquivo(g.name),base=g.name.split('/').pop();
+          if(attributes.rows.length!==parsed.feats.length)throw Error(base+': geometrias e atributos não correspondem. Nenhuma camada deste lote foi importada.');
+          const features=parsed.feats.flatMap((f,i)=>{
+            const row=attributes.rows[i];if(!f.geom||row?._del)return [];
+            const props={...row,CAR_TEMA:theme?.rot||'SICAR',CAR_CAMADA:base},ft={geom:f.geom,multi:!!f.multi,props};if(f.zg)ft.zg=f.zg;return [ft];});
+          const fields=attributes.fields.filter(f=>!['CAR_TEMA','CAR_CAMADA'].includes(f.name)).concat([
+            {name:'CAR_TEMA',type:'C',length:80,decimal:0},{name:'CAR_CAMADA',type:'C',length:120,decimal:0}]);
+          staged.push({name:'CAR — '+(theme?.rot||base)+' · '+base,crs,gtype:parsed.gtype,features,fields,
+            color:theme?.cor||'#4f8b3a',theme,src:{provider:'SICAR',url:ZIP_BASE,file:file.name}});
+        }
+        if(!shapes)throw Error('O ZIP não contém shapefiles (.shp, .dbf e .prj). Nenhuma camada deste lote foi importada.');
+      }
+      if(S.projectId!==projectId)throw Object.assign(Error('A importação foi cancelada porque outro projeto foi aberto.'),{name:'AbortError'});
+      const created=[];
+      for(const item of staged){
+        if(!item.features.length)continue;
+        const L=addLayer({...item,undo:true});L.sym.color=L.sym.stroke=item.color;L.sym.fill=item.theme?.pref==='sicar_imoveis' ? .08 : .25;
+        if(plan?.poly)window.alagisRecortaPorPoligono(L,plan.poly);
+        drawLayer(L);created.push(L);
+      }
+      const total=created.reduce((n,L)=>n+L.features.length,0);
+      if($('carOut'))$('carOut').textContent=`${created.length} camada(s) do SICAR importada(s) · ${total.toLocaleString('pt-BR')} feições.`;
+      refreshUI();if(created.length)fitAll();toast(created.length?'SICAR: ZIP importado':'SICAR: nenhuma feição no ZIP');
+      return {layers:created.length,features:total};
+    }catch(error){if($('carOut'))$('carOut').textContent=error.message;throw error;}
+    finally{zipOcupado=false;hideLoad();atualizaZip();}
   }
 
   function caixa(){
@@ -80,7 +252,7 @@
     const el=$('carInfo'); if(!el) return;
     const c=caixa(); if(!c){ el.textContent='Camada sem geometria.'; return; }
     const km=111.32, a=Math.abs((c.n-c.s)*km)*Math.abs((c.e-c.w)*km*Math.cos((c.n+c.s)/2*Math.PI/180));
-    el.textContent=`${c.de} · ${a.toLocaleString('pt-BR',{maximumFractionDigits:1})} km²`;
+    el.textContent=`${c.de} · ${a.toLocaleString('pt-BR',{maximumFractionDigits:1})} km²`;atualizaZip();
   }
   function preencheArea(){
     const sel=$('carArea'); if(!sel) return;
@@ -155,7 +327,7 @@
     if(!uf){ toast('Escolha a UF'); return; }
     const c=caixa(); if(!c){ toast('Área inválida'); return; }
     const temas=[...document.querySelectorAll('#carTemas input:checked')]
-      .map(x=>CAR_TEMAS.find(t=>t.pref===x.value)).filter(Boolean);
+      .map(x=>CAR_TEMAS.find(t=>t.pref===x.value)).filter(t=>t?.pref==='sicar_imoveis');
     if(!temas.length){ toast('Marque ao menos um tema'); return; }
     const vRec=($('carArea')||{}).value;
     const polyRec=(vRec&&vRec!=='vista'&&($('carClip')||{}).checked)
@@ -206,6 +378,11 @@
     toast(total? 'CAR: '+total.toLocaleString('pt-BR')+' feições importadas' : 'CAR: nada na área');
     try{ cmdLog('CAR '+uf+': '+linhas.join(' | ').replace(/<[^>]+>/g,''),'ok'); }catch(e){}
   }
+  async function baixarDireto(){
+    if(zipOcupado||diretoOcupado)return;
+    diretoOcupado=true;atualizaZip();
+    try{return await baixar();}finally{diretoOcupado=false;atualizaZip();}
+  }
   function abrePainel(btn){
     const sec=$('secCAR');
     if(!sec){ toast('Painel do CAR não encontrado'); return; }
@@ -242,8 +419,13 @@
       if(typeof ribbonBuild==='function') ribbonBuild();
     }catch(e){ console.warn('CAR: ligação da ribbon',e); }
     const lig=(id,ev,fn)=>{ const e=$(id); if(e&&!e['_l'+ev]){ e['_l'+ev]=1; e.addEventListener(ev,fn); } };
-    lig('carBaixar','click',()=>baixar().catch(err=>{ try{hideLoad();}catch(_){}
+    lig('carBaixar','click',()=>baixarDireto().catch(err=>{ try{hideLoad();}catch(_){}
       toast('CAR falhou: '+(err&&err.message||err)); }));
+    lig('carUF','change',atualizaZip);
+    lig('carTemas','change',atualizaZip);
+    lig('carZipForm','submit',iniciaZip);
+    lig('carZipImport','click',()=>$('carZipInput')?.click());
+    lig('carZipInput','change',ev=>{const files=[...ev.target.files];ev.target.value='';if(files.length)importaZipSicar(files).catch(err=>toast('SICAR: '+err.message));});
     lig('carArea','change',infoArea);
     lig('carArea','mousedown',preencheArea);
     lig('carArea','focus',preencheArea);
@@ -252,5 +434,6 @@
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(liga,0));
   else setTimeout(liga,0);
   window.carAbrePainel=abrePainel;
-  window.carBaixaArea=baixar;
+  window.carBaixaArea=baixarDireto;
+  window.GeoMineCAR={themes:()=>CAR_TEMAS.map(t=>({...t,tipos:t.tipos.slice()})),zipPlan:planoZip,importZip:importaZipSicar};
 })();

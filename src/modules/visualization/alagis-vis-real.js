@@ -11,7 +11,7 @@
    próximo.
    ========================================================================== */
 function visRealTerreno(){
-  const cands=(S.rasters||[]).filter(r=>r&&r.visible!==false&&r.d&&r.d.z&&!r._cnOrto);
+  const cands=(S.rasters||[]).filter(r=>r&&r.visible!==false&&r.d&&r.d.z&&!r._cnOrto&&!r._runoffOrto);
   if(!cands.length) return null;
   if(Array.isArray(S.stack))
     for(const k of S.stack){ const m=/^R:(.+)$/.exec(String(k)); if(!m) continue;

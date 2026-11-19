@@ -11,7 +11,6 @@
   const labels={id:'Código do furo',x:'X / Leste (m)',y:'Y / Norte (m)',z:'Cota da boca (m)',depth:'Profundidade final (m)',az:'Azimute (°)',dip:'Inclinação (°)',md:'Profundidade medida / MD (m)',from:'De (m)',to:'Até (m)',lithology:'Litologia / descrição',recovery:'Recuperação (%)',rqd:'RQD (%)'};
   const roleFields={collar:['id','x','y','z','depth','az','dip'],survey:['id','md','az','dip'],lithology:['id','from','to','lithology'],drill:['id','from','to','lithology'],assay:['id','from','to'],core:['id','from','to','lithology','recovery','rqd']};
   const roleNames={collar:'Collar — bocas dos furos',survey:'Survey — desvio / orientação',drill:'Drill — intervalos geológicos',lithology:'Litologia — intervalos',assay:'Análises — intervalos e atributos',core:'Testemunhos — recuperação / RQD',ignore:'Não importar esta tabela'};
-  function requireLocal(){if(window.GeoMineCollaboration?.snapshot?.().roomId)throw new Error('Importe sondagens na cópia local, fora da sala colaborativa. Salve o projeto para compartilhar os traços e tabelas completos.');}
   function metricCRS(code){
     let p;try{p=new proj4.Proj(code);}catch(_){throw new Error('Selecione um CRS projetado conhecido.');}
     if(!code||p.projName==='longlat'||(p.units&&p.units!=='m')||(p.to_meter!=null&&Math.abs(p.to_meter-1)>1e-12))throw new Error('Use um CRS projetado em metros. Converta coordenadas em graus, pés ou locais antes de importar.');
@@ -42,7 +41,7 @@
     catch(e){finish(e);}
   });}
   function commitParsed(parsed,options){
-    requireLocal();metricCRS(options.crs);
+    metricCRS(options.crs);
     if(!options.unitsConfirmed)throw new Error('Confirme o CRS e as unidades em metros.');
     if(!Array.isArray(parsed?.holes)||!parsed.holes.length)throw new Error('Nenhum furo válido encontrado.');
     const limits=window.GeoMineBoreholeReader.limits,ids=new Set();let totalPoints=0;
@@ -164,7 +163,7 @@
       invalidate(true);if(e.target.id==='gmBHFiles'||e.target.id==='gmBHDelimiter'){clearTables();fileNames();}
     });
     async function run(task){
-      if(job)return;requireLocal();projectState=S.geology;job={aborts:new Set(),cancelled:false,revision};const current=job;
+      if(job)return;projectState=S.geology;job={aborts:new Set(),cancelled:false,revision};const current=job;
       const controls=[...root.querySelectorAll('input,select,button')].filter(e=>!e.matches('[data-close],#gmBHCancel'));const disabled=controls.map(e=>e.disabled);controls.forEach(e=>e.disabled=true);$('#gmBHCancel').hidden=false;
       syncAction();
       try{const value=await task(current);if(current.cancelled||!root.isConnected)throw new Error('Importação cancelada.');if(projectState!==S.geology)throw new Error('O projeto mudou durante a leitura. Valide novamente no projeto correto.');if(current.revision!==revision)throw new Error('A configuração mudou durante a leitura. Valide novamente antes de importar.');return value;}

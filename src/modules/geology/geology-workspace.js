@@ -212,11 +212,6 @@ function arm(kind){
   try{if(typeof switchView==='function')switchView('map');}catch(e){}
   setTimeout(async()=>{
     try{
-      const collaboration=window.GeoMineCollaboration;
-      if(collaboration&&collaboration.snapshot&&collaboration.snapshot().roomId){
-        const reserved=await collaboration.acquireActiveLayer();
-        if(!reserved){toast(def.name+': a camada não pôde ser reservada para edição.');return;}
-      }
       setTool(def.tool);
     }catch(e){console.warn('Geologia: ferramenta',e);return;}
     toast(`${def.name}: ${def.tool==='point'?'clique no mapa':def.tool==='line'?'desenhe a linha e finalize com duplo clique':'desenhe o polígono e finalize com duplo clique'}.`);
@@ -340,7 +335,7 @@ function createBoreholeIntervalDraft(mode){
         const current=Array.isArray(entry.feature[arrayKey])?entry.feature[arrayKey]:[];
         if(!(S.layers||[]).includes(entry.layer)||!entry.layer.features.includes(entry.feature)||intervalFingerprint(current)!==entry.original)
           errors.push(`${label}: o furo ou seus intervalos foram alterados durante a edição. Reabra a tabela para revisar os dados atuais.`);
-        if(changed(entry)&&typeof collabCanEditLayer==='function'&&!collabCanEditLayer(entry.layer,false))
+        if(changed(entry)&&typeof canEditLayer==='function'&&!canEditLayer(entry.layer,false))
           errors.push(`${label}: a camada não está disponível para edição.`);
         if(changed(entry))updates.push({entry,rows:result.rows});
       });

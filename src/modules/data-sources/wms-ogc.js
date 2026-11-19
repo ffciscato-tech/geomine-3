@@ -399,7 +399,7 @@ function wmsRenderRows(){
     el.querySelector('.eye').onclick=e=>{e.stopPropagation();w.visible=!w.visible;
       if(w.visible)w.llayer.addTo(map);else map.removeLayer(w.llayer);wmsApplyOrder();refreshUI();};
     el.querySelector('.lcfg').onclick=e=>{e.stopPropagation();wmsEdit(w);};
-    el.querySelector('.wdel').onclick=e=>{e.stopPropagation();if(confirm(`Remover a camada WMS “${w.name}”?`))wmsDelete(w);};
+    el.querySelector('.wdel').onclick=e=>{e.stopPropagation();wmsDelete(w);};
     el.ondblclick=()=>wmsEdit(w);list.appendChild(el);
   });
   const no=document.getElementById('noLayers');

@@ -531,8 +531,6 @@
   .layoutbar #btnLoRedraw{background:#167c70;color:#fff;border-color:#167c70}
   .layoutbar #btnLoRedraw.layout-dirty{background:var(--amber);color:#1a1206;border-color:var(--amber);box-shadow:0 0 0 2px color-mix(in srgb,var(--amber) 35%,transparent)}
   .layoutbar #btnLoExport{width:34px;min-width:34px;padding:4px}
-  .layoutbar .lo-zoom{margin-left:auto;display:flex;align-items:center;gap:4px}
-  .layoutbar .lo-zoom #btnZoomFit{width:58px;min-width:58px}
   .lo-plate-strip{flex-basis:100%;min-width:0;height:34px;display:flex;align-items:center;gap:4px;
     padding:3px 5px;border:1px solid var(--line);border-radius:17px;background:var(--panel2);overflow:hidden}
   .lo-plate-format{flex:none;min-width:29px;padding:3px 6px;border-radius:12px;background:var(--blue,#1673b1);
@@ -679,8 +677,8 @@
   .ce-color-pick:hover{border-color:var(--amber-dim)}
   .ce-color-pick.active{border-color:var(--amber);box-shadow:0 0 0 2px #f5a52433,inset 0 0 0 2px var(--bg)}
   .ce-color-pick:active{transform:scale(.98)}
-  .ce-pal{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:3px;margin:6px 0 2px;max-height:180px;overflow-y:scroll;overflow-x:hidden;scrollbar-gutter:stable;padding:4px;overscroll-behavior:contain;touch-action:pan-y}
-  .ce-sw{width:100%;aspect-ratio:1;min-height:20px;border:1px solid #0006;border-radius:4px;padding:0;cursor:pointer;
+  .ce-pal{display:grid;grid-template-columns:repeat(auto-fill,minmax(18px,1fr));gap:3px;margin:6px 0 2px;max-height:144px;overflow-y:scroll;overflow-x:hidden;scrollbar-gutter:stable;padding:4px;overscroll-behavior:contain;touch-action:pan-y}
+  .ce-sw{width:100%;aspect-ratio:1;min-height:18px;border:1px solid #0006;border-radius:3px;padding:0;cursor:pointer;
     touch-action:pan-y;transition:transform .06s}
   .ce-sw:hover{transform:scale(1.15);border-color:var(--amber)}
   .ce-sw:active{transform:scale(.9)}
@@ -947,6 +945,7 @@
     --bg:#edf3f8;--panel:#f8fbfd;--panel2:#e7eef5;--line:#b9cad9;
     --ink:#14283a;--ink-dim:#536b7e;--ink-bright:#071522;
     --grp-bg:#dce8f1;--hover2:#d6e5f0;--readout-bg:#f7fbfddd;
+    --icon-line:#173b57;--icon-tile:transparent;
   }
   body.alagis3 #app{background:var(--bg)}
   body.alagis3 header.a3-header{
@@ -1861,6 +1860,20 @@ button.gm-prop-info>span[hidden]{display:none!important}
 .gmp-row>input[type=color]{flex:none;width:40px;height:28px;padding:1px}
 /* Controles rentes ao texto: 28 px de altura. */
 .gmp-val{flex:none;min-width:38px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+.gm-style-slider{display:flex;align-items:center;gap:6px;min-width:0;width:100%}
+.gm-style-slider input[hidden]{display:none!important}
+.gm-style-stack{display:grid;gap:8px}
+.gm-style-slider>input[type=range],input.gm-style-range{appearance:none;-webkit-appearance:none;flex:1 1 0;min-width:50px;width:100%;height:28px;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;touch-action:pan-y;cursor:pointer}
+.gm-style-slider>input[type=range]::-webkit-slider-runnable-track,input.gm-style-range::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:linear-gradient(to right,var(--amber) 0 var(--gm-range-fill,100%),var(--line) var(--gm-range-fill,100%) 100%)}
+.gm-style-slider>input[type=range]::-moz-range-track,input.gm-style-range::-moz-range-track{height:4px;border-radius:4px;background:var(--line)}
+.gm-style-slider>input[type=range]::-moz-range-progress,input.gm-style-range::-moz-range-progress{height:4px;background:var(--amber);border-radius:4px}
+.gm-style-slider>input[type=range]::-webkit-slider-thumb,input.gm-style-range::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:22px;height:17px;margin-top:-6.5px;border:1px solid var(--line);border-radius:9px;background:var(--panel);box-shadow:0 1px 2px #0001}
+.gm-style-slider>input[type=range]::-moz-range-thumb,input.gm-style-range::-moz-range-thumb{width:22px;height:17px;border:1px solid var(--line);border-radius:9px;background:var(--panel);box-shadow:0 1px 2px #0001}
+.gm-style-slider>input[type=range]:focus-visible,input.gm-style-range:focus-visible{outline:2px solid var(--amber);outline-offset:2px;border-radius:4px}
+.gm-style-slider>input.gm-style-number{flex:0 0 54px;min-width:0;width:54px;padding:3px;text-align:right;font-variant-numeric:tabular-nums}
+.gm-style-unit{flex:none;color:var(--ink-dim);font-size:11px}
+.gm-style-slider .gmp-val{font-size:12px;font-weight:400;letter-spacing:0}
+.gm-style-row>label{flex:none}
 .gmp-c input[type=text],.gmp-c input[type=number],.gmp-c select:not([multiple]),.gmp-info input[type=text]{height:28px;padding:0 7px;border-radius:6px;font-family:inherit;font-size:12px}
 .gmp-g2{display:grid;grid-template-columns:1fr 1fr;gap:5px 6px}
 .gmp-g2>label{display:flex;flex-direction:column;gap:2px;margin:0;font-size:11px;color:var(--ink-dim)}
@@ -1918,3 +1931,36 @@ body.light .gmp .tbtn.gmp-d{color:#c62828}
 .gmp-f{flex:0 0 auto;display:flex;align-items:center;flex-wrap:wrap;gap:5px;padding:6px 12px;border-top:1px solid var(--line);background:var(--panel2)}
 .gmp-sp{flex:1 1 auto}
 #gmPropertyExplanation{white-space:pre-line}
+
+/* Ação explícita de marcação no mapa, com área de toque e texto visível. */
+#btnInundRun.inund-point-action{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:100%;min-width:0;min-height:44px;padding:7px 9px;background:var(--amber);color:#1a1206;border:1px solid transparent;touch-action:manipulation;line-height:1.25;font-weight:600;text-align:left}
+#btnInundRun.inund-point-action>svg{display:block;width:22px;height:22px;flex:none}
+#btnInundRun.inund-point-action>.inund-point-label{min-width:0;white-space:normal}
+#btnInundRun.inund-point-action[aria-pressed="true"]{border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor}
+#btnInundRun.inund-point-action:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+/* Compact CN workflow: explanatory copy is available through the i button. */
+#secCNOrto .cn-panel-title{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#secCNOrto .cn-info-button{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;padding:4px;flex:0 0 44px}
+#secCNOrto #hCnInfo[hidden]{display:none!important}
+#secCNOrto #hCnInfo{margin:0 0 8px;padding:8px;border:1px solid var(--line);border-radius:6px}
+#secCNOrto #hCnOrtoOut{overflow-wrap:anywhere}
+#secCNOrto details>summary{cursor:pointer;min-height:30px;display:list-item;margin-top:6px}
+
+#secCNOrto #hCnCInputs[hidden]{display:none!important}
+
+#secCNOrto .c-cover-list{max-height:280px;overflow-y:auto;padding:4px 0}
+#secCNOrto .c-cover-row{display:grid;grid-template-columns:minmax(0,1fr) 85px;gap:4px;margin:7px 0}
+#secCNOrto .c-cover-row label{grid-column:1/-1;font-size:11px;color:var(--ink-dim)}
+#secCNOrto .c-cover-row input{min-width:0}
+
+#hCZoneSection[hidden],#btnCZonesCancel[hidden]{display:none!important}
+
+/* Vertical scale controls stay in the properties panel. */
+.v3-ve-controls{position:static;width:100%;font-size:12px}
+.v3-ve-controls label{display:flex;justify-content:space-between;gap:6px;margin-bottom:5px}
+.v3-ve-controls input[type=range]{min-width:0!important}
+
+#carBaixar[hidden],#carZipInput[hidden],#carZipParams[hidden]{display:none!important}
+#carTemas .snap-opt{align-items:flex-start}
+#carZipForm{margin:0}

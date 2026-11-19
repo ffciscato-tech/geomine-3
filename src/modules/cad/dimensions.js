@@ -23,7 +23,7 @@ function cancel(restore=true){
  if(restore&&S.tool===TOOL)setTool('select');
 }
 function destination(a){return S.layers.find(L=>L.src?.format===FORMAT&&L.crs===a.crs);}
-function editable(layer){return !layer?.locked&&(typeof collabCanEditLayer!=='function'||collabCanEditLayer(layer||{name:'Cotas CAD'},false));}
+function editable(layer){return !layer?.locked&&(typeof canEditLayer!=='function'||canEditLayer(layer||{name:'Cotas CAD'},false));}
 function open(){
  cancel();let modal=$('Modal');if(!modal){
   modal=document.createElement('div');modal.id='gmDimModal';modal.className='modal-bg';
@@ -40,7 +40,7 @@ function open(){
 }
 function start(input={}){
  const m=metric(),prospective={crs:m.crs},existing=destination(prospective),style=styleOf(existing),settings={...input,arrow:existing?style.arrow:input.arrow,height:existing?style.arrowSize/.8:input.height,metersPerUnit:m.metersPerUnit},o=G.options(settings);
- if(!editable(destination(prospective)))throw Error('A camada de cotas não está liberada para edição. Confira o bloqueio ou a reserva na Colaboração.');
+ if(!editable(destination(prospective)))throw Error('A camada de cotas não está liberada para edição. Descongele a camada pelo cadeado.');
  cancel();setTool(TOOL);
  const group=L2.layerGroup().addTo(map),renderer=L2.canvas({pane:'alagis_desenho',padding:.3}),cont=map.getContainer();
  const line=L2.polyline([],{renderer,pane:'alagis_desenho',color:'#f5a524',weight:1.6,interactive:false,smoothFactor:0}).addTo(group);
@@ -275,3 +275,63 @@ const baseDrawDim=window.drawLayer;
 if(baseDrawDim)window.drawLayer=function(L){const out=baseDrawDim.apply(this,arguments);try{acompanhaCamada(L);}catch(e){console.warn('cota dinâmica',e);}return out;};
 window.GeoMineDimensions={open,start,cancel,move,click,metric,install,isLayer,isFeature,styleOf,applyStyle,labelPoint,dxfText,dxfStyles,undoStyle,follow:acompanhaCamada,state:()=>current?{points:current.points.map(p=>p.slice()),crs:current.crs,settings:{...current.settings}}:null};
 })();
+/* A CAD dimension is one authored feature: its strokes, arrows and label
+   share selection and lifetime. Render references stay off the saved model. */
+(function(root){
+'use strict';
+const D=root.GeoMineDimensions;if(!D)return;
+const entries=L=>L?._dimensionTextMarkers||[];
+function beginRender(L){if(L&&(D.isLayer(L)||L._dimensionTextMarkers))L._dimensionTextMarkers=[];}
+function registerLabel(L,f,marker){
+ const entry={L,f,marker};(L._dimensionTextMarkers||(L._dimensionTextMarkers=[])).push(entry);
+ marker._gmDimensionOwner={L,f};
+ marker.on('add',()=>{const el=marker.getElement();if(!el)return;el._gmDimensionOwner=marker._gmDimensionOwner;el.setAttribute('role','button');el.setAttribute('aria-label','Selecionar cota '+String(f.props?.TEXTO||''));el.setAttribute('contenteditable','false');el.setAttribute('writingsuggestions','false');
+  el.addEventListener('keydown',e=>{if(!['Enter',' ','Spacebar'].includes(e.key))return;e.preventDefault();e.stopPropagation();if(!e.repeat)marker.fire('click',{latlng:marker.getLatLng()},true);});syncSelection();});
+ return marker;
+}
+function registerGeometry(L,f,path){
+ path._gmDimensionOwner={L,f};path.on('add',()=>{const el=path.getElement?.();if(el){el._gmDimensionOwner=path._gmDimensionOwner;el.classList.add('gm-dimension-part');}});
+}
+function componentOwner(event){
+ const m=event?.layer||event?.propagatedFrom||event?.sourceTarget,target=event?.target?.closest?event.target:event?.originalEvent?.target,el=target?.closest?.('.gm-dimension-label,.gm-dimension-part'),owner=m?._gmDimensionOwner||el?._gmDimensionOwner;
+ const L=owner?.L,f=owner?.f,idx=L?.features?.indexOf(f)??-1;
+ return L&&S.layers.includes(L)&&L.visible!==false&&idx>=0&&featureVisible(L,f)?{L,f,idx,ringIndex:null,kind:'cota CAD'}:null;
+}
+function bounds(entry){
+ const {L,f,marker}=entry;
+ if(!S.layers.includes(L)||L.visible===false||!L.features.includes(f)||!featureVisible(L,f))return null;
+ const el=marker.getElement()?.querySelector('.gm-dimension-text');if(!el?.isConnected||!el.getClientRects().length)return null;
+ const r=el.getBoundingClientRect();return r.width>0&&r.height>0?r:null;
+}
+function labelHit(L,ll,tolerance=0){
+ if(!entries(L).length)return null;
+ const mapRect=map.getContainer().getBoundingClientRect(),p=map.latLngToContainerPoint(ll),x=mapRect.left+p.x,y=mapRect.top+p.y,pad=Math.min(4,Math.max(0,Number(tolerance)||0));
+ for(let i=entries(L).length-1;i>=0;i--){const e=entries(L)[i],r=bounds(e);if(r&&x>=r.left-pad&&x<=r.right+pad&&y>=r.top-pad&&y<=r.bottom+pad)return {L,f:e.f,idx:L.features.indexOf(e.f),ringIndex:null,latlng:ll,snapped:false,kind:'texto de cota'};}
+ return null;
+}
+function selectionLabelHit(L,f,ringLL,mode){
+ const boxes=entries(L).filter(e=>e.f===f).map(bounds).filter(Boolean);if(!boxes.length)return null;
+ const rect=map.getContainer().getBoundingClientRect(),ring=ringLL.map(q=>{const p=map.latLngToContainerPoint(q);return [rect.left+p.x,rect.top+p.y];}),closed=ring.concat([ring[0]]);
+ const test=r=>{const box=[[r.left,r.top],[r.right,r.top],[r.right,r.bottom],[r.left,r.bottom],[r.left,r.top]];return mode==='dentro'?mselParteDentro(box,closed):mselParteTocaAnel(box,ring,closed);};
+ return mode==='dentro'?boxes.every(test):boxes.some(test);
+}
+function syncSelection(){
+ const single=S.selFeat,L0=single&&(single.layer||S.layers.find(L=>String(L.id)===String(single.layerId)));
+ if(L0&&D.isFeature(L0,L0.features[single.idx]))single.partIdx=null;
+ const chosen=new Set(),seen=new Set();
+ if(S.msel?.items){
+  S.msel.items=S.msel.items.filter(it=>{const L=S.layers.find(L=>String(L.id)===String(it.layerId)),f=L?.features?.[it.idx];if(!D.isFeature(L,f))return true;
+   it.partIdx=null;const key=String(L.id)+':'+it.idx;if(seen.has(key))return false;seen.add(key);chosen.add(f);return true;});
+ }
+ const active=L0?.features?.[single?.idx];
+ for(const L of S.layers)for(const e of entries(L)){const el=e.marker.getElement();if(!el)continue;const one=e.f===active,multi=chosen.has(e.f);el.classList.toggle('gm-dimension-selected',one||multi);el.classList.toggle('gm-dimension-multiple',multi);el.setAttribute('aria-pressed',String(one||multi));}
+}
+const style=document.createElement('style');style.id='gmDimensionSelectionStyle';style.textContent=`
+.gm-dimension-label,.gm-dimension-label .gm-dimension-text{pointer-events:auto;cursor:pointer;-webkit-touch-callout:none!important;-webkit-user-select:none!important;user-select:none!important}
+.gm-dimension-label .gm-dimension-text{width:max-content;padding:2px 3px;border-radius:3px}
+.gm-dimension-label.gm-dimension-selected .gm-dimension-text{background:#f5a5244d;box-shadow:0 0 0 2px #f5a524}
+.gm-dimension-label.gm-dimension-multiple .gm-dimension-text{background:#22d3ee40;box-shadow:0 0 0 2px #22d3ee}
+.gm-dimension-label:focus-visible .gm-dimension-text{outline:2px solid #f5a524;outline-offset:3px}
+`;(document.head||document.documentElement).append(style);
+Object.assign(D,{beginRender,registerLabel,registerGeometry,componentOwner,labelHit,selectionLabelHit,syncSelection});
+})(window);

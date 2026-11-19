@@ -422,7 +422,7 @@ ${qgsSymbol(g, {color:s.color, stroke:s.stroke||s.color, hatch:s.hatch, weight:s
   const syms=cls.map((c,i)=>qgsSymbol(g, mix(c), String(i))).join('\n');
   if(s.mode==='grad'){
     const ranges=cls.map((c,i)=>
-      `    <range lower="${c.min}" upper="${c.max}" symbol="${i}" label="${esc2(fmt(c.min)+' – '+fmt(c.max))}" render="${c.vis===false?'false':'true'}"/>`).join('\n');
+      `    <range lower="${c.min}" upper="${c.max}" symbol="${i}" label="${esc2(GeoMineNumberFormat.category(L,c))}" render="${c.vis===false?'false':'true'}"/>`).join('\n');
     return `  <renderer-v2 type="graduatedSymbol" attr="${esc2(s.field)}" graduatedMethod="GraduatedColor" forceraster="0" symbollevels="0" enableorderby="0">
    <ranges>
 ${ranges}
@@ -433,7 +433,7 @@ ${syms}
   </renderer-v2>`;
   }
   const cats=cls.map((c,i)=>
-    `    <category value="${esc2(c.value)}" symbol="${i}" label="${esc2(c.value)}" render="${c.vis===false?'false':'true'}"/>`).join('\n');
+    `    <category value="${esc2(c.value)}" symbol="${i}" label="${esc2(GeoMineNumberFormat.category(L,c))}" render="${c.vis===false?'false':'true'}"/>`).join('\n');
   return `  <renderer-v2 type="categorizedSymbol" attr="${esc2(s.field)}" forceraster="0" symbollevels="0" enableorderby="0">
    <categories>
 ${cats}

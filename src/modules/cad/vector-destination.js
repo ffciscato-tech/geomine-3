@@ -9,7 +9,7 @@ const sharedChannel=L=>L?._channelLink?.version===2&&L._channelLink.role==='poly
   L.gtype==='polygon'&&Array.isArray(L._channelLink.entries);
 const special=(L,append)=>!!(L._geology||L.cavaDesign||L.tinSurface||L._cava2DesignId||L._rb31Recipe||
   L._channelLink&&!sharedChannel(L));
-const editable=(L,append=false)=>!!L&&!L.locked&&!special(L,append)&&(typeof collabCanEditLayer!=='function'||collabCanEditLayer(L,false));
+const editable=(L,append=false)=>!!L&&!L.locked&&!special(L,append)&&(typeof canEditLayer!=='function'||canEditLayer(L,false));
 const stamp=L=>JSON.stringify({features:L.features,fields:L.fields,crs:L.crs,gtype:L.gtype});
 function mount(host,id,source,gtype,replace){
   host.replaceChildren();

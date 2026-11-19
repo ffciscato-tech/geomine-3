@@ -82,6 +82,7 @@ async function captureBasemap(x0,y0,x1,y1,crs,targetPx,base=layoutBasemap(),opco
   for(let tx=tX0;tx<=tX1;tx++)for(let ty=tY0;ty<=tY1;ty++)tiles.push({tx,ty});
   const deadline=Date.now()+25000;let cursor=0,failed=0;
   const loadTile=({tx,ty})=>new Promise(resolve=>{
+    if(opcoes.isCurrent&&!opcoes.isCurrent()){resolve(false);return;}
     const paint=im=>{try{ctx.drawImage(im,(tx-tX0)*256,(ty-tY0)*256);resolve(true);}catch(e){resolve(false);}};
     // Aproveita tiles já carregados no 2D, somente do mesmo provedor/zoom.
     const cached=typeof baseLayers!=='undefined'?baseLayers[base]?._tiles?.[tx+':'+ty+':'+z]?.el:null;
@@ -93,14 +94,14 @@ async function captureBasemap(x0,y0,x1,y1,crs,targetPx,base=layoutBasemap(),opco
     im.onload=()=>finish(true);im.onerror=()=>finish(false);
     im.src=urlFn(z).replace('{x}',tx).replace('{y}',ty);
   });
-  showLoad(`Capturando ${base} (${tiles.length} tiles, z${z})…`);
+  if(!opcoes.background)showLoad(`Capturando ${base} (${tiles.length} tiles, z${z})…`);
   try{
     /* Rede de celular e provedor de tiles falham de vez em quando: cada tile
        tem mais duas tentativas, com uma pausa curta, antes de contar como perdido. */
     const comNovasTentativas=async tile=>{
       for(let tentativa=0;tentativa<3;tentativa++){
         if(await loadTile(tile))return true;
-        if(Date.now()>=deadline)return false;
+        if(Date.now()>=deadline||(opcoes.isCurrent&&!opcoes.isCurrent()))return false;
         await new Promise(r=>setTimeout(r,250*(tentativa+1)));
       }
       return false;
@@ -108,7 +109,8 @@ async function captureBasemap(x0,y0,x1,y1,crs,targetPx,base=layoutBasemap(),opco
     await Promise.all(Array.from({length:Math.min(8,tiles.length)},async()=>{
       while(cursor<tiles.length){const tile=tiles[cursor++];if(!await comNovasTentativas(tile))failed++;}
     }));
-  }finally{hideLoad();}
+  }finally{if(!opcoes.background)hideLoad();}
+  if(opcoes.isCurrent&&!opcoes.isCurrent())throw Object.assign(Error('Fundo substituído por uma nova vista.'),{name:'AbortError'});
   const aviso=failed?`${base}: ${failed} de ${tiles.length} tiles não carregaram. Tente novamente ou escolha outro fundo na barra do Layout.`:'';
   if(failed&&(!opcoes.tolerante||failed===tiles.length))throw new Error(aviso);
   // recortar exatamente para a extensão WGS pedida
@@ -437,17 +439,17 @@ function legendNodeParts(n,catalog=null){
     if(typeof containerCountLayerRole==='function'&&containerCountLayerRole(o))return null;
     const s=o.sym||{};
     if(s.mode==='grad'&&s.classes&&s.classes.length)return s.classes.map((c,i)=>({
-      key:legendClassKey(n,'grad',c,i),label:`${fmt(c.min)} – ${fmt(c.max)}`,c,i
+      key:legendClassKey(n,'grad',c,i),label:GeoMineNumberFormat.category(o,c),c,i
     })).filter(x=>x.c.vis!==false&&(!catalog?.classKeys||catalog.classKeys.has(x.key)));
     if(s.mode==='cat'&&s.cats&&s.cats.length)return s.cats.map((c,i)=>({
-      key:legendClassKey(n,'cat',c,i),label:String(c.value),c,i
+      key:legendClassKey(n,'cat',c,i),label:GeoMineNumberFormat.category(o,c),c,i
     })).filter(x=>x.c.vis!==false&&(!catalog?.classKeys||catalog.classKeys.has(x.key)));
   }
   if(n.t==='R'){
     const s=o.style||{},m=s.mode,classes=s.classes||[];
     if(classes.length&&(m==='cn'||m==='slopeclass'||m==='classes'))return classes.map((c,i)=>({
       key:legendClassKey(n,'class',c,i),
-      label:c.label||(c.value!=null?String(c.value):`${fmt(c.min)} – ${fmt(c.max)}`),c,i
+      label:GeoMineNumberFormat.raster(o,c),c,i
     })).filter(x=>x.c.vis!==false&&(!catalog?.classKeys||catalog.classKeys.has(x.key)));
   }
   return null;
@@ -515,7 +517,7 @@ function legendItems(catalog=layoutLegendCatalog()){
         if(!visParts.length)return;
         items.push({label:o.name||'Raster classificado',header:true,indent:ind});
         visParts.forEach(p=>{const c=p.c;items.push({
-          label:c.label||(c.value!=null?String(c.value):`${fmt(c.min)} – ${fmt(c.max)}`),
+          label:p.label,
           color:c.color||'#777',stroke:c.color||'#777',kind:'poly',indent:ind+1,hatch:'solid'});});
       }else{
         /* Raster contínuo só entrava com o nome. Sem a faixa de valores a
@@ -577,7 +579,7 @@ function legendItems(catalog=layoutLegendCatalog()){
       if(!visParts.length)return;
       items.push({label:L.name+' · '+sy.field, header:true, indent:ind});
       visParts.forEach(p=>{const c=p.c;
-        items.push({label:sy.mode==='grad'?`${fmt(c.min)} – ${fmt(c.max)}`:String(c.value),
+        items.push({label:p.label,
           color:c.color, stroke:(c.stroke||sy.stroke||c.color),
           kind, hatch:c.hatch??sy.hatch, hatchScale:c.hatchScale??sy.hatchScale??1, dash:c.dash??sy.dash, indent:ind+1,
           shape:(c.shape||(pcfg&&pcfg.shape)), symbolParams:c.symbolParams||(pcfg&&pcfg.symbolParams)||null,
@@ -807,7 +809,7 @@ async function buildLayout(options){
   /* Mede exatamente a fonte usada no SVG. Contar caracteres superestimava
      letras estreitas e, pior, preservava a largura anterior mesmo depois de
      quebrar um rótulo em duas linhas — origem do grande vazio à direita. */
-  try{ if(document.fonts&&document.fonts.ready) await document.fonts.ready; }catch(_e){}
+  try{ if(exporting&&document.fonts&&document.fonts.ready) await document.fonts.ready; }catch(_e){}
   if(!current())return false;
   const legMeasureCtx=(()=>{
     try{return document.createElement('canvas').getContext('2d');}
@@ -963,7 +965,7 @@ async function buildLayout(options){
   S._loPaper={PW,PH,mode,format:paper};
 
   const NS='http://www.w3.org/2000/svg';
-  const fontCSS=await signikaCSS();
+  const fontCSS=exporting?await signikaCSS():(S._signikaCSS||'');
   if(!current())return false;
   /* A fonte padrão é herdada do SVG. Uma regra em todos os <text> teria
      prioridade sobre font-family de cada rótulo, ocultando a fonte colada. */
@@ -978,14 +980,27 @@ async function buildLayout(options){
 
   // Mapa-base próprio da prancha; não depende da visibilidade do painel 2D.
   const wantSat=document.getElementById('loSat').checked&&layoutBasemap()!=='Sem fundo';
-  let baseCapture=null;
+  let baseCapture=null,baseRefresh=null;
+  const baseName=layoutBasemap(),baseTarget=Math.round(mapW/25.4*layoutDpiTarget(exporting,options.dpi));
+  const baseImage=capture=>{
+    if(!capture?.dataURL)return '';
+    const b=capture.b;
+    return `<image data-layout-basemap="${esc(baseName)}" href="${capture.dataURL}" x="${sx(b[0]).toFixed(2)}" y="${sy(b[3]).toFixed(2)}" width="${((b[2]-b[0])*mmPerM).toFixed(2)}" height="${((b[3]-b[1])*mmPerM).toFixed(2)}" preserveAspectRatio="none"/>`;
+  };
   if(wantSat){
     /* O fundo que não veio (inteiro ou em parte) não derruba a folha: ela é
        desenhada sem ele, ou com o que veio, e o aviso aparece. Vale para a
        tela e para a saída (Copiar, PNG, PDF, SVG): a figura copiada é a que a
        tela mostra. Exigir o fundo completo só na saída fazia o Copiar falhar
        justamente quando a folha já estava visível e aceita. */
-    try{baseCapture=await captureBasemap(x0,y0,x1,y1,crs,Math.round(mapW/25.4*layoutDpiTarget(exporting,options.dpi)),layoutBasemap(),{tolerante:true});}
+    try{
+      baseCapture=await captureBasemap(x0,y0,x1,y1,crs,baseTarget,baseName,{tolerante:true,soGuardada:!exporting});
+      if(!exporting&&!baseCapture){
+        baseRefresh={x0,y0,x1,y1,crs,target:baseTarget,base:baseName};
+        const previous=S._loLastBasemap;
+        if(previous?.base===baseName&&previous.crs===crs)baseCapture=previous.capture;
+      }
+    }
     catch(error){
       if(!current())return false;
       baseCapture={dataURL:null,aviso:error.message||String(error)};
@@ -999,10 +1014,9 @@ async function buildLayout(options){
       if(!current())return false;
       if(tela&&tela.dataURL&&!tela.aviso)baseCapture={dataURL:tela.dataURL,b:tela.b,avisoSaida:'Fundo em resolução de tela nesta saída: os tiles de alta resolução não carregaram.'};
     }
-    if(baseCapture&&baseCapture.dataURL){const b=baseCapture.b;
-      svg+=`<image data-layout-basemap="${esc(layoutBasemap())}" href="${baseCapture.dataURL}" x="${sx(b[0]).toFixed(2)}" y="${sy(b[3]).toFixed(2)}" width="${((b[2]-b[0])*mmPerM).toFixed(2)}" height="${((b[3]-b[1])*mmPerM).toFixed(2)}" preserveAspectRatio="none"/>`;
-    }
+    if(baseCapture?.dataURL)S._loLastBasemap={base:baseName,crs,capture:baseCapture};
   }
+  svg+='<g data-layout-role="basemap">'+baseImage(baseCapture)+'</g>';
   // Mantém no Layout/exportação a mesma máscara poligonal escolhida no mapa.
   // O WMS continua sendo uma imagem, mas o SVG limita sua pintura exatamente
   // aos anéis da camada poligonal, inclusive respeitando eventuais furos.
@@ -1122,7 +1136,7 @@ async function buildLayout(options){
     return s;
   }
 
-  // Rótulos pertencem à camada: sobem e descem junto com sua geometria.
+  // O conteúdo e a visibilidade pertencem à camada; a pintura vem por último.
   function svgRotulosDaCamada(L){
     if(!L || L.visible===false || !labelAtivo(L))return '';
     const c=labelCfg(L);
@@ -1188,23 +1202,21 @@ async function buildLayout(options){
     return out;
   }
 
-  /* LAÇO ÚNICO na ordem da pilha: rasters e vetores intercalados.
-     Geometria e rótulos são emitidos juntos. Portanto um raster acima cobre
-     ambos; um raster abaixo permanece atrás de ambos, exatamente como na
-     árvore de camadas e no Mapa 2D.                                         */
+  /* Geometrias e rasters mantêm a ordem da árvore. Os rótulos são emitidos
+     ao final, como no Mapa 2D, para que nenhum preenchimento cubra os nomes. */
+  let svgRotulos='';
   const stk=stackSync();
   for(let si=stk.length-1; si>=0; si--){
     const nd=stk[si], ob=nd.o;
     if(!candidates.keys.has(nodeKey(nd.t,nd.id)))continue;
 
     if(nd.t==='L'){
-      /* Em pontos, o símbolo fica sobre o próprio halo/rótulo para continuar
-         visível quando a posição manual é central. O par inteiro permanece na
-         posição da camada e ainda é encoberto por qualquer raster superior. */
-      const fragment=ob.gtype==='point'?svgRotulosDaCamada(ob)+svgDaCamada(ob,true):svgDaCamada(ob,false)+svgRotulosDaCamada(ob);
-      if(fragment){
+      const geometry=svgDaCamada(ob,ob.gtype==='point'),labels=svgRotulosDaCamada(ob);
+      if(geometry||labels){
         const opacity=Number(ob.sym?.opacity??1);
-        svg+=Number.isFinite(opacity)&&opacity<1?'<g opacity="'+Math.max(0,opacity)+'">'+fragment+'</g>':fragment;
+        const withOpacity=fragment=>Number.isFinite(opacity)&&opacity<1?'<g opacity="'+Math.max(0,opacity)+'">'+fragment+'</g>':fragment;
+        if(geometry)svg+=withOpacity(geometry);
+        if(labels)svgRotulos+=withOpacity(labels);
         plotCatalog.keys.add(nodeKey(nd.t,nd.id));
       }
       continue;
@@ -1231,7 +1243,7 @@ async function buildLayout(options){
       /* Janela nativa usa o CRS da imagem; quando diferente, o fallback já
          reprojetado conserva alinhamento em vez de esticar bounds errados. */
       const sourceCRS=typeof orthoCRS==='function'?orthoCRS(ob):crs;
-      try{ if(sourceCRS===crs)hi=await orthoWindow(win,alvoPx,{source:ob,isCurrent:current}); }
+      try{ if(exporting&&sourceCRS===crs)hi=await orthoWindow(win,alvoPx,{source:ob,isCurrent:current}); }
       catch(e){if(e?.name!=='AbortError')console.warn('ortofoto:',e.message);}
       if(!current())return false;
       if(hi){
@@ -1253,7 +1265,7 @@ async function buildLayout(options){
       }
     }
     else if(nd.t==='R'){
-      try{ url=await rasterURLPlot(ob); }
+      try{ url=await rasterURLPlot(ob,{preview:!exporting}); }
       catch(e){
         /* ob._url é o bitmap reprojetado para a tela/Web Mercator. Usá-lo
            como fallback dentro dos bounds UTM repete justamente o desencaixe
@@ -1283,6 +1295,7 @@ async function buildLayout(options){
     }
   }
 
+  svg+='<g data-geomine-map-labels="true">'+svgRotulos+'</g>';
   svg+=`</g></g>`;
 
   // A geometria da grade é independente do tamanho de seus rótulos.
@@ -1763,6 +1776,22 @@ async function buildLayout(options){
      do fundo (e num toast, uma vez por mensagem). */
   const baseAviso=baseCapture&&baseCapture.aviso||'';
   const viewStatus=document.getElementById('loBaseStatus');if(viewStatus)viewStatus.textContent=baseAviso;
+  clearTimeout(S._loBaseRefreshTimer);
+  if(baseRefresh){
+    if(viewStatus)viewStatus.textContent='Atualizando o fundo…';
+    S._loBaseRefreshTimer=setTimeout(()=>{
+      if(!current())return;
+      const b=baseRefresh;
+      void captureBasemap(b.x0,b.y0,b.x1,b.y1,b.crs,b.target,b.base,{tolerante:true,background:true,isCurrent:current}).then(capture=>{
+        if(!current()||!capture?.dataURL)return;
+        const target=wrap.querySelector('[data-layout-role="basemap"]');if(!target)return;
+        const content=baseImage(capture);target.innerHTML=content;
+        S._loLastBasemap={base:baseName,crs,capture};
+        S._lastSVG=S._lastSVG.replace(/<g data-layout-role="basemap">[\s\S]*?<\/g>/,'<g data-layout-role="basemap">'+content+'</g>');
+        if(viewStatus)viewStatus.textContent=capture.aviso||'';
+      }).catch(error=>{if(current()&&error.name!=='AbortError'&&viewStatus)viewStatus.textContent=error.message;});
+    },250);
+  }
   if(exporting){
     // na saída o aviso aparece toda vez: a pessoa precisa saber como a figura copiada saiu
     if(baseCapture&&baseCapture.avisoSaida)toast(baseCapture.avisoSaida);
@@ -1892,11 +1921,6 @@ function fitLoZoom(){
     if(e.target.closest && e.target.closest('.sheet')) return;
     fitLoZoom();
   });
-  const bi=document.getElementById('btnZoomIn'),  bo=document.getElementById('btnZoomOut'),
-        bf=document.getElementById('btnZoomFit');
-  if(bi) bi.onclick=()=>setLoZoom((S.loZoom||1)*1.25, null);
-  if(bo) bo.onclick=()=>setLoZoom((S.loZoom||1)/1.25, null);
-  if(bf) bf.onclick=fitLoZoom;
 })();
 function esc(s){return String(s).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));}
 
@@ -2738,7 +2762,7 @@ function openImgProps(){
   // espelha os controles do painel lateral
   g('imModND').checked=g('imgND').checked;
   g('imModW').value=g('imgNDw').value; g('imModB').value=g('imgNDb').value;
-  const op=orthoOpacidade(); g('imModOp').value=op; g('imModOpv').textContent=Math.round(op*100)+'%';
+  const op=orthoOpacidade(); g('imModOp').value=op; GeoMineStyleSliders.syncRange(g('imModOp'),g('imModOpv'));
   // O filtro é visual: a prévia salva também tem pixels para tratar.
   ['imModND','imModW','imModB'].forEach(id=>g(id).disabled=!S.img.url);
   { const ap=g('imModApply');
@@ -2979,7 +3003,6 @@ function imgSecStatusSync(){
       },20);
     }; }
   g('imModDel').onclick=()=>{
-    if(!confirm('Remover a ortofoto/imagem de fundo?')) return;
     if(S.img && S.img.overlay) map.removeLayer(S.img.overlay);
     S.img=null; close(); refreshUI(); toast('Ortofoto removida');
   };
@@ -3507,9 +3530,12 @@ function switchView(v){
       S._preLayoutMapState={vis:{...visAtual},frozen:!!S.loFrozen,
         conv:(typeof layoutConventionSnapshot==='function')?layoutConventionSnapshot():null,
         stack:Array.isArray(S.stack)?S.stack.slice():[]};
-      /* A fotografia existente NÃO é substituída ao entrar no Layout. O mapa
-         atual fica guardado acima como candidato a uma atualização explícita;
-         enquanto isso, a prancha continua exatamente como foi congelada. */
+      // Entrar vindo do 2D usa automaticamente a composição que estava ligada.
+      // Outras pranchas continuam com seus próprios estados até serem abertas.
+      if(S.loMode==='a4'){
+        const pl=(S.plates||[]).find(p=>p.id===S.plateId);
+        if(pl){pl.vis={...visAtual};pl.conv=layoutClone(S._preLayoutMapState.conv);pl.stack=S._preLayoutMapState.stack.slice();}
+      }else S._figFrozenVis={...visAtual};
       S._loAppliedPlateId=null; S._loDraftVis=null; S._loDraftConv=null; S._loDraftStack=null;
     }
     catch(e){S._preLayoutMapState=null;}
@@ -3717,7 +3743,7 @@ document.querySelectorAll('#tabBar .tbtn').forEach(b=>{
     CATS.forEach(c=>(c.grupos||[]).forEach(g=>(g.it||[]).forEach(cmd=>{
       /* Atalhos contextuais continuam em suas abas, mas a busca global mostra
          uma única ocorrência do mesmo ícone/comando. */
-      const chave=norm(cmd.ic)+'\u0000'+norm(cmd.nome);
+      const chave=cmd.commandId||norm(cmd.ic)+'\u0000'+norm(cmd.nome);
       if(vistos.has(chave))return;
       vistos.add(chave);a.push({cat:c,grp:g,cmd});
     })));
@@ -3742,7 +3768,7 @@ document.querySelectorAll('#tabBar .tbtn').forEach(b=>{
     if(!s){closeSearch();return}
     const norm=x=>(x||'').toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g,'');
     const ns=norm(s);
-    rows=allCommands().filter(x=>norm(x.cmd.nome+' '+x.cat.nome+' '+x.grp.label).includes(ns)).slice(0,18);
+    rows=allCommands().filter(x=>norm(x.cmd.nome+' '+(x.cmd.aliases||[]).join(' ')+' '+x.cat.nome+' '+x.grp.label).includes(ns)).slice(0,18);
     out.innerHTML=rows.length?rows.map((x,i)=>
       `<div class="a3-search-row${i===0?' sel':''}" data-i="${i}"><span>${esc(x.cmd.nome)}</span><small>${esc(x.cat.nome)} · ${esc(x.grp.label||'')}</small></div>`
     ).join(''):'<div class="hint" style="padding:12px">Nenhum comando encontrado.</div>';
@@ -3751,15 +3777,17 @@ document.querySelectorAll('#tabBar .tbtn').forEach(b=>{
   }
   function execute(i){
     const x=rows[i];if(!x)return;
+    q.blur(); // Fecha o teclado do tablet antes de executar o comando escolhido.
     if(x.run){
       closeSearch();q.value='';x.run();return;
     }
+    clearTimeout(RIB_COMMAND_CAT_TIMER);RIB_COMMAND_CAT=null;
     RIB_CAT_ATUAL=x.cat.id;
     if(x.cat.view) switchView(x.cat.view); else ribbonBuild();
     closeSearch();q.value='';
     requestAnimationFrame(()=>{
       const bs=[...document.querySelectorAll('#ribbon .rbtn')];
-      const b=bs.find(e=>e.title===x.cmd.nome);
+      const b=bs.find(e=>x.cmd.commandId?e.dataset.commandId===x.cmd.commandId:e.getAttribute('aria-label')===x.cmd.nome);
       if(b)b.click();
     });
   }
@@ -3775,8 +3803,16 @@ document.querySelectorAll('#tabBar .tbtn').forEach(b=>{
     if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='q'){e.preventDefault();q&&q.focus()}
   });
   document.addEventListener('pointerdown',e=>{
-    if(out&&out.classList.contains('on')&&!out.contains(e.target)&&e.target!==q)closeSearch();
+    if(out&&!out.contains(e.target)&&e.target!==q){closeSearch();if(document.activeElement===q)q.blur();}
   });
+  // Um toque no mapa ou numa ferramenta encerra a digitação. Campos continuam
+  // editáveis por toque; nenhum evento de desenho ou gesto é cancelado aqui.
+  document.addEventListener('pointerdown',e=>{
+    if(e.pointerType!=='touch'&&e.pointerType!=='pen')return;
+    const active=document.activeElement,editor='input,textarea,select,[contenteditable]:not([contenteditable="false"])';
+    if(!active?.matches?.(editor)||e.target?.closest?.(editor+',label'))return;
+    active.blur();
+  },true);
   addEventListener('resize',positionResults);
 
   const theme=document.getElementById('a3Theme');

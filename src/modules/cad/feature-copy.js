@@ -9,7 +9,7 @@ const TYPES={point:'pontos',line:'linhas',polygon:'polígonos'};
 const MODES={copy:{title:'Copiar para outra camada',verb:'Copiar',done:['copiada','copiadas'],suffix:'cópia'},
   move:{title:'Mover para outra camada',verb:'Mover',done:['movida','movidas'],suffix:'movidas'}};
 let pending=null,lastTarget=null,suggested='';
-const editable=L=>!L.locked&&(typeof collabCanEditLayer!=='function'||collabCanEditLayer(L,false));
+const editable=L=>!L.locked&&(typeof canEditLayer!=='function'||canEditLayer(L,false));
 // Geologia, cava, TIN e rampas têm editores próprios e metadados obrigatórios.
 const special=L=>!!(L._geology||L.cavaDesign||L.tinSurface||L._cava2DesignId||L._rb31Recipe);
 const normal=s=>String(s??'').trim().replace(/\s+/g,' ').toLocaleLowerCase('pt-BR');
@@ -62,7 +62,7 @@ function sources(){return pending?[...new Set(pending.items.map(item=>item.L))]:
 function checkMoveSources(list){
   for(const L of list){
     if(special(L)||L._channelLink)throw Error('“'+L.name+'” é gerada por uma ferramenta própria: use Copiar para levar as feições sem alterá-la.');
-    if(!editable(L)){if(typeof collabCanEditLayer==='function')collabCanEditLayer(L,true);throw Error('Desbloqueie ou reserve a camada “'+L.name+'” antes de mover.');}
+    if(!editable(L)){if(typeof canEditLayer==='function')canEditLayer(L,true);throw Error('Desbloqueie a camada “'+L.name+'” antes de mover.');}
   }
 }
 function missingFields(T){
@@ -140,10 +140,7 @@ function open(refs,mode='copy'){
     for(const L of list)select.append(new Option(L.name,L.id));
     select.append(new Option('Nova camada…','new'));
     select.value=list.some(L=>L.id===lastTarget)?String(lastTarget):list.length?String(list[0].id):'new';
-    // Na sala, só a camada reservada por você aceita edição (a reserva segue a camada ativa).
-    let room=false;try{room=!!window.GeoMineCollaboration?.snapshot?.()?.roomId;}catch(_){}
-    $('Summary').textContent=describe()+(list.length?'':' Não há outra camada de '+TYPES[pending.gtype]+' editável: crie uma nova.')+
-      (room?' Na sala de colaboração, só aparecem camadas reservadas por você: ative a camada de destino para reservá-la.':'');
+    $('Summary').textContent=describe()+(list.length?'':' Não há outra camada de '+TYPES[pending.gtype]+' editável: crie uma nova.');
     $('Name').value='';suggested='';$('Fields').checked=false;ui();
     $('Modal').classList.add('on');
   }catch(e){toast(e.message||String(e));}
@@ -164,7 +161,7 @@ function commit(){
       T=S.layers.find(L=>String(L.id)===value);
       if(!T)throw Error('A camada de destino foi removida. Escolha outra.');
       if(T.gtype!==pending.gtype||special(T)||sources().includes(T))throw Error('A camada de destino não aceita estas feições.');
-      if(!editable(T)){if(typeof collabCanEditLayer==='function')collabCanEditLayer(T,true);throw Error('Desbloqueie ou reserve a camada “'+T.name+'” antes de continuar.');}
+      if(!editable(T)){if(typeof canEditLayer==='function')canEditLayer(T,true);throw Error('Desbloqueie a camada “'+T.name+'” antes de continuar.');}
     }
     const from=sources(),crs=T?T.crs:(new Set(from.map(L=>String(L.crs))).size===1?from[0].crs:S.workCRS);
     const fields=T?(T.fields||[]).map(f=>({...f})).concat($('Fields').checked?missingFields(T):[]):missingFields(null);

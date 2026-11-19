@@ -24,7 +24,7 @@ function allowed(t){
   return !!t&&t.L?.gtype==='polygon'&&S.layers.includes(t.L)&&t.L.features.includes(t.f)&&
     t.L.visible!==false&&!t.L.locked&&(!root.featureVisible||featureVisible(t.L,t.f))&&
     (!root.rb134EhDerivadaProtegida||!root.rb134EhDerivadaProtegida(t.L,t.f))&&
-    (typeof collabCanEditLayer!=='function'||collabCanEditLayer(t.L,false));
+    (typeof canEditLayer!=='function'||canEditLayer(t.L,false));
 }
 function current(d){
   const t=editorTarget();

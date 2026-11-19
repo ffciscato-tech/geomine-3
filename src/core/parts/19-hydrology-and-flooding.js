@@ -1,3 +1,77 @@
+/* Engineering soil descriptions are user supplied. RGB does not identify a
+   laboratory USCS group. The hydraulic associations below are explicit model
+   assumptions, not a conversion prescribed by USCS or an inferred HSG. */
+(function(root){
+  'use strict';
+  const reference='https://www.txdot.gov/manuals/des/hyd/chapter-4--hydrology/section-12--rational-method.html';
+  const soilReference='https://www.gov.br/dnit/pt-br/assuntos/planejamento-e-pesquisa/ipr/coletanea-de-manuais/vigentes/719_manual_de_pavimentacao.pdf';
+  const soils=[
+    ['sandy','Areia (arenoso)','Descrição geotécnica','rapid'],
+    ['mixed','Areia argilosa (arenoargiloso)','Descrição geotécnica','slow'],
+    ['sand-silt','Areia siltosa','Descrição geotécnica','normal'],
+    ['clay','Argila (argiloso)','Descrição geotécnica','slow'],
+    ['clay-sand','Argila arenosa','Descrição geotécnica','slow'],
+    ['clay-silt','Argila siltosa','Descrição geotécnica','slow'],
+    ['silt','Silte','Descrição geotécnica','slow'],
+    ['silt-sand','Silte arenoso','Descrição geotécnica','slow'],
+    ['silt-clay','Silte argiloso','Descrição geotécnica','slow'],
+    ['gravel','Pedregulho / cascalho','Descrição geotécnica','rapid'],
+    ['organic','Solo orgânico','Descrição geotécnica','slow'],
+    ['peat','Turfa','Descrição geotécnica','slow'],
+    ['GW','GW — Pedregulho bem graduado','SUCS · pedregulhos','rapid'],
+    ['GP','GP — Pedregulho mal graduado','SUCS · pedregulhos','rapid'],
+    ['GM','GM — Pedregulho siltoso','SUCS · pedregulhos','normal'],
+    ['GC','GC — Pedregulho argiloso','SUCS · pedregulhos','slow'],
+    ['SW','SW — Areia bem graduada','SUCS · areias','rapid'],
+    ['SP','SP — Areia mal graduada','SUCS · areias','rapid'],
+    ['SM','SM — Areia siltosa','SUCS · areias','normal'],
+    ['SC','SC — Areia argilosa','SUCS · areias','slow'],
+    ['ML','ML — Silte de baixa plasticidade','SUCS · solos finos','slow'],
+    ['MH','MH — Silte de alta plasticidade','SUCS · solos finos','slow'],
+    ['CL','CL — Argila de baixa plasticidade','SUCS · solos finos','slow'],
+    ['CH','CH — Argila de alta plasticidade','SUCS · solos finos','slow'],
+    ['CL-ML','CL-ML — Silte argiloso / argila siltosa','SUCS · solos finos','slow'],
+    ['OL','OL — Solo orgânico de baixo limite de liquidez','SUCS · orgânicos','slow'],
+    ['OH','OH — Solo orgânico de alto limite de liquidez','SUCS · orgânicos','slow'],
+    ['PT','PT — Turfa / solo altamente orgânico','SUCS · orgânicos','slow']
+  ].map(([id,label,group,infiltration])=>Object.freeze({id,label,group,infiltration}));
+  const profile='txdot-rural-upper-v1';
+  const ranges={relief:[[.08,.14],[.14,.20],[.20,.28],[.28,.35]],
+    infiltration:{rapid:[.04,.06],normal:[.06,.08],slow:[.08,.12],negligible:[.12,.16]},
+    vegetation:{vd:[.04,.06],vm:[.06,.08],vr:[.08,.12],solo:[.12,.16],rocha:[.12,.16],compact:[.12,.16]},
+    storage:{much:[.04,.06],normal:[.06,.08],defined:[.08,.10],negligible:[.10,.12]},
+    impervious:[.85,.95]};
+  const assumptions=[
+    'Estimativa preliminar conservadora; limites superiores das tabelas 4-10 e 4-11 do TxDOT.',
+    'Associação de descrições/SUCS à infiltração é uma hipótese do GeoMine: solos granulares limpos bem drenados; finos e orgânicos com infiltração lenta. Não é ensaio de permeabilidade nem grupo hidrológico A–D.',
+    'Rocha exposta e solo compactado: infiltração desprezível presumida. Fraturas, compactação e drenagem não são medidas pela cor da ortofoto.',
+    'Cobertura vegetal estimada por RGB: densa, média e rala correspondem às condições boa, intermediária e pobre da referência.',
+    'Armazenamento superficial desprezível por padrão, sem descontar retenções. Pode ser ajustado nas opções avançadas.',
+    'Aplicação espacial por célula adapta o método rural por segmentos. Dimensionamento pelo Método Racional se limita a pequenas bacias sem armazenamento significativo; C não representa um volume de chuva pelo SCS-CN.'
+  ];
+  function soil(id){return soils.find(s=>s.id===id)||null;}
+  function calculate(key,slope,settings){
+    if(!Object.hasOwn(ranges.vegetation,key)&&key!=='imperv')throw Error('Cobertura não reconhecida: '+key);
+    const override=settings.covers?.[key];
+    if(override?.reference==='manual'&&Number.isFinite(override.value)&&override.value>=0&&override.value<=1)
+      return {value:override.value,reference:'manual',slopeBand:null,components:null};
+    if(override?.reference==='manual')throw Error('O ajuste manual de C deve estar entre 0 e 1. Volte a “Automático” para usar a referência incorporada.');
+    if(key==='imperv')return {value:.95,reference:'TxDOT 4-10',slopeBand:null,components:{impervious:.95}};
+    let band;
+    if(Number.isFinite(slope)&&slope>=0)band=slope<=5?0:slope<=10?1:slope<=30?2:3;
+    else band={flat:0,rolling:1,steep:2,mountain:3}[settings.fallbackSlope];
+    if(band===undefined)throw Object.assign(Error('Falta declividade. Escolha um MDT que cubra a área; não é necessário informar coeficientes de C.'),{code:'C_SLOPE_MISSING'});
+    let infiltration;
+    if(key==='rocha'||key==='compact')infiltration='negligible';
+    else {const s=soil(settings.soil);if(!s)throw Error('Indique o tipo de solo; os coeficientes de C já estão incorporados.');infiltration=s.infiltration;}
+    const storage=Object.hasOwn(ranges.storage,settings.storage)?settings.storage:'negligible';
+    const components={relief:ranges.relief[band][1],infiltration:ranges.infiltration[infiltration][1],
+      vegetation:ranges.vegetation[key][1],storage:ranges.storage[storage][1]};
+    const value=Number(Object.values(components).reduce((a,b)=>a+b,0).toFixed(6));
+    return {value,reference:'TxDOT 4-11 · adaptação GeoMine',slopeBand:band,components,infiltration,storage};
+  }
+  root.GeoMineRationalProfile=Object.freeze({id:profile,reference,soilReference,soils,ranges,assumptions,soil,calculate});
+})(typeof window!=='undefined'?window:globalThis);
 /* ============================================================================
    MÓDULO HIDRO — série ANA, IDF (Gumbel+CETESB), MDE D8, dimensionamento
    ========================================================================== */
@@ -1850,8 +1924,8 @@ S.hidro.pilha = [];      // histórico para desfazer
 S.hidro.demBase = null;  // cópia para restaurar
 
 function hCloneGrid(d){
-  return {nc:d.nc, nr:d.nr, cs:d.cs, xll:d.xll, yll:d.yll,
-          z:Float64Array.from(d.z), native:d.native, resampled:d.resampled};
+  return {nc:d.nc, nr:d.nr, cs:d.cs, csy:d.csy, xll:d.xll, yll:d.yll,
+          z:Float64Array.from(d.z), native:d.native, resampled:d.resampled,_hydrologyEdited:d._hydrologyEdited};
 }
 function hInvalidaD8(d){
   delete d.zf; delete d.dir; delete d.acc; d._bruto=false;
@@ -1860,7 +1934,10 @@ function hInvalidaD8(d){
 }
 function hInstalaDEM(g, rotulo){
   if(typeof hShadeOff==='function') hShadeOff(true);   // sombreado da grade anterior
+  g._hydrologyEdited=true; // uma direção importada não descreve o terreno editado
   S.hidro.dem=g; hInvalidaD8(g);
+  const basinMode=document.getElementById('hLamBacia');if(basinMode?.value==='original-d8')basinMode.value='d8';
+  window.GeoMineOriginalD8?.refreshRain();
   window.GeoMineNativeFlood?.bindSource({name:rotulo||'MDE editado',d:g,crs:S.workCRS},g);
   const o=document.getElementById('hDemOut');
   if(o) o.innerHTML=hidroDemHTML(g,g)+`<br><span style="color:var(--amber)">${rotulo} — refaça o preenchimento de depressões antes de gerar fluxos.</span>`;
@@ -2340,6 +2417,13 @@ async function fillSinksAsync(d, p0, p1){
   }
   d.zf=W; return pass;
 }
+/* Distância entre centros de células, normalizada pela largura. Grades
+   quadradas preservam exatamente a regra histórica; grades retangulares
+   usam a mesma distância física da direção e dos contornos no mapa. */
+function hD8StepDistance(d,dr,dc){
+  const cs=+d.cs||1,csy=+(d.csy||cs)||cs;
+  return csy===cs?((dr&&dc)?Math.SQRT2:1):Math.hypot(dr*csy,dc*cs)/cs;
+}
 async function d8dirAsync(d, p0, p1){
   const {nc,nr}=d, z=d.zf||d.z, N=nc*nr;
   const dir=new Int32Array(N).fill(-1);
@@ -2352,7 +2436,7 @@ async function d8dirAsync(d, p0, p1){
       for(const [dr,dc] of D8N){
         const r2=r+dr,c2=c+dc; if(r2<0||c2<0||r2>=nr||c2>=nc) continue;
         const k2=r2*nc+c2; if(isNaN(d.z[k2])) continue;
-        const dist=(dr&&dc)?Math.SQRT2:1;
+        const dist=hD8StepDistance(d,dr,dc);
         const s=(z[k]-z[k2])/dist;
         if(s>bs){ bs=s; bk=k2; }
       }
@@ -2389,7 +2473,7 @@ function d8dir(d){
     for(const [dr,dc] of D8N){
       const r2=r+dr,c2=c+dc; if(r2<0||c2<0||r2>=nr||c2>=nc) continue;
       const k2=r2*nc+c2; if(isNaN(d.z[k2])) continue;
-      const dist=(dr&&dc)?Math.SQRT2:1;
+      const dist=hD8StepDistance(d,dr,dc);
       const s=(z[k]-z[k2])/dist;
       if(s>bs){ bs=s; bk=k2; }
     }
@@ -2428,7 +2512,7 @@ function streamsFromDEM(d,thr){
 }
 function watershedAt(d, x, y, opt){
   const {nc,nr,cs}=d,csy=d.csy||cs;
-  let c=Math.floor((x-d.xll)/cs), r=d.nr-1-Math.floor((y-d.yll)/cs);
+  let c=Math.floor((x-d.xll)/cs), r=d.nr-1-Math.floor((y-d.yll)/csy);
   if(r<0||c<0||r>=nr||c>=nc) return null;
   const k0=r*nc+c;
   let bk=k0;
@@ -2518,8 +2602,14 @@ function watershedAt(d, x, y, opt){
     }
     if(ring.length>3) rings.push(ring);
   }
-  rings.sort((a,b)=>b.length-a.length);
-  return {ring:rings[0]||null,ncells,areaM2:ncells*cs*csy,
+  // Uma ligação D8 diagonal pode gerar vários anéis. Todos pertencem à
+  // MESMA bacia: guardar só rings[0] desenhava uma parte e contabilizava mais.
+  const signedArea=ring=>{const [ox,oy]=ring[0];let a=0;for(let i=1;i<ring.length;i++)a+=(ring[i-1][0]-ox)*(ring[i][1]-oy)-(ring[i][0]-ox)*(ring[i-1][1]-oy);return a/2;};
+  rings.sort((a,b)=>Math.abs(signedArea(b))-Math.abs(signedArea(a)));
+  const ringInfo=rings.map(ring=>{const a=signedArea(ring);return {hole:a>0,areaM2:Math.abs(a),pointCount:ring.length};}),
+    areaM2=ncells*cs*csy,contourArea=ringInfo.reduce((a,r)=>a+(r.hole?-r.areaM2:r.areaM2),0);
+  if(Math.abs(contourArea-areaM2)>Math.max(1e-5,areaM2*1e-8))throw Error('O contorno da bacia não representa todas as células contribuintes. Nenhum resultado parcial foi salvo.');
+  return {ring:rings[0]||null,rings,ringInfo,ncells,cells:ncells,areaM2,
           outlet,snapM,accOutlet:d.acc[bk]||0,
           clique:[x,y],accClique:d.acc[k0]||0,
           zOutlet:(d.z&&isFinite(d.z[bk]))?d.z[bk]:null};
@@ -2693,6 +2783,7 @@ document.getElementById('btnD8Dir').onclick=async()=>{
   try{
     await d8dirAsync(d,0,1);
     delete d.acc;
+    await window.GeoMineHydrologyAuto?.store(d,source);
     const n=hDirecaoSetas(d,source);
     document.getElementById('hDirOut').innerHTML=`Direção D8 calculada. <b>${n.toLocaleString('pt-BR')}</b> setas amostradas no mapa.`;
     document.getElementById('btnD8Acc').disabled=false;
@@ -2717,6 +2808,7 @@ document.getElementById('btnD8Acc').onclick=async()=>{
   progStart(`Acumulação de fluxo · ${d.nc}×${d.nr}`);
   try{
     await d8accAsync(d,0,1);
+    await window.GeoMineHydrologyAuto?.store(d,source);
     const gd={nc:d.nc,nr:d.nr,cs:d.cs,csy:d.csy,xll:d.xll,yll:d.yll,z:new Float32Array(d.acc)};
     Object.defineProperty(gd,'_d8Source',{value:d,writable:true,enumerable:false});
     const r={id:rid++,name:'Acumulação de fluxo D8',d:gd,
@@ -2839,12 +2931,11 @@ function hSaiModoBacia(){
 }
 async function hGaranteD8Bacia(d){
   if(!d || !d.z) throw new Error('MDE hidrológico não carregado');
-  if(!d.zf && d._bruto!==true)
-    throw new Error('Preencha as depressões antes de delimitar a bacia');
   if(d.dir && d.acc) return;
   const precisaDir=!d.dir, precisaAcc=!d.acc;
   progStart(`Preparando delimitação da bacia · ${d.nc}×${d.nr}`);
   try{
+    if(!d.dir&&!d.zf&&d._bruto!==true)await fillSinksAsync(d,0,.3);
     /* Cálculo silencioso: não cria camada de setas nem raster de acumulação.
        Esses produtos só são adicionados quando seus próprios comandos forem
        escolhidos explicitamente na faixa Hidrologia. */
@@ -2932,7 +3023,7 @@ function runBasinClick(latlng){
   const nExut=((S.layers||[]).find(l=>l._exutorios)?.features||[]).length+1;
   const nome='Exutório '+nExut;
   addLayer({undo:true,sourceLayer:'R:'+S.hidro.sourceRasterId,name:'Bacia '+nExut+' ('+fmtArea(w.areaM2)+')', gtype:'polygon', crs:S.workCRS,
-    features:[{geom:[w.ring],multi:true,props:{NOME:nome,
+    features:[{geom:w.rings||[w.ring],multi:true,props:{NOME:nome,
       AREA_M2:+w.areaM2.toFixed(0),AREA_HA:+(w.areaM2/10000).toFixed(3),
       E_EXUT:+w.outlet[0].toFixed(2),N_EXUT:+w.outlet[1].toFixed(2),
       DESLOC_M:+(w.snapM||0).toFixed(2)}}],
@@ -3026,9 +3117,8 @@ function inundConectada(d, lv, seedIdx, wall){
    Uma linha (camada vetorial) vira uma barreira rasterizada na grade do MDE:
    as células cruzadas pela linha ficam bloqueadas e o flood fill não passa.
    A cota da crista é lida do próprio MDT ao longo da linha (interpolação). */
-function barrLinhas(){
-  const sel=document.getElementById('hBarrLay');
-  const id=sel? sel.value : '';
+function barrLinhas(id){
+  if(arguments.length===0){const sel=document.getElementById('hBarrLay');id=sel?sel.value:'';}
   if(!id) return null;
   const L=(S.layers||[]).find(x=>String(x.id)===String(id));
   if(!L||!L.features||!L.features.length) return null;
@@ -3189,27 +3279,193 @@ function cnValoresGrupo(){
   const p={A:[88,74,49],B:[91,80,61],C:[94,85,70],D:[96,89,77]}[g]||[94,85,70];
   return {grupo:g,rock:p[0],ant:p[1],veg:p[2]};
 }
-function cnRingDaFeicao(L,f){
-  if(!L||!f||L.gtype!=='polygon'||!f.geom)return null;
-  let rs=(f.multi&&Array.isArray(f.geom[0]&&f.geom[0][0]))?f.geom:[f.geom];
-  rs=rs.filter(r=>r&&r.length>=3).map(r=>r.map(p=>{
-    if(!L.crs||L.crs===S.workCRS)return [p[0],p[1]];
-    const w=toWGS(L.crs,p[0],p[1]);return fromWGS(S.workCRS,w[0],w[1]);
-  }));
-  if(!rs.length)return null;
-  return rs.sort((a,b)=>Math.abs(baciaArea(b))-Math.abs(baciaArea(a)))[0];
-}
-function cnLimiteAtual(){
-  const modo=(document.getElementById('hCnLimite')||{}).value||'selecionado';
-  if(modo==='orto')return {ring:null,nome:'extensão válida da ortofoto'};
-  if(modo==='selecionado'){
-    const sf=S.selFeat,L=sf&&sf.layer,f=L&&L.features&&L.features[sf.idx];
-    const ring=cnRingDaFeicao(L,f);
-    return ring?{ring,nome:L.name||'polígono selecionado'}:null;
+/* Ortho selection belongs to the CN workflow; it never switches the map's
+   background. Archived orthos remain available after another one is imported. */
+var cnOrtoBusy=false;
+function cnOrtoSources(){
+  const list=[],seen=new Set(),main=S.img;
+  const add=(id,o)=>{if(!o?.url||!Array.isArray(o.b)||o.b.length!==4||seen.has(String(id)))return;
+    seen.add(String(id));list.push({id:String(id),o});};
+  if(main?.url){if(!main._ortoId)main._ortoId='orto-'+(crypto.randomUUID?.()||Date.now().toString(36));add(main._ortoId,main);}
+  for(const o of S.ortofotos||[]){
+    if(main&&(o.id===main._ortoId||o.url===main.url&&String(o.b)===String(main.b)))continue;
+    add(o.id,o);
   }
-  const L=(S.layers||[]).find(l=>l.gtype==='polygon'&&l.name==='Limite da análise CN'&&(l.features||[]).length);
-  const f=L&&L.features[L.features.length-1],ring=cnRingDaFeicao(L,f);
-  return ring?{ring,nome:'Limite da análise CN'}:null;
+  return list;
+}
+function cnProduct(){return document.getElementById('hCnProduct')?.value==='c'?'c':'cn';}
+/* User-supplied PUC Goiás handout: C is looked up from cover, soil and
+   slope. No storm depth or antecedent-moisture conversion enters this C. */
+const C_RUNOFF_REFERENCE='https://professor.pucgoias.edu.br/sitedocente/admin/arquivosUpload/15805/material/Coeficiente%20de%20Run%E2%80%93Off%20(escoamento%20superficial).pdf';
+const C_RURAL_TABLE={
+  forest:[[.10,.30,.40],[.25,.35,.50]],
+  pasture:[[.10,.30,.40],[.15,.35,.55],[.20,.40,.60]],
+  cultivated:[[.30,.50,.60],[.40,.60,.70],[.50,.70,.80]]
+};
+const C_COVER_NAMES={vd:'Vegetação densa',vm:'Vegetação média',vr:'Vegetação rala',solo:'Solo exposto',rocha:'Rocha exposta',compact:'Solo compactado / antropizado',imperv:'Superfície impermeável'};
+const C_COVER_DEFAULTS={vd:'auto',vm:'auto',vr:'auto',solo:'auto',rocha:'auto',compact:'auto',imperv:'auto'};
+function cSoilsRefresh(){
+  const e=document.getElementById('hCSoil');if(!e||e.dataset.catalog)return;
+  const selected=e.value; e.replaceChildren(new Option('Indique o solo',''));
+  const groups=new Map();
+  for(const s of GeoMineRationalProfile.soils){let group=groups.get(s.group);
+    if(!group){group=document.createElement('optgroup');group.label=s.group;groups.set(s.group,group);e.append(group);}
+    group.append(new Option(s.label,s.id));}
+  e.dataset.catalog='geotechnical-v1';e.value=selected;
+}
+function cCoverageSettings(){
+  const covers={};for(const key of Object.keys(C_COVER_DEFAULTS)){
+    const raw=document.getElementById('hCValue_'+key)?.value?.trim()||'';
+    covers[key]={reference:document.getElementById('hCRef_'+key)?.value||C_COVER_DEFAULTS[key],value:raw===''?null:Number(raw.replace(',','.'))};
+  }
+  return {version:2,profile:GeoMineRationalProfile.id,soil:document.getElementById('hCSoil')?.value||'',storage:document.getElementById('hCStorage')?.value||'negligible',fallbackSlope:document.getElementById('hCSlope')?.value||'',covers};
+}
+function cCoverageRestore(settings){
+  cSoilsRefresh();
+  for(const [id,value] of [['hCSoil',settings?.soil||''],['hCStorage',settings?.storage||'negligible'],['hCSlope',settings?.fallbackSlope||'']]){const e=document.getElementById(id);if(e)e.value=value;}
+  for(const key of Object.keys(C_COVER_DEFAULTS)){
+    const ref=document.getElementById('hCRef_'+key),value=document.getElementById('hCValue_'+key),saved=settings?.covers?.[key];
+    const manual=saved?.reference==='manual'&&Number.isFinite(saved?.value);
+    if(ref)ref.value=manual?'manual':'auto';
+    if(value)value.value=manual?String(saved.value):'';
+  }
+}
+function cCoverageUI(){
+  cSoilsRefresh();
+  const isC=cnProduct()==='c';
+  const mdt=document.getElementById('hCnMDT'),mdtLabel=document.querySelector('label[for="hCnMDT"]');
+  if(mdt?.options[0])mdt.options[0].textContent=isC?'Automático — MDT do projeto':'Sem MDT';
+  if(mdtLabel)mdtLabel.textContent=isC?'MDT para declividade':'MDT auxiliar (opcional)';
+  for(const key of Object.keys(C_COVER_DEFAULTS)){
+    const value=document.getElementById('hCValue_'+key),ref=document.getElementById('hCRef_'+key);
+    if(value){value.disabled=cnOrtoBusy||ref?.value!=='manual';value.placeholder=ref?.value==='manual'?'Ajuste opcional':'Automático';}
+  }
+  const group=document.getElementById('hCnGrupoOrto'),label=document.querySelector('label[for="hCnGrupoOrto"]');
+  if(group)group.style.display=isC?'none':'';if(label)label.style.display=isC?'none':'';
+}
+function cRationalValue(key,slope,settings){
+  if(settings.profile===GeoMineRationalProfile.id)return GeoMineRationalProfile.calculate(key,slope,settings);
+  const assignment=settings.covers[key];
+  if(!assignment)throw Error('Cobertura sem coeficiente: '+key);
+  if(assignment.reference==='manual'){
+    if(assignment.value===null||!Number.isFinite(assignment.value)||assignment.value<0||assignment.value>1)
+      throw Error('Informe C entre 0 e 1 em “Coeficientes por cobertura” para '+(C_COVER_NAMES[key]||key)+'.');
+    return {value:assignment.value,reference:'manual',slopeBand:null};
+  }
+  const soil={sandy:0,mixed:1,clay:2}[settings.soil];
+  if(soil===undefined)throw Error('Escolha o tipo de solo da tabela para determinar C.');
+  let band;
+  if(Number.isFinite(slope)&&slope>=0){band=slope<=5?0:slope<=10?1:slope<=30?2:3;}
+  else{band={flat:0,rolling:1,steep:2}[settings.fallbackSlope];
+    if(band===undefined)throw Error('Falta declividade em parte da área. Escolha a classe sem dado ou um MDT que cubra a área.');}
+  const value=C_RURAL_TABLE[assignment.reference]?.[band]?.[soil];
+  if(!Number.isFinite(value))throw Error('A tabela não fornece C para '+({forest:'Floresta',pasture:'Pastagem',cultivated:'Terra cultivada'}[assignment.reference]||assignment.reference)+' nessa declividade. Informe C manual para essa cobertura.');
+  return {value,reference:assignment.reference,slopeBand:band};
+}
+function cnOrtoOutput(r){
+  const out=document.getElementById('hCnOrtoOut');if(!out)return;
+  const m=r?.cnMeta||r?.runoffMeta,isC=cnProduct()==='c',kind=isC?'C':'CN',key=kind+'|'+String(r?.id??'')+'|'+String(S.hidro?.cnOrthoId||'');
+  if(out._cnResult===r&&out.dataset.result===key)return;out._cnResult=r;out.dataset.result=key;
+  if(!r||!m){out.textContent='Nenhum '+kind+' gerado para esta ortofoto.';return;}
+  const fmt=(n,d=2)=>Number(n).toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d}),
+    n=m.analysisPixels||m.validPixels||Object.values(m.counts||{}).slice(0,3).reduce((s,v)=>s+v,0),area=m.areaM2||0;
+  const rows=(m.classes||[]).map(c=>{const fraction=n?c.count/n:0;
+    return `<tr><td>${esc(c.nome)}</td><td>${fmt(area*fraction,0)}</td><td>${fmt(100*fraction)}%</td><td>${fmt(isC?c.c:c.cn,isC?3:0)}</td></tr>`;
+  }).join('');
+  const pending=isC&&(m.pendingPixels||0)>0;
+  const mean=isC?m.weightedC:m.weightedCN;
+  out.innerHTML=`<b>${Number.isFinite(mean)?(pending?'C médio da área com dados: ':kind+' ponderado: ')+fmt(mean,isC?3:2):'Sem C médio disponível nesta análise'}</b><br>${esc(m.sourceOrthoName||r.name)}${isC?'':(' · grupo '+esc(m.grupo||'C'))} · ${fmtArea(area)}${isC?'<br>'+esc(m.limite||'Toda a ortofoto')+' · Método Racional':''}`+
+    (pending?`<div class="hint">Média calculada em ${fmtArea(m.validPixels*r.d.cs*(r.d.csy||r.d.cs))} com C válido (${fmt(100*m.validPixels/n)}% da análise). Sem declividade em ${fmtArea(m.pendingPixels*r.d.cs*(r.d.csy||r.d.cs))}; esses trechos não entram na média.</div>`:'')+
+    `<details><summary>Classes e áreas</summary><div class="hint">${esc(m.limite||'')} · ${r.d.nc}×${r.d.nr} · ${fmt(r.d.cs)} × ${fmt(r.d.csy||r.d.cs)} m/célula</div>`+
+    `<div style="overflow:auto"><table style="width:100%;font-size:11px;text-align:right"><thead><tr><th>Cobertura</th><th>m²</th><th>%</th><th>${kind}</th></tr></thead><tbody>${rows}</tbody></table></div></details>`+
+    (isC&&m.profile===GeoMineRationalProfile.id?`<details><summary>Base do C</summary><div class="hint">${esc(m.soilDescription?.label||'Solo não necessário para estas coberturas')} · MDT: ${esc(m.mdt||'sem MDT')}<br>Estimativa por componentes · limites superiores.<br>${(m.classes||[]).map(c=>esc(c.nome)+': '+(c.components?Object.values(c.components).map(v=>Number(v).toFixed(2)).join(' + ')+' = ': 'ajuste manual = ')+Number(c.c).toFixed(3)).join('<br>')}<br><a href="${esc(GeoMineRationalProfile.reference)}" target="_blank" rel="noopener">Referência TxDOT</a></div></details>`:'');
+}
+function cnLimiteRefresh(){
+  const mode=document.getElementById('hCnLimite')?.value||'selecionado',out=document.getElementById('hCnLimiteOut'),
+    button=document.getElementById('btnCnLimite'),limit=cnLimiteAtual();
+  if(out)out.textContent=limit?'Área: '+limit.nome:mode==='selecionado'?'Selecione o polígono no mapa.':'Desenhe o limite no mapa.';
+  if(button){button.textContent=mode==='desenhado'?'Desenhar limite':mode==='selecionado'?'Selecionar polígono':'Toda a ortofoto';button.disabled=cnOrtoBusy||mode==='orto';button.style.display=mode==='orto'?'none':'';button.parentElement.style.gridTemplateColumns=mode==='orto'?'1fr':'';}
+}
+function cnOrtoRefresh(){
+  const sel=document.getElementById('hCnOrtoSource');if(!sel||cnOrtoBusy)return;
+  const list=cnOrtoSources(),old=S.hidro?.cnOrthoId||sel.value;
+  const selected=list.find(q=>q.id===old)||list[0];
+  const signature=JSON.stringify(list.map(q=>[q.id,q.o.name]));
+  if(sel.dataset.sources!==signature){
+    sel.replaceChildren(...(list.length?list.map(q=>new Option(q.o.name||'Ortofoto',q.id)):[new Option('Carregue uma ortofoto no projeto','')]));
+    sel.dataset.sources=signature;
+  }
+  sel.value=selected?.id||'';
+  if(S.hidro)S.hidro.cnOrthoId=sel.value||null;
+  const product=cnProduct(),isC=product==='c';
+  const box=document.getElementById('hCnCInputs');if(box)box.hidden=!isC;cCoverageUI();
+  const runLabel=document.getElementById('btnCnOrto');if(runLabel)runLabel.textContent=isC?'Gerar C':'Gerar CN';
+  const result=[...(S.rasters||[])].reverse().find(r=>isC?r._runoffOrto&&r.runoffMeta?.method==='rational-coverage'&&r.runoffMeta.sourceOrthoId===sel.value&&JSON.stringify(r.runoffMeta.settings)===JSON.stringify(cCoverageSettings()):r._cnOrto&&r.cnMeta?.sourceOrthoId===sel.value);
+  cnOrtoOutput(result);cnLimiteRefresh();
+  const run=document.getElementById('btnCnOrto');if(run)run.disabled=!selected;
+  window.GeoMineCZonal?.refresh();
+}
+function cnOrtoSelected(){
+  const id=document.getElementById('hCnOrtoSource')?.value;
+  return cnOrtoSources().find(q=>q.id===id)||null;
+}
+function cnCoverPack(codes){
+  const bytes=new Uint8Array(Math.ceil(codes.length/4));
+  for(let i=0;i<codes.length;i++)bytes[i>>2]|=(codes[i]&3)<<((i&3)*2);
+  let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+  return {encoding:'2bit',count:codes.length,base64:btoa(binary)};
+}
+function cnCoverUnpack(record,length){
+  if(record?.encoding!=='2bit'||record.count!==length||typeof record.base64!=='string'||record.base64.length>4*Math.ceil(Math.ceil(length/4)/3))return null;
+  try{const bytes=atob(record.base64);if(bytes.length!==Math.ceil(length/4))return null;
+    const codes=new Uint8Array(length);for(let i=0;i<length;i++)codes[i]=(bytes.charCodeAt(i>>2)>>((i&3)*2))&3;return codes;
+  }catch(_){return null;}
+}
+function cnRingsDaFeicao(L,f){
+  if(!L||!f||L.gtype!=='polygon'||!Array.isArray(f.geom))return [];
+  const rings=f.multi&&Array.isArray(f.geom[0]?.[0])?f.geom:[f.geom];
+  return rings.filter(r=>Array.isArray(r)&&r.length>=3).map(r=>r.map(p=>{
+    if(!L.crs||L.crs===S.workCRS)return [p[0],p[1]];
+    return reproj(L.crs,S.workCRS,p[0],p[1]);
+  }));
+}
+/* Decode the selected bitmap's true CRS. A saved Web Mercator preview must
+   never be stretched against the original UTM envelope for analysis. */
+async function cnOrtoPixels(I,check){
+  const info=v3OrthoTextureInfo(I,S.workCRS);
+  if(!info)throw Error('A ortofoto está sem georreferência válida.');
+  const side=typeof EH_MOVEL!=='undefined'&&EH_MOVEL?1536:2048;
+  const canvas=await orthoCanvasFromURL(info.url,side);check();
+  const src=canvas.getContext('2d',{willReadFrequently:true}).getImageData(0,0,canvas.width,canvas.height);
+  let w=canvas.width,h=canvas.height,b=info.b.slice(),pixels=src;
+  if(info.crs!==S.workCRS){
+    b=info.workBounds.slice();const dx=b[2]-b[0],dy=b[3]-b[1],cell=Math.sqrt(dx*dy/(w*h));
+    w=Math.max(1,Math.round(dx/cell));h=Math.max(1,Math.round(dy/cell));
+    const f=Math.min(1,side/Math.max(w,h));w=Math.max(1,Math.floor(w*f));h=Math.max(1,Math.floor(h*f));
+    pixels=new ImageData(w,h);const uv=new Float64Array(2);
+    for(let r=0;r<h;r++){
+      if((r&63)===0){await new Promise(ok=>setTimeout(ok,0));check();}
+      const y=b[3]-(r+.5)*dy/h;
+      for(let c=0;c<w;c++){
+        info.writeUV(b[0]+(c+.5)*dx/w,y,uv);
+        const x=Math.floor(uv[0]*src.width),row=Math.floor((1-uv[1])*src.height);
+        if(x<0||row<0||x>=src.width||row>=src.height)continue;
+        const k=(row*src.width+x)*4,j=(r*w+c)*4;
+        pixels.data[j]=src.data[k];pixels.data[j+1]=src.data[k+1];pixels.data[j+2]=src.data[k+2];pixels.data[j+3]=src.data[k+3];
+      }
+    }
+  }
+  return {src:pixels,w,h,b,pixelCRS:info.crs,cs:(b[2]-b[0])/w,csy:(b[3]-b[1])/h};
+}
+function cnRingDaFeicao(L,f){const rings=cnRingsDaFeicao(L,f);return rings.length>1?rings:rings[0]||null;}
+function cnLimiteAtual(){
+  const modo=document.getElementById('hCnLimite')?.value||'selecionado';
+  if(modo==='orto')return {ring:null,rings:[],nome:'Toda a ortofoto'};
+  let L,f;
+  if(modo==='selecionado'){const sf=S.selFeat;L=sf?.layer;f=L?.features?.[sf.idx];}
+  else{L=S.layers.find(l=>l.gtype==='polygon'&&l.name==='Limite da análise CN'&&l.features?.length);f=L?.features?.[L.features.length-1];}
+  const rings=cnRingsDaFeicao(L,f);
+  return rings.length?{ring:rings[0],rings,nome:L.name||'Polígono'}:null;
 }
 function cnFeat(D,w,h,k){
   const o=k*4,R=D[o],G=D[o+1],B=D[o+2],sum=Math.max(1,R+G+B);
@@ -3251,6 +3507,29 @@ function cnSlopePct(d,x,y){
   const a=z[k-1],b=z[k+1],u=z[k-d.nc],v=z[k+d.nc];
   if(![a,b,u,v].every(isFinite))return null;
   return 100*Math.hypot((b-a)/(2*d.cs),(u-v)/(2*csy));
+}
+/* One-sided differences at a real grid edge do not invent a flat border.
+   Internal NoData remains missing; only the outermost row/column uses them. */
+function cSlopePct(d,x,y){
+  if(!d)return null;
+  const csy=d.csy||d.cs,c=Math.floor((x-d.xll)/d.cs),r=d.nr-1-Math.floor((y-d.yll)/csy),z=d.zf||d.z;
+  if(c<0||r<0||c>=d.nc||r>=d.nr||d.nc<2||d.nr<2||!Number.isFinite(z[r*d.nc+c]))return null;
+  const left=Math.max(0,c-1),right=Math.min(d.nc-1,c+1),up=Math.max(0,r-1),down=Math.min(d.nr-1,r+1);
+  const a=z[r*d.nc+left],b=z[r*d.nc+right],u=z[up*d.nc+c],v=z[down*d.nc+c];
+  if(![a,b,u,v].every(Number.isFinite))return null;
+  return 100*Math.hypot((b-a)/((right-left)*d.cs),(u-v)/((down-up)*csy));
+}
+function cAutomaticMdt(I){
+  const selected=cnMdtAtual();if(selected)return selected;
+  const b=I?.b;if(!b)return null;
+  const points=[[b[0],b[1]],[b[2],b[1]],[b[0],b[3]],[b[2],b[3]],[(b[0]+b[2])/2,(b[1]+b[3])/2]];
+  const candidates=(S.rasters||[]).filter(r=>GeoMineChannelDEM.isElevation(r)&&!r._cnSlope&&!/^(declividade|sombreado|hillshade)/i.test(r.name||''));
+  const ranked=candidates.map(r=>{let coverage=0;const d=r.d;
+    for(const p of points){try{const q=d.crs&&d.crs!==S.workCRS?reproj(S.workCRS,d.crs,...p):p;
+      if(q[0]>=d.xll&&q[0]<=d.xll+d.nc*d.cs&&q[1]>=d.yll&&q[1]<=d.yll+d.nr*(d.csy||d.cs))coverage++;}catch(_){}}
+    return {r,coverage,cell:d.cs*(d.csy||d.cs)};
+  }).filter(q=>q.coverage>0).sort((a,b)=>b.coverage-a.coverage||a.cell-b.cell||String(a.r.id).localeCompare(String(b.r.id)));
+  return ranked[0]?.r||null;
 }
 function cnDeclClasse(s){
   if(s==null||!isFinite(s))return {id:0,nome:'sem classe'};
@@ -3369,8 +3648,8 @@ async function cnPoligonizarRaster(r,areaMin,totalArea){
 }
 function cnMdtRefresh(){
   const s=document.getElementById('hCnMDT');if(!s)return;
-  const old=s.value,rs=(S.rasters||[]).filter(r=>r&&r.d&&!r._cnOrto&&!r._cnSlope);
-  s.innerHTML='<option value="">— sem MDT auxiliar —</option>'+rs.map(r=>
+  const old=s.value,rs=(S.rasters||[]).filter(r=>r&&r.d&&(window.GeoMineChannelDEM?GeoMineChannelDEM.isElevation(r):!r._cnOrto&&!r._cnSlope));
+  s.innerHTML='<option value="">'+(cnProduct()==='c'?'Automático — MDT do projeto':'Sem MDT')+'</option>'+rs.map(r=>
     `<option value="${r.id}">${esc(r.name||'MDT')}</option>`).join('');
   if(rs.some(r=>String(r.id)===String(old)))s.value=old;
 }
@@ -3378,37 +3657,35 @@ function cnMdtRefresh(){
    dentro do limite indicado e depois consolidados em três coberturas. Usa
    cromaticidade, excesso de verde, saturação, luminosidade e textura local. */
 async function gerarCnOrto(){
-  const out=document.getElementById('hCnOrtoOut'),I=S.img;
-  cnMdtRefresh();
-  if(!I||!I.url||!I.b){ toast('Carregue ou reabra uma ortofoto antes'); return; }
-  let src=I._id,w=I._w,h=I._h;
-  if(!src){
-    try{
-      const im=new Image();
-      await new Promise((ok,fail)=>{im.onload=ok;im.onerror=fail;im.src=I.url;});
-      const cv=document.createElement('canvas');cv.width=im.naturalWidth||im.width;cv.height=im.naturalHeight||im.height;
-      const cx=cv.getContext('2d',{willReadFrequently:true});cx.drawImage(im,0,0);
-      src=cx.getImageData(0,0,cv.width,cv.height);w=cv.width;h=cv.height;
-    }catch(e){toast('Não consegui ler os pixels da ortofoto salva. Recarregue o GeoTIFF.');return;}
-  }
-  const D=src.data, vals=cnValoresGrupo();
-  const gl=document.getElementById('hLamGrupo');if(gl)gl.value=vals.grupo;
+  if(cnOrtoBusy||window.GeoMineCZonal?.busy)return;
+  cnOrtoRefresh();cnMdtRefresh();
+  const selected=cnOrtoSelected(),I=selected?.o;
+  if(!I){toast('Carregue uma ortofoto no projeto.');return false;}
   const lim=cnLimiteAtual();
-  if(!lim){toast('Selecione ou desenhe primeiro o polígono limite da análise');return;}
-  const cs=(I.b[2]-I.b[0])/w,csy=(I.b[3]-I.b[1])/h;
-  const mdt=cnMdtAtual(),slopeZ=new Float32Array(w*h);slopeZ.fill(NaN);
-  const dentro=k=>{if(!lim.ring)return true;const rr=k/w|0,cc=k%w;
-    return pointInRing(I.b[0]+(cc+.5)*cs,I.b[1]+(h-rr-.5)*csy,lim.ring);};
-  showLoad('Extraindo amostras espectrais dentro do limite…');
-  await new Promise(r=>setTimeout(r,20));
+  if(!lim){toast('Selecione ou desenhe a área da análise.');return false;}
+  if(proj4.defs(S.workCRS)?.projName==='longlat'){toast('Use um CRS projetado em metros para calcular as áreas.');return false;}
+  const product=cnProduct(),isC=product==='c',cSettings=isC?cCoverageSettings():null;
+  const project=S.projectId,generation=window.GeoMineSessionAutosave?.state?.generation,crs=S.workCRS,
+    url=I.url,workURL=I._workPreviewURL,bounds=String(I.b),vals=cnValoresGrupo(),mdt=isC?cAutomaticMdt(I):cnMdtAtual();
+  const controls=[...document.querySelectorAll('#secCNOrto select,#secCNOrto input,#btnCnLimite,#btnCnOrto')];
+  const check=()=>{if(S.projectId!==project||window.GeoMineSessionAutosave?.state?.generation!==generation||S.workCRS!==crs||
+    cnOrtoSelected()?.o!==I||I.url!==url||I._workPreviewURL!==workURL||String(I.b)!==bounds)
+    throw Object.assign(Error('A ortofoto ou o projeto mudou. Gere o CN novamente.'),{name:'AbortError'});};
+  cnOrtoBusy=true;controls.forEach(e=>e.disabled=true);showLoad('Lendo a ortofoto selecionada…');
   try{
+    const {src,w,h,b,cs,csy,pixelCRS}=await cnOrtoPixels(I,check),D=src.data;
+    check();
+    const slopeZ=mdt?new Float32Array(w*h):null;if(slopeZ)slopeZ.fill(NaN);
+    const dentro=k=>{if(!lim.rings.length)return true;const rr=k/w|0,cc=k%w;
+      return cnBaciaContem(b[0]+(cc+.5)*cs,b[3]-(rr+.5)*csy,lim.rings);};
+    showLoad('Classificando a ortofoto…');
     const z=new Float32Array(w*h), cls=new Uint8Array(w*h);
     z.fill(NaN);
     const validos=[];
     const passo=Math.max(1,Math.ceil(Math.sqrt(w*h/90000)));
     for(let rr=0;rr<h;rr+=passo)for(let cc=0;cc<w;cc+=passo){
-      const k=rr*w+cc,o=k*4,R=D[o],G=D[o+1],B=D[o+2],A=D[o+3];
-      if(A<8||(R>248&&G>248&&B>248)||(R<4&&G<4&&B<4)||!dentro(k))continue;
+      const k=rr*w+cc,A=D[k*4+3];
+      if(A<8||!dentro(k))continue;
       validos.push(cnFeat(D,w,h,k));
     }
     if(validos.length<30)throw new Error('há poucos pixels válidos dentro do limite indicado');
@@ -3417,102 +3694,116 @@ async function gerarCnOrto(){
     const tipo=centros.map(cnClasseCentro);
     showLoad('Classificando todos os pixels e ponderando as áreas…');
     await new Promise(r=>setTimeout(r,10));
-    let nr=0,na=0,nv=0,nd=0;
+    let nr=0,na=0,nv=0,nd=0,pendingPixels=0;
     const detalhes=new Map(),decls=[0,0,0,0,0];
     for(let k=0;k<w*h;k++){
-      const o=k*4,R=D[o],G=D[o+1],B=D[o+2],A=D[o+3];
-      if(A<8||(R>248&&G>248&&B>248)||(R<4&&G<4&&B<4)||!dentro(k)){nd++;continue;}
+      const A=D[k*4+3];
+      if(A<8||!dentro(k)){nd++;continue;}
       const f=cnFeat(D,w,h,k);let q=0,bd=Infinity;
       for(let j=0;j<centros.length;j++){const ds=cnDist(f,centros[j]);if(ds<bd){bd=ds;q=j;}}
-      const rr=k/w|0,cc=k%w,x=I.b[0]+(cc+.5)*cs,y=I.b[1]+(h-rr-.5)*csy;
-      const slope=mdt?cnSlopePct(mdt.d,x,y):null,dc=cnDeclClasse(slope);
+      const rr=k/w|0,cc=k%w,x=b[0]+(cc+.5)*cs,y=b[1]+(h-rr-.5)*csy;
+      const xy=mdt&&mdt.d.crs&&mdt.d.crs!==crs?reproj(crs,mdt.d.crs,x,y):[x,y];
+      const slope=mdt?(isC?cSlopePct:cnSlopePct)(mdt.d,xy[0],xy[1]):null,dc=isC?{id:!Number.isFinite(slope)?0:slope<=5?1:slope<=10?2:slope<=30?3:4}:cnDeclClasse(slope);
       if(dc.id){slopeZ[k]=dc.id;decls[dc.id]++;}
-      const det=cnDetalhe(tipo[q],f,slope,vals.grupo),c=det.broad;
+      const det=cnDetalhe(tipo[q],f,isC?null:slope,vals.grupo),c=det.broad;
       if(c===3)nv++;else if(c===2)na++;else nr++;
-      const rec=detalhes.get(det.key)||{...det,count:0};rec.count++;detalhes.set(det.key,rec);
-      cls[k]=c;z[k]=det.cn;
-      if((k&1048575)===0)await new Promise(r=>setTimeout(r,0));
+      let coefficient=null;
+      if(isC){try{coefficient=cRationalValue(det.key,slope,cSettings);}catch(e){
+        if(e.code!=='C_SLOPE_MISSING')throw e;
+        pendingPixels++;cls[k]=c;
+        if((k&65535)===0){await new Promise(r=>setTimeout(r,0));check();}
+        continue;
+      }}
+      const detailKey=isC?det.key+'|'+coefficient.value+'|'+coefficient.slopeBand:det.key;
+      const rec=detalhes.get(detailKey)||{...det,...(isC?{c:coefficient.value,cReference:coefficient.reference,slopeBand:coefficient.slopeBand,components:coefficient.components,infiltration:coefficient.infiltration,storage:coefficient.storage}:{}),count:0};rec.count++;detalhes.set(detailKey,rec);
+      cls[k]=c;z[k]=isC?coefficient.value:det.cn;
+      if((k&65535)===0){await new Promise(r=>setTimeout(r,0));check();}
     }
-    const d={nc:w,nr:h,cs,csy,xll:I.b[0],yll:I.b[1],z,_cnClass:cls};
-    const old=(S.rasters||[]).find(r=>r._cnOrto);
-    if(old){if(old.overlay)map.removeLayer(old.overlay);S.rasters=S.rasters.filter(r=>r!==old);}
-    const cnClasses=[...detalhes.values()].sort((a,b)=>b.cn-a.cn).map(x=>({
-      value:x.cn,label:`CN ${x.cn} — ${x.nome}`,color:x.cor,count:x.count,vis:true}));
-    const r={id:rid++,name:`CN estimado — ortofoto — grupo ${vals.grupo}`,d,
-      src:{file:I.name||'ortofoto',at:new Date().toISOString()},
-      style:{mode:'cn',opacity:.68,classes:cnClasses},visible:true,overlay:null,_cnOrto:true,
-      cnMeta:{grupo:vals.grupo,rock:vals.rock,ant:vals.ant,veg:vals.veg,limite:lim.nome,
-        algoritmo:'K-means RGB+ExG+saturação+luminosidade+textura',
-        mdt:mdt?mdt.name:null,classes:[...detalhes.values()],counts:{rock:nr,ant:na,veg:nv,nodata:nd}}};
-    S.rasters.push(r);placeProductAbove(r,I);S._cnRaster=r;renderRaster(r);S.selRaster=r;
-    projectAutoSaveRaster(r);
+    check();const n=nr+na+nv;if(!n)throw Error('Não há pixels válidos na área escolhida.');
+    if(isC&&n===pendingPixels)throw Error('Não há área com C válido disponível. Escolha um MDT com dados de declividade para esta região.');
+    const d={nc:w,nr:h,cs,csy,xll:b[0],yll:b[1],crs,native:true,resampled:1,z,_cnClass:cls};
+    const classes=[...detalhes.values()].map(entry=>{if(!isC)return entry;const {cn,...cover}=entry;return cover;});
+    const rasterClasses=classes.slice().sort((a,b)=>isC?b.c-a.c:b.cn-a.cn).map(x=>({
+      value:isC?x.c:x.cn,label:isC?`C ${x.c.toFixed(3)} — ${x.nome}`:`CN ${x.cn} — ${x.nome}`,color:x.cor,count:x.count,vis:true}));
+    if(isC){
+      const unique=new Map();for(const entry of rasterClasses){const key=Math.fround(entry.value),old=unique.get(key);
+        if(old){old.count+=entry.count;old.label+=' / '+entry.label.split(' — ')[1];}else unique.set(key,{...entry,value:key});}
+      rasterClasses.splice(0,rasterClasses.length,...unique.values());
+    }
+    const metadata={product,sourceOrthoId:selected.id,sourceOrthoName:I.name||'Ortofoto',workCRS:crs,pixelCRS,cellSize:cs,cellSizeY:csy,
+      coverCodes:cnCoverPack(cls),grupo:vals.grupo,rock:vals.rock,ant:vals.ant,veg:vals.veg,limite:lim.nome,
+      algoritmo:'K-means RGB+ExG+saturação+luminosidade+textura',mdt:mdt?mdt.name:null,classes,
+      counts:{rock:nr,ant:na,veg:nv,nodata:nd}};
+    if(isC)Object.assign(metadata,{method:'rational-coverage',profile:GeoMineRationalProfile.id,settings:cSettings,
+      reference:GeoMineRationalProfile.reference,soilReference:GeoMineRationalProfile.soilReference,
+      soilDescription:GeoMineRationalProfile.soil(cSettings.soil),assumptions:GeoMineRationalProfile.assumptions,
+      rangePolicy:'upper',mdtId:mdt?.id??null,pendingPixels,pendingReason:pendingPixels?'NO_SLOPE':null,analysisPixels:n,
+      meanScope:'available-valid-area',meanAreaM2:(n-pendingPixels)*cs*csy,
+      weightedC:classes.reduce((sum,x)=>sum+x.count*x.c,0)/(n-pendingPixels)});
+    const r={id:rid++,name:`${isC?'C (Racional)':'CN'} — ${I.name||'Ortofoto'}${isC?'':' — grupo '+vals.grupo}`,d,
+      src:{kind:isC?'runoff-ortho':'cn-ortho',file:I.name||'ortofoto',orthoId:selected.id,at:new Date().toISOString()},
+      quantity:isC?'runoffCoefficient':'curveNumber',unit:isC?'dimensionless':'CN',
+      style:{mode:'cn',opacity:.68,classes:rasterClasses},visible:true,overlay:null,
+      _cnOrto:!isC,_runoffOrto:isC,cnMeta:isC?null:metadata,runoffMeta:isC?metadata:null};
+    S.rasters.push(r);placeProductAbove(r,I);if(isC)S._runoffRaster=r;else S._cnRaster=r;renderRaster(r);S.selRaster=r;
+    // The authored grid is portable in .ccmgis; no TIFF write is required to classify.
+    const gl=document.getElementById('hLamGrupo');if(!isC&&gl)gl.value=vals.grupo;
     if(mdt){
-      const velha=(S.rasters||[]).find(x=>x._cnSlope);
-      if(velha){if(velha.overlay)map.removeLayer(velha.overlay);S.rasters=S.rasters.filter(x=>x!==velha);}
-      const rd={id:rid++,name:`Classes de declividade — ${mdt.name}`,
-        d:{nc:w,nr:h,cs,csy,xll:I.b[0],yll:I.b[1],z:slopeZ},
+      const rd={id:rid++,name:`Declividade ${isC?'C':'CN'} — ${I.name||'Ortofoto'} — ${mdt.name}`,
+        d:{nc:w,nr:h,cs,csy,xll:b[0],yll:b[1],crs,native:true,resampled:1,z:slopeZ},
         src:{file:mdt.name,at:new Date().toISOString()},style:{mode:'slopeclass',opacity:.55,classes:[
-          {value:1,label:'Plano — 0 a 3%',color:'#2c7bb6'},
-          {value:2,label:'Suave — 3 a 8%',color:'#abd9e9'},
-          {value:3,label:'Moderado — 8 a 20%',color:'#fdae61'},
-          {value:4,label:'Íngreme — acima de 20%',color:'#d7191c'}]},
+          {value:1,label:isC?'0 a 5%':'Plano — 0 a 3%',color:'#2c7bb6'},
+          {value:2,label:isC?'Acima de 5 a 10%':'Suave — 3 a 8%',color:'#abd9e9'},
+          {value:3,label:isC?'Acima de 10 a 30%':'Moderado — 8 a 20%',color:'#fdae61'},
+          {value:4,label:isC?'Acima de 30%':'Íngreme — acima de 20%',color:'#d7191c'}]},
         visible:false,overlay:null,_cnSlope:true};
       S.rasters.push(rd);placeProductAbove(rd,mdt);renderRaster(rd);
-      projectAutoSaveRaster(rd);
+
     }
-    const n=nr+na+nv, pct=x=>n?100*x/n:0;
-    [['hCnARock',nr],['hCnAAnt',na],['hCnAVeg',nv]].forEach(([id,v])=>{
-      const e=document.getElementById(id);if(e)e.value=pct(v).toFixed(2);});
-    [['hCnRock',vals.rock],['hCnAnt',vals.ant],['hCnVeg',vals.veg]].forEach(([id,v])=>{
-      const e=document.getElementById(id);if(e)e.value=v;});
-    const cnP=[...detalhes.values()].reduce((s,x)=>s+x.count*x.cn,0)/n;
-    const areaCel=cs*csy, fmtN=(v,d=2)=>v.toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});
-    const linhas=[...detalhes.values()].sort((a,b)=>b.cn-a.cn).map(({nome,cor,count:cont,cn})=>{
-      const ar=cont*areaCel,pc=pct(cont),pond=pc*cn/100;
-      return `<tr><td><span style="color:${cor}">■</span> ${nome}</td>`+
-        `<td style="text-align:right">${fmtN(ar,0)}</td><td style="text-align:right">${fmtN(ar/1e4,3)}</td>`+
-        `<td style="text-align:right">${fmtN(pc,2)}%</td><td style="text-align:right">${cn}</td>`+
-        `<td style="text-align:right">${fmtN(pond,2)}</td></tr>`;
-    }).join('');
-    const declTxt=mdt?`<br>Classes do MDT: plano ${pct(decls[1]).toFixed(1)}% · suave ${pct(decls[2]).toFixed(1)}% · `+
-      `moderado ${pct(decls[3]).toFixed(1)}% · íngreme ${pct(decls[4]).toFixed(1)}%.`:'';
-    if(out)out.innerHTML=`Camada <b>${esc(r.name)}</b> criada (${w}×${h}).<br>`+
-      `Limite: <b>${esc(lim.nome)}</b> · área classificada <b>${fmtArea(n*cs*csy)}</b><br>`+
-      `<div style="overflow:auto;margin:7px 0"><table style="width:100%;border-collapse:collapse;font-size:11px">`+
-      `<thead><tr style="border-bottom:1px solid var(--line)"><th style="text-align:left">Cobertura</th>`+
-      `<th style="text-align:right">Área m²</th><th style="text-align:right">ha</th>`+
-      `<th style="text-align:right">Área %</th><th style="text-align:right">CN</th>`+
-      `<th style="text-align:right">CN×fração</th></tr></thead><tbody>${linhas}`+
-      `<tr style="border-top:1px solid var(--line);font-weight:700"><td>Total / ponderado</td>`+
-      `<td style="text-align:right">${fmtN(n*areaCel,0)}</td><td style="text-align:right">${fmtN(n*areaCel/1e4,3)}</td>`+
-      `<td style="text-align:right">100,00%</td><td style="text-align:right">${fmtN(cnP,2)}</td>`+
-      `<td style="text-align:right">${fmtN(cnP,2)}</td></tr></tbody></table></div>`+
-      `<b>CN ponderado da poligonal = ${fmtN(cnP,2)}</b><br>`+
-      `<span class="hint">Agrupamento espectral por RGB, excesso de verde, saturação, luminosidade e textura.${declTxt} Confirme em campo.</span>`;
-    refreshUI();zApply();toast('Camada temática de CN criada a partir da ortofoto');
-  }catch(e){toast('Falha ao estimar CN: '+(e.message||e));}
-  finally{hideLoad();}
+    if(!isC){
+      const pct=x=>100*x/n;
+      [['hCnARock',nr],['hCnAAnt',na],['hCnAVeg',nv]].forEach(([id,v])=>{const e=document.getElementById(id);if(e)e.value=pct(v).toFixed(2);});
+      [['hCnRock',vals.rock],['hCnAnt',vals.ant],['hCnVeg',vals.veg]].forEach(([id,v])=>{const e=document.getElementById(id);if(e)e.value=v;});
+      metadata.weightedCN=classes.reduce((sum,x)=>sum+x.count*x.cn,0)/n;
+    }else{delete metadata.grupo;delete metadata.rock;delete metadata.ant;delete metadata.veg;}
+    metadata.areaM2=n*cs*csy;metadata.validPixels=n-pendingPixels;
+    cnOrtoOutput(r);
+    refreshUI();zApply();toast((isC?(pendingPixels?'C gerado com áreas pendentes: ':'C gerado: '):'CN gerado: ')+(I.name||'Ortofoto'));return r;
+  }catch(e){if(isC){const box=document.getElementById('hCCoefficients');if(box)box.open=true;}console.warn('CN/C pela ortofoto:',e);toast('Falha ao estimar CN/C: '+(e.message||e));return false;}
+  finally{cnOrtoBusy=false;controls.forEach(e=>e.disabled=false);cnOrtoRefresh();hideLoad();}
 }
-function cnDistribuicaoNaBacia(ring){
+async function cRationalDistribution(boundary){
+  const r=S._runoffRaster,rings=cnBaciaRings(boundary);
+  if(!r||r.runoffMeta?.method!=='rational-coverage'||!rings.length)return null;
+  if(!window.GeoMineCZonal)throw Error('O cálculo de C por interseção de áreas não está disponível. Atualize a página.');
+  return GeoMineCZonal.forFeature(r,{gtype:'polygon',crs:S.workCRS},
+    {multi:rings.length>1,geom:rings.length>1?rings:rings[0]});
+}
+function cnBaciaRings(boundary){
+  if(!boundary?.length)return [];
+  return (typeof boundary[0]?.[0]==='number'?[boundary]:boundary).filter(r=>r?.length>=3);
+}
+function cnBaciaContem(x,y,rings){let inside=false;for(const ring of rings)if(pointInRing(x,y,ring))inside=!inside;return inside;}
+function cnDistribuicaoNaBacia(boundary){
   const r=S._cnRaster||(S.rasters||[]).find(x=>x._cnOrto);
-  if(!r||!ring||ring.length<3)return null;
+  const rings=cnBaciaRings(boundary);if(!r||!rings.length)return null;
   const d=r.d,csy=d.csy||d.cs,ct=[0,0,0,0],step=Math.max(1,Math.ceil(Math.sqrt(d.nc*d.nr/800000)));
   for(let rr=0;rr<d.nr;rr+=step)for(let cc=0;cc<d.nc;cc+=step){
     const x=d.xll+(cc+.5)*d.cs,y=d.yll+(d.nr-rr-.5)*csy;
-    if(pointInRing(x,y,ring)){const c=d._cnClass&&d._cnClass[rr*d.nc+cc];if(c)ct[c]++;}
+    if(cnBaciaContem(x,y,rings)){const c=d._cnClass&&d._cnClass[rr*d.nc+cc];if(c)ct[c]++;}
   }
   const n=ct[1]+ct[2]+ct[3];if(!n)return null;
   return {rock:100*ct[1]/n,ant:100*ct[2]/n,veg:100*ct[3]/n,r};
 }
-function cnDistribuicaoDetalhada(ring){
+function cnDistribuicaoDetalhada(boundary){
   const r=S._cnRaster||(S.rasters||[]).find(x=>x._cnOrto);
-  if(!r||!ring||ring.length<3)return null;
+  const rings=cnBaciaRings(boundary);if(!r||!rings.length)return null;
   const d=r.d,csy=d.csy||d.cs,ct=new Map();
   const step=Math.max(1,Math.ceil(Math.sqrt(d.nc*d.nr/900000)));
   let n=0;
   for(let rr=0;rr<d.nr;rr+=step)for(let cc=0;cc<d.nc;cc+=step){
     const x=d.xll+(cc+.5)*d.cs,y=d.yll+(d.nr-rr-.5)*csy;
-    if(!pointInRing(x,y,ring))continue;
+    if(!cnBaciaContem(x,y,rings))continue;
     const cn=d.z[rr*d.nc+cc];if(!isFinite(cn))continue;
     ct.set(cn,(ct.get(cn)||0)+1);n++;
   }
@@ -3531,17 +3822,6 @@ function laminaEscoamento(P,A,distCN){
   const metodo=(document.getElementById('hLamMetodo')||{}).value||'scs';
   if(metodo==='sem') return {metodo:'Sem perdas',V:(P/1000)*A,Q:P,perda:0,Ceq:1,rows:[]};
   if(metodo==='c'){
-    if(distCN&&distCN.rows&&distCN.rows.length){
-      const amc=(document.getElementById('hLamAMC')||{}).value||'II';
-      let Ceq=0,Qeq=0;
-      const rows=distCN.rows.map(x=>{
-        const cn=laminaCnAMC(x.cn,amc),Q=laminaQscs(P,cn),C=P>0?Q/P:0;
-        Ceq+=x.f*C;Qeq+=x.f*Q;
-        return {nome:x.nome,f:x.f,area:A*x.f,cn2:x.cn,cn,Q,vol:Q/1000*A*x.f,perda:P-Q,C};
-      });
-      return {metodo:'Racional · C automático dos polígonos CN',V:Ceq*(P/1000)*A,
-        Q:Qeq,perda:P-Qeq,Ceq,rows,CN:rows.reduce((s,x)=>s+x.cn*x.f,0)};
-    }
     const C=Math.max(0,Math.min(1,gv('hLamC')||0));
     return {metodo:'Coeficiente C',V:C*(P/1000)*A,Q:P*C,perda:P*(1-C),Ceq:C,rows:[]};
   }
@@ -3613,19 +3893,27 @@ function laminaPoligonoContrib(q,modo){
   return cand[0]||null;
 }
 function laminaD8Status(){
+  const mode=window.GeoMineOriginalD8?.resolveRainMode();
+  if(mode==='original-d8'&&window.GeoMineOriginalD8?.preferred()){
+    GeoMineOriginalD8.refreshRain();return {d:S.hidro?.dem,preenchido:true,direcao:true,acum:true,original:true};
+  }
   const o=document.getElementById('hLamD8Status');
   const d=S.hidro&&S.hidro.dem;
   const preenchido=!!(d&&d.zf&&!d._bruto),direcao=!!(d&&d.dir),acum=!!(d&&d.acc);
-  if(o)o.innerHTML=!d?'<span style="color:var(--sel)">MDE não carregado.</span>':
+  if(o)o.innerHTML=!d?'Escolha o modelo de elevação e marque o exutório.':
     `<span style="color:${preenchido?'var(--ok,#239b72)':'var(--sel,#d34b4b)'}">${preenchido?'☑':'☐'} MDE preenchido</span> · `+
     `<span>${direcao?'☑':'☐'} direção D8</span> · <span>${acum?'☑':'☐'} acumulação</span>`+
-    (!preenchido?'<br><span style="color:var(--amber)">Modo automático indisponível: preencha as depressões do MDE primeiro.</span>':
-      (!direcao||!acum?'<br><span style="color:var(--ink-dim)">O programa calculará as etapas D8 que faltam sobre o MDE preenchido.</span>':''));
+    (direcao?'<br>D8 disponível: será reutilizado, sem recalcular.':'<br>Ao marcar o exutório, o programa procura o D8 deste modelo e calcula automaticamente somente o que faltar.');
   return {d,preenchido,direcao,acum};
 }
 async function runLaminaChuva(latlng){
+  window.GeoMineOriginalD8?.clearReconnect('btnLamina');
+  const model=window.GeoMineHydrologyAuto?.selected();if(model)GeoMineHydrologyAuto.bind(model);
+  const exutory=window.GeoMineOriginalD8?.snap(latlng);if(exutory)latlng=exutory.latlng;
   const st=hHydroGridStats(); if(!st){ toast('Carregue o MDE primeiro'); return; }
   const d=st.d, csy=(d.csy||d.cs), areaCel=d.cs*csy;
+  const project=S.projectId,generation=window.GeoMineSessionAutosave?.state?.generation;
+  const checkContext=()=>{if(S.projectId!==project||S.hidro?.dem!==d||window.GeoMineSessionAutosave?.state?.generation!==generation)throw Object.assign(Error('Cálculo cancelado: o projeto ou o MDE mudou.'),{name:'AbortError'});};
   const q=fromWGS(S.workCRS, latlng.lng, latlng.lat);
   const cc=Math.floor((q[0]-d.xll)/d.cs), rr=(d.nr-1)-Math.floor((q[1]-d.yll)/csy);
   if(cc<0||cc>=d.nc||rr<0||rr>=d.nr){ toast('O ponto caiu fora do MDE'); return; }
@@ -3635,14 +3923,23 @@ async function runLaminaChuva(latlng){
   const out=document.getElementById('hLamOut');
   const cen=(document.getElementById('hLamCen')||{}).value||'critico';
   const T=Math.max(2, parseFloat((document.getElementById('hLamT')||{}).value)||100);
-  const cede=()=>new Promise(r=>setTimeout(r,0));
+  const cede=async()=>{await new Promise(r=>setTimeout(r,0));checkContext();};
 
   showLoad('Delimitando a bacia contribuinte…');
   try{
     /* 1) bacia ------------------------------------------------------- */
-    const modoBacia=(document.getElementById('hLamBacia')||{}).value||'selecionada';
+    if(!window.GeoMineHydrologyAuto&&['d8','original-d8'].includes(document.getElementById('hLamBacia')?.value)){
+      await window.GeoMineOriginalD8?.ensure(d,{isCurrent:()=>S.projectId===project&&S.hidro?.dem===d,onProgress:message=>showLoad(message),localOnly:true});checkContext();
+    }
+    let modoBacia=window.GeoMineOriginalD8?.resolveRainMode()||(document.getElementById('hLamBacia')||{}).value||'selecionada';
     let W=null;
-    if(modoBacia!=='d8') W=laminaPoligonoContrib(q,modoBacia);
+    if(model&&['d8','original-d8'].includes(modoBacia)){
+      W=await GeoMineHydrologyAuto.query(model,latlng,{isCurrent:()=>S.projectId===project&&S.hidro?.dem===d,
+        onStatus:message=>showLoad(message),onProgress:p=>showLoad('Delimitando a montante · '+fmt(p.cells||0,0)+' células')});
+      checkContext();modoBacia='automatic-d8';
+    }
+    if(!['d8','original-d8','automatic-d8'].includes(modoBacia)) W=laminaPoligonoContrib(q,modoBacia);
+    if(modoBacia==='original-d8'){W=await GeoMineOriginalD8.query(latlng,{raster:GeoMineOriginalD8.matching(d)||GeoMineOriginalD8.preferred(),isCurrent:()=>S.projectId===project&&S.hidro?.dem===d,onProgress:p=>showLoad('Buscando a contribuição a montante · '+fmt(p.cells||0,0)+' células')});checkContext();}
     if(modoBacia==='selecionada'&&!W){
       hideLoad();toast('Selecione primeiro o polígono correto da bacia contribuinte');return;
     }
@@ -3651,16 +3948,14 @@ async function runLaminaChuva(latlng){
     }
     if(modoBacia==='d8'){
       const stD8=laminaD8Status();
-      if(!stD8.preenchido){
-        hideLoad();toast('O MDE não está preenchido — execute “Preencher depressões” antes do D8 automático');return;
-      }
+      if(!d.dir&&!stD8.preenchido)await fillSinksAsync(d,0,.5);
       if(!d.dir||!d.acc){
         showLoad('Calculando D8 sobre o MDE preenchido…');
         if(typeof d8dirAsync==='function'){if(!d.dir)await d8dirAsync(d,0,.5);if(!d.acc)await d8accAsync(d,.5,1);}
         else {if(!d.dir)d8dir(d);if(!d.acc)d8acc(d);}
         laminaD8Status();
       }
-      try{W=watershedAt(d,q[0],q[1]);}catch(e){}
+      try{W=watershedAt(d,q[0],q[1],exutory?.snap?{raioM:0}:undefined);}catch(e){}
       if(W){W.fonte='D8 sobre MDE preenchido';W.nome='Bacia D8 automática';}
     }
     if(!W||!W.areaM2){ hideLoad(); toast('Não consegui obter a área contribuinte'); return; }
@@ -3671,11 +3966,11 @@ async function runLaminaChuva(latlng){
 
     /* 2) tempo de concentração (Kirpich) ----------------------------- */
     let L=0, zTopo=zP;
-    (W.ring||[]).forEach(p=>{
+    (W.rings||[W.ring]).forEach(ring=>(ring||[]).forEach(p=>{
       const dd=Math.hypot(p[0]-q[0], p[1]-q[1]); if(dd>L) L=dd;
       let z=null; try{ z=sampleZbil(d,p[0],p[1]); }catch(e){}
       if(z!=null&&isFinite(z)&&z>zTopo) zTopo=z;
-    });
+    }));
     if(!(L>0)) L=Math.sqrt(A);                      // bacia degenerada: usa o lado equivalente
     const dH=Math.max(1, zTopo-zP);
     const tc=Math.max(5, 57*Math.pow(Math.pow(L/1000,3)/dH, 0.385));
@@ -3714,8 +4009,8 @@ async function runLaminaChuva(latlng){
       fonte+=' <span style="color:var(--ink-dim)">— o mais crítico entre '+cands.length+' cenários</span>';
 
     /* 4) volume escoado ---------------------------------------------- */
-    const distCN=cnDistribuicaoNaBacia(W.ring);
-    const distCNDet=cnDistribuicaoDetalhada(W.ring);
+    const distCN=cnDistribuicaoNaBacia(W.rings||W.ring);
+    const distCNDet=cnDistribuicaoDetalhada(W.rings||W.ring);
     if(distCN){
       [['hCnARock',distCN.rock],['hCnAAnt',distCN.ant],['hCnAVeg',distCN.veg]].forEach(([id,v])=>{
         const e=document.getElementById(id);if(e)e.value=v.toFixed(2);});
@@ -3731,6 +4026,13 @@ async function runLaminaChuva(latlng){
     const B=barrLinhas();
     let wall=null, crista=null;
     if(B){ wall=barrMascara(d,B.linhas).wall; crista=barrCrista(d,B.linhas); }
+    const upstreamOnly=document.getElementById('hLamUpstreamOnly')?.checked!==false;
+    if(upstreamOnly){
+      const allowed=await GeoMineOriginalD8.storageMask(d,W.rings||[W.ring],()=>S.projectId===project&&S.hidro?.dem===d);checkContext();
+      wall=wall?wall.slice():new Uint8Array(d.nc*d.nr);
+      for(let i=0;i<wall.length;i++)if(!allowed[i])wall[i]=1;
+      wall[seed]=0; // o clique pode cair numa célula de borda da grade de armazenamento
+    }
     const volEm=(lv)=>{ const m=inundConectada(d,lv,seed,wall);
       let v=0,n=0;
       for(let k=0;k<d.z.length;k++) if(m[k]){ v+=(lv-d.z[k]); n++; }
@@ -3766,6 +4068,9 @@ async function runLaminaChuva(latlng){
       TC_MIN:+tc.toFixed(0), BACIA_HA:+(A/1e4).toFixed(2), COEF_C:+C.toFixed(3),
       METODO:escRun.metodo, PERDAS_MM:+escRun.perda.toFixed(1), CN_EQ:escRun.CN?+escRun.CN.toFixed(1):null,
       VOL_ESCOADO_M3:+V.toFixed(0), BARRAMENTO:(B?B.L.name:'—') }};
+    Object.assign(feat.props,{E_EXUTORIO:q[0],N_EXUTORIO:q[1],SNAP_M:exutory?.snap?.distance||0,FONTE_D8:W.fonte||'D8 preenchido',
+      LIMITE_MONTANTE:upstreamOnly?'Sim':'Não',ERRO_VOL_M3:+(R.volM3-V).toFixed(6)});
+    checkContext();
     const cam=addLayer({undo:true,sourceLayer:'R:'+S.hidro.sourceRasterId, name:`Lâmina de projeto ${lv.toFixed(2)} m`, gtype:'polygon', crs:S.workCRS,
       features:[feat],
       fields:[{name:'COTA_M',type:'N',length:10,decimal:2},{name:'LAMINA_M',type:'N',length:10,decimal:2},
@@ -3775,14 +4080,21 @@ async function runLaminaChuva(latlng){
               {name:'BACIA_HA',type:'N',length:12,decimal:2},{name:'COEF_C',type:'N',length:7,decimal:3},
               {name:'METODO',type:'C',length:50,decimal:0},{name:'PERDAS_MM',type:'N',length:10,decimal:1},
               {name:'CN_EQ',type:'N',length:8,decimal:1},
-              {name:'VOL_ESCOADO_M3',type:'N',length:16,decimal:0},{name:'BARRAMENTO',type:'C',length:40,decimal:0}],
+              {name:'VOL_ESCOADO_M3',type:'N',length:16,decimal:0},{name:'BARRAMENTO',type:'C',length:40,decimal:0},
+              {name:'E_EXUTORIO',type:'N',length:18,decimal:4},{name:'N_EXUTORIO',type:'N',length:18,decimal:4},
+              {name:'SNAP_M',type:'N',length:12,decimal:4},{name:'FONTE_D8',type:'C',length:160,decimal:0},
+              {name:'LIMITE_MONTANTE',type:'C',length:3,decimal:0},{name:'ERRO_VOL_M3',type:'N',length:18,decimal:6}],
       color:'#1565c0' });
     if(cam){ cam.fill=0.35; if(cam.sym){ cam.sym.fill=0.35; } try{ drawLayer(cam); }catch(e){} }
     // a bacia contribuinte também vira camada — é o que justifica o volume
-    if(W.ring&&modoBacia==='d8') addLayer({undo:true,sourceLayer:'R:'+S.hidro.sourceRasterId,name:`Área contribuinte D8 (${fmtArea(A)})`,gtype:'polygon',crs:S.workCRS,
-      features:[{geom:[W.ring],multi:true,props:{AREA_M2:+A.toFixed(0),AREA_HA:+(A/1e4).toFixed(3),FONTE:'D8 preenchido'}}],
-      fields:[{name:'AREA_M2',type:'N',length:14,decimal:0},{name:'AREA_HA',type:'N',length:12,decimal:3},
-              {name:'FONTE',type:'C',length:30,decimal:0}],color:'#7aa2f7'});
+    if(W.ring&&['d8','original-d8','automatic-d8'].includes(modoBacia)){
+      const basin=addLayer({sourceLayer:'R:'+S.hidro.sourceRasterId,name:`Área contribuinte D8 (${(A/1e4).toLocaleString('pt-BR',{minimumFractionDigits:4,maximumFractionDigits:4})} ha)`,gtype:'polygon',crs:S.workCRS,
+      features:[{geom:W.rings||[W.ring],multi:true,props:{AREA_M2:A,AREA_HA:A/1e4,FONTE:W.fonte||'D8 preenchido',METODO:W.method||'D8 local',RES_X_M:W.resolution?.x??d.cs,RES_Y_M:W.resolution?.y??d.csy??d.cs,E_EXUTORIO:q[0],N_EXUTORIO:q[1]}}],
+      fields:[{name:'AREA_M2',type:'N',length:20,decimal:6},{name:'AREA_HA',type:'N',length:20,decimal:8},
+              {name:'FONTE',type:'C',length:160,decimal:0},{name:'METODO',type:'C',length:160,decimal:0},{name:'RES_X_M',type:'N',length:20,decimal:6},{name:'RES_Y_M',type:'N',length:20,decimal:6},{name:'E_EXUTORIO',type:'N',length:20,decimal:6},
+              {name:'N_EXUTORIO',type:'N',length:20,decimal:6}],color:'#328ad6'});
+      window.GeoMinePointCatchment.recordOutlet(basin,{point:q,areaM2:A,cells:W.cells??W.ncells,z:zP,adjust:W.snapM,sourceLayer:'R:'+S.hidro.sourceRasterId,previousActive:cam?.id});
+    }
     let html=`<b>Lâmina no ponto: ${lamina.toFixed(2)} m</b> · cota ${lv.toFixed(2)} m `+
       `<span style="color:var(--ink-dim)">(terreno ${zP.toFixed(2)} m)</span><br>`+
       `Bacia contribuinte <b>${(A/1e4).toFixed(2)} ha</b> · ${esc(W.nome||'D8 automático')} · tc ${tc.toFixed(0)} min `+
@@ -3808,7 +4120,12 @@ async function runLaminaChuva(latlng){
     if(out) out.innerHTML=html;
     refreshUI();
     toast(`Lâmina de ${lamina.toFixed(2)} m na cota ${lv.toFixed(2)} m`);
-  }catch(e){ toast('Falha: '+(e&&e.message||e)); console.warn(e); }
+  }catch(e){
+    const reconnect=window.GeoMineOriginalD8?.offerReconnect(e,{anchor:document.getElementById('btnLamina'),target:out,
+      isCurrent:()=>S.projectId===project&&S.hidro?.dem===d&&window.GeoMineSessionAutosave?.state?.generation===generation,
+      retry:()=>runLaminaChuva(latlng)});
+    toast(reconnect?'Reconecte o Drive no botão do comando para continuar no mesmo ponto.':'Falha: '+(e&&e.message||e));console.warn(e);
+  }
   finally{ hideLoad(); }
 }
 
@@ -3816,6 +4133,13 @@ async function runLaminaChuva(latlng){
    antes de qualquer camada, então polígono, raster ou ortofoto por cima não
    engolem o clique. Só age com a ferramenta de inundação armada.
    Precisa rodar DEPOIS de initMap() — por isso é chamada ao armar e no fim. */
+function inundPointButtonUI(on){
+  const b=document.getElementById('btnInundRun');if(!b)return;
+  const label=on?'Cancelar marcação':'Marcar ponto no mapa',caption=b.querySelector('.inund-point-label');
+  if(caption&&caption.textContent!==label)caption.textContent=label;
+  b.title=on?'Cancelar marcação do ponto de inundação':'Marcar ponto no mapa para iniciar a simulação';
+  b.setAttribute('aria-label',label);b.setAttribute('aria-pressed',String(!!on));
+}
 function inundBackstop(){
   if(typeof map==='undefined' || !map || !map.getContainer) return false;
   const cont=map.getContainer();
@@ -3827,8 +4151,7 @@ function inundBackstop(){
     let ll; try{ ll=map.containerPointToLatLng([ev.clientX-r.left, ev.clientY-r.top]); }catch(e){ return; }
     ev.preventDefault(); ev.stopPropagation();
     const modo=S.tool; setTool('pan');
-    const b=document.getElementById('btnInundRun');
-    if(b) b.textContent='🌊 Simular a partir de um ponto';
+    inundPointButtonUI(false);
     const bl=document.getElementById('btnLamina');
     if(bl) bl.textContent='◎ Marcar ponto → gerar área tributária e mancha';
     try{ if(modo==='lamina') runLaminaChuva(ll); else runInundacao(ll,'ponto'); }
@@ -3851,9 +4174,7 @@ function laminaAcaoUI(){
 
 /* amarrações da inundação e do barramento */
 (function bindInund(){
-  const LBL_INUND='🌊 Simular a partir de um ponto';
-  const marcaArmado=(on)=>{ const b=document.getElementById('btnInundRun'); if(!b) return;
-    b.textContent = on ? '◎ Toque no mapa — clique aqui para cancelar' : LBL_INUND; };
+  const marcaArmado=inundPointButtonUI;
   const arma=()=>{
     if(S.tool==='inund'){ setTool('pan'); marcaArmado(false); toast('Modo inundação cancelado'); return; }
     if(!window.GeoMineNativeFlood?.hasSource()){ hInundStats(); toast('Selecione o MDT da inundação.'); return; }
@@ -3882,15 +4203,15 @@ function laminaAcaoUI(){
     if(window.GeoMineNativeFlood?.clearResults)return GeoMineNativeFlood.clearResults();
     const alvos=(S.layers||[]).filter(L=>/^Inundação |^Lâmina de projeto |^Área contribuinte D8 /.test(L.name));
     if(!alvos.length){ toast('Nenhuma mancha de inundação para remover'); return; }
-    if(!confirm(`Remover ${alvos.length} camada(s) de inundação?`)) return;
     alvos.forEach(L=>{ try{ deleteVectorLayer(L); }catch(e){} });
     refreshUI(); toast('Manchas de inundação removidas');
   };
   const bLam=document.getElementById('btnLamina');
   if(bLam) bLam.onclick=()=>{
     if(S.tool==='lamina'){ setTool('select');laminaAcaoUI();toast('Cancelado');return; }
-    if(!S.hidro||!S.hidro.dem){ toast('Carregue o MDE na seção “MDE / fluxo” antes'); return; }
-    const modo=(document.getElementById('hLamBacia')||{}).value||'d8';
+    const model=window.GeoMineHydrologyAuto?.selected();if(model)GeoMineHydrologyAuto.bind(model);
+    if(!S.hidro||!S.hidro.dem){ toast('Escolha o modelo de elevação para marcar o exutório.'); return; }
+    const modo=window.GeoMineOriginalD8?.resolveRainMode()||(document.getElementById('hLamBacia')||{}).value||'d8';
     if(modo==='selecionada'&&!(S.selFeat&&S.selFeat.layer&&S.selFeat.layer.gtype==='polygon')){
       setTool('select');laminaAcaoUI();
       toast('Selecione no mapa o polígono da área contribuinte; depois pressione este comando novamente');
@@ -3899,10 +4220,6 @@ function laminaAcaoUI(){
     if(modo==='contem'&&!(S.layers||[]).some(L=>L.gtype==='polygon'&&L.name==='Área contribuinte informada'&&(L.features||[]).length)){
       const bd=document.getElementById('btnLamBaciaDraw');if(bd)bd.click();
       laminaAcaoUI();return;
-    }
-    if(modo==='d8'&&!laminaD8Status().preenchido){
-      toast('D8 automático bloqueado: preencha primeiro as depressões do MDE ou escolha uma área tributária');
-      return;
     }
     if(!(S.hidro.serie&&S.hidro.serie.length) && !(S.hidro.diario&&S.hidro.diario.dias&&S.hidro.diario.dias.length) && !S.hidro.idf){
       toast('Carregue a série histórica (Precipitação) ou ajuste a IDF antes'); return; }
@@ -3938,27 +4255,16 @@ function laminaAcaoUI(){
   const bCn=document.getElementById('btnCnOrto');
   if(bCn)bCn.onclick=gerarCnOrto;
   cnMdtRefresh();
-  const fCn=document.getElementById('hCnOrtoFile');
-  const bCnFile=document.getElementById('btnCnOrtoFile');
-  if(bCnFile&&fCn)bCnFile.onclick=()=>abrirSeletorGeoTIFF(fCn);
-  if(fCn)fCn.onchange=async e=>{
-    const f=e.target.files&&e.target.files[0];if(!f)return;
-    try{
-      await addRGBFromTIFF(f,f.name,f.size);
-      const o=document.getElementById('hCnOrtoSrc');
-      if(o)o.innerHTML=`Ortofoto: <b>${esc(f.name)}</b> · ${S.img._w}×${S.img._h} px`;
-      toast('Ortofoto escolhida para a determinação do CN');
-    }catch(err){toast('Não consegui carregar a ortofoto: '+(err.message||err));}
-    finally{hideLoad();e.target.value='';}
-  };
+  cnOrtoRefresh();
+  const productChoice=document.getElementById('hCnProduct');
+  if(productChoice)productChoice.onchange=()=>{cnOrtoRefresh();window.GeoMineSessionAutosave?.markDirty('produto CN/C');};
+  for(const field of document.querySelectorAll('#hCnCInputs input,#hCnCInputs select'))field.addEventListener('change',()=>{cnOrtoRefresh();window.GeoMineSessionAutosave?.markDirty('coeficientes do C');});
+  const orthoChoice=document.getElementById('hCnOrtoSource');
+  if(orthoChoice)orthoChoice.onchange=()=>{S.hidro.cnOrthoId=orthoChoice.value||null;cnOrtoRefresh();window.GeoMineSessionAutosave?.markDirty('ortofoto do CN');};
+  const info=document.getElementById('btnCnInfo'),infoText=document.getElementById('hCnInfo');
+  if(info&&infoText)info.onclick=e=>{e.stopPropagation();infoText.hidden=!infoText.hidden;info.setAttribute('aria-expanded',String(!infoText.hidden));};
   const sCnLim=document.getElementById('hCnLimite'),bCnLim=document.getElementById('btnCnLimite');
-  const cnLimUI=()=>{
-    const o=document.getElementById('hCnLimiteOut'),m=sCnLim?sCnLim.value:'selecionado',L=cnLimiteAtual();
-    if(o)o.innerHTML=L?`Limite pronto: <b>${esc(L.nome)}</b>`:
-      (m==='selecionado'?'Selecione no mapa o polígono da bacia ou área do projeto.':
-       m==='desenhado'?'Desenhe o polígono que limitará a classificação.':'Toda a ortofoto será analisada.');
-    if(bCnLim)bCnLim.textContent=m==='desenhado'?'✏ Desenhar limite':(m==='selecionado'?'▱ Selecionar polígono':'✓ Extensão da ortofoto');
-  };
+  const cnLimUI=cnLimiteRefresh;
   if(sCnLim)sCnLim.onchange=cnLimUI;
   if(bCnLim)bCnLim.onclick=()=>{
     const m=sCnLim?sCnLim.value:'selecionado';
@@ -3991,7 +4297,7 @@ function laminaAcaoUI(){
 })();
 
 /* Dimensionamento */
-document.getElementById('btnRacional').onclick=()=>{
+document.getElementById('btnRacional').onclick=async()=>{
   const T=+document.getElementById('rT').value, L0=+document.getElementById('rL').value,
     dH=+document.getElementById('rH').value, A=+document.getElementById('rA').value;
   if(!S.hidro.idf){ toast('Gere ou informe a curva IDF primeiro'); return; }
@@ -4001,11 +4307,19 @@ document.getElementById('btnRacional').onclick=()=>{
   let C=+cv,cnTxt='';
   if(cv==='auto'){
     const sf=S.selFeat,SL=sf&&sf.layer,F=SL&&SL.features&&SL.features[sf.idx];
-    const ring=cnRingDaFeicao(SL,F),dist=cnDistribuicaoDetalhada(ring);
-    if(!dist){toast('Para C automático, selecione a área contribuinte e gere antes a camada CN');return;}
-    const P=i*tc/60,amc=(document.getElementById('hLamAMC')||{}).value||'II';
-    C=dist.rows.reduce((s,x)=>s+x.f*(P>0?laminaQscs(P,laminaCnAMC(x.cn,amc))/P:0),0);
-    cnTxt=`\nC automático = <b>${C.toFixed(3)}</b> · ${dist.rows.length} classe(s) CN ponderadas na área`;
+    let dist,shown=false;try{
+      if(window.GeoMineCZonal?.busy){toast('Aguarde o cálculo do C médio por áreas.');return;}
+      const id=SL?._runoffZones?.sourceRasterId,raster=id!=null?S.rasters.find(r=>String(r.id)===String(id)):S._runoffRaster;
+      if(!SL||!F||!raster){toast('Selecione a área contribuinte e gere C pelo Método Racional.');return;}
+      if(window.GeoMineCZonal){
+        showLoad('Calculando C ponderado da área…');shown=true;S._loadCancel=false;
+        dist=await GeoMineCZonal.forFeature(raster,SL,F,{check:()=>{if(S._loadCancel)throw Object.assign(Error('Cálculo cancelado.'),{name:'AbortError'});}});
+        if(!dist.complete)throw Error('A camada C não cobre toda a área selecionada. Complete a cobertura antes de calcular a vazão.');
+      }else dist=await cRationalDistribution(cnRingDaFeicao(SL,F));
+    }catch(e){toast(e.message);return;}finally{if(shown)hideLoad();}
+    if(!dist){toast('Selecione a área contribuinte e gere C pelo Método Racional.');return;}
+    C=dist.mean;
+    cnTxt=`\nC ponderado = <b>${C.toFixed(3)}</b> · ${esc(dist.r.name)}`;
   }
   const Q=C*i*A/360;
   document.getElementById('hRacOut').innerHTML=

@@ -298,7 +298,6 @@ async function startNewProjectWizard(){
         note:'Envie esta pasta CCMGIS junto com o arquivo .ccmgis. Os vetores estão no projeto; os rasters nativos ficam em rasters/.'
       },null,2));
     }catch(e){toast('A pasta foi escolhida, mas o manifesto não pôde ser gravado: '+(e.message||e));return;}
-    try{if(window.GeoMineCollaboration&&typeof window.GeoMineCollaboration.prepareProjectReplacement==='function')window.GeoMineCollaboration.prepareProjectReplacement();}catch(e){console.warn('desconexão colaborativa',e);}
     try{if(window.GeoMineSessionAutosave&&typeof window.GeoMineSessionAutosave.prepareNewProject==='function')await window.GeoMineSessionAutosave.prepareNewProject(meta);}catch(e){console.warn('preparação da nova sessão',e);}
     sessionStorage.setItem('ALAGIS_NEW_PROJECT',JSON.stringify(meta));
     location.reload();

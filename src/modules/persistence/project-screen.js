@@ -27,6 +27,7 @@ function capture(){
   camera:camera(),controls:Object.fromEntries(controls.filter(id=>el(id)).map(id=>[id,el(id).type==='checkbox'?el(id).checked:el(id).value]))};
 }
 function prepare(d){
+ if(typeof v3SetVE==='function')v3SetVE(1);
  window.GeoMineThalweg?.resetProject();
  generation++;allowPrevious=false;pendingCamera=validCamera(d?.screen?.camera)?{...d.screen.camera}:null;
  // A gesture cannot keep references to features from the previous file.
@@ -59,6 +60,7 @@ function restore(d){
   if(e.type==='checkbox'){if(typeof v==='boolean')e.checked=v;}
   else if(typeof v==='string'&&v.length<100){if(e.tagName==='SELECT'&&![...e.options].some(o=>o.value===v))continue;if(e.type==='number'&&!finite(Number(v)))continue;e.value=v;}
  }
+ if(typeof v3SetVE==='function')v3SetVE(q.controls?.v3dVE??1);
  if(['fig','a4','prop'].includes(q.layout?.mode))S.loMode=q.layout.mode;
  if(finite(q.layout?.zoom))S.loZoom=Math.max(.15,Math.min(10,q.layout.zoom));
  if(validMap(q.map)){

@@ -6,7 +6,7 @@ const tag='_nativeFlood',clone=x=>structuredClone(x),uid=()=>crypto.randomUUID()
 const abort=()=>Object.assign(new Error('O projeto ou a camada de destino mudou.'),{name:'AbortError'});
 const generation=()=>root.GeoMineSessionAutosave?.state?.generation;
 const editable=L=>!!L&&!L.locked&&!L._geology&&!L.cavaDesign&&!L.tinSurface&&!L._cava2DesignId&&!L._rb31Recipe&&!L._channelLink&&!L._civilDesignId&&
-  (typeof collabCanEditLayer!=='function'||collabCanEditLayer(L,false));
+  (typeof canEditLayer!=='function'||canEditLayer(L,false));
 const stamp=L=>JSON.stringify([L.gtype,L.crs,L.features,L.fields]);
 const snap=L=>({L,features:L.features,fields:L.fields});
 const seeds=new Map();

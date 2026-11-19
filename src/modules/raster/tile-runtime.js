@@ -19,8 +19,9 @@
    seus blocos completos. Downsampling suportado visita apenas os blocos e
    pixels usados pela saída, sem construir a janela em resolução nativa.
    canReadResampled(im,options) permite manter fallback limitado em loaders.
-   No tablet, leituras acima de 32 MiB de trabalho são recusadas ANTES da
-   alocação, inclusive quando a fila está vazia. Cada bloco admite até
+   No tablet, janelas nativas de tipos suportados também são copiadas por
+   blocos sequenciais, sem reamostrar. Leituras acima de 32 MiB de trabalho
+   são recusadas ANTES da alocação. Cada bloco admite até
    8 MiB decodificados/compactados e 32 MiB de trabalho (3×decode + 2×fonte).
    Esses limites não são teto de RAM total: cache, imagens exibidas e outros
    módulos continuam existentes. A resolução nunca é reduzida pelo guard.
@@ -48,7 +49,7 @@ let readBudgetBytes=(mobile?32:96)*MiB;
 let concurrency=2,bytes=0,active=0,activeBytes=0,imageSeq=0,jobSeq=0;
 const prepared=new WeakMap(),nativeReaders=new WeakMap(),memoryInfo=new WeakMap(),tiffs=new WeakMap(),resolved=new Map(),inFlight=new Map(),queue=[];
 const counters={hits:0,misses:0,deduplicated:0,evictions:0,reads:0,aborted:0,errors:0,imagesPrepared:0,
-  sampledReads:0,sampledBlocks:0,sampledValues:0,memoryRejected:0};
+  sampledReads:0,sampledBlocks:0,sampledValues:0,nativeSequentialReads:0,memoryRejected:0};
 
 function abortError(){const error=new Error('Leitura de tile não é mais necessária.');error.name='AbortError';return error;}
 function checkMobileBytes(size,limit,part){
@@ -481,11 +482,20 @@ function read(im,options={},control={}){
     let image;
     try{image=prepareImage(im);if(typeof image.readRasters!=='function')throw new TypeError('Imagem sem readRasters.');}
     catch(error){reject(error);return;}
-    const info=mobileImageMemory(image),sampled=sampledPlan(image,options),estimated=estimateReadBytes(image,options,sampled,info);
+    const info=mobileImageMemory(image);
+    // Uma janela pequena pode atravessar centenas de strips largos. A leitura
+    // nativa da biblioteca os decodifica juntos e excede 32 MiB. O copiador
+    // sequencial já suporta escala 1:1: cada célula conserva o valor original.
+    let planOptions=options;
+    const win=options.window||[0,0,image.getWidth(),image.getHeight()];
+    const nativeWindow=mobile&&options.width===undefined&&options.height===undefined;
+    if(nativeWindow)planOptions={...options,width:win[2]-win[0],height:win[3]-win[1],resampleMethod:'nearest'};
+    const sampled=sampledPlan(image,planOptions),estimated=estimateReadBytes(image,options,sampled,info);
     checkMobileBytes(estimated,Math.min(readBudgetBytes,MOBILE_READ_BYTES),'janela de leitura');
     const job={id:++jobSeq,im:image,options:{...options},sampled,isCurrent:control.isCurrent,nearestFloor:control.nearestFloor===true,
       priority:control.priority,onProgress:control.onProgress,onPreviewBlock:control.onPreviewBlock,resolve,reject,bytes:estimated};
     if(!current(job)){stale(job);return;}
+    if(nativeWindow&&sampled)counters.nativeSequentialReads++;
     queue.push(job);drain();
   });
 }
