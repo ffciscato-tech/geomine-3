@@ -239,6 +239,21 @@ publicou de outro lugar e este repositório está desatualizado.
   (`CMD.alt` em `01-bootstrap-crs-state-command.js`; classes `.cmd-auto` e
   `.cmd-min` em `app.css`).
 
+- **Apagar vale para a seleção inteira.** Com duas ou mais feições selecionadas
+  (caixa, polígono, ou soma com Shift/Ctrl e "Somar à seleção"), todo caminho de
+  apagar remove todas elas: tecla Delete, lixeira da barra do mapa, "Apagar
+  seleção" do menu do botão direito, "Excluir feição" do CAD e do editor de
+  vetores e "Apagar selecionadas" da caixa de seleção (pedido de 19/11/2026:
+  "quando eu selecionar várias feições e apagá-las todas devem ser apagadas").
+  Todos passam por `mselDelete()` (`08-selection-and-drawing.js`): nada é
+  apagado se alguma camada da seleção estiver congelada, o Ctrl+Z desfaz uma
+  camada por vez e, nas camadas de cava/DCE paramétricos, a exclusão de cristas
+  e pés fica registrada na receita, para a próxima bancada não trazê-las de
+  volta. Com **uma** feição selecionada a lixeira continua só armando a
+  borracha (toque na feição para apagar), porque uma feição pode estar
+  selecionada sem a pessoa ter clicado nela — ao terminar um desenho ou ao
+  reabrir o projeto. Na aba **Cava** a lixeira é outro comando ("Limpar tudo
+  da cava/DCE") e não mudou.
 - **Cards numerados.** Desde 18/11/2026 as ferramentas do GeoMine são
   apresentadas em cards numerados, na ordem em que a pessoa trabalha (pedido
   de 19/11/2026: o que for criado ou reorganizado segue esse padrão). Um card é

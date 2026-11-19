@@ -787,7 +787,11 @@ const CATS=[
     let q,items;
     try{q=GeoMineCommandSelection.capture({stamp:false});items=GeoMineCommandSelection.uniqueItems(q);}
     catch(e){toast(e.message);return;}
-    if(items.length>1){toast('Este comando edita uma feição por vez. Mantenha somente uma selecionada.');return;}
+    if(items.length>1){
+      // Apagar é o único destes comandos que vale para a seleção inteira (edApagarFeicao).
+      if(fn.aceitaSelecaoMultipla){fn();return;}
+      toast('Este comando edita uma feição por vez. Mantenha somente uma selecionada.');return;
+    }
     const item=items[0],L=item?.L||activeLayer();
     const edicaoBloqueada=!!(L&&typeof canEditLayer==='function'&&!canEditLayer(L,false));
     if(L&&(edicaoBloqueada||L.locked)){
@@ -1122,7 +1126,13 @@ const CATS=[
   comando('cad','spline',()=>{ actTool('line'); toast('Spline: desenhe a linha e aplique Suavizar'); });
   comando('cad','texto',()=>toast('Use a ferramenta Texto no Layout para inserir anotações'));
 
-  comando('cad','excluir',editor(()=>edApagarFeicao()));
+  /* Excluir aceita a seleção múltipla: o wrapper editor() serve aos comandos
+     que editam uma feição por vez e recusava ("mantenha somente uma
+     selecionada") justamente o pedido de apagar várias. */
+  comando('cad','excluir',()=>{
+    if(S.msel&&S.msel.items&&S.msel.items.length>1){edApagarFeicao();return;}
+    editor(()=>edApagarFeicao())();
+  });
   /* O Mover valida camada por camada do conjunto (GeoMineDragMove.arm); o
      wrapper editor() olhava só a camada ativa e barrava a seleção múltipla. */
   comando('cad','mover',()=>{

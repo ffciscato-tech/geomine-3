@@ -3227,6 +3227,16 @@ document.querySelectorAll('.mtool').forEach(b=>{
     askDrawDest(b.dataset.tool, ()=>setTool(b.dataset.tool));
     return;
   }
+  /* LIXEIRA COM VÁRIAS FEIÇÕES SELECIONADAS: apaga a seleção inteira na hora —
+     é a tecla Delete de quem trabalha no iPad, sem teclado. Antes ela só armava
+     a borracha e o toque seguinte apagava uma feição das selecionadas. Com uma
+     ou nenhuma selecionada nada muda: a lixeira arma a borracha e cada toque
+     apaga a feição tocada. (Uma única feição pode estar selecionada sem a
+     pessoa ter clicado nela — ao terminar um desenho, ao reabrir o projeto —,
+     por isso ela não é apagada só por tocar na lixeira.) */
+  if(b.dataset.tool==='del' && S.msel && S.msel.items && S.msel.items.length>1 && (!S._view||S._view==='map')){
+    mselDelete(); if(S.tool==='del') setTool('select'); return;
+  }
   setTool(b.dataset.tool);
   };
 });

@@ -220,8 +220,9 @@ function mselDelete(){
     undoPush({t:'mselmixdel', L, ops});
     drawLayer(L);
   }
+  const apagadas=S.msel.items.length;
   mselClear(true); refreshUI();
-  toast('Feições/partes apagadas — Ctrl+Z desfaz (uma camada por vez)');
+  toast(apagadas+' feição(ões)/parte(s) apagada(s) — Ctrl+Z desfaz'+(porCamada.size>1?' (uma camada por vez)':''));
 }
 function mselMove(){
   if(!S.msel.items.length){ toast('Nada selecionado'); return; }
@@ -405,7 +406,9 @@ document.addEventListener('keydown',e=>{
   const on=(id,fn)=>{ const b=document.getElementById(id); if(b) b.onclick=fn; };
   on('selFim',mselFinish);
   on('selLimpa',()=>{ mselClear(true); toast('Seleção limpa'); });
-  on('selDel',mselDelete);
+  // Chamada tardia: módulos carregados depois (proteção das linhas paramétricas de
+  // cava/DCE) envolvem mselDelete; o botão precisa passar por eles, como a tecla Delete.
+  on('selDel',()=>mselDelete());
   /* Mover/Copiar abrem o mesmo diálogo: camada existente do mesmo tipo ou
      "Nova camada…" com nome (o antigo "nova camada _sel" fica coberto). */
   on('selMove',()=>{

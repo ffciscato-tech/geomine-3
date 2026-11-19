@@ -33,6 +33,8 @@ function pickFeature(L, idx, latlng, op){
   let partIdx=Number.isInteger(op.partIdx)?op.partIdx:featParteMaisProxima(L,fSelecionada,latlng);
   if(!selParteValida({partIdx},L,fSelecionada))partIdx=null;
   if(S.tool==='del'){
+    // Feição que pertence a uma seleção de duas ou mais: sai a seleção inteira.
+    if(S.msel&&S.msel.items&&S.msel.items.length>1&&S.msel.items.some(x=>x.layerId===L.id&&x.idx===idx)){mselDelete();return;}
     apagarSelecao({layer:L,layerId:L.id,idx,partIdx},true);return;
   }
   const oe=op.originalEvent||{},aditivo=op.properties!==true&&!!(oe.ctrlKey||oe.metaKey||oe.shiftKey||window.GeoMineTouchWorkspace?.additive);
@@ -204,6 +206,12 @@ function openFeatMenu(L, idx, latlng){
      outra camada; copiar não altera a origem, mover a retira dela. */
   const naSelecao=(S.msel&&S.msel.items||[]).some(x=>x.layerId===L.id&&x.idx===idx);
   const copiar=naSelecao?S.msel.items.slice():[{layerId:L.id,idx}];
+  /* APAGAR SEGUE A SELEÇÃO (pedido de 19/11/2026: "quando eu selecionar várias
+     feições e apagá-las todas devem ser apagadas"). Mover, Girar e Copiar
+     deste menu já valiam para a seleção que contém a feição clicada; Apagar
+     tirava só a clicada e deixava as outras selecionadas, com os índices já
+     deslocados. Com duas ou mais selecionadas ele apaga o conjunto. */
+  const apagarSelecaoInteira=naSelecao&&copiar.length>1;
   const parte=!naSelecao&&selParteValida(S.selFeat,L,f),parteIdx=parte?S.selFeat.partIdx:undefined;
   const CB=window.GeoMineClipboard,nCB=CB&&CB.has()?CB.count():0;
   const canContinue=featureContinueTarget(L,f)&&!L.locked;
@@ -225,7 +233,8 @@ function openFeatMenu(L, idx, latlng){
       (nCB?item('clippaste','⤓','Colar',(nCB===1?'1 feição':nCB+' feições')+' nesta camada · Ctrl+V'):''):'')+
     (window.GeoMineFeatureCopy?item('copy','⧉',copiar.length>1?'Copiar seleção para outra camada':'Copiar para outra camada',copiar.length>1?copiar.length+' feições/partes selecionadas':'')+
       item('move','⇪',copiar.length>1?'Mover seleção para outra camada':'Mover para outra camada',copiar.length>1?copiar.length+' feições/partes selecionadas':''):'')+
-    item('del','🗑',selParteValida(S.selFeat,L,f)?'Apagar somente esta parte':'Apagar feição','');
+    item('del','🗑',apagarSelecaoInteira?'Apagar seleção':selParteValida(S.selFeat,L,f)?'Apagar somente esta parte':'Apagar feição',
+      apagarSelecaoInteira?copiar.length+' feições/partes selecionadas':'');
   document.body.appendChild(featMenuEl);
   window.GeoMinePanelCards?.enhance(featMenuEl);
   featMenuColoca(featMenuEl,L,f,latlng,idx);
@@ -277,6 +286,7 @@ function openFeatMenu(L, idx, latlng){
   acao('copy',()=>{ closeFeatMenu(); window.GeoMineFeatureCopy.open(copiar); });
   acao('move',()=>{ closeFeatMenu(); window.GeoMineFeatureCopy.move(copiar); });
   acao('del',()=>{ closeFeatMenu();
+    if(apagarSelecaoInteira&&S.msel.items.length>1){mselDelete();return;}
     apagarSelecao(S.selFeat&&S.selFeat.layerId===L.id&&S.selFeat.idx===idx
       ?S.selFeat:{layer:L,layerId:L.id,idx,partIdx:null},false); });
   featMenuEl.querySelector('.fm-x').onclick=closeFeatMenu;

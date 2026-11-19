@@ -573,6 +573,15 @@ function edCotaTerreno(){
   edAplicar(rings, n+' vértice(s) com cota do terreno');
 }
 function edApagarFeicao(){
+  /* Com duas ou mais feições selecionadas, "Apagar feição"/"Excluir" vale para
+     a seleção inteira (mesma rotina da tecla Delete: nada é apagado se alguma
+     camada da seleção estiver congelada; Ctrl+Z desfaz). */
+  if(S.msel&&S.msel.items&&S.msel.items.length>1){
+    mselDelete();
+    if(ED.sel&&!(ED.sel.L.features||[]).includes(ED.sel.f))ED.sel=null;
+    if(ED.on){edRedraw();edPainelSync();}
+    return;
+  }
   if(!edPrecisa()) return;
   const {L,idx,f}=ED.sel;
   undoPush({t:'featdel', L:L, feat:f, idx:idx});
@@ -581,6 +590,9 @@ function edApagarFeicao(){
   drawLayer(L); edRedraw(); refreshUI(); edPainelSync();
   toast('Feição apagada');
 }
+// O catálogo de comandos e a faixa passam por um wrapper que recusa seleção
+// múltipla; esta marca diz que Apagar a aceita (ver o início da função).
+edApagarFeicao.aceitaSelecaoMultipla=true;
 function edFechar(){
   /* FECHAR = emendar o último vértice ao primeiro, NA MESMA linha e camada.
      A versão antiga apagava a linha e criava uma camada nova de polígono —
