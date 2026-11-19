@@ -278,6 +278,41 @@ publicou de outro lugar e este repositório está desatualizado.
   só os cards visíveis de cada janela, então um card escondido não deixa
   buraco na numeração. Painéis com cards escritos à mão (bacia, escada
   hidráulica e estrada) ficam fora da divisão automática desse módulo.
+- **O menu de texto do aparelho nunca fica por cima dos comandos do GeoMine.**
+  Pedido de 19/11/2026, com o print do iPad mostrando "Colar / Selecionar /
+  Selecionar Tudo / Ferramentas de Escrita / Formatar" sobre o menu da feição.
+  O iPad monta esse menu a partir do cursor de texto ou da seleção que estiver
+  viva na página; ele não depende do evento `contextmenu`, então cancelar o
+  evento não basta. A causa encontrada foi um cursor esquecido numa célula da
+  tabela de atributos (`td contenteditable`, o único conteúdo editável do
+  aplicativo): `clearNativeEditing` só removia seleção não colapsada, e o
+  cursor é justamente uma seleção colapsada; o WebKit conserva o cursor de um
+  `contenteditable` quando o clique seguinte cai em área sem seleção de texto
+  (o mapa); e a tabela fechada continua na página, com altura zero. Regras,
+  em `installNativeContextGuard` (`src/modules/ui/touch-workspace.js`) e em
+  `13-attribute-table.js`: (1) todo clique secundário fora de um campo de
+  texto — botão direito, `contextmenu` do iPad, toque longo — encerra a edição
+  que ficou em outro lugar: tira o foco do campo e remove cursor e seleção,
+  em qualquer ponto da tela e também da aba Cava para a página de fora; (2) um
+  campo que perde o foco de verdade não deixa cursor para trás (com a janela
+  em segundo plano o cursor espera a volta); (3) fechar a tabela de atributos
+  por qualquer caminho grava a célula e solta o cursor. Dentro de um campo de
+  texto o menu do aparelho continua valendo — é por ele que se cola um valor
+  no iPad — e o texto selecionado no histórico de comandos continua
+  selecionado ao receber o clique direito. Não mude um menu do GeoMine para
+  `contenteditable="false"` esperando resolver isto: o menu do aparelho vem do
+  cursor que ficou em outro elemento, não do menu clicado. Este comportamento
+  só existe no WebKit do iPad; fora dele o que se testa é o estado que o
+  provoca (elemento focado e seleção do documento com o menu do GeoMine
+  aberto). O mecanismo foi conferido no código-fonte do WebKit:
+  `clearSelectionIfNeeded` (`FocusController.cpp`) não limpa a seleção de um
+  `contenteditable` quando o foco muda depois de um clique;
+  `prepareSelectionForContextMenuWithLocationInView` (`WebPageIOS.mm`) sempre
+  manda apresentar o menu no clique secundário e no toque longo, sem mexer na
+  seleção quando o ponto está em área `user-select:none`; e
+  `canPerformActionForWebView` (`WKContentViewInteraction.mm`) só habilita
+  Colar, Selecionar, Selecionar Tudo e Formatar com cursor ou seleção viva —
+  sem eles o menu não tem o que mostrar.
 
 ## Organização
 

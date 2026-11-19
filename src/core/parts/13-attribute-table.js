@@ -155,6 +155,22 @@ function openAttr(selIdx,options={}){
   panel.classList.add('open');
 }
 document.getElementById('attrClose').onclick=()=>document.getElementById('attrPanel').classList.remove('open');
+/* Fechada, a tabela fica com altura zero mas continua na página. Uma célula que
+   ficasse em edição manteria o cursor de texto vivo, e o iPad passa a oferecer
+   Colar / Selecionar / Formatar por cima dos menus do GeoMine (19/11/2026).
+   Fechar por qualquer caminho — botão, Esc, troca de tela — grava a célula e
+   solta o cursor. */
+(function(){
+  const panel=document.getElementById('attrPanel');
+  if(!panel||typeof MutationObserver!=='function')return;
+  new MutationObserver(()=>{
+    if(panel.classList.contains('open'))return;
+    const active=document.activeElement;
+    if(active&&active!==panel&&panel.contains(active)&&typeof active.blur==='function')active.blur();
+    const selection=typeof getSelection==='function'?getSelection():null;
+    if(selection&&selection.rangeCount&&panel.contains(selection.anchorNode))selection.removeAllRanges();
+  }).observe(panel,{attributes:true,attributeFilter:['class']});
+})();
 (function(){ const b=document.getElementById('btnAttrRecalc'); if(b) b.onclick=attrRecalcMDT; })();
 /* recalcula os atributos geométricos (cotas, comprimentos, declividade, zg) de
    TODAS as feições da camada ativa a partir do MDT — corrige, por exemplo,

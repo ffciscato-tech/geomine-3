@@ -62,7 +62,15 @@ function clearNativeEditing(doc=document){
   try{if(active.contentDocument)clearNativeEditing(active.contentDocument);}catch(_){}
   active.blur();
  }else if(nativeEditor(active))active.blur();
- const selection=doc.defaultView?.getSelection?.();if(selection&&!selection.isCollapsed)selection.removeAllRanges();
+ // A seleção colapsada é o cursor de texto. Tirar o foco não basta: o WebKit conserva
+ // o cursor de um contenteditable quando o clique cai em área sem seleção de texto, e
+ // com ele o iPad continua oferecendo Colar / Selecionar / Formatar.
+ const selection=doc.defaultView?.getSelection?.();if(selection?.rangeCount)selection.removeAllRanges();
+ // Chamado de dentro de um quadro (aba Cava): a página de fora também solta a edição.
+ try{const view=doc.defaultView,up=view?.parent;if(up&&up!==view){
+  const outer=up.document;if(nativeEditor(outer.activeElement))outer.activeElement.blur();
+  const outerSelection=up.getSelection?.();if(outerSelection?.rangeCount)outerSelection.removeAllRanges();
+ }}catch(_){}
 }
 function installNativeContextGuard(doc){
  const scope=t=>{const e=t?.nodeType===1?t:t?.parentElement;return !!e?.closest?.(nativeSurface)&&!nativeEditor(e);};
@@ -74,7 +82,34 @@ function installNativeContextGuard(doc){
  (doc.head||doc.documentElement).appendChild(style);
  // O clique direito continua chegando ao menu do GeoMine. Apenas a ação
  // nativa de texto do navegador é cancelada, inclusive em mouse no iPad.
- doc.addEventListener('contextmenu',e=>{if(!scope(e.target))return;clearEditing();e.preventDefault();},{capture:true,passive:false});
+ // O menu de texto do aparelho (Colar / Selecionar / Selecionar Tudo / Ferramentas
+ // de Escrita / Formatar) não depende do contextmenu: o iPad o monta a partir do
+ // cursor ou da seleção que estiver viva na página, e o mostra por cima dos
+ // comandos do GeoMine. Print de 19/11/2026: uma célula da tabela de atributos
+ // tinha ficado com o cursor. Por isso todo clique secundário fora de um campo
+ // encerra o que estava em edição, em qualquer ponto da tela.
+ const releaseStaleEditing=e=>{
+  const t=e.target;if(nativeEditor(t))return;
+  if(scope(t)){clearEditing();return;}
+  const active=doc.activeElement;if(nativeEditor(active))active.blur();
+  const s=doc.defaultView?.getSelection?.();if(!s||!s.rangeCount)return;
+  // Texto comum selecionado sob o ponteiro (histórico de comandos, relatório)
+  // continua selecionado: ali o Copiar do navegador é o que a pessoa quer.
+  let own=false;try{own=!s.isCollapsed&&!nativeEditor(s.anchorNode)&&t?.nodeType===1&&s.containsNode(t,true);}catch(_){}
+  if(!own)s.removeAllRanges();
+ };
+ doc.addEventListener('pointerdown',e=>{if(e.button===2)releaseStaleEditing(e);},{capture:true,passive:true});
+ doc.addEventListener('mousedown',e=>{if(e.button===2)releaseStaleEditing(e);},{capture:true,passive:true});
+ doc.addEventListener('contextmenu',e=>{releaseStaleEditing(e);if(scope(e.target))e.preventDefault();},{capture:true,passive:false});
+ // Um campo que perde o foco de verdade não deixa cursor nem seleção para trás.
+ // Com a janela em segundo plano o campo continua sendo o elemento ativo, e o
+ // cursor espera a volta; indo o foco para outro campo, ele cuida da própria seleção.
+ doc.addEventListener('focusout',e=>{
+  const t=e.target;if(!nativeEditor(t)||doc.activeElement===t||nativeEditor(e.relatedTarget))return;
+  const s=doc.defaultView?.getSelection?.();if(!s||!s.rangeCount)return;
+  const root=t.closest?.('[contenteditable]:not([contenteditable="false"])')||t;
+  if(s.isCollapsed||root.contains(s.anchorNode))s.removeAllRanges();
+ },{capture:true,passive:true});
  doc.addEventListener('selectstart',e=>{if(scope(e.target))e.preventDefault();},{capture:true,passive:false});
  doc.addEventListener('pointerdown',e=>{if(scope(e.target))clearEditing();},{capture:true,passive:true});
  doc.addEventListener('selectionchange',()=>{const s=doc.defaultView?.getSelection?.();if(s&&!s.isCollapsed&&(scope(s.anchorNode)||scope(s.focusNode)))s.removeAllRanges();});
