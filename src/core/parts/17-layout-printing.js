@@ -497,6 +497,11 @@ function legendControlRows(catalog=layoutLegendCatalog(),model=window.GeoMineLay
   return rows.map(r=>({...r,on:legendVisibilityOn(r.key,state)}));
 }
 /* Monta a lista hierárquica de itens da legenda (grupo → camada → classes visíveis) */
+/* Na legenda o quadrinho de cor sólida usa 70% para ser legível; com a
+   opacidade do preenchimento em 0% ele fica vazado, como o polígono no mapa. */
+function legendPolyHollow(it){
+  return (!it.hatch||it.hatch==='solid')&&it.fill!=null&&it.fill!==''&&!(+it.fill>0);
+}
 function legendItems(catalog=layoutLegendCatalog(),model=window.GeoMineLayoutLive?.model()){
   const items=[],legendState=legendVisibilityState(),tree=model?.tree||displayList(),numbers=groupNumbering(tree);
   const numbered=document.getElementById('loGroupNumbers')?.checked===true;
@@ -581,13 +586,13 @@ function legendItems(catalog=layoutLegendCatalog(),model=window.GeoMineLayoutLiv
       visParts.forEach(p=>{const c=p.c;
         items.push({label:p.label,
           color:c.color, stroke:(c.stroke||sy.stroke||c.color),
-          kind, hatch:c.hatch??sy.hatch, hatchScale:c.hatchScale??sy.hatchScale??1, dash:c.dash??sy.dash, indent:ind+1,
+          kind, hatch:c.hatch??sy.hatch, hatchScale:c.hatchScale??sy.hatchScale??1, fill:c.fill??sy.fill, dash:c.dash??sy.dash, indent:ind+1,
           shape:(c.shape||(pcfg&&pcfg.shape)), symbolParams:c.symbolParams||(pcfg&&pcfg.symbolParams)||null,
           weight:c.weight??sy.weight,arrowEnd:c.arrowEnd??sy.arrowEnd,arrowSize:c.arrowSize??sy.arrowSize});
       });
     } else {
       items.push({label:L.name, color:sy.color, stroke:(sy.stroke||sy.color),
-        kind, hatch:sy.hatch, hatchScale:sy.hatchScale??1, dash:sy.dash, indent:ind,
+        kind, hatch:sy.hatch, hatchScale:sy.hatchScale??1, fill:sy.fill, dash:sy.dash, indent:ind,
         shape:(pcfg&&pcfg.shape), symbolParams:(pcfg&&pcfg.symbolParams)||null, weight:sy.weight,arrowEnd:sy.arrowEnd,arrowSize:sy.arrowSize});
     }
   });
@@ -1478,8 +1483,8 @@ async function buildLayout(options){
           } else if(it.kind==='poly'){
             let fill=it.color;
             if(it.hatch && it.hatch!=='solid' && it.hatch!=='none'){ const hid=layoutHatch(it.hatch,it.color,it.hatchScale); if(hid){fill=`url(#${hid})`;} }
-            if(it.hatch==='none') fill='none';
-            svg+=`<rect x="${ix.toFixed(2)}" y="${(cy-sh/2).toFixed(2)}" width="${sw.toFixed(2)}" height="${sh.toFixed(2)}" fill="${fill}" fill-opacity="${it.hatch==='none'?0:(it.hatch&&it.hatch!=='solid'?1:0.7)}" stroke="${it.stroke||it.color}" stroke-width="${(0.35*symFS).toFixed(2)}"/>`;
+            if(it.hatch==='none'||legendPolyHollow(it)) fill='none';
+            svg+=`<rect x="${ix.toFixed(2)}" y="${(cy-sh/2).toFixed(2)}" width="${sw.toFixed(2)}" height="${sh.toFixed(2)}" fill="${fill}" fill-opacity="${fill==='none'?0:(it.hatch&&it.hatch!=='solid'?1:0.7)}" stroke="${it.stroke||it.color}" stroke-width="${(0.35*symFS).toFixed(2)}"/>`;
           } else if(it.kind==='line'){
             svg+=`<line x1="${ix.toFixed(2)}" y1="${cy.toFixed(2)}" x2="${(ix+sw).toFixed(2)}" y2="${cy.toFixed(2)}" stroke="${it.color}" stroke-width="${(0.8*symFS).toFixed(2)}" ${it.dash?`stroke-dasharray="${escalaDash(it.dash,0.8*symFS)}"`:''}/>`;
             if(window.GeoMineLineArrows)svg+=GeoMineLineArrows.svg([ix,cy],[ix+sw,cy],{...it,arrowSize:Math.min(3,(+it.arrowSize||3))},it.stroke||it.color,.4*symFS,symFS);
@@ -1691,8 +1696,8 @@ async function buildLayout(options){
             svg+=`<rect x="${ix.toFixed(2)}" y="${(yy-sh2*0.82).toFixed(2)}" width="${sw2.toFixed(2)}" height="${sh2.toFixed(2)}" fill="url(#${gid2})" stroke="#111" stroke-width="0.25"/>`;
           } else if(it.kind==='poly'){ let fill=it.color;
             if(it.hatch&&it.hatch!=='solid'&&it.hatch!=='none'){const hid=layoutHatch(it.hatch,it.color,it.hatchScale);if(hid)fill=`url(#${hid})`;}
-            if(it.hatch==='none')fill='none';
-            svg+=`<rect x="${ix.toFixed(2)}" y="${(yy-sh2*0.82).toFixed(2)}" width="${sw2.toFixed(2)}" height="${sh2.toFixed(2)}" fill="${fill}" fill-opacity="${it.hatch==='none'?0:(it.hatch&&it.hatch!=='solid'?1:0.7)}" stroke="${it.stroke||it.color}" stroke-width="${(0.3*symFS).toFixed(2)}"/>`;
+            if(it.hatch==='none'||legendPolyHollow(it))fill='none';
+            svg+=`<rect x="${ix.toFixed(2)}" y="${(yy-sh2*0.82).toFixed(2)}" width="${sw2.toFixed(2)}" height="${sh2.toFixed(2)}" fill="${fill}" fill-opacity="${fill==='none'?0:(it.hatch&&it.hatch!=='solid'?1:0.7)}" stroke="${it.stroke||it.color}" stroke-width="${(0.3*symFS).toFixed(2)}"/>`;
           } else if(it.kind==='line'){
             svg+=`<line x1="${ix.toFixed(2)}" y1="${(yy-0.8).toFixed(2)}" x2="${(ix+sw2).toFixed(2)}" y2="${(yy-0.8).toFixed(2)}" stroke="${it.color}" stroke-width="${(0.55*symFS).toFixed(2)}" ${it.dash?`stroke-dasharray="${escalaDash(it.dash,0.55*symFS)}"`:''}/>`;
             if(window.GeoMineLineArrows)svg+=GeoMineLineArrows.svg([ix,yy-.8],[ix+sw2,yy-.8],{...it,arrowSize:Math.min(2.2,(+it.arrowSize||3))},it.stroke||it.color,.3*symFS,symFS);

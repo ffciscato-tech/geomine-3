@@ -1349,12 +1349,15 @@ function swatchHTML(L, item){
       (dash?`stroke-dasharray="${dash}" `:'')+`stroke-linecap="round"/>`+
       (window.GeoMineLineArrows?GeoMineLineArrows.svg([1,10],[11,2],{...GeoMineLineArrows.style(it,L.sym),arrowSize:4},co,Math.min(wt,1.3)): '')+`</svg></span>`;
   }
-  return `<span class="swatch" style="${swatchCSS({color:it.color, stroke:it.stroke||L.sym.stroke||it.color, hatch:it.hatch??L.sym.hatch}, it.color)}"></span>`;
+  return `<span class="swatch" style="${swatchCSS({color:it.color, stroke:it.stroke||L.sym.stroke||it.color, hatch:it.hatch??L.sym.hatch, fill:it.fill??L.sym.fill}, it.color)}"></span>`;
 }
 function swatchCSS(sym, cor){
   const c = cor || sym.color;
   const h = sym.hatch;
-  if(h==='none')
+  /* Cor sólida com 0% de opacidade também é "sem preenchimento". Sem o valor
+     informado (amostras que não trazem `fill`) vale a cor cheia, como antes. */
+  const vazado = (!h||h==='solid') && sym.fill!=null && sym.fill!=='' && !(+sym.fill>0);
+  if(h==='none'||vazado)
     return `background:transparent;border:2px solid ${sym.stroke||c};box-sizing:border-box`;
   if(h && h!=='solid')
     return `background:repeating-linear-gradient(45deg, ${c} 0 2px, transparent 2px 4px);`+
@@ -1366,7 +1369,12 @@ function applyHatch(layer, st){
   if(!layer._path) return;
   const p=layer._path;
   if(!(layer instanceof L.Polygon)) return;   // linha não tem preenchimento
-  if(st.hatch==='none'){ p.setAttribute('fill','none'); p.setAttribute('fill-opacity','0'); return; }
+  /* Sem preenchimento visível — hachura "nenhuma" ou cor sólida com 0% de
+     opacidade — fica só o contorno. Esse polígono é criado com fill:false
+     (o interior não captura cliques) e o Leaflet, nesse caso, não escreve
+     fill-opacity: repor a cor aqui deixava o interior 100% opaco justamente
+     com a barra em 0% (print de 21/11/2026). */
+  if(st.hatch==='none'||!polygonFillVisible(st)){ p.setAttribute('fill','none'); p.setAttribute('fill-opacity','0'); return; }
   if(st.hatch==='solid'||!st.hatch){ p.setAttribute('fill',st.color); return; }
   const tpl=PATTERN_TPL[st.hatch];
   if(!tpl){ p.setAttribute('fill',st.color); return; }

@@ -269,6 +269,19 @@ publicou de outro lugar e este repositório está desatualizado.
   desenho" e um limite novo zeram a lista. O motor da aba Cava, os volumes e a
   camada Recortada continuam usando o desenho paramétrico inteiro (a Recortada
   só é refeita quando o desenho ou o MDT mudam).
+- **Opacidade do preenchimento em 0% é transparente.** Pedido de 21/11/2026,
+  com o print de um polígono laranja opaco e a barra "Opacidade do
+  preenchimento" em 0%. O polígono sem preenchimento visível — hachura
+  "nenhuma" ou cor sólida com 0% — é criado com `fill:false`, para o interior
+  não capturar cliques; nesse caso o Leaflet não escreve `fill-opacity`, e
+  `applyHatch` (`05-layer-model-symbology.js`) recolocava a cor sólida, que
+  saía 100% opaca. `applyHatch` usa agora o mesmo teste do desenho e da
+  seleção (`polygonFillVisible`): sem preenchimento visível fica só o
+  contorno. A amostra da camada e das classes na árvore (`swatchCSS`) e o
+  quadrinho da legenda do Layout (`legendPolyHollow`, em
+  `17-layout-printing.js`) seguem a mesma regra: 0% é vazado, com a cor do
+  contorno. Não mudou: hachura de padrão com 0% continua desenhando o padrão,
+  e a legenda continua usando 70% para as cores sólidas com preenchimento.
 - **Cards numerados.** Desde 18/11/2026 as ferramentas do GeoMine são
   apresentadas em cards numerados, na ordem em que a pessoa trabalha (pedido
   de 19/11/2026: o que for criado ou reorganizado segue esse padrão). Um card é
