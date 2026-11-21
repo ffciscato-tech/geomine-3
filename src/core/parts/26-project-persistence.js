@@ -4,10 +4,8 @@
 function projectData(options){
   /* O projeto nunca grava atributos de área anteriores à geometria atual. */
   autoAreaSyncAll();
-  /* Garante que os campos próprios da prancha ativa (selo, escala, legenda,
-     centro etc.) entrem no arquivo. A composição cartográfica continua
-     congelada: plateCapture sem captureState jamais troca visibilidade,
-     ordem, filtros ou simbologia; isso permanece exclusivo de Atualizar. */
+  /* Salva os controles da prancha e, com o cadeado aberto, a composição atual.
+     A convenção congelada permanece separada dos estilos vivos do projeto. */
   try{if(S.plates&&S.plates.length&&typeof plateCapture==='function')plateCapture();}catch(e){}
   /* Uma prancha antiga pode estar aplicada temporariamente aos objetos de
      mapa enquanto o usuário está no Layout. O arquivo do projeto, porém,
@@ -137,7 +135,8 @@ function projectData(options){
     layout:{basemap:gv('loBasemap'),title:gv('loTitle'), sub:gv('loSub'), scale:gv('loScale'),
       grid:gv('loGrid'), paper:gv('loPaper'), sat:gc('loSat'), legend:gc('loLegend'), groupNumbers:gc('loGroupNumbers'),
       mar:gv('loMar'), pad:gv('loPad'), fitW:gc('loFitW'), scaleAuto:gc('loScaleAuto'),
-      gridAuto:gc('loGridAuto'), frozen:S.loFrozen!==false,
+      gridAuto:gc('loGridAuto'), propertyLockVersion:1, frozen:!!S.loFrozen,
+      figFrozenState:window.GeoMineLayoutLive?.serializeState(S._figFrozenState)||null,
       figFrozenVis:S._figFrozenVis?{...S._figFrozenVis}:null,
       figLegendVis:S._figLegendVis?{...S._figLegendVis}:{}, figW:gv('loFigW'),
       figH:gv('loFigH'), txt:gv('loTxt'),
@@ -155,7 +154,7 @@ function projectData(options){
       _blastingBatchId:pl._blastingBatchId??null,
       name:pl.name, f:{...pl.f}, c:pl.c?{...pl.c}:null,
       center:pl.center?pl.center.slice():null, vis:pl.vis?{...pl.vis}:null,
-      conv:pl.conv?layoutClone(pl.conv):null,stack:Array.isArray(pl.stack)?pl.stack.slice():null,
+      conv:pl.conv?layoutConventionForSave(pl.conv):null,stack:Array.isArray(pl.stack)?pl.stack.slice():null,
       legendVis:pl.legendVis?{...pl.legendVis}:{},
       nota:pl.nota?{...pl.nota}:null,             // caixa de texto da legenda (A3)
       groups:pl.groups?pl.groups.map(g=>({...g})):null})),
@@ -575,7 +574,8 @@ function loadProject(d){
   if(typeof layoutInvalidateOrtho==='function')layoutInvalidateOrtho('project-load',false);
   S._preLayoutMapState=null;S._lastSVG=null;S._lastOrthoDpi=null;
   S._loDraftVis=null;S._loDraftConv=null;S._loDraftStack=null;S._loAppliedPlateId=null;
-  S._figFrozenVis=null;S._figLegendVis={};S.loFrozen=true;
+  S._figFrozenVis=null;S._figFrozenState=null;S._figLegendVis={};S.loFrozen=false;
+  window.GeoMineLayoutLive?.reset();
   /* Abrir outro arquivo começa pelo seu mapa principal. Permanecer no Layout
      faria refreshUI reaplicar a prancha recebida antes de termos capturado o
      novo mapa 2D (inclusive sua ortofoto, restaurada mais adiante). O snapshot
@@ -966,10 +966,12 @@ function loadProject(d){
     if(d.layout.scaleAuto!==undefined) sc('loScaleAuto',d.layout.scaleAuto);
     else sc('loScaleAuto',d.layout.fitW!==false);
     if(d.layout.gridAuto!==undefined) sc('loGridAuto',d.layout.gridAuto);
-    S.loFrozen=d.layout.frozen!==false;
+    // Antigo `frozen:true` era o padrão obrigatório, não uma escolha de cadeado.
+    S.loFrozen=d.layout.propertyLockVersion===1&&d.layout.frozen===true;
+    S._figFrozenState=d.layout.figFrozenState?layoutClone(d.layout.figFrozenState):null;
     S._figFrozenVis=d.layout.figFrozenVis?{...d.layout.figFrozenVis}:null;
     S._figLegendVis=d.layout.figLegendVis&&typeof d.layout.figLegendVis==='object'?{...d.layout.figLegendVis}:{};
-    const fr=document.getElementById('btnLoFreeze');if(fr){fr.classList.toggle('on',S.loFrozen);fr.textContent=S.loFrozen?'🔒':'🔓';}
+    window.GeoMineLayoutLive?.sync();
     ['loLegFS','loBarFS','loBarSc','loSym','loLegColGap','loMapSym','loDash','loDashGap','loTxt','loFigW','loFigH'].forEach(id=>{const e=document.getElementById(id);if(e)e.dispatchEvent(new Event('input'));});
   }
   if(d.img && d.img.url && d.img.b){

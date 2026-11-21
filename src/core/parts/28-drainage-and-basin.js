@@ -1022,11 +1022,14 @@ function baciaFeicaoBoca(fid){
 }
 function baciaPreencheFeic(){
   const sel=document.getElementById('bcFeic'); if(!sel) return;
+  const previous=sel.value;
   const opts=[];
   (S.layers||[]).forEach(L=>{ if(L.gtype!=='polygon') return;
     (L.features||[]).forEach((f,i)=>{ const nm=(f.props&&(f.props.NOME||f.props.NAME))||(L.name+' #'+(i+1));
       opts.push('<option value="'+L.id+':'+i+'">'+esc(nm)+'</option>'); }); });
-  sel.innerHTML= opts.length? opts.join('') : '<option value="">(nenhum polígono na tela)</option>';
+  const html=opts.length?opts.join(''):'<option value="">(nenhum polígono na tela)</option>';
+  if(sel._gmBaciaOptionsHTML!==html){sel.innerHTML=html;sel._gmBaciaOptionsHTML=html;}
+  if([...sel.options].some(o=>o.value===previous))sel.value=previous;
 }
 function baciaRot(dx, dy, azDeg){
   const a=azDeg*Math.PI/180, s=Math.sin(a), c=Math.cos(a);
@@ -1128,13 +1131,13 @@ function baciaValidaQuebrasLimite(limite,talE,talD,peE,peD,tol){
   const unicas=[...new Set(falhas)];
   return {ok:unicas.length===0,falhas:unicas};
 }
-function baciaCriaSimbolos(p,arestaR,fundoR,daylightR,zAresta,zFundo,excluir){
+function baciaFeicoesSimbolos(p,arestaR,fundoR,daylightR,zAresta,zFundo,excluir){
   const temBermaInt=baciaUsaBermas(p,p.P);
   const zDay=(daylightR||[]).map(q=>sampleZbil(p.g,q[0],q[1])).filter(Number.isFinite);
   const hExt=zDay.length?Math.max(0,Math.max(...zDay)-zAresta):0;
   const temBermaExt=baciaUsaBermas(p,hExt);
   const temBermaBoca=baciaBermaBoca(p)>0;
-  if(!p.talSym&&!temBermaInt&&!temBermaExt&&!temBermaBoca) return null;
+  if(!p.talSym&&!temBermaInt&&!temBermaExt&&!temBermaBoca) return [];
   const feats=[],passo=8;
   const fechado=r=>{
     const a=(r||[]).map(q=>[q[0],q[1]]);
@@ -1231,6 +1234,10 @@ function baciaCriaSimbolos(p,arestaR,fundoR,daylightR,zAresta,zFundo,excluir){
     cria(arestaR,daylightR,'Símbolo talude externo',zAresta,zAresta);
     cria(arestaR,fundoR,'Símbolo talude interno',zAresta,zFundo);
   }
+  return feats;
+}
+function baciaCriaSimbolos(p,arestaR,fundoR,daylightR,zAresta,zFundo,excluir){
+  const feats=baciaFeicoesSimbolos(p,arestaR,fundoR,daylightR,zAresta,zFundo,excluir);
   if(!feats.length)return null;
   const Ls=addLayer({name:'Pés, cristas e bermas — bacia',gtype:'line',crs:S.workCRS,features:feats,
     fields:[{name:'TIPO',type:'C',length:36,decimal:0}],color:'#8a5a2b'});
@@ -1605,17 +1612,48 @@ function baciaInjetaNosNoLimite(ring,zg,nos,g,D,cell){
   if(ring.length){ring[ring.length-1]=ring[0].slice();zg[zg.length-1]=zg[0];}
   return {nos:unicos.length-fora,fora,maxAntes,total:unicos.length};
 }
+/* Uma rampa de corte acrescenta escavação à caixa existente. O cálculo do
+   encontro com o MDT vale no corredor da rampa; fora dele permanece o limite
+   já aprovado da caixa. Recalcular o perímetro inteiro alterava as bermas,
+   inclusive ao reabrir com outra resolução de visualização do mesmo MDT. */
+function baciaIntersecaoRampaLocal(D,I,g){
+  const B=D.caixaSemRampa,R=D.rampa,anel=B?.tinSurface?.daylightR;
+  if(D.rampaLocalVersion!==1||!R||!anel?.length||!R.corredor?.length)return I;
+  const local=polygonClipping.intersection([[I.ring]],[[R.corredor]]),
+    uniao=local.length?polygonClipping.union([[anel]],local):[[anel]],
+    ring=baciaMaiorAnel(uniao);
+  if(!ring||ring.length<4)throw new Error('O encontro local da rampa não formou um limite válido');
+  const limite=(B.features||[]).find(f=>/^(?:Limite externo|Crista do corte \/ encontro com terreno)$/i
+    .test(String(f.props?.TIPO||''))&&Array.isArray(f.zg));
+  const zg=ring.map(q=>{
+    /* O trecho original conserva também a cota original. Um preview mais
+       grosso do terreno não é autorização para mudar o projeto salvo. */
+    if(limite){const p=baciaProjLinha(q,limite.geom);
+      if(p&&p.d<=1e-6){const a=+limite.zg[p.i-1],b=+limite.zg[p.i];
+        if(Number.isFinite(a)&&Number.isFinite(b))return a+(b-a)*p.t;}}
+    return sampleZbil(g,q[0],q[1]);
+  });
+  return {...I,ring,zg};
+}
+function baciaBermaOriginalPreservada(D,f){
+  return D?.rampaLocalVersion===1&&!!D.rampa&&String(f?.props?.ORIGEM||'')==='Caixa'&&
+    /^Berma\b/i.test(String(f?.props?.TIPO||''));
+}
 function baciaAplicaIntersecaoSuperficie(L,g,opt){
   opt=opt||{};const D=L&&L.tinSurface;if(!L||L.gtype!=='line'||!D)return {changed:false,ok:false};
   const Rmdt=g?{d:g}:baciaMdtDaSuperficie(L);g=g||(Rmdt&&Rmdt.d);
   if(!g)return {changed:false,ok:false,erro:'MDT da bacia não localizado'};
-  const I=baciaIntersecaoSuperficieCompleta(D,g);if(!I.ok)return {changed:false,...I};
+  let I=baciaIntersecaoSuperficieCompleta(D,g);if(!I.ok)return {changed:false,...I};
+  I=baciaIntersecaoRampaLocal(D,I,g);
   const antigos=L.features||[],limAnt=antigos.find(f=>/^(?:Limite externo|Crista do corte \/ encontro com terreno)$/i
     .test(String(f.props?.TIPO||''))),base=antigos.filter(f=>f!==limAnt),out=[],nos=[];
   for(const f of base){
     const tipo=String(f.props?.TIPO||''),ehQuebra=/Fundo|Crista|Pé|Berma|Eixo da rampa|Chegada no fundo/i.test(tipo);
     if(!ehQuebra||!Array.isArray(f.zg)){out.push(f);continue;}
-    const q=baciaRecortaLinhaNoMdt(f,g);out.push(...q.partes);nos.push(...q.nos);
+    /* A berma já foi cortada exatamente pelo corredor da rampa. Um segundo
+       recorte global apagava trechos prontos da caixa ou mudava suas pontas. */
+    const q=baciaBermaOriginalPreservada(D,f)?{partes:[f],nos:[]}:baciaRecortaLinhaNoMdt(f,g);
+    out.push(...q.partes);nos.push(...q.nos);
     for(const p of q.partes)for(const ix of [0,p.geom.length-1]){
       const z=+p.zg[ix],xy=p.geom[ix],zt=sampleZbil(g,xy[0],xy[1]);
       if(Number.isFinite(z)&&Number.isFinite(zt)&&Math.abs(z-zt)<=Math.max(1e-5,(g.cs||1)*1e-6))
@@ -2084,6 +2122,42 @@ function baciaCapturaEstadoBase(L){
     clip:baciaClonaDados(L._tinClipRings||null)
   };
 }
+/* A caixa anterior à rampa também precisa sobreviver ao arquivo do projeto.
+   Retirar as linhas da rampa da geometria final não recompõe os trechos
+   recortados. Projetos antigos são reconstruídos pela receita já gravada,
+   usando os mesmos anéis/cotas e a mesma rotina de bermas da geração. */
+function baciaBaseSemRampa(L,g){
+  const D=L&&L.tinSurface;if(!D)return null;
+  if(D.caixaSemRampa?.features&&D.caixaSemRampa?.tinSurface)
+    return baciaClonaDados(D.caixaSemRampa);
+  if(!D.rampa)return baciaCapturaEstadoBase(L);
+  const B=baciaCapturaEstadoBase(L),T=B.tinSurface;
+  delete T.caixaSemRampa;T.rampa=null;
+  const aresta=baciaFechaAnel(T.arestaR),fundo=baciaFechaAnel(T.fundoR);
+  if(aresta.length<4||fundo.length<4)return null;
+  const p={...T.p,g,talSym:false},ctr=T.ctr,
+    zA=+T.zAresta,zF=+T.zFundo;
+  let daylight=baciaFechaAnel(T.daylightRSemRampa||
+    (g&&!g.vazia?baciaDaylight(aresta,ctr,g,aresta.map(()=>zA),p):aresta));
+  if(daylight.length<4)daylight=aresta.map(q=>q.slice());
+  T.daylightR=daylight;T.limites=[daylight];
+  const temp={gtype:'line',tinSurface:T,features:[
+    {geom:fundo,multi:false,zg:fundo.map(()=>zF),props:{TIPO:'Fundo / pé do talude interno',COTA_FUNDO:zF,AREA_M2:baciaArea(fundo)}},
+    {geom:aresta,multi:false,zg:aresta.map(()=>zA),props:{TIPO:'Crista interna / pé do corte',COTA_MIN:zA,PROF_M:+p.P,AREA_M2:baciaArea(aresta)}},
+    {geom:daylight,multi:false,zg:daylight.map(q=>{
+      if(baciaDistRing(q[0],q[1],aresta)<=1e-6)return zA;
+      const z=g&&!g.vazia?sampleZbil(g,q[0],q[1]):NaN;return Number.isFinite(z)?z:zA;
+    }),props:{TIPO:'Crista do corte / encontro com terreno'}}
+  ]};
+  if(g&&!g.vazia){const I=baciaAplicaIntersecaoSuperficie(temp,g,{soldar:false});
+    if(I.ok)daylight=I.ring;}
+  temp.features.push(...baciaFeicoesSimbolos(p,aresta,fundo,daylight,zA,zF,null)
+    .map(f=>({...f,props:{...f.props,ORIGEM:'Caixa'}})));
+  if(g&&!g.vazia)baciaAplicaIntersecaoSuperficie(temp,g);
+  B.features=baciaClonaDados(temp.features);B.tinSurface=T;
+  B.clip=baciaClonaDados(temp._tinClipRings||[daylight]);
+  return B;
+}
 function baciaAplicaEstadoCamada(U,B){
   if(!U||!U.Lv||!B)return false;
   const L=U.Lv;
@@ -2099,8 +2173,17 @@ function baciaAplicaEstadoCamada(U,B){
   S.activeId=L.id;refreshUI();return true;
 }
 function baciaRestauraCaixaSemRampa(U){
-  if(!U||!U._baseState||!baciaAplicaEstadoCamada(U,U._baseState))return false;
-  U.Lrampa=null;U.Lfinal=null;U.rampaInfo=null;U.extravasorInfo=null;
+  if(!U||!U._baseState)return false;
+  const L=U.Lv,B={...U._baseState,name:L.name,color:L.color,weight:L.weight,
+    fill:L.fill,sym:baciaClonaDados(L.sym)};
+  /* O extravasor pode ter sido implantado depois da primeira rampa. Ele
+     pertence à caixa atual e não deve sumir quando apenas se muda o acesso. */
+  const extras=(L.features||[]).filter(f=>String(f.props?.ORIGEM||'')==='Extravasor');
+  if(extras.length)B.features=(B.features||[]).filter(f=>String(f.props?.ORIGEM||'')!=='Extravasor')
+    .concat(baciaClonaDados(extras));
+  if(!baciaAplicaEstadoCamada(U,B))return false;
+  U.Lrampa=null;U.Lfinal=null;U.rampaInfo=null;
+  U.extravasorInfo=extras.length?baciaClonaDados(L.tinSurface?.extravasor):null;
   U.daylightR=(U._baseDaylightR||U.arestaR||[]).map(q=>q.slice());
   return true;
 }
@@ -2144,7 +2227,7 @@ function baciaAdotaSelecionada(){
   /* Caixa adotada de um projeto sem raster: a grade do MDT não existe. A
      rampa só a usa como teto do talude, então entra a grade vazia e o projeto
      segue apoiado na geometria da própria caixa. */
-  const D=L.tinSurface,g=baciaGrade()||baciaGradeVazia();
+  const D=L.tinSurface,g=baciaMdtDaSuperficie(L)?.d||baciaGrade()||baciaGradeVazia();
   const anel=r=>Array.isArray(r)?r.map(q=>q.slice()):null;
   const fundoR=anel(D.fundoR),arestaR=anel(D.arestaR);
   if(!fundoR||fundoR.length<3||!arestaR||arestaR.length<3){
@@ -2154,18 +2237,7 @@ function baciaAdotaSelecionada(){
   const daylightR=anel(D.daylightR)||arestaR.map(q=>q.slice());
   const rampaInfo=baciaClonaDados(D.rampa||null);
   const extInfo=baciaClonaDados(D.extravasor||(D.p&&D.p.extravasor)||null);
-  /* O estado-base é a caixa SEM rampa: é ele que "Relocar" e "Limpar rampa"
-     restauram. Numa caixa que já chega com rampa, ele é reconstruído tirando
-     as feições da rampa e devolvendo o contorno anterior à fusão. */
-  const semRampa=(L.features||[]).filter(f=>{
-    const t=String((f.props||{}).TIPO||'');
-    return !/^Rampa\b/i.test(t)&&!/^Contorno fundido$/i.test(t);
-  });
-  const base={name:L.name,gtype:L.gtype,features:baciaClonaDados(semRampa),
-    fields:baciaClonaDados(L.fields||[]),color:L.color,weight:L.weight,fill:L.fill,
-    sym:baciaClonaDados(L.sym||null),
-    tinSurface:baciaClonaDados(Object.assign({},D,{rampa:null})),
-    clip:baciaClonaDados(L._tinClipRings||null)};
+  const base=baciaBaseSemRampa(L,g);
   const U={
     Lv:L,g,ctr:Array.isArray(D.ctr)?D.ctr.slice():null,
     p:Object.assign({},D.p||{},{g}),
@@ -2175,7 +2247,7 @@ function baciaAdotaSelecionada(){
     Lrampa:rampaInfo?L:null,Lfinal:rampaInfo?L:null,Lsim:null,
     volumeEscavacao:D.volumeEscavacao,
     _baseState:base,
-    _baseDaylightR:(rampaInfo&&anel(D.daylightRSemRampa))||daylightR.map(q=>q.slice())
+    _baseDaylightR:anel(base?.tinSurface?.daylightR)||daylightR.map(q=>q.slice())
   };
   if(!U.ctr){ // centro de segurança: centroide da aresta
     let sx=0,sy=0;arestaR.forEach(q=>{sx+=q[0];sy+=q[1];});
@@ -2593,10 +2665,8 @@ function baciaArmaRampaBotao(relocar){
   U.p.rampaW=Math.max(1,num('bcRampaW')||4);
   U.p.rampaI=Math.max(.1,num('bcRampaI')||15);
   U.p.rampaAz=num('bcRampaAz')||0;
-  U.p.bermOn=!!(document.getElementById('bcBermOn')||{}).checked;
-  U.p.talH=Math.max(1,num('bcTalH')||10);
-  U.p.bermW=Math.max(0,num('bcBermW')||0);
-  U.p.bermMinH=Math.max(0,num('bcBermMinH')||0);
+  /* Indicar/relocar altera somente a rampa. As bermas e os taludes são
+     os da caixa já construída, mesmo se o formulário estiver com padrões. */
   if(relocar||U.rampaInfo){
     U._relocarRollback={
       state:baciaCapturaEstadoBase(U.Lv),rampaInfo:baciaClonaDados(U.rampaInfo),
@@ -2605,7 +2675,7 @@ function baciaArmaRampaBotao(relocar){
     if(!baciaRestauraCaixaSemRampa(U)){
       delete U._relocarRollback;toast('Não foi possível restaurar a caixa original para relocar a rampa');return;
     }
-  }else if(!U._baseState){
+  }else{
     U._baseState=baciaCapturaEstadoBase(U.Lv);
     U._baseDaylightR=(U.daylightR||U.arestaR||[]).map(q=>q.slice());
   }
@@ -3318,6 +3388,7 @@ function baciaCaixaParaLinhas(Lv,pista){
     return t>1e-8&&t<1-1e-8&&u>=-1e-8&&u<=1+1e-8?t:null;
   };
   (Lv&&Lv.features||[]).forEach(f=>{
+    if(String(f.props?.ORIGEM||'')==='Extravasor'){out.push(baciaClonaDados(f));return;}
     const rings=(f.multi&&Array.isArray(f.geom&&f.geom[0]&&f.geom[0][0]))?f.geom:[f.geom];
     const zrs=(f.multi&&Array.isArray(f.zg&&f.zg[0]))?f.zg:[f.zg||[]];
     rings.forEach((ring,ri)=>{
@@ -3453,7 +3524,7 @@ function baciaSoldaQuebras3D(L){
   const fs=L.features||[],tipo=f=>String(f?.props?.TIPO||''),
     hosts=fs.filter(f=>/^(?:Limite externo|Crista do talude (?:esquerdo|direito).*encontro com terreno|Pé do talude (?:esquerdo|direito) da rampa)$/i.test(tipo(f))&&
       Array.isArray(f.geom)&&f.geom.length>1&&Array.isArray(f.zg)),
-    bermas=fs.filter(f=>/Berma (?:externa|interna)/i.test(tipo(f))&&
+    bermas=fs.filter(f=>!baciaBermaOriginalPreservada(D,f)&&/Berma (?:externa|interna)/i.test(tipo(f))&&
       String(f?.props?.ORIGEM||'')!=='Rampa'&&Array.isArray(f.geom)&&f.geom.length>1);
   if(!hosts.length||!bermas.length)return {changed:false,nos:0,maxXY:0,maxDZ:0};
   const cs=Math.max(.1,+D.cs||1),tolNo=Math.max(1e-7,cs*1e-6),
@@ -3521,6 +3592,20 @@ function baciaSoldaQuebras3D(L){
 function baciaReparaLinhasExistentes(L){
   const D=L&&L.tinSurface,R=D&&D.rampa,P=D&&D.p;
   if(!L||L.gtype!=='line'||!D||D.kind!=='bacia-rampa-v1'||!P)return {changed:false,added:0};
+  let bermaRecuperada=0;
+  /* Versões anteriores apagavam por nome a berma inteira ao pôr a rampa.
+     Reabrir esses projetos recupera só essa linha, cortada pelo corredor,
+     sem mexer nas outras feições ou na simbologia escolhida. */
+  if(R&&baciaBermaBoca(P)>0&&!(L.features||[]).some(f=>/^Berma da boca\b/i.test(String(f.props?.TIPO||'')))){
+    const B=baciaBaseSemRampa(L,baciaMdtDaSuperficie(L)?.d||baciaGradeVazia());
+    if(B){
+      const fs=baciaCaixaParaLinhas({features:B.features.filter(f=>/^Berma da boca\b/i
+        .test(String(f.props?.TIPO||'')))},R.corredor||R.pista||[]);
+      if(fs.length){L.features.push(...fs);bermaRecuperada=fs.length;}
+      D.caixaSemRampa=B;D.daylightRSemRampa=baciaClonaDados(B.tinSurface?.daylightR);
+      D.rampaLocalVersion=1;
+    }
+  }
   let inter={changed:false,ok:false};
   /* Migração automática: projetos antigos guardavam o limite proveniente da
      união 2D. Ao abrir o projeto, localiza o MDT correspondente e refaz o
@@ -3541,11 +3626,11 @@ function baciaReparaLinhasExistentes(L){
     crE=acha(/^Crista do talude esquerdo .*encontro com terreno$/i),
     peD=acha(/^Pé do talude direito da rampa$/i),
     crD=acha(/^Crista do talude direito .*encontro com terreno$/i);
-  if(!peE||!crE||!peD||!crD)return {changed:!!inter.changed,added:0,intersecao:inter};
+  if(!peE||!crE||!peD||!crD)return {changed:!!inter.changed||bermaRecuperada>0,added:bermaRecuperada,intersecao:inter};
   const auto=f=>f&&((f._baciaAutoInter===1)||
       (String(f.props?.ORIGEM||'')==='Rampa'&&/Berma na cota .*talude da rampa/i.test(String(f.props?.TIPO||'')))),
     atuais=(L.features||[]).filter(auto),base=(L.features||[]).filter(f=>!auto(f)),
-    caixa=base.filter(f=>/Berma (?:externa|interna)/i.test(String(f.props?.TIPO||''))&&
+    caixa=base.filter(f=>/Berma (?:externa|interna|da boca)/i.test(String(f.props?.TIPO||''))&&
       String(f.props?.ORIGEM||'')!=='Rampa'),
     talE={pe:peE.geom,zp:peE.zg||[],encontro:crE.geom,ze:crE.zg||[]},
     talD={pe:peD.geom,zp:peD.zg||[],encontro:crD.geom,ze:crD.zg||[]},
@@ -3557,7 +3642,7 @@ function baciaReparaLinhasExistentes(L){
   }
   const solda=baciaSoldaQuebras3D(L),mudouAuto=novas.length>0&&atuais.length!==novas.length;
   if(novas.length&&!solda.changed)L._baciaTopoVersion=Math.max(2,+L._baciaTopoVersion||0);
-  return {changed:!!inter.changed||mudouAuto||solda.changed,added:novas.length,replaced:atuais.length,
+  return {changed:!!inter.changed||mudouAuto||solda.changed||bermaRecuperada>0,added:novas.length+bermaRecuperada,replaced:atuais.length,
     nos:solda.nos,maxXY:solda.maxXY,maxDZ:solda.maxDZ,intersecao:inter};
 }
 
@@ -3686,8 +3771,12 @@ baciaGeraRampa = async function(Lv,p,ctr,fundoR,bocaR,zFundo,zMin,pDest,dirForca
   featsRampa.push({geom:limiteUnico,multi:false,zg:limiteZ,
     props:Object.assign(props('Limite externo',eixoLenFinal),
       {ORIGEM:'Caixa + rampa'})});
+  /* Só o limite antigo é substituído pelo encontro caixa+rampa. "Boca"
+     também faz parte do nome da BERMA: filtrá-la apagava todo o perímetro,
+     inclusive os trechos que não têm contato algum com a rampa. */
   const semIntersecao=baciaCaixaParaLinhas(Lv,corredor).filter(f=>
-    !/encontro com terreno|daylight|boca/i.test(String((f.props||{}).TIPO||'')));
+    !/^(?:Crista do corte \/ encontro com terreno|Limite externo|Contorno fundido|Boca(?:\s*\/\s*daylight)?|Daylight)$/i
+      .test(String((f.props||{}).TIPO||'')));
   /* Consolida também os pés/cristas das bermas. Os cílios nunca entram aqui:
      eles não são mais gerados, enquanto as linhas de quebra permanecem. */
   const Lengenharia=BACIA.ultima&&BACIA.ultima.Lsim;
@@ -3718,7 +3807,6 @@ baciaGeraRampa = async function(Lv,p,ctr,fundoR,bocaR,zFundo,zMin,pDest,dirForca
       {name:'COTA_INI',type:'N',length:12,decimal:2},
       {name:'COTA_FIM',type:'N',length:12,decimal:2}
     ];
-    Lr.color='#e46d1a';Lr.weight=3;if(Lr.sym){Lr.sym.color='#e46d1a';Lr.sym.weight=3;Lr.sym.fill=0;}
     Lr._tinClipRings=[limiteUnico.map(q=>q.slice())];
     try{drawLayer(Lr);}catch(e){}
     S.activeId=Lr.id;
@@ -3738,7 +3826,7 @@ baciaGeraRampa = async function(Lv,p,ctr,fundoR,bocaR,zFundo,zMin,pDest,dirForca
        relatório continuem reconhecendo a superfície final. A camada nova da
        rampa permanece estritamente linear, como linha de quebra. */
     const descricaoSuperficie={
-      kind:'bacia-rampa-v1',cs:g.cs||1,ctr:ctr.slice(),
+      kind:'bacia-rampa-v1',cs:g.cs||1,ctr:ctr.slice(),rampaLocalVersion:1,
       p:{P:p.P,angInt:p.angInt,angCorte:p.angCorte,bermOn:!!p.bermOn,
         talH:p.talH,bermW:p.bermW,bermMinH:p.bermMinH,talSym:false,bermBoca:baciaBermaBoca(p),C:p.C,L:p.L,ang:p.ang,
         extravasor:p.extravasor||null},
@@ -3748,6 +3836,14 @@ baciaGeraRampa = async function(Lv,p,ctr,fundoR,bocaR,zFundo,zMin,pDest,dirForca
       limites:[limiteUnico.map(q=>q.slice())],
       rampa:rampaInfo,extravasor:p.extravasor||null
     };
+    const baseSemRampa=baciaClonaDados(BACIA.ultima._baseState);
+    if(baseSemRampa?.tinSurface){
+      delete baseSemRampa.tinSurface.caixaSemRampa;
+      descricaoSuperficie.caixaSemRampa=baseSemRampa;
+      descricaoSuperficie.daylightRSemRampa=baciaClonaDados(baseSemRampa.tinSurface.daylightR);
+      descricaoSuperficie.rasterId=baseSemRampa.tinSurface.rasterId??
+        ((S.rasters||[]).find(r=>r.d===g)?.id??null);
+    }
     if(Lv) Lv.tinSurface=descricaoSuperficie;
     if(Lr){
       Lr.tinSurface=descricaoSuperficie;
@@ -4214,7 +4310,7 @@ function drenDimensionar(){
         if(b) b.textContent = fe? '◎ Gerar bacia (do polígono)' : '◎ Gerar bacia (toque o centro)'; };
       bcModo.onchange=sync; sync();
       const selF=document.getElementById('bcFeic');
-      if(selF) selF.addEventListener('mousedown',()=>{ try{ baciaPreencheFeic(); }catch(e){} }); }
+      if(selF) for(const event of ['pointerdown','focus'])selF.addEventListener(event,()=>{ try{ baciaPreencheFeic(); }catch(e){} }); }
   }catch(e){ console.warn('baciaInit:',e); }
 })();
 /* captura do toque p/ desenhar drenagem (mesmo padrão da inundação) */

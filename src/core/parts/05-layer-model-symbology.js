@@ -1675,6 +1675,7 @@ function finishVertexRender(L){
   if(S._view==='v3d'&&typeof v3Auto==='function')v3Auto();
 }
 function drawLayer(L,options){
+  window.GeoMineLayoutLive?.change();
   window.GeoMineDimensions?.beginRender?.(L);
   // Appending an operation result must not rebuild a million unchanged
   // vertices. Reuse the rendered group only while its prefix and renderer

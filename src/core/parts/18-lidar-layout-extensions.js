@@ -2767,6 +2767,7 @@ function layoutVectorConvention(L){
 /* Convenção cartográfica da prancha: estilo vetorial, classes, rótulos,
    filtros e estilo dos rasters. Não copia geometrias nem grades pesadas. */
 function layoutConventionSnapshot(){
+  if(window.GeoMineLayoutLive)return GeoMineLayoutLive.snapshot();
   const out={};
   (S.layers||[]).forEach(L=>{out['L:'+L.id]=layoutVectorConvention(L);});
   (S.rasters||[]).forEach(r=>{out['R:'+r.id]={style:layoutClone(r.style||null)};});
@@ -2818,16 +2819,15 @@ function layoutStackApply(stack){
   try{zApply();}catch(e){}
 }
 function layoutFrozenDirty(on){
-  S._loFrozenDirty=!!on;
-  const b=document.getElementById('btnLoRedraw'),lab=document.getElementById('loUpdateLabel');
-  if(b){b.classList.toggle('layout-dirty',!!on);b.title=on
-    ?'Existem alterações pendentes — atualizar a prancha congelada'
-    :(S.loMode==='a4'?'Atualizar a prancha congelada com o estado atual do mapa':'Atualizar a figura');}
-  if(lab)lab.textContent=(S.loMode==='a4'?'Atualizar prancha':'Atualizar figura')+(on?' •':'');
+  S._loFrozenDirty=false;
+  window.GeoMineLayoutLive?.sync();
+}
+function layoutConventionForSave(conv){
+  return window.GeoMineLayoutLive?GeoMineLayoutLive.serializeConvention(conv):layoutClone(conv);
 }
 function layoutPlateStateClone(base){
   return {vis:base&&base.vis?{...base.vis}:null,
-    conv:base&&base.conv?layoutClone(base.conv):null,
+    conv:base&&base.conv?layoutConventionForSave(base.conv):null,
     stack:base&&Array.isArray(base.stack)?base.stack.slice():null,
     legendVis:base&&base.legendVis?{...base.legendVis}:{}};
 }
@@ -2841,33 +2841,7 @@ function plateCapture(op){                     // UI -> prancha ativa
   pl.c = {};
   PLATE_CHECKS.forEach(id=>{ const e=document.getElementById(id); if(e) pl.c[id]=!!e.checked; });
   pl.center = S.loCenter ? S.loCenter.slice() : null;
-  /* Congelado é um instantâneo completo. Chamadas rotineiras gravam apenas
-     os campos da prancha; composição, ordem e convenções só mudam no botão
-     Atualizar (captureState) ou quando o Layout está destravado. */
-  const explicit=!!(op&&(op.captureState||op.captureVis));
-  if(explicit||!S.loFrozen||!pl.vis||!pl.conv){
-    const visAtual=layoutVisSnapshot(),convAtual=layoutConventionSnapshot(),stackAtual=(S.stack||[]).slice();
-    const pre=(S._view==='layout'&&S._preLayoutMapState)?S._preLayoutMapState:null;
-    let vis=visAtual,conv=convAtual,stack=stackAtual;
-    if(S.loFrozen&&explicit){
-      /* Ao entrar no Layout a tela mostra a fotografia antiga, mas `pre`
-         conserva o mapa atual. Mudanças feitas dentro do Layout têm
-         prioridade e são guardadas como rascunho até o clique em Atualizar. */
-      const visMudou=pl.vis&&!layoutStateEqual(visAtual,pl.vis),
-        preMesclada=pre&&pre.vis?{...visAtual,...pre.vis}:visAtual;
-      vis={...(S._loDraftVis||(visMudou?visAtual:preMesclada))};
-      const convMudou=pl.conv&&!layoutConventionEqual(convAtual,pl.conv);
-      conv=layoutClone(S._loDraftConv||(convMudou?convAtual:(pre&&pre.conv?pre.conv:convAtual)));
-      const stackMudou=Array.isArray(pl.stack)&&!layoutStateEqual(stackAtual,pl.stack);
-      stack=(S._loDraftStack||(stackMudou?stackAtual:(pre&&pre.stack?pre.stack:stackAtual))).slice();
-    }
-    pl.vis={...vis};pl.conv=layoutClone(conv);pl.stack=stack.slice();
-    if(pre){pre.vis={...pl.vis};pre.conv=layoutClone(pl.conv);pre.stack=pl.stack.slice();}
-    S._loAppliedPlateId=pl.id;S._loDraftVis=null;S._loDraftConv=null;S._loDraftStack=null;
-    layoutFrozenDirty(false);
-  }
-  if(explicit||!S.loFrozen||!pl.groups)
-    pl.groups = S.groups.map(g=>({id:g.id, collapsed:!!g.collapsed}));
+  if(window.GeoMineLayoutLive)GeoMineLayoutLive.capturePlate(pl,op);
 }
 function plateApply(pl, semState, deferRefresh){ // prancha -> UI
   layoutPresentationDefaults({basemap:pl.f?.loBasemap,sat:pl.c?.loSat});
@@ -2894,28 +2868,11 @@ function plateApply(pl, semState, deferRefresh){ // prancha -> UI
   try{ window.loCoordUISync&&window.loCoordUISync(); }catch(e){}
   S.loCenter = pl.center ? pl.center.slice() : null;
   try{ loNotaSyncBotao(); }catch(e){}          // cada prancha tem a sua caixa
-  if(!semState){
-    if(pl.conv)layoutConventionApply(pl.conv);
-    if(pl.stack)layoutStackApply(pl.stack);
-    /* O recolhimento/expansão pertence à prancha, mas a estrutura e os
-       vínculos dos grupos pertencem ao projeto. Mesclamos somente collapsed
-       para nunca substituir nomes, hierarquia ou groupId. */
-    if(Array.isArray(pl.groups)){
-      const collapsed=new Map(pl.groups.map(g=>[g.id,!!g.collapsed]));
-      (S.groups||[]).forEach(g=>{if(collapsed.has(g.id))g.collapsed=collapsed.get(g.id);});
-    }
-  }
-  if(pl.vis && !semState){
-    /* Camada criada DEPOIS da prancha não consta do instantâneo. Antes ela
-       ficava com a visibilidade corrente e vazava para dentro da prancha na
-       impressão; agora fica apagada até que a prancha seja atualizada.       */
-    allNodes().forEach(n=>{
-      const v = pl.vis[nodeKey(n.t,n.id)];
-      nodeSetVis(n, v!=null ? v : false);
-    });
-    zApply();
-  }
-  if(!semState){S._loAppliedPlateId=pl.id;S._loDraftVis=null;S._loDraftConv=null;S._loDraftStack=null;layoutFrozenDirty(false);}
+  // Cada prancha fornece apenas controles e sua convenção de renderização.
+  // A árvore e os estilos do projeto permanecem sempre no estado atual.
+  S._loAppliedPlateId=pl.id;
+  S._loDraftVis=null;S._loDraftConv=null;S._loDraftStack=null;
+  layoutFrozenDirty(false);
   // Na abertura, loadProject já atualiza a árvore após restaurar todos os
   // controles. Evita medir cada camada duas vezes no mesmo turno.
   layoutViewControlsSync();
@@ -3029,9 +2986,8 @@ function platesInit(){
   renderPlateTabs();
 }
 
-/* O Layout é congelado por padrão. Figura mantém seu próprio instantâneo; cada
-   prancha A4/A3 guarda camadas, controles e centro independentemente. */
-S.loFrozen=true; S._figFrozenVis=null; S._loDraftVis=null;
+/* Atualização automática por padrão; fechar o cadeado guarda a convenção. */
+S.loFrozen=false; S._figFrozenVis=null; S._loDraftVis=null;
 function layoutVisSnapshot(){
   const v={}; allNodes().forEach(n=>{v[nodeKey(n.t,n.id)]=n.o.visible!==false;}); return v;
 }
@@ -3055,59 +3011,9 @@ function layoutVisRestore(v){
   finally{S._loRestoringVis=false;}
 }
 function layoutFrozenApply(){
-  if(!S.loFrozen)return;
-  const atual=(S._preLayoutMapState&&S._preLayoutMapState.vis)||layoutVisSnapshot();
-  if(S.loMode==='a4'){
-    platesInit();
-    const pl=S.plates.find(p=>p.id===S.plateId);
-    if(pl){
-      const entrando=S._loAppliedPlateId!==pl.id,
-        convEntrada=S._preLayoutMapState&&S._preLayoutMapState.conv;
-      if(!layoutVisHasKnown(pl.vis)||(!layoutVisHasVisible(pl.vis)&&layoutVisHasVisible(atual)))pl.vis={...atual};
-      if(!pl.conv)pl.conv=layoutClone((S._preLayoutMapState&&S._preLayoutMapState.conv)||layoutConventionSnapshot());
-      if(!Array.isArray(pl.stack))pl.stack=((S._preLayoutMapState&&S._preLayoutMapState.stack)||S.stack||[]).slice();
-      /* Entrar no Layout não é o mesmo que escolher uma prancha antiga.
-         A visibilidade, a ordem e o enquadramento continuam congelados, mas
-         a simbologia/rótulos/filtros que o usuário acabou de editar no 2D
-         precisam aparecer na prévia e jamais podem ser revertidos. Mantemos
-         essa convenção como rascunho; trocar explicitamente de prancha ainda
-         chama plateApply() e restaura a convenção própria daquela prancha. */
-      if(entrando&&convEntrada&&!layoutConventionEqual(convEntrada,pl.conv)){
-        S._loDraftConv=layoutClone(convEntrada);
-        if(typeof layoutFrozenDirty==='function')layoutFrozenDirty(true);
-      }
-      /* Se alguma convenção ou ordem foi editada no Layout, preserva o
-         rascunho antes de reaplicar a fotografia congelada. Assim um ajuste
-         seguido de outro controle não se perde antes do clique em Atualizar. */
-      if(S._loAppliedPlateId===pl.id&&!S._loRestoringConv){
-        const vv=layoutVisSnapshot(),cc=layoutConventionSnapshot(),ss=(S.stack||[]).slice();
-        if(!layoutStateEqual(vv,pl.vis))S._loDraftVis={...vv};
-        if(!layoutConventionEqual(cc,pl.conv))S._loDraftConv=layoutClone(cc);
-        if(!layoutStateEqual(ss,pl.stack))S._loDraftStack=ss;
-        // Escala e dimensões não mudam a composição: não redesenhar a árvore
-        // nem reaplicar estilos a todas as feições em cada passo do controle.
-        if(layoutStateEqual(vv,S._loDraftVis||pl.vis)&&
-           layoutConventionEqual(cc,S._loDraftConv||pl.conv)&&
-           layoutStateEqual(ss,S._loDraftStack||pl.stack))return;
-      }
-      layoutConventionApply(S._loDraftConv||pl.conv);
-      layoutStackApply(S._loDraftStack||pl.stack);
-      layoutVisRestore(S._loDraftVis||pl.vis);
-      S._loAppliedPlateId=pl.id;
-    }
-  }else if(S.loMode==='fig'){
-    if(!layoutVisHasKnown(S._figFrozenVis)||(!layoutVisHasVisible(S._figFrozenVis)&&layoutVisHasVisible(atual)))
-      S._figFrozenVis={...atual};
-    const desired=S._loDraftVis||S._figFrozenVis;
-    if(layoutStateEqual(layoutVisSnapshot(),desired))return;
-    layoutVisRestore(desired);
-  }
-  try{refreshUI();}catch(e){}
+  // O render usa uma vista isolada; nunca reescreve o estado das camadas.
 }
-function layoutFrozenCapture(){
-  if(S.loMode==='a4')plateCapture({captureState:true});
-  else S._figFrozenVis=layoutVisSnapshot();
-}
+function layoutFrozenCapture(){window.GeoMineLayoutLive?.freezeCapture();}
 
 /* Menu persistente no painel esquerdo/dock de camadas. Mantém a paleta e o
    resumo sempre sincronizados com os controles reais do Layout. */
@@ -3353,17 +3259,7 @@ function layoutSideMenuSync(){
   const cfg=document.getElementById('btnLoSettings');
   if(cfg)cfg.onclick=e=>{e.stopPropagation();openAdjustments(panel);};
   const fr=document.getElementById('btnLoFreeze');
-  if(fr)fr.onclick=()=>{
-    if(!S.loFrozen){ S.loFrozen=true; layoutFrozenCapture(); }
-    else S.loFrozen=false;
-    fr.classList.toggle('on',S.loFrozen);
-    const lock=fr.querySelector('.lo-top-ic');if(lock)lock.innerHTML=S.loFrozen?
-      '<svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3M12 14v2.5"/></svg>':
-      '<svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M9 10V7a4 4 0 017-2.5M12 14v2.5"/></svg>';
-    fr.title=S.loFrozen?'Layout congelado: a prancha preserva camadas e enquadramento':'Layout destravado: acompanha as camadas atuais';
-    layoutSideMenuSync();
-    toast(S.loFrozen?'Layout congelado':'Layout destravado');
-  };
+  if(fr)fr.onclick=()=>window.GeoMineLayoutLive?.toggle();
   const dup=document.getElementById('btnPlateDupTop');
   if(dup)dup.onclick=()=>{
     if(S.loMode!=='a4'){ativaPrancha('a4');toast('Abra uma prancha A4/A3 para duplicá-la');return;}

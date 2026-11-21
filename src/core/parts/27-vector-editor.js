@@ -202,6 +202,7 @@ function edSelecionar(alvo, quieto){
   if(!alvo){ ED.sel=null; ED.vi=-1; ED.ring=0; edRedraw(); edPainelSync(); return false; }
   ED.sel={L:alvo.L, idx:alvo.idx, f:alvo.f}; ED.ring=0; ED.vi=-1;
   S.activeId=alvo.L.id; S.selFeat={layer:alvo.L, layerId:alvo.L.id, idx:alvo.idx};
+  window.GeoMineBoxSelection?.sync();
   edRedraw(); edPainelSync();
   if(!quieto){
     const rings=edRings(alvo.L,alvo.f);
@@ -2271,6 +2272,7 @@ const ED_PNG_ICONS={
   buffer:'buffer',simplif:'simplificar',densif:'pontos-cotados',suaviz:'suavizar'
 };
 function edIco(k){
+  if(EDI[k]?.includes('data-gm-editor-icon')||EDI[k]?.includes('data-gm-cad-icon'))return '<span class="edic">'+EDI[k]+'</span>';
   const id=ED_PNG_ICONS[k], p=(typeof RIB_PNG!=='undefined'&&id)?RIB_PNG[id]:null;
   if(p) return `<span class="edic"><span class="edic-png-native" style="--ix:${p[0]};--iy:${p[1]}"></span></span>`;
   return '<span class="edic">'+(EDI[k]||EDI.sel)+'</span>';
@@ -2290,7 +2292,7 @@ var ED_CMDS=[
     {k:'vdel',    ic:'vdel',    n:'Apagar', ali:['apagarvertice'], run:edApagarVertice},
     {k:'vmove',   ic:'vmove',   n:'Mover', ali:['moververtice'], run:()=>toast('Arraste o vértice marcado (com snap)')},
     {k:'vz',      ic:'vz',      n:'Δz vértice', ali:['dz'], run:()=>edAbreDeltaZ(false)},
-    {k:'vzf',     ic:'vz',      n:'Δz feição', ali:['dzfeicao'], run:()=>edAbreDeltaZ(true)},
+    {k:'vzf',     ic:'vzf',     n:'Δz feição', ali:['dzfeicao'], run:()=>edAbreDeltaZ(true)},
     {k:'terreno', ic:'terreno', n:'Cota do terreno', ali:['cota'], run:edCotaTerreno},
   ]},
   {g:'Segmento', it:[

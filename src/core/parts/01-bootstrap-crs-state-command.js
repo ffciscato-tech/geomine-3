@@ -354,19 +354,8 @@ function nodeSetVis(n, vis){
   if(vis)window.GeoMineProjectOpening?.ensure(n);
   const lyr=nodeLayer(n);
   if(lyr){ if(vis) lyr.addTo(map); else map.removeLayer(lyr); }
-  /* Uma alteração MANUAL feita pela árvore enquanto o Layout está aberto
-     atualiza o estado de trabalho que será devolvido ao Mapa 2D, mas NÃO
-     substitui a fotografia da prancha congelada. A prancha só recaptura a
-     composição no botão explícito "Atualizar prancha". */
-  if(S._view==='layout'&&!S._loRestoringVis){
-    const k=nodeKey(n.t,n.id);
-    if(S._preLayoutMapState&&S._preLayoutMapState.vis)
-      S._preLayoutMapState.vis[k]=vis;
-    if(S.loFrozen){
-      if(typeof layoutVisSnapshot==='function')S._loDraftVis=layoutVisSnapshot();
-      if(typeof layoutFrozenDirty==='function')layoutFrozenDirty(true);
-    }
-  }
+  // O olho altera o projeto; o render congelado continua usando sua própria vista.
+  window.GeoMineLayoutLive?.change();
   /* UMA fonte de verdade: o olho da árvore controla mapa, Layout e 3D.
      Mantém o antigo dicionário apenas como espelho compatível com projetos
      já salvos, nunca mais como uma seleção independente. */
@@ -400,6 +389,7 @@ function panelDosRotulos(chave){
   return nome;
 }
 function zApply(){
+  window.GeoMineLayoutLive?.change();
   try{ if(typeof syncOrthoTiles==='function') syncOrthoTiles(); }catch(e){}
   try{ if(typeof syncDemTiles==='function') syncDemTiles(); }catch(e){}
   const nodes=stackSync();

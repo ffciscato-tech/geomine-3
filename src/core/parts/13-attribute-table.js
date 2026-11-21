@@ -149,9 +149,11 @@ function openAttr(selIdx,options={}){
   body.querySelectorAll('tr[data-i]').forEach(tr=>tr.addEventListener('click',e=>{
     if(e.target.isContentEditable) return; const i=L.features.indexOf(renderedFeatures.get(+tr.dataset.i));if(i<0)return;
     S.selFeat={layer:L, layerId:L.id, idx:i}; S.activeId=L.id;
+    window.GeoMineBoxSelection?.sync();
     highlightSel(); zoomToSel();
     body.querySelectorAll('tr').forEach(r=>r.classList.remove('sel')); tr.classList.add('sel');
   }));
+  window.GeoMineAttributeSort?.install(L,body,fields,renderedFeatures,featureOnly);
   panel.classList.add('open');
 }
 document.getElementById('attrClose').onclick=()=>document.getElementById('attrPanel').classList.remove('open');

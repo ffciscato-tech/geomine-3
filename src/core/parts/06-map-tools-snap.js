@@ -445,6 +445,8 @@ function setTool(t){
     else toast('A camada "'+trava.name+'" está bloqueada. Desbloqueie-a na aba GIS.');
     t='select';
   }
+  if(t!=='baciaRampa'&&typeof BACIA_RAMPA!=='undefined'&&BACIA_RAMPA)
+    baciaDesarmaEstado(t);
   // se estávamos desenhando drenagem e há traçado válido, SALVA antes de trocar
   // (evita perder a feição ao clicar num raster / mudar de ferramenta)
   if(!S._drenFinalizando && S.tool==='dren' && t!=='dren' && S._drenBuf && S._drenBuf.length>=2){

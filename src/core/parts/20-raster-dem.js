@@ -611,6 +611,7 @@ function rasterDimensoesOriginais(d){
   return [d._W0||(d._full&&d._full.nc)||d.nc,d._H0||(d._full&&d._full.nr)||d.nr];
 }
 function renderRaster(r,options={}){
+  window.GeoMineLayoutLive?.change();
   if(r&&!r.tinPuro){r.demHD=true;r.dispFull=true;}
   if(r?.style?.mode==='relevo_local'&&window.GeoMineLocalRelief){r.demHD=true;if(r.overlay)r.overlay.setOpacity(0);demTilesRefresh(r);syncDemTiles(r);zApply();return;}
   if(r)delete r._projectDrawDeferred;
@@ -1533,6 +1534,7 @@ function orthoPreviewOpacity(tilesProntos){
   I.overlay.setOpacity((tilesProntos&&_orthoGrid)?0:orthoOpacidade());
 }
 function orthoSetOpacity(v){
+  window.GeoMineLayoutLive?.change();
   v=Math.min(1,Math.max(0,+v||0));
   const e=document.getElementById('imgOp'); if(e && +e.value!==v) e.value=String(v);
   if(_orthoGrid && typeof _orthoGrid.setOpacity==='function') _orthoGrid.setOpacity(v);

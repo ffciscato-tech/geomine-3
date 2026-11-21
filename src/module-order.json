@@ -1624,6 +1624,22 @@
       "path": "modules/hydrology/drainage-routing.js",
       "open_tag": "<script id=\"geomine-drainage-routing\">",
       "close_tag": "</script>"
+    },
+    {
+      "order": 156,
+      "slot": "asset-158",
+      "kind": "style",
+      "path": "styles/modules/ui-refinements.css",
+      "open_tag": "<style id=\"geomine-ui-refinements-style\">",
+      "close_tag": "</style>"
+    },
+    {
+      "order": 157,
+      "slot": "asset-159",
+      "kind": "script",
+      "path": "modules/ui/ui-refinements.js",
+      "open_tag": "<script id=\"geomine-ui-refinements\">",
+      "close_tag": "</script>"
     }
   ]
 }

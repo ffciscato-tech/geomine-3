@@ -80,7 +80,7 @@
     <button class="tbtn" id="btnQGIS" title="Importar/Exportar projeto QGIS">Ⓠ QGIS ▾</button>
     <input type="file" id="qgisIn" accept=".zip,.qgs,.qgz" multiple style="display:none">
     <input type="file" id="qgisDirIn" webkitdirectory directory multiple style="display:none">
-    <label class="tbtn" for="projIn" title="Projetos são salvos em .ccmgis. Se o Google Drive mostrar o arquivo em cinza (Arquivo em BIN), abra por 'Meus Arquivos' ou baixe o arquivo — o conteúdo é JSON e o CCMGIS lê normalmente.">📂 Abrir projeto</label>
+    <label class="tbtn" for="projIn" title="Abrir um projeto do Google Drive ou deste aparelho">📂 Abrir projeto</label>
     <input type="file" id="projIn" style="display:none">
     </div>
   </header>
@@ -484,7 +484,7 @@
         <h3>Elementos do layout <span class="chev">▾</span></h3>
         <div class="body">
           <div class="stickybar">
-            <button class="tbtn" id="btnRedrawTop" style="flex:1;justify-content:center;background:var(--amber);color:#1a1206;font-weight:600">⟳ Atualizar figura</button>
+            <button class="tbtn" id="btnRedrawTop" style="flex:1;justify-content:center;background:var(--amber);color:#1a1206;font-weight:600">Congelar propriedades</button>
             <button class="tbtn" id="btnLoCenterReset2" title="Voltar ao centro automático">⟲</button>
           </div>
           <label class="field">Título</label>
@@ -620,7 +620,7 @@
             <option value="tr">Superior direita</option><option value="tl">Superior esquerda</option>
           </select>
 
-          <button class="mini" id="btnRedraw">Atualizar layout</button>
+          <button class="mini" id="btnRedraw">Congelar propriedades</button>
         </div>
       </div>
 
@@ -3119,13 +3119,13 @@ Pode usar a mesma linha ou linhas diferentes.</div>
           <button type="button" class="tbtn" id="btnLoLegendItems" title="Escolher as linhas que aparecem na legenda" aria-label="Itens da legenda" aria-controls="layoutQuickPanel" aria-pressed="false"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="16" rx="1.5"/><path d="m6.5 8 1.3 1.3L10 6.8M12 8h5.5m-11 5 1.3 1.3L10 11.8M12 13h5.5m-11 5 1.3 1.3L10 16.8M12 18h5.5"/></svg></span></button>
           <button class="tbtn" id="btnLoNota" title="Caixa de texto junto à legenda (somente prancha A3)" aria-label="Caixa de texto na legenda"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M8.6 15.5L12 8l3.4 7.5M9.9 13h4.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
           <button class="tbtn" id="btnLoSettings" title="Barras de ajustes do layout" aria-label="Ajustes do layout"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.5-2-3.4-2.4 1a8 8 0 00-2-1.2L14.2 3h-4.4l-.3 2.7a8 8 0 00-2 1.2l-2.4-1-2 3.4 2 1.5A7 7 0 005 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.4-1a8 8 0 002 1.2l.3 2.7h4.4l.3-2.7a8 8 0 002-1.2l2.4 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg></span></button>
-          <button class="tbtn layout-toggle on" id="btnLoFreeze" title="Layout congelado: a prancha preserva camadas e enquadramento" aria-label="Congelar layout"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3M12 14v2.5"/></svg></span></button>
+          <button class="tbtn layout-toggle on" id="btnLoFreeze" style="display:none" title="Layout congelado: a prancha preserva camadas e enquadramento" aria-label="Congelar layout"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3M12 14v2.5"/></svg></span></button>
           <button class="tbtn" id="btnLoCenter" title="Definir o centro por um ponto" aria-label="Definir centro"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></span></button>
           <button class="tbtn" id="btnLoCenterReset" title="Voltar ao enquadramento automático" aria-label="Enquadramento automático"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><path d="M5 8V4h4M19 16v4h-4M5 4l4 4M19 20l-4-4M16 5h3v3M8 19H5v-3"/></svg></span></button>
           <span class="lo-divider" aria-hidden="true"></span>
           <button class="tbtn" id="btnSeloCfg2" title="Dados do selo" aria-label="Dados do selo"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM13 5v14M13 13h7M7 9h3M7 13h3M7 17h3"/></svg></span></button>
           <button class="tbtn" id="btnFigTxt" title="Figura para texto" aria-label="Figura para texto"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 9h10M4 13h16M4 17h8"/><path d="M16 17l2 2 3-4"/></svg></span></button>
-          <button class="tbtn lo-plate-action" id="btnLoRedraw" title="Atualizar a prancha congelada com o estado atual do mapa" aria-label="Atualizar prancha"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M18.4 12a7 7 0 00-12-4L4 10M5.6 12a7 7 0 0012 4L20 14"/></svg></span><span class="lo-action-label" id="loUpdateLabel">Atualizar prancha</span></button>
+          <button class="tbtn lo-plate-action" id="btnLoRedraw" aria-pressed="false" title="Atualização automática. Fechar o cadeado congela as propriedades." aria-label="Congelar propriedades do layout"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M18.4 12a7 7 0 00-12-4L4 10M5.6 12a7 7 0 0012 4L20 14"/></svg></span><span class="lo-action-label" id="loUpdateLabel">Automático</span></button>
           <button class="tbtn" id="btnLoCopyTop" title="Copiar figura para colar no relatório (Ctrl+V)" aria-label="Copiar figura" style="background:var(--amber);color:#1a1206;font-weight:600"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><rect x="7" y="7" width="12" height="14" rx="2"/><path d="M9 7V5h8v2M10 3h6v4h-6zM5 17H4a2 2 0 01-2-2V5a2 2 0 012-2h3"/></svg></span><span class="lo-copy-label">Copiar</span></button>
           <button class="tbtn" id="btnLoExport" title="Exportar layout" aria-label="Exportar"><span class="lo-top-ic"><svg viewBox="0 0 24 24"><path d="M12 3v12M8 11l4 4 4-4M5 18v3h14v-3"/></svg></span></button>
           <button class="tbtn" id="btnLoPDF" style="display:none">PDF</button>
@@ -4378,6 +4378,8 @@ DWG precisa ser convertido para DXF antes (formato fechado da Autodesk).</div>
 <!-- CCMGIS_MODULE:asset-154 -->
 <!-- CCMGIS_MODULE:asset-155 -->
 <!-- CCMGIS_MODULE:asset-156 -->
+<!-- CCMGIS_MODULE:asset-158 -->
+<!-- CCMGIS_MODULE:asset-159 -->
 <!-- CCMGIS_MODULE:asset-157 -->
 <!-- GEOMINE_GATE:SCRIPT --></body>
 </html>

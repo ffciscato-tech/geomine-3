@@ -1304,6 +1304,7 @@ const CATS=[
     ribbonOpen(sec,btn,foco==='rampa'?'Rampa de acesso':'Caixa de retenção');
     sec.classList.remove('collapsed');
     const r=topoRaster();
+    window.GeoMineBoxSelection?.open();
     try{ if(typeof refreshBaciaPanel==='function') refreshBaciaPanel(); }catch(e){}
     if(r){
       topoAplicaRaster(r);
@@ -2625,6 +2626,8 @@ Object.assign(RIB_SVG,{
 });
 /* ALAGIS_PNG_SPRITE_END */
 function ribIcon(cmd){
+  const cadIcon=window.GeoMineCADIcons?.icon(cmd.commandId);
+  if(cadIcon)return '<span class="ric-lib">'+cadIcon+'</span>';
   if(RIB_CAT_ATUAL==='inicio' && cmd.ic && typeof RIB_PROJECT_PNG!=='undefined' && RIB_PROJECT_PNG[cmd.ic]){
     const p=RIB_PROJECT_PNG[cmd.ic];
     if(!document.documentElement.style.getPropertyValue('--alagis-project-png-sprite'))
@@ -3347,6 +3350,7 @@ function ppImageHTML(I){
 }
 function propRefresh(){
   const d=document.getElementById('propDockContent')||document.getElementById('propDock');if(!d||!acadOn())return;
+  window.GeoMineBoxSelection?.sync();
   if(S.selRaster&&(S.rasters||[]).includes(S.selRaster)&&!S.activeId){d.innerHTML=ppRasterHTML(S.selRaster);return;}
   if(S.selRaster&&S.img&&S.selRaster===S.img&&!S.activeId){d.innerHTML=ppImageHTML(S.img);return;}
   const L=(typeof activeLayer==='function')?activeLayer():null;

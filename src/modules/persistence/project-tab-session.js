@@ -331,7 +331,7 @@ async function initialize(owner){
       if(resume)await reopen({automatic:true});
     }
   }catch(_){persistent=false;}
-  finally{updateSourceButton();resolveReady(state());}
+  finally{updateSourceButton();resolveReady(state());window.dispatchEvent(new CustomEvent('geomine:project-tab-ready',{detail:state()}));}
 }
 function accountChanged(owner){
   // The first login after reload identifies the owner of the existing tab.

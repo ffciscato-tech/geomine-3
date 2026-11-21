@@ -137,7 +137,7 @@ function layoutBasemap(){
 }
 function layoutPresentationSignature(){
   return JSON.stringify([layoutBasemap(),document.getElementById('loSat')?.checked!==false,
-    layoutCoordFontFactor(document.getElementById('loCoordFS')?.value)]);
+    layoutCoordFontFactor(document.getElementById('loCoordFS')?.value),S._loAppearanceEpoch||0]);
 }
 function layoutPresentationDefaults(saved){
   const base=document.getElementById('loBasemap'),sat=document.getElementById('loSat');
@@ -331,9 +331,9 @@ function layoutFeaturePlotted(L,f,b){
   }
   return layoutPathsIntersect(paths,L.gtype,[b[0]-margin,b[1]-margin,b[2]+margin,b[3]+margin],filled)||!!hatchVisible;
 }
-function layoutPlotCandidates(bounds){
+function layoutPlotCandidates(bounds,model=window.GeoMineLayoutLive?.model()){
   const catalog={keys:new Set(),classKeys:new Set(),features:new Map(),bounds:bounds.slice()};
-  for(const n of stackSync()){
+  for(const n of (model?.nodes||stackSync())){
     if(n.o.visible===false)continue;const o=n.o,key=nodeKey(n.t,n.id);
     if(n.t==='L'){
       if(window.GeoMineGeology?.meshViews?.isLayer(o)){
@@ -356,7 +356,7 @@ function layoutPlotCandidates(bounds){
       if(!layoutRectIntersects(b,bounds))continue;
       const rings=n.t==='R'?rasterClipRings(o):null;
       if(rings?.length&&!layoutPathsIntersect(rings,'polygon',bounds,true))continue;
-      const opacity=n.t==='I'?(typeof orthoOpacidade==='function'?orthoOpacidade():1):o.style?.opacity??1;
+      const opacity=n.t==='I'?(o._layoutOpacity??(typeof orthoOpacidade==='function'?orthoOpacidade():1)):o.style?.opacity??1;
       if(Number(opacity)<=0)continue;
       if(n.t==='I'){if(o.url)catalog.keys.add(key);continue;}
       const d=o.d,s=o.style||{},classes=s.classes||[];
@@ -383,10 +383,10 @@ function layoutPlotCandidates(bounds){
       if(found)catalog.keys.add(key);
     }
   }
-  for(const w of S.wms||[]){
+  for(const w of model?.wms||S.wms||[]){
     if(w.protocol==='WMTS')continue; // WMTS é exibido no mapa 2D; Layout requer WMS.
     if(w.visible===false||!w.url||!w.layers||Number(w.opacity??.85)<=0)continue;
-    const mask=w.clipLayerId!=null?S.layers.find(l=>String(l.id)===String(w.clipLayerId)):null;
+    const mask=w.clipLayerId!=null?(model?.layers||S.layers).find(l=>String(l.id)===String(w.clipLayerId)):null;
     if(mask&&!(mask.features||[]).some(f=>layoutPathsIntersect(layoutGeometryPaths(f.geom,mask.crs),'polygon',bounds,true)))continue;
     catalog.keys.add('W:'+w.id);
   }
@@ -461,9 +461,9 @@ function legendNodeMapVisible(n,catalog=null){
   const parts=legendNodeParts(n,catalog);
   return parts===null||parts.length>0;
 }
-function legendNodeIncluded(n,state,catalog=null){
+function legendNodeIncluded(n,state,catalog=null,model=null){
   if(!legendNodeMapVisible(n,catalog))return false;
-  if(groupPath(n.o.groupId).some(g=>!legendVisibilityOn(legendGroupKey(g.id),state)))return false;
+  if(groupPath(n.o.groupId,model?.groups||S.groups||[]).some(g=>!legendVisibilityOn(legendGroupKey(g.id),state)))return false;
   if(!legendVisibilityOn(legendLayerKey(n),state))return false;
   const parts=legendNodeParts(n,catalog);
   return parts===null||parts.some(p=>legendVisibilityOn(p.key,state));
@@ -479,11 +479,11 @@ function legendLayerLabel(n){
 }
 /* Fonte única do checklist do Layout. Contém inclusive os itens desmarcados
    na legenda, mas nunca camadas/classes apagadas no mapa. */
-function legendControlRows(catalog=layoutLegendCatalog()){
-  const rows=[],state=legendVisibilityState(),tree=displayList();
+function legendControlRows(catalog=layoutLegendCatalog(),model=window.GeoMineLayoutLive?.model()){
+  const rows=[],state=legendVisibilityState(),tree=model?.tree||displayList();
   tree.forEach(it=>{
     if(it.kind==='group'){
-      const members=groupMembers(it.g.id).filter(n=>legendNodeMapVisible(n,catalog));
+      const members=tree.filter(x=>x.n&&x.ancestors.includes(it.g.id)).map(x=>x.n).filter(n=>legendNodeMapVisible(n,catalog));
       if(members.length)rows.push({kind:'group',key:legendGroupKey(it.g.id),label:it.g.name,depth:it.depth,groupKeys:it.ancestors.map(legendGroupKey)});
       return;
     }
@@ -493,22 +493,22 @@ function legendControlRows(catalog=layoutLegendCatalog()){
     const parts=legendNodeParts(n,catalog);
     if(parts)parts.forEach(p=>rows.push({kind:'item',key:p.key,label:p.label,parentKey:key,groupKey,groupKeys,depth:it.depth+1}));
   });
-  (S.wms||[]).forEach(w=>{if(w&&w.visible!==false&&(!catalog||catalog.keys.has('W:'+w.id)))rows.push({kind:'layer',key:'W:'+w.id,label:w.name||w.layers||'Camada WMS',groupKey:null});});
+  (model?.wms||S.wms||[]).forEach(w=>{if(w&&w.visible!==false&&(!catalog||catalog.keys.has('W:'+w.id)))rows.push({kind:'layer',key:'W:'+w.id,label:w.name||w.layers||'Camada WMS',groupKey:null});});
   return rows.map(r=>({...r,on:legendVisibilityOn(r.key,state)}));
 }
 /* Monta a lista hierárquica de itens da legenda (grupo → camada → classes visíveis) */
-function legendItems(catalog=layoutLegendCatalog()){
-  const items=[],legendState=legendVisibilityState(),tree=displayList(),numbers=groupNumbering(tree);
+function legendItems(catalog=layoutLegendCatalog(),model=window.GeoMineLayoutLive?.model()){
+  const items=[],legendState=legendVisibilityState(),tree=model?.tree||displayList(),numbers=groupNumbering(tree);
   const numbered=document.getElementById('loGroupNumbers')?.checked===true;
   let containerResumoAdicionado=false;
   tree.forEach(it=>{
     if(it.kind==='group'){
-      const mem=groupMembers(it.g.id).filter(n=>legendNodeIncluded(n,legendState,catalog));
+      const mem=tree.filter(x=>x.n&&x.ancestors.includes(it.g.id)).map(x=>x.n).filter(n=>legendNodeIncluded(n,legendState,catalog,model));
       if(mem.length&&legendVisibilityOn(legendGroupKey(it.g.id),legendState)) items.push({label:groupDisplayName(it.g,numbers,numbered), grp:true, indent:it.depth});
       return;
     }
     const n=it.n,o=n.o;
-    if(!legendNodeIncluded(n,legendState,catalog)) return;
+    if(!legendNodeIncluded(n,legendState,catalog,model)) return;
     const ind=it.depth;
     if(it.kind==='raster'){
       const rc=o.style&&o.style.classes;
@@ -593,7 +593,7 @@ function legendItems(catalog=layoutLegendCatalog()){
   });
   /* WMS não faz parte da pilha vetorial/raster local, mas é uma camada
      cartográfica real e precisa constar na legenda da prancha. */
-  (S.wms||[]).forEach(w=>{
+  (model?.wms||S.wms||[]).forEach(w=>{
     if(!w || w.protocol==='WMTS' || w.visible===false || catalog&&!catalog.keys.has('W:'+w.id) || !legendVisibilityOn('W:'+w.id,legendState)) return;
     items.push({label:w.name||w.layers||'Camada WMS',kind:'wms',indent:0,
       provider:w.provider||w.attribution||'WMS'});
@@ -691,6 +691,7 @@ function layoutSourceCurrent(){
     S._lastLayoutSignature===JSON.stringify([!!S.orthoDispFull,S.workCRS,S._loRenderEpoch||0,layoutPresentationSignature()]);
 }
 async function buildLayout(options){
+  window.GeoMineLayoutLive?.cancel();
   options=options||{};
   const baseInput=document.getElementById('loBasemap');if(baseInput&&!baseInput.value)baseInput.value=layoutBasemap();
   const renderId=S._loRenderId=(S._loRenderId||0)+1,epoch=S._loRenderEpoch||0,
@@ -703,13 +704,7 @@ async function buildLayout(options){
   /* modo PROPOSTA: não é uma planta — desenha as páginas A4 da proposta
      comercial e sai. O mapa dela é capturado à parte, pelo modo Figura. */
   if((S.loMode||'fig')==='prop'){ if(typeof propBuild==='function') propBuild(); return; }
-  /* O instantâneo da prancha só governa a árvore ENQUANTO o usuário está no
-     Layout. Sliders e a abertura de projeto podem deixar um buildLayout
-     atrasado na fila; executá-lo já no Mapa/3D restaurava silenciosamente a
-     visibilidade antiga da prancha e trocava a cava recém-gerada por outra
-     camada. Isso também explicava vetores que sumiam ao sair do Layout. */
-  if(S._view==='layout'&&S.loFrozen&&!S._loRestoringVis&&
-     typeof layoutFrozenApply==='function')layoutFrozenApply();
+  const model=window.GeoMineLayoutLive?.model();
   const mode=S.loMode||'fig';
   const gvn=(id,d)=>{const e=document.getElementById(id); const v=e?+e.value:NaN; return isFinite(v)?v:d;};
   const gcb=(id,d)=>{const e=document.getElementById(id); return e?e.checked:d;};
@@ -781,24 +776,25 @@ async function buildLayout(options){
     }
     g.forEach(q=>growGeom(L,q));
   };
-  S.layers.filter(L=>L.visible!==false).forEach(L=>(L.features||[]).forEach(f=>{
+  (model?.layers||S.layers).filter(L=>L.visible!==false).forEach(L=>(L.features||[]).forEach(f=>{
     if(!f.geom||!featureVisible(L,f))return;
     growGeom(L,f.geom);
   }));
   const meshExtent=typeof window!=='undefined'&&window.GeoMineGeology?.meshViews?.extent3D();
   if(meshExtent){grow(meshExtent.xmin,meshExtent.ymin);grow(meshExtent.xmax,meshExtent.ymax);}
-  const rasVis=(S.rasters||[]).filter(r=>r.visible!==false);
+  const rasVis=(model?.rasters||S.rasters||[]).filter(r=>r.visible!==false);
   rasVis.forEach(r=>{ const b=rasterVisibleBounds(r); grow(b[0],b[1]); grow(b[2],b[3]); });
-  const imgVis=(S.img && S.img.url && S.img.b && S.img.visible!==false);
-  if(imgVis){ const b=layoutOrthoBoundsWork(S.img,crs); grow(b[0],b[1]); grow(b[2],b[3]); }
-  if(!isFinite(minE)){ wrap.innerHTML='<div style="padding:40px;color:#888">Nada visível para plotar — ligue ao menos uma camada, raster ou a ortofoto.</div>'; return; }
+  const plotImg=model?model.img:S.img;
+  const imgVis=(plotImg&&plotImg.url&&plotImg.b&&plotImg.visible!==false);
+  if(imgVis){ const b=layoutOrthoBoundsWork(plotImg,crs); grow(b[0],b[1]); grow(b[2],b[3]); }
+  if(!isFinite(minE)){ S._lastSVG=null;S._loPlotCatalog=null;S._lastSVGRevision=(S._lastSVGRevision||0)+1;window.GeoMineLayoutLive?.rendered();wrap.innerHTML='<div style="padding:40px;color:#888">Nada visível para plotar — ligue ao menos uma camada, raster ou a ortofoto.</div>'; return; }
   const padPct=clamp(gvn('loPad',4),0,30)/100;
   const spanEData=((maxE-minE)||50)*(1+padPct), spanNData=((maxN-minN)||50)*(1+padPct);
 
   let mmPerM=1000/scale;                    // mm de papel por metro de terreno
 
   // ---- legenda: itens e caixa (dimensionados ANTES do papel) ----
-  const legIt = wantLeg ? legendItems(null) : [];
+  const legIt = wantLeg ? legendItems(null,model) : [];
   const LG={
     pad:3.0*Math.max(1,legFS*0.85),
     row:Math.max(6.2*legFS, 4.0*symFS+2.0),
@@ -948,7 +944,7 @@ async function buildLayout(options){
   const x0=cE-spanE_max/2, x1=cE+spanE_max/2, y0=cN-spanN_max/2, y1=cN+spanN_max/2;
   const sx=e=>mL+(e-x0)*mmPerM, sy=n=>mT+(y1-n)*mmPerM; // y invertido
   S._loT={x0,y1,mmPerM,mL,mT,mapW,mapH,PW,PH}; // p/ o modo 🎯 centro
-  const candidates=layoutPlotCandidates([x0,y0,x1,y1]);
+  const candidates=layoutPlotCandidates([x0,y0,x1,y1],model);
   let plotCatalog={keys:new Set(),classKeys:candidates.classKeys,bounds:candidates.bounds};
   const dimEl=document.getElementById('loDims');
   const paperLabel={a4p:'A4 retrato',a4l:'A4 paisagem',a3p:'A3 retrato',a3l:'A3 paisagem'}[paper]||paper.toUpperCase();
@@ -1021,7 +1017,7 @@ async function buildLayout(options){
   // O WMS continua sendo uma imagem, mas o SVG limita sua pintura exatamente
   // aos anéis da camada poligonal, inclusive respeitando eventuais furos.
   function layoutWmsClip(w){
-    const Lp=w&&w.clipLayerId&&(S.layers||[]).find(L=>String(L.id)===String(w.clipLayerId));
+    const Lp=w&&w.clipLayerId&&(model?.layers||S.layers||[]).find(L=>String(L.id)===String(w.clipLayerId));
     if(!Lp||Lp.gtype!=='polygon') return '';
     let d='';
     const anel=g=>{
@@ -1040,7 +1036,7 @@ async function buildLayout(options){
   }
 
   // camadas WMS visíveis — sobre o fundo e sob os dados locais
-  (S.wms||[]).filter(w=>w&&w.protocol!=='WMTS'&&candidates.keys.has('W:'+w.id)).forEach(w=>{
+  (model?.wms||S.wms||[]).filter(w=>w&&w.protocol!=='WMTS'&&candidates.keys.has('W:'+w.id)).forEach(w=>{
     try{
       const wu=layoutWmsUrl(w,x0,y0,x1,y1,crs,mapW*8,mapH*8);
       const clipId=layoutWmsClip(w);plotCatalog.keys.add('W:'+w.id);
@@ -1205,7 +1201,7 @@ async function buildLayout(options){
   /* Geometrias e rasters mantêm a ordem da árvore. Os rótulos são emitidos
      ao final, como no Mapa 2D, para que nenhum preenchimento cubra os nomes. */
   let svgRotulos='';
-  const stk=stackSync();
+  const stk=model?.nodes||stackSync();
   for(let si=stk.length-1; si>=0; si--){
     const nd=stk[si], ob=nd.o;
     if(!candidates.keys.has(nodeKey(nd.t,nd.id)))continue;
@@ -1232,7 +1228,7 @@ async function buildLayout(options){
         const o1=(ob.overlay && ob.overlay.options && ob.overlay.options.opacity);
         const el=document.getElementById('imgOp');
         const o2=el? parseFloat(el.value) : NaN;
-        const logical=typeof orthoOpacidade==='function'?orthoOpacidade():o2;
+        const logical=ob._layoutOpacity??(typeof orthoOpacidade==='function'?orthoOpacidade():o2);
         const v=Number.isFinite(logical)?logical:(Number.isFinite(o1)?o1:1);
         op=Math.max(0, Math.min(1, v));
       }
@@ -1383,7 +1379,7 @@ async function buildLayout(options){
   svg+=`</g>`;
 
   // A caixa final recebe apenas camadas/classes que chegaram ao desenho.
-  legIt.splice(0,legIt.length,...(wantLeg?legendItems(plotCatalog):[]));
+  legIt.splice(0,legIt.length,...(wantLeg?legendItems(plotCatalog,model):[]));
   LG.w=Math.max(24,LG.pad*2+Math.max(15,legTitleW(),...legIt.map(legItemW))+0.8);
   LG.h=LG.pad*2+LG.tit+legIt.length*LG.row;
   // legenda das camadas visíveis (dentro do mapa, ou em faixa lateral fora dele)
@@ -1772,6 +1768,7 @@ async function buildLayout(options){
   S._lastLayoutURL=sourceURL;S._lastLayoutSignature=JSON.stringify([!!S.orthoDispFull,S.workCRS,epoch,presentation]);
   S._lastSVGRevision=(S._lastSVGRevision||0)+1;
   plotCatalog.revision=S._lastSVGRevision;S._loPlotCatalog=plotCatalog;
+  window.GeoMineLayoutLive?.rendered();
   /* Fundo incompleto na tela: a folha foi desenhada e o aviso fica no painel
      do fundo (e num toast, uma vez por mensagem). */
   const baseAviso=baseCapture&&baseCapture.aviso||'';
@@ -2013,33 +2010,11 @@ async function exportAllPlatesPDF(){
   if(S.loMode!=='a4'){ toast('Disponível no modo Prancha · selo'); return; }
   platesInit(); plateCapture();
   const volta=S.plateId;
-  /* As demais páginas usam seus instantâneos salvos. Para a prancha que está
-     aberta, porém, o PDF em lote também deve reproduzir a prévia — inclusive
-     um tamanho de ícone recém-alterado que ainda aparece como rascunho. O
-     rascunho é reaplicado apenas durante a exportação, sem atualizar a prancha
-     silenciosamente. */
-  const rascunhoAtual={
-    vis:S._loDraftVis?{...S._loDraftVis}:null,
-    conv:S._loDraftConv?layoutClone(S._loDraftConv):null,
-    stack:Array.isArray(S._loDraftStack)?S._loDraftStack.slice():null,
-    dirty:!!S._loFrozenDirty
-  };
-  const reaplicaRascunhoAtual=()=>{
-    if(rascunhoAtual.conv)layoutConventionApply(rascunhoAtual.conv);
-    if(rascunhoAtual.stack)layoutStackApply(rascunhoAtual.stack);
-    if(rascunhoAtual.vis)layoutVisRestore(rascunhoAtual.vis);
-    S._loDraftVis=rascunhoAtual.vis?{...rascunhoAtual.vis}:null;
-    S._loDraftConv=rascunhoAtual.conv?layoutClone(rascunhoAtual.conv):null;
-    S._loDraftStack=rascunhoAtual.stack?rascunhoAtual.stack.slice():null;
-    S._loAppliedPlateId=volta;
-    if(typeof layoutFrozenDirty==='function')layoutFrozenDirty(rascunhoAtual.dirty);
-  };
   const pages=[];
   try{
     for(const pl of S.plates){
       showLoad(`Gerando “${pl.name}” (${pages.length+1}/${S.plates.length})…`);
       S.plateId=pl.id; plateApply(pl);
-      if(pl.id===volta)reaplicaRascunhoAtual();
       await buildLayout();
       const P=S._loPaper;
       const cv=await rasterizeLayout(300);
@@ -2053,7 +2028,7 @@ async function exportAllPlatesPDF(){
   }catch(e){ hideLoad(); toast('Falha ao gerar o PDF: '+e.message); }
   finally{
     const pl=S.plates.find(p=>p.id===volta);
-    if(pl){ S.plateId=volta; plateApply(pl); reaplicaRascunhoAtual(); renderPlateTabs(); buildLayout(); }
+    if(pl){ S.plateId=volta; plateApply(pl); renderPlateTabs(); buildLayout(); }
   }
 }
 
@@ -3210,8 +3185,11 @@ function baciaDesarmaEstado(destino){
     BACIA.armado=false; BACIA.fase=null; BACIA.ctr=null; BACIA.params=null;
   }
   if(t!=='baciaRampa' && typeof BACIA_RAMPA!=='undefined' && BACIA_RAMPA){
-    try{ if(BACIA.ultima) delete BACIA.ultima._rampaTransaction; }catch(e){}
     BACIA_RAMPA=null;
+    /* Esc e trocar de ferramenta também cancelam a relocação: o estado
+       temporário sem rampa não pode substituir a caixa que já existia. */
+    try{if(!baciaRollbackRelocacao())baciaRollbackGeracaoRampa();}catch(e){}
+    try{ if(BACIA.ultima) delete BACIA.ultima._rampaTransaction; }catch(e){}
   }
   if(t!=='baciaExt' && typeof BACIA_EXT!=='undefined' && BACIA_EXT) BACIA_EXT=null;
 }
@@ -3397,7 +3375,7 @@ document.addEventListener('keydown',e=>{
     try{ BACIA.armado=false; BACIA.fase=null; BACIA.ctr=null; S.drawLayer.clearLayers(); }catch(err){}
     toast('Desenho da bacia encerrado');
   }else if(tool==='baciaRampa'){
-    try{ BACIA_RAMPA=null; }catch(err){}
+    /* setTool abaixo restaura a rampa anterior antes de desarmar. */
     toast('Desenho da rampa encerrado');
   }else if(tool==='measure' && typeof clearMeas==='function'){
     /* Esc limpa somente a medição em andamento. A régua permanece armada
@@ -3531,25 +3509,8 @@ function switchView(v){
      aparece — sem botão de renderizar. */
   if(v==='mina'||v==='cub')v='v3d';
   const vistaAnterior=S._view||'map';
-  /* O Layout congelado aplica sua própria fotografia de visibilidade. Antes
-     de entrar, guarda o estado real do mapa para não devolvê-lo vazio ou com
-     as camadas da prancha ao sair. */
-  if(v==='layout'&&vistaAnterior!=='layout'){
-    try{
-      const visAtual=layoutVisSnapshot();
-      S._preLayoutMapState={vis:{...visAtual},frozen:!!S.loFrozen,
-        conv:(typeof layoutConventionSnapshot==='function')?layoutConventionSnapshot():null,
-        stack:Array.isArray(S.stack)?S.stack.slice():[]};
-      // Entrar vindo do 2D usa automaticamente a composição que estava ligada.
-      // Outras pranchas continuam com seus próprios estados até serem abertas.
-      if(S.loMode==='a4'){
-        const pl=(S.plates||[]).find(p=>p.id===S.plateId);
-        if(pl){pl.vis={...visAtual};pl.conv=layoutClone(S._preLayoutMapState.conv);pl.stack=S._preLayoutMapState.stack.slice();}
-      }else S._figFrozenVis={...visAtual};
-      S._loAppliedPlateId=null; S._loDraftVis=null; S._loDraftConv=null; S._loDraftStack=null;
-    }
-    catch(e){S._preLayoutMapState=null;}
-  }
+  if(vistaAnterior==='layout'&&v!=='layout')window.GeoMineLayoutLive?.cancel();
+  S._preLayoutMapState=null;
   S._view=v;
   document.body.classList.toggle('mina-view',v==='mina');
   document.body.classList.toggle('cava2-view',v==='cava2');
@@ -3570,20 +3531,7 @@ function switchView(v){
   if(licenses){licenses.hidden=v!=='licenses';licenses.style.display=v==='licenses'?'flex':'none';}
   const cava2=document.getElementById('cava2Workspace');
   if(cava2)cava2.classList.toggle('on',cava2Visible);
-  let visibilidadeRestaurada=false;
-  if(vistaAnterior==='layout'&&v!=='layout'){
-    const anterior=S._preLayoutMapState;
-    if(anterior&&anterior.frozen){
-      try{
-        if(anterior.conv&&typeof layoutConventionApply==='function')layoutConventionApply(anterior.conv);
-        if(anterior.stack&&typeof layoutStackApply==='function')layoutStackApply(anterior.stack);
-        if(anterior.vis)layoutVisRestore(anterior.vis);
-        visibilidadeRestaurada=true;
-      }catch(e){console.warn('Restauração do mapa 2D',e);}
-    }
-    S._loAppliedPlateId=null; S._loDraftVis=null; S._loDraftConv=null; S._loDraftStack=null;
-    S._preLayoutMapState=null;
-  }
+  const visibilidadeRestaurada=false;
   // a lista de camadas permanece disponível em todas as abas
   const hasSide=!!SIDE_OF[v];
   document.getElementById('sideMain').style.display=hasSide?'none':'block';
@@ -3999,21 +3947,9 @@ function applyTheme(theme, bg){
 
 document.getElementById('btnRedraw').onclick=loApplyAll;
 function loApplyAll(){
-  /* Este é o ÚNICO comando que substitui a composição congelada da prancha.
-     Sliders continuam gravando os campos próprios, mas camadas, ordem,
-     filtros e convenções só entram no instantâneo por esta ação explícita. */
-  if(typeof plateCapture==='function')
-    plateCapture(S.loMode==='a4'?{captureState:true}:undefined);
-  if(S.loMode==='fig'){
-    const visAtual=layoutVisSnapshot(),pre=S._preLayoutMapState,
-      visMudou=S._figFrozenVis&&!layoutStateEqual(visAtual,S._figFrozenVis),
-      preMesclada=pre&&pre.vis?{...visAtual,...pre.vis}:visAtual;
-    S._figFrozenVis={...(S._loDraftVis||(visMudou?visAtual:preMesclada))};
-    if(pre)pre.vis={...S._figFrozenVis};
-    S._loDraftVis=null;layoutFrozenDirty(false);
-  }
-  buildLayout();
-  toast(S.loMode==='a4'?'Prancha atualizada e congelada':'Layout atualizado');
+  // Compatibilidade com os controles de escala, elementos e enquadramento.
+  // Redesenhar nunca substitui uma convenção congelada.
+  return buildLayout();
 }
 document.getElementById('btnLoRedraw').onclick=loApplyAll;
 document.getElementById('btnRedrawTop').onclick=loApplyAll;

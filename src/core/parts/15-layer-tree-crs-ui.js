@@ -22,8 +22,8 @@ function groupParentValue(g){
   if(Object.prototype.hasOwnProperty.call(g,'parentId'))return g.parentId;
   return g.parentGroupId??g.groupId??null;
 }
-function groupPath(id){
-  const by=new Map((S.groups||[]).map(g=>[String(g.id),g])),out=[],seen=new Set();
+function groupPath(id,groups=S.groups||[]){
+  const by=new Map(groups.map(g=>[String(g.id),g])),out=[],seen=new Set();
   while(id!=null&&by.has(String(id))&&!seen.has(String(id))){
     seen.add(String(id));const g=by.get(String(id));out.unshift(g);id=groupParentValue(g);
   }
@@ -33,8 +33,8 @@ function treeItemKey(it){return it.kind==='group'?'G:'+it.g.id:nodeKey(it.n.t,it
 /* Uma única árvore define tanto a lista quanto a pilha do mapa. As chaves de
    TODOS os grupos preservam a posição de subgrupos vazios e recolhidos. Em
    projetos antigos, a posição do grupo deriva do primeiro descendente. */
-function buildLayerTree(nodes,stack){
-  const groups=S.groups||[],byGroup=new Map(groups.map(g=>[String(g.id),g]));
+function buildLayerTree(nodes,stack,groups=S.groups||[]){
+  const byGroup=new Map(groups.map(g=>[String(g.id),g]));
   for(const g of groups){
     const raw=groupParentValue(g),parent=raw==null?null:byGroup.get(String(raw));
     g.parentId=parent&&parent!==g?parent.id:null;
@@ -234,30 +234,13 @@ function bindDrag(el,kind,id){
 }
 
 
-/* A prancha guarda um SVG já montado. Redesenhar o mapa não a atualiza —
-   é preciso remontar. Chamado após mudanças de rótulo e de simbologia.     */
+/* Propriedades de camadas atualizam a prancha automaticamente. O cadeado
+   mantém uma convenção de impressão independente dos dados do projeto. */
 function layoutSeVisivel(){
   const el=document.getElementById('layout');
-  if(!el || el.style.display==='none' || typeof buildLayout!=='function')return;
-  /* A prancha congelada não acompanha silenciosamente mudanças de camadas,
-     filtros, rótulos ou simbologia. Elas ficam pendentes até o usuário
-     confirmar no botão "Atualizar prancha". */
-  if(S.loFrozen && (S.loMode==='a4'||S.loMode==='fig')){
-    try{
-      /* Qualquer edição feita enquanto a prancha está visível pertence à
-         composição que o usuário está vendo, inclusive quando ela altera
-         apenas ordem, filtro, rótulo ou simbologia. */
-      S._loDraftVis={...layoutVisSnapshot()};
-      if(S.loMode==='a4'){
-        if(typeof layoutConventionSnapshot==='function')
-          S._loDraftConv=layoutClone(layoutConventionSnapshot());
-        S._loDraftStack=(S.stack||[]).slice();
-      }
-    }catch(e){}
-    if(typeof layoutFrozenDirty==='function')layoutFrozenDirty(true);
-    return;
-  }
-  buildLayout();
+  if(!el||el.style.display==='none')return;
+  if(window.GeoMineLayoutLive)return GeoMineLayoutLive.change();
+  if(!S.loFrozen)buildLayout();
 }
 
 /* Renomeia uma categoria de verdade, e não apenas o texto desenhado na
@@ -538,6 +521,7 @@ function containerCountLegendSync(){
     (niveis?'<div style="margin-top:2px;color:#587087">'+esc(niveis)+'</div>':'');
 }
 function refreshUI(){
+  window.GeoMineLayoutLive?.change();
   try{if(typeof profSyncSources==='function')profSyncSources();}catch(e){console.warn('fontes do perfil:',e);}
   if(typeof refreshCivilMdt==='function')refreshCivilMdt();
   /* refresh explícito satisfaz qualquer atualização deferida por addLayer. */

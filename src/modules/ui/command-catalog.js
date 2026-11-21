@@ -254,8 +254,8 @@ function install(){
   };
   for(const groups of layouts.values())for(const g of groups)for(const cmd of g.it){
     if(icons[cmd.commandId])cmd.ic=icons[cmd.commandId];
-    if(cmd.commandId==='editor:vzf')cmd.ic=icon('feature_z','<path d="m5 25 4-17 15-3 3 20z" fill="#e5d3a5"/><path d="M15 9h8l-8 12h8"/>');
-    if(cmd.commandId==='editor:vz')cmd.ic=icon('vertex_z','<path d="m3 25 10-15 15 14"/><circle cx="13" cy="10" r="3" fill="#e9a52d"/><path d="M21 3h7l-7 9h7"/>');
+    if(cmd.commandId==='editor:vzf')cmd.ic='ed_vzf';
+    if(cmd.commandId==='editor:vz')cmd.ic='ed_vz';
     if(cmd.commandId==='civil:ponto-a'||cmd.commandId==='civil:ponto-b'){
       const a=cmd.commandId.endsWith('-a');cmd.ic=icon(a?'point_a':'point_b',
         '<circle cx="12" cy="18" r="5" fill="#edb54c"/><path d="M2 18h5m10 0h5M12 8v5m0 10v6"/>'+
