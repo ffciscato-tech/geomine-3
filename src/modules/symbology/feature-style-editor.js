@@ -32,7 +32,7 @@ function open(L,idx){
     (!line?'<label class="field">Contorno<input data-stroke type="color"></label>':'')+'</div>'+
    '<div class="row2"><label class="field">Espessura (px)<input data-weight type="number" min="0" max="50" step="0.1" required></label>'+
     (poly?'<label class="field">Opacidade (%)<input data-fill type="number" min="0" max="100" step="1" required></label>':'')+'</div>'+
-   (poly?'<div class="row2"><label class="field">Hachura<select data-hatch></select></label><label class="field" data-spacing>Espaçamento<input data-hatch-scale type="number" min="0.25" max="8" step="0.25" required></label></div>':'')+
+   (poly?'<label class="field">Hachura<select data-hatch></select></label><div data-spacing class="gm-style-stack" style="margin-top:6px"><div><label class="field">Espaçamento da hachura</label><input data-hatch-scale type="number" min="0.25" max="8" step="0.25" required></div><div><label class="field">Espessura do traço da hachura</label><input data-hatch-weight type="number" min="0.25" max="8" step="0.25" required></div><div><label class="field">Direção da hachura</label><input data-hatch-angle type="number" min="0" max="180" step="1" required></div></div>':'')+
    (!point?'<label class="field">Estilo da linha<select data-dash></select></label>':'')+
    (line?'<div class="row2"><label class="field">Seta<select data-arrow><option value="none">Sem seta</option><option value="open">Aberta</option><option value="filled">Preenchida</option></select></label><label class="field">Tamanho da seta (mm)<input data-arrow-size type="number" min="0.5" max="20" step="0.5" required></label></div>':'')+
    (point?'<div class="row2"><label class="field">Símbolo<select data-shape></select></label><label class="field">Tamanho (px)<input data-size type="number" min="6" max="96" step="1" required></label></div><div class="row2"><label class="field" data-rotation>Rotação (°)<input data-rot type="number" step="1" required></label><label class="field" data-dip-row>Mergulho (°)<input data-dip type="number" min="0" max="90" step="1"></label></div>':'')+
@@ -46,7 +46,7 @@ function open(L,idx){
   set('[data-color]',hex(line?s.stroke:s.color));set('[data-stroke]',hex(s.stroke));
   set('[data-weight]',Number.isFinite(+s.weight)?+s.weight:2);set('[data-fill]',Math.round((s.fill??0.35)*100));
   GeoMineStyleSliders.enhance(bg);
-  if(poly){$('[data-hatch]').innerHTML=hatchOptionsHTML(s.hatch);set('[data-hatch-scale]',s.hatchScale??1);}
+  if(poly){$('[data-hatch]').innerHTML=hatchOptionsHTML(s.hatch);set('[data-hatch-scale]',s.hatchScale??1);set('[data-hatch-weight]',hatchWeightOf(s.hatchWeight));set('[data-hatch-angle]',hatchAngleOf(s.hatchAngle));GeoMineStyleSliders.enhance(bg);}
   if(!point){
    const dash=$('[data-dash]');
    const options=DASH_OPTS.map(([value,label])=>[value,label]);
@@ -67,7 +67,7 @@ function open(L,idx){
    if(line){s.stroke=value('[data-color]');if(s.stroke!==hex(initial.style.stroke))s.color=s.stroke;}
    else{s.color=value('[data-color]');s.stroke=value('[data-stroke]');}
    s.weight=num('[data-weight]');
-   if(poly){s.fill=num('[data-fill]')/100;s.hatch=value('[data-hatch]');s.hatchScale=num('[data-hatch-scale]');$('[data-spacing]').style.display=['solid','none',''].includes(s.hatch)?'none':'';}
+   if(poly){s.fill=num('[data-fill]')/100;s.hatch=value('[data-hatch]');s.hatchScale=num('[data-hatch-scale]');s.hatchWeight=hatchWeightOf(value('[data-hatch-weight]'));s.hatchAngle=hatchAngleOf(value('[data-hatch-angle]'));$('[data-spacing]').style.display=['solid','none',''].includes(s.hatch)?'none':'';}
    if(!point)s.dash=value('[data-dash]');
    if(line){s.arrowEnd=value('[data-arrow]');s.arrowSize=num('[data-arrow-size]');}
    if(point){
@@ -83,7 +83,8 @@ function open(L,idx){
    let drawing='';
    if(poly){
     const tpl=PATTERN_TPL[s.hatch];
-    const pattern=tpl?'<defs><pattern id="gmFeatureStyleHatch" width="'+tpl.w*(s.hatchScale||1)+'" height="'+tpl.h*(s.hatchScale||1)+'" patternUnits="userSpaceOnUse">'+hatchBodyAtSpacing(tpl,s.color,s.hatchScale)+'</pattern></defs>':'';
+    const hs=Math.max(.25,Math.min(8,+s.hatchScale||1));
+    const pattern=tpl?'<defs><pattern id="gmFeatureStyleHatch" width="'+tpl.w*hs+'" height="'+tpl.h*hs+'" patternUnits="userSpaceOnUse"'+hatchRotateAttr(s.hatchAngle)+'><g transform="scale('+hs+')">'+hatchBodyAtSpacing(tpl,s.color,hs,s.hatchWeight)+'</g></pattern></defs>':'';
     drawing=pattern+'<rect x="68" y="12" width="104" height="48" fill="'+(s.hatch==='none'?'none':tpl?'url(#gmFeatureStyleHatch)':s.color)+'" fill-opacity="'+s.fill+'" stroke="'+s.stroke+'" stroke-width="'+safeWeight+'" stroke-dasharray="'+dash+'"/>';
    }else{
     drawing='<path d="M24 37H216" stroke="'+s.stroke+'" stroke-width="'+safeWeight+'" stroke-dasharray="'+dash+'"/>';

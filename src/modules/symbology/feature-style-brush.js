@@ -3,7 +3,7 @@
 (function(){
 'use strict';
 const TOOL='feature-style-brush',KEY='_featureStyle';
-const keys=['color','stroke','hatch','hatchScale','weight','fill','dash','arrowEnd','arrowSize'];
+const keys=['color','stroke','hatch','hatchScale','hatchWeight','hatchAngle','weight','fill','dash','arrowEnd','arrowSize'];
 const own=(o,k)=>Object.prototype.hasOwnProperty.call(o||{},k);
 const clone=v=>v===undefined?undefined:structuredClone(v);
 const generation=()=>window.GeoMineSessionAutosave?.state.generation;

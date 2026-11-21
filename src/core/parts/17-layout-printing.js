@@ -586,13 +586,13 @@ function legendItems(catalog=layoutLegendCatalog(),model=window.GeoMineLayoutLiv
       visParts.forEach(p=>{const c=p.c;
         items.push({label:p.label,
           color:c.color, stroke:(c.stroke||sy.stroke||c.color),
-          kind, hatch:c.hatch??sy.hatch, hatchScale:c.hatchScale??sy.hatchScale??1, fill:c.fill??sy.fill, dash:c.dash??sy.dash, indent:ind+1,
+          kind, hatch:c.hatch??sy.hatch, hatchScale:c.hatchScale??sy.hatchScale??1, hatchWeight:c.hatchWeight??sy.hatchWeight??1, hatchAngle:c.hatchAngle??sy.hatchAngle??0, fill:c.fill??sy.fill, dash:c.dash??sy.dash, indent:ind+1,
           shape:(c.shape||(pcfg&&pcfg.shape)), symbolParams:c.symbolParams||(pcfg&&pcfg.symbolParams)||null,
           weight:c.weight??sy.weight,arrowEnd:c.arrowEnd??sy.arrowEnd,arrowSize:c.arrowSize??sy.arrowSize});
       });
     } else {
       items.push({label:L.name, color:sy.color, stroke:(sy.stroke||sy.color),
-        kind, hatch:sy.hatch, hatchScale:sy.hatchScale??1, fill:sy.fill, dash:sy.dash, indent:ind,
+        kind, hatch:sy.hatch, hatchScale:sy.hatchScale??1, hatchWeight:sy.hatchWeight??1, hatchAngle:sy.hatchAngle??0, fill:sy.fill, dash:sy.dash, indent:ind,
         shape:(pcfg&&pcfg.shape), symbolParams:(pcfg&&pcfg.symbolParams)||null, weight:sy.weight,arrowEnd:sy.arrowEnd,arrowSize:sy.arrowSize});
     }
   });
@@ -1052,14 +1052,14 @@ async function buildLayout(options){
 
   // defs de hachura para o layout (por cor sob demanda, escala mm)
   const hatchDefs={}; // key -> svg string
-  function layoutHatch(hatch,color,spacing){
+  function layoutHatch(hatch,color,spacing,weight,angle){
     if(hatch==='solid'||hatch==='none'||!hatch) return null;
     const tpl=PATTERN_TPL[hatch]; if(!tpl) return null;
     const hs=Math.max(.25,Math.min(8,+spacing||1));
-    const id='lh_'+hatch+'_'+color.replace('#','')+'_'+String(hs).replace('.','_');
+    const id='lh_'+hatch+'_'+color.replace('#','')+'_'+String(hs).replace('.','_')+hatchVariantKey(weight,angle);
     if(!hatchDefs[id]){
       const k=0.45*hs; // espaçamento do tile em mm
-      hatchDefs[id]=`<pattern id="${id}" width="${(tpl.w*k).toFixed(2)}" height="${(tpl.h*k).toFixed(2)}" patternUnits="userSpaceOnUse"><g transform="scale(${k})">${hatchBodyAtSpacing(tpl,color,hs)}</g></pattern>`;
+      hatchDefs[id]=`<pattern id="${id}" width="${(tpl.w*k).toFixed(2)}" height="${(tpl.h*k).toFixed(2)}" patternUnits="userSpaceOnUse"${hatchRotateAttr(angle)}><g transform="scale(${k})">${hatchBodyAtSpacing(tpl,color,hs,weight)}</g></pattern>`;
     }
     return id;
   }
@@ -1121,7 +1121,7 @@ async function buildLayout(options){
         paths.forEach(group=>{
           const d=group.map(r=>r.map((c,i)=>(i?'L':'M')+sx(c[0]).toFixed(2)+' '+sy(c[1]).toFixed(2)).join(' ')+(L.gtype==='polygon'?' Z':'')).join(' ');
           let fill='none',fo=0;
-          if(L.gtype==='polygon'&&st.hatch!=='none'){const hid=layoutHatch(st.hatch,col,st.hatchScale);fill=hid?`url(#${hid})`:col;fo=hid?1:st.fill;}
+          if(L.gtype==='polygon'&&st.hatch!=='none'){const hid=layoutHatch(st.hatch,col,st.hatchScale,st.hatchWeight,st.hatchAngle);fill=hid?`url(#${hid})`:col;fo=hid?1:st.fill;}
           s+=`<path d="${d}" fill="${fill}" fill-rule="evenodd" fill-opacity="${fo}" stroke="${w>0?scol:'none'}" stroke-width="${w}" ${w>0&&st.dash?`stroke-dasharray="${escalaDash(st.dash,w)}"`:''}/>`;
           const r=group[0];
           if(L.gtype==='line'&&window.GeoMineLineArrows){
@@ -1482,7 +1482,7 @@ async function buildLayout(options){
             svg+=`<rect x="${ix.toFixed(2)}" y="${(cy-sh/2).toFixed(2)}" width="${sw.toFixed(2)}" height="${sh.toFixed(2)}" fill="url(#${gid2})" stroke="#111" stroke-width="${(0.25*symFS).toFixed(2)}"/>`;
           } else if(it.kind==='poly'){
             let fill=it.color;
-            if(it.hatch && it.hatch!=='solid' && it.hatch!=='none'){ const hid=layoutHatch(it.hatch,it.color,it.hatchScale); if(hid){fill=`url(#${hid})`;} }
+            if(it.hatch && it.hatch!=='solid' && it.hatch!=='none'){ const hid=layoutHatch(it.hatch,it.color,it.hatchScale,it.hatchWeight,it.hatchAngle); if(hid){fill=`url(#${hid})`;} }
             if(it.hatch==='none'||legendPolyHollow(it)) fill='none';
             svg+=`<rect x="${ix.toFixed(2)}" y="${(cy-sh/2).toFixed(2)}" width="${sw.toFixed(2)}" height="${sh.toFixed(2)}" fill="${fill}" fill-opacity="${fill==='none'?0:(it.hatch&&it.hatch!=='solid'?1:0.7)}" stroke="${it.stroke||it.color}" stroke-width="${(0.35*symFS).toFixed(2)}"/>`;
           } else if(it.kind==='line'){
@@ -1695,7 +1695,7 @@ async function buildLayout(options){
               : `<linearGradient id="${gid2}"><stop offset="0" stop-color="#4c7a34"/><stop offset="0.6" stop-color="#9ab87a"/><stop offset="1" stop-color="#cfcfc4"/></linearGradient>`;
             svg+=`<rect x="${ix.toFixed(2)}" y="${(yy-sh2*0.82).toFixed(2)}" width="${sw2.toFixed(2)}" height="${sh2.toFixed(2)}" fill="url(#${gid2})" stroke="#111" stroke-width="0.25"/>`;
           } else if(it.kind==='poly'){ let fill=it.color;
-            if(it.hatch&&it.hatch!=='solid'&&it.hatch!=='none'){const hid=layoutHatch(it.hatch,it.color,it.hatchScale);if(hid)fill=`url(#${hid})`;}
+            if(it.hatch&&it.hatch!=='solid'&&it.hatch!=='none'){const hid=layoutHatch(it.hatch,it.color,it.hatchScale,it.hatchWeight,it.hatchAngle);if(hid)fill=`url(#${hid})`;}
             if(it.hatch==='none'||legendPolyHollow(it))fill='none';
             svg+=`<rect x="${ix.toFixed(2)}" y="${(yy-sh2*0.82).toFixed(2)}" width="${sw2.toFixed(2)}" height="${sh2.toFixed(2)}" fill="${fill}" fill-opacity="${fill==='none'?0:(it.hatch&&it.hatch!=='solid'?1:0.7)}" stroke="${it.stroke||it.color}" stroke-width="${(0.3*symFS).toFixed(2)}"/>`;
           } else if(it.kind==='line'){

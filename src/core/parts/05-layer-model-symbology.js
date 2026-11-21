@@ -226,6 +226,7 @@ function baseFeatureStyle(L,f){
   const s=L.sym;
   const mix=(c)=>({color:c.color, stroke:c.stroke||c.color, hatch:c.hatch??s.hatch,
     hatchScale:c.hatchScale??s.hatchScale??1,
+    hatchWeight:c.hatchWeight??s.hatchWeight??1,hatchAngle:c.hatchAngle??s.hatchAngle??0,
     weight:c.weight??s.weight, fill:c.fill??s.fill, dash:c.dash??s.dash,
     arrowEnd:c.arrowEnd??s.arrowEnd??'none',arrowSize:c.arrowSize??s.arrowSize??3});
   /* Numa superfície final de bacia, o contorno é apenas o limite único de
@@ -239,7 +240,7 @@ function baseFeatureStyle(L,f){
     if((s.mode==='grad'&&s.classes.length)||(s.mode==='cat'&&s.cats.length))
       return {color:'#666',stroke:'#666',hatch:'none',weight:s.weight,fill:s.fill,dash:s.dash,arrowEnd:s.arrowEnd??'none',arrowSize:s.arrowSize??3};
   }
-  return {color:s.color,stroke:s.stroke,hatch:s.hatch,hatchScale:s.hatchScale??1,weight:s.weight,fill:s.fill,dash:s.dash,arrowEnd:s.arrowEnd??'none',arrowSize:s.arrowSize??3};
+  return {color:s.color,stroke:s.stroke,hatch:s.hatch,hatchScale:s.hatchScale??1,hatchWeight:s.hatchWeight??1,hatchAngle:s.hatchAngle??0,weight:s.weight,fill:s.fill,dash:s.dash,arrowEnd:s.arrowEnd??'none',arrowSize:s.arrowSize??3};
 }
 /* ---------- Biblioteca de padrões (básicos + litologias geológicas) ---------- */
 const SVGNS='http://www.w3.org/2000/svg';
@@ -302,15 +303,30 @@ function hatchOptionsHTML(cur){
     return g.label?`<optgroup label="${g.label}">${opts}</optgroup>`:opts;
   }).join('');
 }
+/* Espessura do traço (×) e direção (°, sentido anti-horário) da hachura —
+   pedido de 21/11/2026. Os limites ficam aqui, num só lugar, para o mapa, o
+   layout, a legenda e os editores darem o mesmo desenho. Espessura 1 e
+   direção 0 são o padrão como foi desenhado. */
+function hatchWeightOf(v){const n=+v;return Number.isFinite(n)&&n>0?Math.max(.25,Math.min(8,n)):1;}
+function hatchAngleOf(v){let n=+v;if(!Number.isFinite(n))return 0;n=((n%360)+360)%360;return n>180?n-180:n;}
+/* Sufixo do identificador do padrão: nada quando espessura e direção são as
+   padrão, para os padrões já existentes continuarem com o mesmo nome. */
+function hatchVariantKey(weight,angle){
+  const w=hatchWeightOf(weight),a=hatchAngleOf(angle);
+  return (w!==1?'_w'+String(w).replace('.','_'):'')+(a?'_a'+String(a).replace('.','_'):'');
+}
+/* O giro vale para qualquer motivo (traços, pontos, litologias). */
+function hatchRotateAttr(angle){const a=hatchAngleOf(angle);return a?` patternTransform="rotate(${-a})"`:'';}
 /* Aumenta a distância entre as repetições sem engrossar os traços/pontos.
    O desenho do motivo cresce com a célula, mas a espessura visual permanece
-   igual — "espaçamento" não deve transformar uma hachura fina em faixa. */
-function hatchBodyAtSpacing(tpl,color,spacing){
-  const hs=Math.max(.25,Math.min(8,+spacing||1));
+   igual — "espaçamento" não deve transformar uma hachura fina em faixa. A
+   espessura do traço é um ajuste à parte e multiplica traços e pontos. */
+function hatchBodyAtSpacing(tpl,color,spacing,weight){
+  const hs=Math.max(.25,Math.min(8,+spacing||1)),k=hatchWeightOf(weight)/hs;
   let b=tpl.b(color);
-  if(Math.abs(hs-1)<1e-9)return b;
-  b=b.replace(/stroke-width="([0-9.]+)"/g,(_,v)=>`stroke-width="${(+v/hs).toFixed(4)}"`);
-  b=b.replace(/\br="([0-9.]+)"/g,(_,v)=>`r="${(+v/hs).toFixed(4)}"`);
+  if(Math.abs(k-1)<1e-9)return b;
+  b=b.replace(/stroke-width="([0-9.]+)"/g,(_,v)=>`stroke-width="${(+v*k).toFixed(4)}"`);
+  b=b.replace(/\br="([0-9.]+)"/g,(_,v)=>`r="${(+v*k).toFixed(4)}"`);
   return b;
 }
 
@@ -1379,7 +1395,7 @@ function applyHatch(layer, st){
   const tpl=PATTERN_TPL[st.hatch];
   if(!tpl){ p.setAttribute('fill',st.color); return; }
   const hs=Math.max(.25,Math.min(8,+st.hatchScale||1));
-  const pid='pat_'+st.hatch+'_'+st.color.replace('#','')+'_'+String(hs).replace('.','_');
+  const pid='pat_'+st.hatch+'_'+st.color.replace('#','')+'_'+String(hs).replace('.','_')+hatchVariantKey(st.hatchWeight,st.hatchAngle);
   let defs=document.getElementById('hatchLive');
   if(!defs){ const svg=document.getElementById('hatchDefs');
     defs=document.createElementNS(SVGNS,'defs'); defs.id='hatchLive'; svg.appendChild(defs); }
@@ -1387,7 +1403,8 @@ function applyHatch(layer, st){
     const pat=document.createElementNS(SVGNS,'pattern');
     pat.setAttribute('id',pid); pat.setAttribute('width',tpl.w*hs); pat.setAttribute('height',tpl.h*hs);
     pat.setAttribute('patternUnits','userSpaceOnUse');
-    pat.innerHTML=`<g transform="scale(${hs})">${hatchBodyAtSpacing(tpl,st.color,hs)}</g>`;
+    const giro=hatchAngleOf(st.hatchAngle);if(giro)pat.setAttribute('patternTransform',`rotate(${-giro})`);
+    pat.innerHTML=`<g transform="scale(${hs})">${hatchBodyAtSpacing(tpl,st.color,hs,st.hatchWeight)}</g>`;
     defs.appendChild(pat);
   }
   p.setAttribute('fill',`url(#${pid})`);

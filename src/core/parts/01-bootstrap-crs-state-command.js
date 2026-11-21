@@ -36,26 +36,33 @@
    No style is changed while a panel is opened or rebuilt. */
 (function(){
   'use strict';
-  const format=(v,percent)=>percent?Math.round(v*100)+'%':Number(v).toLocaleString('pt-BR',{maximumFractionDigits:1})+' px';
+  /* Barras da hachura (21/11/2026): espaçamento, espessura do traço e direção.
+     Usam os limites do próprio campo e mostram a unidade ao lado do número. */
+  const HATCH_BARS=[
+    ['.ce-hatch-scale,[data-hatch-scale]','×','Espaçamento da hachura'],
+    ['.ce-hatch-weight,[data-hatch-weight]','×','Espessura do traço da hachura'],
+    ['.ce-hatch-angle,[data-hatch-angle]','°','Direção da hachura em graus']];
+  const hatchBar=input=>HATCH_BARS.find(([selector])=>input.matches(selector))||null;
+  const format=(v,percent,unit)=>percent?Math.round(v*100)+'%':Number(v).toLocaleString('pt-BR',{maximumFractionDigits:unit?2:1})+(unit==='°'?'°':unit?' '+unit:' px');
   function enhance(root){
-    root.querySelectorAll('.ce-weight,.ce-fill,[data-weight],[data-fill]').forEach(input=>{
+    root.querySelectorAll('.ce-weight,.ce-fill,[data-weight],[data-fill],'+HATCH_BARS.map(b=>b[0]).join(',')).forEach(input=>{
       if(input.type!=='number')return;
       if(input._gmSlider){input._gmSlider();return;}
-      const percent=input.matches('.ce-fill,[data-fill]'),scale=input.matches('[data-fill]')?100:1;
+      const bar=hatchBar(input),percent=!bar&&input.matches('.ce-fill,[data-fill]'),scale=input.matches('[data-fill]')?100:1;
       const row=document.createElement('div');row.className='gm-style-slider';
-      const slider=document.createElement('input');slider.type='range';slider.min='0';
-      slider.max=percent?String(scale):String(Math.max(20,Number(input.max)||0,Number(input.value)||0));
-      slider.step=percent?String(scale/100):'0.1';
-      slider.setAttribute('aria-label',percent?'Opacidade do preenchimento':'Espessura da linha');
+      const slider=document.createElement('input');slider.type='range';slider.min=bar?(input.min||'0'):'0';
+      slider.max=bar?(input.max||'100'):percent?String(scale):String(Math.max(20,Number(input.max)||0,Number(input.value)||0));
+      slider.step=bar?(input.step||'1'):percent?String(scale/100):'0.1';
+      slider.setAttribute('aria-label',bar?bar[2]:percent?'Opacidade do preenchimento':'Espessura da linha');
       const out=document.createElement('output');out.className='gmp-val';
       input.before(row);row.append(slider,input);
       if(percent){input.hidden=true;row.append(out);}
-      else{input.setAttribute('aria-label','Espessura da linha em pixels');input.classList.add('gm-style-number');const unit=document.createElement('span');unit.textContent='px';unit.className='gm-style-unit';row.append(unit);}
+      else{input.setAttribute('aria-label',bar?bar[2]:'Espessura da linha em pixels');input.classList.add('gm-style-number');const unit=document.createElement('span');unit.textContent=bar?bar[1]:'px';unit.className='gm-style-unit';row.append(unit);}
       const sync=()=>{
         const v=Number(input.value);if(!Number.isFinite(v))return;
-        if(!percent&&v>Number(slider.max))slider.max=String(v);
+        if(!percent&&!bar&&v>Number(slider.max))slider.max=String(v);
         slider.value=String(v);slider.disabled=input.disabled;
-        const label=format(v/scale,percent);slider.setAttribute('aria-valuetext',label);
+        const label=format(v/scale,percent,bar&&bar[1]);slider.setAttribute('aria-valuetext',label);
         slider.style.setProperty('--gm-range-fill',Math.max(0,Math.min(100,(v-Number(slider.min))/(Number(slider.max)-Number(slider.min))*100))+'%');
         if(percent)out.value=label;
       };

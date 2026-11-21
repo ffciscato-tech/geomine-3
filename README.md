@@ -282,6 +282,24 @@ publicou de outro lugar e este repositório está desatualizado.
   `17-layout-printing.js`) seguem a mesma regra: 0% é vazado, com a cor do
   contorno. Não mudou: hachura de padrão com 0% continua desenhando o padrão,
   e a legenda continua usando 70% para as cores sólidas com preenchimento.
+- **Hachura com espaçamento, espessura do traço e direção.** Pedido de
+  21/11/2026 ("aqui também deve ter a função de editar a espessura da linha,
+  além do espaçamento, e a direção em graus; pode ser com barras de
+  arrastar"). O estilo do polígono tem, ao lado de `hatchScale`
+  (espaçamento), `hatchWeight` (multiplicador do traço, 0,25–8×, padrão 1) e
+  `hatchAngle` (graus no sentido anti-horário, 0–180, padrão 0). Valem na
+  camada (`sym`), na classe e na feição, e vão no projeto com a simbologia.
+  Limites e desenho ficam num só lugar, em `05-layer-model-symbology.js`:
+  `hatchWeightOf`, `hatchAngleOf`, `hatchVariantKey` (sufixo do identificador
+  do padrão, vazio nos valores padrão — projeto antigo desenha igual),
+  `hatchRotateAttr` e `hatchBodyAtSpacing(padrão, cor, espaçamento,
+  espessura)`. O mapa (`applyHatch`), o Layout e a legenda (`layoutHatch`) e
+  a prévia do "Estilo da feição" usam essas mesmas rotinas; o giro é um
+  `patternTransform`, então vale para qualquer padrão, inclusive as
+  litologias. Na janela de propriedades e no "Estilo da feição" os três
+  ajustes são barras de arrastar com o número ao lado (`GeoMineStyleSliders`
+  passou a aceitar barras com unidade: × e °). A amostra da camada na árvore
+  continua indicando só que há hachura (listra fixa), sem a direção.
 - **Cards numerados.** Desde 18/11/2026 as ferramentas do GeoMine são
   apresentadas em cards numerados, na ordem em que a pessoa trabalha (pedido
   de 19/11/2026: o que for criado ou reorganizado segue esse padrão). Um card é

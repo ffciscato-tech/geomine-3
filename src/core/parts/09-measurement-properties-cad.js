@@ -996,9 +996,11 @@ function clsEditor(idx, item, label, count, layer){
       <div class="ce-pal" data-for="fill" data-palette-pending="1" tabindex="0" aria-label="Paleta de cores com rolagem"></div>
       <div class="hint" style="margin:-2px 0 4px"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Paleta de cores" aria-expanded="false"><span aria-hidden="true">i</span><span hidden>Escolha <b>Preenchimento</b> ou <b>Contorno</b> acima e toque em uma cor abaixo.</span></button></div>
       ${isPoly?`<label class="field">Hachura</label><select class="ce-hatch">${hSel}</select>
-      <div class="ce-hatch-spacing-row" style="${['solid','none',''].includes(item.hatch??s.hatch)?'display:none':''}">
-        <label class="field">Espaçamento da hachura (×)</label>
-        <input type="number" class="ce-hatch-scale" value="${item.hatchScale??s.hatchScale??1}" min="0.25" max="8" step="0.25">
+      <div class="ce-hatch-spacing-row gm-style-stack" style="${['solid','none',''].includes(item.hatch??s.hatch)?'display:none':''}">
+        <div><label class="field">Espaçamento da hachura</label><input type="number" class="ce-hatch-scale" value="${item.hatchScale??s.hatchScale??1}" min="0.25" max="8" step="0.25"></div>
+        <div><label class="field">Espessura do traço da hachura</label><input type="number" class="ce-hatch-weight" value="${hatchWeightOf(item.hatchWeight??s.hatchWeight)}" min="0.25" max="8" step="0.25"></div>
+        <div><label class="field">Direção da hachura</label><input type="number" class="ce-hatch-angle" value="${hatchAngleOf(item.hatchAngle??s.hatchAngle)}" min="0" max="180" step="1"></div>
+        <div class="hint" style="margin:-4px 0 0"><button type="button" class="gm-prop-info" data-prop-help="" aria-label="Ajuda: Hachura" aria-expanded="false"><span aria-hidden="true">i</span><span hidden><b>Espaçamento</b> e <b>espessura do traço</b> multiplicam o desenho do padrão: 1 × é o original. A <b>direção</b> gira o padrão no sentido anti-horário; com o padrão Horizontal, 90° dá traços verticais.</span></button></div>
       </div>`:''}
       ${isPt?'':`<label class="field">Estilo de linha</label>
       <select class="ce-dash" style="display:none">${dSel}</select>
@@ -1576,7 +1578,7 @@ document.getElementById('lbApply').onclick=()=>{
    do ponto. Mesmo editor e mesma leitura da janela completa da camada, com
    aplicação ao vivo como nela. "Usar o padrão da camada" tira as exceções da
    classe e mantém só a cor, que é o que distingue a classe. */
-const CLS_PROPRIOS=['stroke','hatch','hatchScale','weight','fill','dash','arrowEnd','arrowSize','shape','size','symbolParams'];
+const CLS_PROPRIOS=['stroke','hatch','hatchScale','hatchWeight','hatchAngle','weight','fill','dash','arrowEnd','arrowSize','shape','size','symbolParams'];
 /* A leitura do editor materializa valores antes herdados da camada. Compare
    a aparência resolvida, e não a presença das propriedades: só normalizar
    stroke/weight/etc. não pode apagar o estilo individual de uma feição. */
@@ -1594,7 +1596,7 @@ function layerStyleAppearanceStamp(L,onlyClass){
   const appearance=c=>{
     const a=c||s,base={color:color(a.color),stroke:color(c?(c.stroke||c.color):s.stroke),
       weight:num(a.weight??s.weight)};
-    if(L.gtype==='polygon')Object.assign(base,{hatch:a.hatch??s.hatch,hatchScale:num(a.hatchScale??s.hatchScale??1),fill:num(a.fill??s.fill),dash:a.dash??s.dash??''});
+    if(L.gtype==='polygon')Object.assign(base,{hatch:a.hatch??s.hatch,hatchScale:num(a.hatchScale??s.hatchScale??1),hatchWeight:hatchWeightOf(a.hatchWeight??s.hatchWeight),hatchAngle:hatchAngleOf(a.hatchAngle??s.hatchAngle),fill:num(a.fill??s.fill),dash:a.dash??s.dash??''});
     else if(L.gtype==='line')Object.assign(base,{dash:a.dash??s.dash??'',...GeoMineLineArrows.style(a,s)});
     if(isPt)base.point=point(c);
     return base;
@@ -1677,6 +1679,8 @@ function clsLerEditor(el,c,L){
   c.color=read('.ce-color'); c.stroke=read('.ce-stroke');
   const h=read('.ce-hatch'); if(h!==undefined) c.hatch=h;
   const hs=read('.ce-hatch-scale'); if(hs!==undefined) c.hatchScale=Math.max(.25,Math.min(8,+hs||1));
+  const hw=read('.ce-hatch-weight'); if(hw!==undefined) c.hatchWeight=hatchWeightOf(hw);
+  const ha=read('.ce-hatch-angle'); if(ha!==undefined) c.hatchAngle=hatchAngleOf(ha);
   c.weight=+read('.ce-weight');
   const fl=read('.ce-fill'); if(fl!==undefined) c.fill=+fl;
   const dh=read('.ce-dash'); if(dh!==undefined) c.dash=dh;
@@ -1712,6 +1716,8 @@ function lpCollect(silencioso){
       s.color=read(el,'.ce-color'); s.stroke=read(el,'.ce-stroke');
       const h=read(el,'.ce-hatch'); if(h!==undefined) s.hatch=h;
       const hs=read(el,'.ce-hatch-scale'); if(hs!==undefined) s.hatchScale=Math.max(.25,Math.min(8,+hs||1));
+      const hw=read(el,'.ce-hatch-weight'); if(hw!==undefined) s.hatchWeight=hatchWeightOf(hw);
+      const ha=read(el,'.ce-hatch-angle'); if(ha!==undefined) s.hatchAngle=hatchAngleOf(ha);
       s.weight=+read(el,'.ce-weight');
       const fl=read(el,'.ce-fill'); if(fl!==undefined) s.fill=+fl;
       const dh=read(el,'.ce-dash'); if(dh!==undefined) s.dash=dh;

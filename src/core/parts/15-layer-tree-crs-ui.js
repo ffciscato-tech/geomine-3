@@ -789,6 +789,8 @@ function syncSymPanel(){
   document.getElementById('stStroke').value=s.stroke;
   document.getElementById('stHatch').value=s.hatch;
   document.getElementById('stHatchScale').value=s.hatchScale??1;
+  { const hw=document.getElementById('stHatchWeight'),ha=document.getElementById('stHatchAngle');
+    if(hw)hw.value=hatchWeightOf(s.hatchWeight); if(ha)ha.value=hatchAngleOf(s.hatchAngle); }
   document.getElementById('stHatchScaleRow').style.display=(L.gtype==='polygon'&&!['solid','none',''].includes(s.hatch))?'block':'none';
   document.getElementById('stWeight').value=s.weight;
   document.getElementById('stFill').value=s.fill;
@@ -893,6 +895,8 @@ function applySym(event){
   s.stroke=document.getElementById('stStroke').value;
   s.hatch=document.getElementById('stHatch').value;
   s.hatchScale=Math.max(.25,Math.min(8,+document.getElementById('stHatchScale').value||1));
+  { const hw=document.getElementById('stHatchWeight'),ha=document.getElementById('stHatchAngle');
+    if(hw)s.hatchWeight=hatchWeightOf(hw.value); if(ha)s.hatchAngle=hatchAngleOf(ha.value); }
   s.weight=+document.getElementById('stWeight').value;
   s.fill=+document.getElementById('stFill').value;
   s.dash=document.getElementById('stDash').value;
@@ -914,7 +918,7 @@ document.getElementById('symMode').addEventListener('change',()=>{
 });
 document.getElementById('btnApplySym').onclick=applySym;
 document.getElementById('btnClassify').onclick=classifyLayer;
-['stColor','stStroke','stHatch','stHatchScale','stWeight','stFill','stDash','stLabel'].forEach(id=>{
+['stColor','stStroke','stHatch','stHatchScale','stHatchWeight','stHatchAngle','stWeight','stFill','stDash','stLabel'].forEach(id=>{
   const el=document.getElementById(id); if(el) el.addEventListener('change',applySym); });
 /* O seletor de cor do navegador só dispara 'change' ao FECHAR a paleta; com
    'input' a mudança acompanha o arrasto. Um atraso curto agrupa a enxurrada
