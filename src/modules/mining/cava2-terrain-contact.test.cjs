@@ -244,14 +244,23 @@ test('interseção pequena apagada: a ilha cortada no talude volta a seguir o pr
  assert(Number.isNaN(em(sem,25.1,.1)));assert(Math.abs(em(com,25.1,.1)-4.9)<1e-5);
  assert(com.cutVolume.validCells>sem.cutVolume.validCells);assert(Math.abs(com.cutVolume.volume-sem.cutVolume.volume)<1e-9,'o furo não soma volume');
 });
-test('ilha pequena do lado mantido: apagada a linha, é a ilha que sai',()=>{
- // pilha toda enterrada, menos numa cova do terreno em (25; 0)
- const cova=(x,y)=>20-25*Math.exp(-((x-25)**2+y*y)/8),{lines,F}=corta(cova);
- assert.equal(lines.length,1);assert(closed(lines[0]));
- const ilha=F.at(25,0);assert.equal(F.state[ilha],1);assert(F.area[ilha]<.1*F.total);
- const cura=T.heal(F,[lines[0].geom]);
+test('ilha do lado mantido: a pequena sai; a que é quase tudo o que fica faz o desenho bruto valer em volta',()=>{
+ // face leste enterrada (terreno x − 10) e, nela, uma cova onde a pilha reaparece numa ilha pequena
+ const pequena=(x,y)=>x-10-16*Math.exp(-((x-26)**2+y*y)/8),{lines,F}=corta(pequena);
+ const laco=lines.find(closed);assert(laco,'o contorno da cova é um laço fechado');
+ const ilha=F.at(26,0),face=F.at(28,8),corpo=F.at(0,0);
+ assert.equal(F.state[ilha],1);assert.equal(F.state[face],2);assert.equal(F.state[corpo],1);
+ const mantido=F.area.reduce((s,a,i)=>s+(F.state[i]===1?a:0),0);assert(F.area[ilha]<.1*mantido);
+ const cura=T.heal(F,[laco.geom]);
  assert.deepEqual(puro(cura.flips.map(f=>[f.id,f.to])),[[ilha,-1]]);
- assert.equal(cura.mask.at(25,0),-1);assert.equal(cura.mask.at(0,0),0);assert.equal(cura.separates(lines[0].geom),false);
+ assert.equal(cura.mask.at(26,0),-1);assert.equal(cura.mask.at(0,0),0);assert.equal(cura.separates(laco.geom),false);
+ // pilha toda enterrada, menos na cova: a ilha é tudo o que fica, então o desenho bruto passa a valer em volta
+ const cova=(x,y)=>20-25*Math.exp(-((x-25)**2+y*y)/8),Q=corta(cova);
+ assert.equal(Q.lines.length,1);assert(closed(Q.lines[0]));
+ const so=Q.F.at(25,0),resto=Q.F.at(0,0);assert.equal(Q.F.state[so],1);assert.equal(Q.F.state[resto],2);
+ const tudo=T.heal(Q.F,[Q.lines[0].geom]);
+ assert.deepEqual(puro(tudo.flips.map(f=>[f.id,f.to])),[[resto,1]]);
+ assert.equal(tudo.mask.at(0,0),1);assert.equal(tudo.mask.at(25,0),0);assert.equal(tudo.separates(Q.lines[0].geom),false);
 });
 test('linha principal apagada: o lado cortado inteiro volta a ser o desenho bruto; linha alheia não muda nada',()=>{
  // terreno sobe para leste e enterra a face leste: o contato é um arco aberto, de borda a borda

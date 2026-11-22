@@ -681,14 +681,18 @@ function sides(F,geom,fn){
 /* Decide o que muda com as linhas apagadas ("lines": geometria de cada uma).
    A região cortada vizinha passa a mantida — o desenho bruto continua inteiro
    ali —, salvo quando a mantida é uma ilha pequena (menor que a vizinha e que
-   10% do projeto): aí é a ilha que sai. Devolve:
+   10% de tudo o que está mantido): aí é a ilha que sai. A conta é sobre a área
+   mantida, não sobre a projetada: num projeto em que o MDT corta quase tudo, o
+   corpo principal do que fica não pode passar por "ilha" (teste com o DCE da
+   CSN na cota 315: o laço de 17 mil m² era 77% do que ficava). Devolve:
      mask.at(x, y)  +1 = vale o projeto, −1 = fica cortado, 0 = não mexe
      separates(geom) a linha ainda separa dois lados diferentes?
      flips          regiões que mudaram; unresolved, linhas sem dois lados claros */
 function heal(F,lines,options={}){
   const none={mask:null,flips:[],unresolved:[],separates:()=>true};
   if(!F||!lines?.length)return none;
-  const {h,nc,nr,ox,oy,st,lab,area,state}=F,final=state.slice(),pairs=[],unresolved=[],island=options.islandShare??.1;
+  const {h,nc,nr,ox,oy,st,lab,area,state}=F,final=state.slice(),pairs=[],unresolved=[],island=options.islandShare??.1,
+    mantido=area.reduce((s,a,i)=>s+(state[i]===1?a:0),0);
   lines.forEach((geom,li)=>{
     const votes=new Map(),probes=sides(F,geom,(p,q)=>{
       if(state[p]===state[q])return;
@@ -703,7 +707,7 @@ function heal(F,lines,options={}){
     for(const [p,q] of pairs){
       if(final[p]===final[q])continue;
       const k=final[p]===1?p:q,c=k===p?q:p;
-      if(area[k]<area[c]&&area[k]<island*F.total)final[k]=2;else final[c]=1;
+      if(area[k]<area[c]&&area[k]<island*mantido)final[k]=2;else final[c]=1;
       changed=true;
     }
   }

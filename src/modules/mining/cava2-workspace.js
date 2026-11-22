@@ -122,7 +122,7 @@ function criaInterface(){
     });}catch(e){console.warn('Área 2D: limpeza das camadas',e);}
     // Limite redesenhado: é outro desenho, as feições apagadas do anterior não valem para ele.
     try{estado.frame.contentWindow.addEventListener('cava2:base-drawn',()=>{
-      const d=desenhoAtual();if(d&&!estado.restaurando&&d.apagadas?.length){d.apagadas=[];cava2AtualizaBotaoApagadas();}
+      const d=desenhoAtual();if(d&&!estado.restaurando&&(d.apagadas?.length||d.contatosApagados?.length)){d.apagadas=[];d.contatosApagados=[];cava2AtualizaBotaoApagadas();}
     });}catch(e){}
     try{estado.frame.contentWindow.addEventListener('cava2:grid-changed',e=>{estado.mostrarGrade=e.detail?.visible!==false;salvaRegistroLocal();window.GeoMineSessionAutosave?.markDirty('quadrícula da cava');});}catch(e){}
     try{estado.frame.contentWindow.addEventListener('cava2:cursor',atualizaCursorGlobal);}catch(e){}
@@ -1172,7 +1172,7 @@ function assinaturaMdt(R){
     valor(0,0),valor(0,Math.max(0,nc-1)),valor(Math.floor(nr/2),Math.floor(nc/2)),valor(Math.max(0,nr-1),Math.max(0,nc-1))]);
 }
 function hashCorteMdt(d,R,finalizado){
-  return `contato-mdt-4|${assinaturaMdt(R)}|${finalizado?'corte':'preview'}|${d.tipo}|${n(d.baseZ)}|${JSON.stringify(d.engine||{})}`;
+  return `contato-mdt-4|${assinaturaMdt(R)}|${finalizado?'corte':'preview'}|${d.tipo}|${n(d.baseZ)}|${JSON.stringify(d.engine||{})}|${(d.contatosApagados||[]).map(r=>r.k).join(',')}`;
 }
 function mostraBrutaSemCorte(d,mensagem,erro){
   const L=camadaDoDesenho(d?.id),C=camadaCorteDoDesenho(d?.id);
@@ -1274,8 +1274,8 @@ async function executaCorteMdtAtual(forcar){
     onProgress:percent=>showLoad(`MDT recortado · 0,20 m · ${percent}%`)});
   if(!current())throw Object.assign(new Error('O projeto mudou durante o recorte.'),{name:'AbortError'});
   const superficie=cava2PublicaMdtRecortado(d,R,grid);
-  const congelado=cava2CongelaCorte(d,R,C,null);
-  delete C._cava2CutSurface;
+  const congelado=cava2CongelaCorte(d,R,C,null),cura=C._cava2Cura||null;
+  delete C._cava2CutSurface;if(congelado?.line)cava2RegistraContatos(congelado.line);
   if(!congelado){d.cutMdt=false;mostraBrutaSemCorte(d);sincronizaSeletorMdtMotor(d);return false;}
   d.resultadoCorte={id:congelado.id,criadoEm:new Date().toISOString(),mdtId:R.id,
     mdtNome:R.name,cota:n(d.baseZ),engine:clone(d.engine),surfaceId:superficie.id,
@@ -1288,7 +1288,9 @@ async function executaCorteMdtAtual(forcar){
   sincronizaSeletorMdtMotor(d);renderAbas();salvaRegistroLocal();atualizaContexto();if(typeof refreshUI==='function')refreshUI();
   try{if(typeof layoutSeVisivel==='function')layoutSeVisivel();}catch(e){}
   const ni=congelado.line.features.filter(f=>f.props?.ELEMENTO==='Interseção').length;
-  status(`${d.nome}: Bruta preservada · Recortada aberta · ${ni} interseção(ões).`);
+  status(`${d.nome}: Bruta preservada · Recortada aberta · ${ni} interseção(ões)`+
+    (cura?.curados?` · ${cura.curados} trecho(s) seguem o desenho bruto (interseção apagada)`:'')+
+    (cura?.naoResolvidas?` · ${cura.naoResolvidas} interseção(ões) apagada(s) sem dois lados claros: o corte ficou como antes ali`:'')+'.');
   window.GeoMineWorkspaceResume?.request();
   estado.savingCut=salvaArquivoDaCava(d).catch(e=>{status(`Recorte mantido no projeto; falha ao gerar o arquivo: ${e.message||e}`,true);return false;});
   try{if(S._view==='v3d'&&typeof v3Auto==='function')v3Auto();}catch(e){}return true;
@@ -1402,7 +1404,7 @@ function reconstroiCamadasAusentes(){
 }
 function snapshot(){
   if(!estado.ready&&estado.projetoPendente!==undefined)return clone(estado.projetoPendente);
-  salvaAtual(true);cava2ReconciliaInativos();
+  salvaAtual(true);cava2ReconciliaInativos();for(const d of estado.desenhos)cava2ReconciliaContatosDoDesenho(d);
   return dadosRegistro();
 }
 function migraEstado(st){
@@ -1773,9 +1775,13 @@ function cava2RegistraPublicadas(L,feats){
    Camadas gravadas por versões anteriores não têm chave e ficam sem referência:
    são redesenhadas inteiras na primeira publicação, como antes. */
 function cava2RegistraBaseDasCamadas(){
-  for(const d of estado.desenhos)for(const L of [camadaDoDesenho(d.id),camadaPreenchimentoDoDesenho(d.id)]){
-    if(!L||cava2Publicadas.has(L)||!(L.features||[]).length||L.features.some(f=>!f||!f._cava2Key))continue;
-    cava2RegistraPublicadas(L,L.features);
+  for(const d of estado.desenhos){
+    for(const L of [camadaDoDesenho(d.id),camadaPreenchimentoDoDesenho(d.id)]){
+      if(!L||cava2Publicadas.has(L)||!(L.features||[]).length||L.features.some(f=>!f||!f._cava2Key))continue;
+      cava2RegistraPublicadas(L,L.features);
+    }
+    for(const L of [camadaCorteDoDesenho(d.id),camadasResultadoCava(d).line])
+      if(L&&!cava2Contatos.has(L)&&cava2ContatosComChave(L))cava2RegistraContatos(L);
   }
 }
 /* O salvamento publica só o desenho da aba ativa. Os outros não são reescritos,
@@ -1787,16 +1793,110 @@ function cava2ReconciliaInativos(){
       if(cava2ReconciliaApagadas(d,L))cava2RegistraPublicadas(L,L.features);
   }
 }
+/* INTERSEÇÃO APAGADA (22/11/2026 — print IMG_0237: "essas pequenas
+   intersecções, se eu apagá-las, o desenho bruto deve ser mantido"). Cada
+   linha de contato publicada (camada "Interseção — …" e a Recortada) ganha a
+   chave I|… e a camada guarda, da última publicação, uma amostra de 24 pontos
+   e o comprimento de cada linha. A linha que some da camada vira um registro
+   em d.contatosApagados (vai para o projeto); a que volta (Ctrl+Z) sai dele.
+   Na prévia a linha casada com um registro não é redesenhada. No Cortar, o
+   motor (GeoMineCavaTerrain.faces/heal) decide o lado: a região cortada
+   vizinha passa a seguir o desenho bruto, salvo quando o lado mantido é uma
+   ilha pequena (menor que a vizinha e que 10% de tudo o que fica) — aí é a
+   ilha que sai. Linha sem dois lados claros fica como está. O casamento é geométrico: comprimento entre 0,5× e 2× e 80% dos pontos
+   a menos de max(0,5 m; ¼ da célula; 2% do comprimento) da linha nova. */
+const cava2Contatos=new WeakMap();let cava2SeqContato=0;
+function cava2AmostraLinha(geom,nPts=24){
+  const P=(geom||[]).filter(q=>Array.isArray(q)&&Number.isFinite(+q[0])&&Number.isFinite(+q[1]));
+  const acc=[0];let L=0;for(let i=1;i<P.length;i++){L+=Math.hypot(P[i][0]-P[i-1][0],P[i][1]-P[i-1][1]);acc.push(L);}
+  if(P.length<2||!(L>0))return {p:[],len:0};
+  const out=[];let j=1;
+  for(let k=0;k<nPts;k++){
+    const s=L*k/(nPts-1);while(j<P.length-1&&acc[j]<s)j++;
+    const a=P[j-1],b=P[j],t=acc[j]>acc[j-1]?Math.min(1,Math.max(0,(s-acc[j-1])/(acc[j]-acc[j-1]))):0;
+    out.push([+(+a[0]+(b[0]-a[0])*t).toFixed(3),+(+a[1]+(b[1]-a[1])*t).toFixed(3)]);
+  }
+  return {p:out,len:+L.toFixed(3)};
+}
+const cava2EhContato=f=>f&&f.props?.ELEMENTO==='Interseção';
+function cava2ContatosComChave(L){const C=(L?.features||[]).filter(cava2EhContato);return C.length>0&&C.every(f=>String(f._cava2Key||'').startsWith('I|'));}
+function cava2ChavesContato(feats){
+  const seq=(++cava2SeqContato).toString(36)+Date.now().toString(36).slice(-4);
+  (feats||[]).forEach((f,i)=>{if(cava2EhContato(f))f._cava2Key=`I|${seq}|${i}`;});
+}
+function cava2RegistraContatos(L){
+  if(!L)return;const m=new Map();
+  for(const f of L.features||[])if(cava2EhContato(f)&&String(f._cava2Key||'').startsWith('I|'))m.set(f._cava2Key,cava2AmostraLinha(f.geom));
+  cava2Contatos.set(L,m);
+}
+/* Compara a camada com a última publicação: devolve quantos registros novos entraram
+   (−1 se só saíram registros, 0 se nada mudou). */
+function cava2ReconciliaContatos(d,L,origem){
+  const ref=L&&cava2Contatos.get(L);if(!d||!ref)return 0;
+  const atuais=new Set();
+  for(const f of L.features||[]){if(!cava2EhContato(f))continue;
+    // linha de contato sem chave (colada, redesenhada): nada é concluído nesta rodada
+    if(!String(f?._cava2Key||'').startsWith('I|'))return 0;atuais.add(f._cava2Key);}
+  const reg=Array.isArray(d.contatosApagados)?d.contatosApagados:[];let novos=0,saiu=0;
+  for(const [k,v] of ref)if(!atuais.has(k)&&v.len>0&&!reg.some(r=>r.k===k)){reg.push({k,p:v.p,len:v.len,em:origem||''});novos++;}
+  for(let i=reg.length-1;i>=0;i--)if(atuais.has(reg[i].k)){reg.splice(i,1);saiu++;}
+  if(novos||saiu)d.contatosApagados=reg;
+  return novos||(saiu?-1:0);
+}
+function cava2ReconciliaContatosDoDesenho(d){
+  if(!d||d.somenteRecortada)return 0;let mudou=false,novosPrevia=0,novosRecortada=0;
+  for(const [L,origem] of [[camadaCorteDoDesenho(d.id),'previa'],[camadasResultadoCava(d).line,'recortada']]){
+    const r=cava2ReconciliaContatos(d,L,origem);if(!r)continue;
+    mudou=true;cava2RegistraContatos(L);if(r>0){if(origem==='previa')novosPrevia+=r;else novosRecortada+=r;}
+  }
+  if(!mudou)return 0;
+  estado.cutHashes[d.id]=null;cava2AtualizaBotaoApagadas();
+  try{window.GeoMineSessionAutosave?.markDirty('interseção apagada da cava/DCE');}catch(e){}
+  if(typeof toast==='function'){
+    if(novosRecortada)toast(`${d.nome}: interseção apagada na Recortada. Toque em Cortar de novo para o desenho bruto ficar inteiro nesse trecho; ↺ traz a linha de volta.`);
+    else if(novosPrevia)toast(`${d.nome}: interseção apagada — no corte, o desenho bruto fica inteiro nesse trecho. ↺ traz a linha de volta.`);
+  }
+  return novosPrevia+novosRecortada;
+}
+function cava2DistLinha(P,x,y){
+  let best=Infinity;
+  for(let i=0;i<P.length-1;i++){
+    const a=P[i],b=P[i+1],dx=b[0]-a[0],dy=b[1]-a[1],d2=dx*dx+dy*dy,
+      t=d2?Math.max(0,Math.min(1,((x-a[0])*dx+(y-a[1])*dy)/d2)):0,ex=a[0]+t*dx-x,ey=a[1]+t*dy-y,q=ex*ex+ey*ey;
+    if(q<best)best=q;
+  }
+  return Math.sqrt(best);
+}
+/* Componentes do contato que correspondem a uma linha apagada: Map(componente → registro). */
+function cava2CasaContatos(inter,reg,g){
+  const casados=new Map();if(!reg?.length||!inter?.length)return casados;
+  const cel=Math.max(1e-3,Math.min(Math.abs(n(g?.cs,1))||1,Math.abs(n(g?.csy,g?.cs))||1));
+  const info=inter.map(f=>{let L=0,x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;const P=f.geom||[];
+    for(let i=0;i<P.length;i++){const q=P[i];if(q[0]<x0)x0=q[0];if(q[0]>x1)x1=q[0];if(q[1]<y0)y0=q[1];if(q[1]>y1)y1=q[1];
+      if(i)L+=Math.hypot(q[0]-P[i-1][0],q[1]-P[i-1][1]);}return {L,x0,y0,x1,y1};});
+  for(const r of reg){
+    if(!(r?.len>0)||!Array.isArray(r.p)||!r.p.length)continue;
+    const tol=Math.max(.5,.25*cel,.02*r.len);let melhor=null,fm=0;
+    inter.forEach((f,i)=>{
+      const I=info[i];if(casados.has(f)||I.L<.5*r.len||I.L>2*r.len)return;
+      if(r.p.every(q=>q[0]<I.x0-tol||q[0]>I.x1+tol||q[1]<I.y0-tol||q[1]>I.y1+tol))return;
+      let ok=0;for(const q of r.p)if(cava2DistLinha(f.geom,q[0],q[1])<=tol)ok++;
+      const fr=ok/r.p.length;if(fr>=.8&&fr>fm){fm=fr;melhor=f;}
+    });
+    if(melhor)casados.set(melhor,r);
+  }
+  return casados;
+}
 let cava2AvisouApagadas=false;
 function cava2AtualizaBotaoApagadas(){
   const b=document.getElementById('cava2RestoreDeleted');if(!b)return;
-  const d=desenhoAtual(),total=d?.apagadas?.length||0;
+  const d=desenhoAtual(),total=(d?.apagadas?.length||0)+(d?.contatosApagados?.length||0);
   b.hidden=!total;b.textContent='↺ '+total;
   b.title=total?`Trazer de volta ${total} feição(ões) apagada(s) de “${d.nome}”`:'';b.setAttribute('aria-label',b.title||'Feições apagadas');
 }
 function restauraApagadas(){
-  const d=desenhoAtual(),total=d?.apagadas?.length||0;if(!total)return false;
-  d.apagadas=[];sincronizaCamadas(true);cava2AtualizaBotaoApagadas();
+  const d=desenhoAtual(),total=(d?.apagadas?.length||0)+(d?.contatosApagados?.length||0);if(!total)return false;
+  d.apagadas=[];d.contatosApagados=[];estado.cutHashes[d.id]=null;sincronizaCamadas(true);cava2AtualizaBotaoApagadas();
   window.GeoMineSessionAutosave?.markDirty('feições apagadas da cava/DCE');
   if(typeof toast==='function')toast(`${d.nome}: ${total} feição(ões) apagada(s) voltaram ao desenho.`);
   return true;
@@ -1888,24 +1988,48 @@ function cava2RampasParaIntersecao(design,baseZ){
 
 /* Publica somente o contato calculado entre a superfície de projeto e o
    MDT. Componentes abertas permanecem abertas, inclusive junto a NoData. */
-function cava2RecortaSuperficieNoMdt(src,g,modoUp,passo,guardarAreas,rampas){
-  const feats=[],linhas=[];
+function cava2RecortaSuperficieNoMdt(src,g,modoUp,passo,guardarAreas,rampas,apagados){
+  const linhas=[],desenho=[];
   for(const f of src||[]){
     const e=String(f.props?.ELEMENTO||''),ring=cava2GeomFechada((f.geom||[]).map(p=>({x:p[0],y:p[1]})));
     if(['Crista','Pé'].includes(e)&&ring.length>=4){
       ring.pop();linhas.push({ring,z:+f.props.COTA});
     }
-    if(f.geom?.length>1)feats.push(...(cavaRecortaFeicaoNoMdt(f,g,modoUp,passo)||[]));
+    if(f.geom?.length>1)desenho.push(f);
   }
   const area=r=>{const o=r[0];let a=0;for(let i=1;i<r.length-1;i++)
     a+=(r[i][0]-o[0])*(r[i+1][1]-o[1])-(r[i][1]-o[1])*(r[i+1][0]-o[0]);return Math.abs(a);};
   linhas.sort((a,b)=>(modoUp?a.z-b.z:b.z-a.z)||area(b.ring)-area(a.ring));
-  const stats={},poligonos={surface:[],floor:[]},inter=GeoMineCavaTerrain.intersect(linhas,g,{stats,keepAbove:modoUp,ramps:rampas,
+  const stats={},poligonos={surface:[],floor:[]};
+  let inter=GeoMineCavaTerrain.intersect(linhas,g,{stats,keepAbove:modoUp,ramps:rampas,
     onPolygon:guardarAreas?(p,t)=>poligonos[t].push(p):null}).map(f=>({geom:f.geom,zg:f.zg,multi:false,
     props:{TIPO:'Interseção cava × terreno',BANCO:null,COTA:null,CLASSE:'daylight',
       METODO:'superfície de projeto × MDT — amostragem por célula',
       TOPOLOGIA:Math.hypot(f.geom[0][0]-f.geom.at(-1)[0],f.geom[0][1]-f.geom.at(-1)[1])<1e-6?'fechada':'aberta'}}));
-  return {feats:feats.concat(inter),stats,poligonos};
+  // linhas de contato que a pessoa apagou
+  const casados=cava2CasaContatos(inter,apagados,g);let mask=null,curados=0,removidas=0,naoResolvidas=0;
+  if(casados.size&&!guardarAreas){inter=inter.filter(f=>!casados.has(f));removidas=casados.size;}
+  else if(casados.size){
+    const geoms=[...casados.keys()].map(f=>f.geom);
+    let cura=null;
+    try{const F=GeoMineCavaTerrain.faces(poligonos.surface.concat(poligonos.floor),linhas,g);cura=F?GeoMineCavaTerrain.heal(F,geoms):null;}
+    catch(e){console.warn('Cava2: interseção apagada não pôde ser resolvida',e);}
+    naoResolvidas=cura?cura.unresolved.length:geoms.length;
+    if(cura?.mask){
+      mask=cura.mask;curados=cura.flips.length;
+      const lado=p=>{let x=0,y=0;for(const q of p){x+=q[0];y+=q[1];}return mask.at(x/p.length,y/p.length);};
+      for(const t of ['surface','floor'])poligonos[t]=poligonos[t].filter(p=>lado(p)>=0);
+      // o outro lado do contato: o projeto onde o MDT o cortava, só nas regiões curadas
+      GeoMineCavaTerrain.intersect(linhas,g,{keepAbove:!modoUp,ramps:rampas,onPolygon:(p,t)=>{if(lado(p)>0)poligonos[t].push(p);}});
+      const antes=inter.length;inter=inter.filter(f=>cura.separates(f.geom));removidas=antes-inter.length;
+    }
+  }
+  // cristas, pés e rampas cortados pelo MDT; onde a máscara manda, vale o projeto (ou o corte)
+  const feats=[],orig=typeof window!=='undefined'?window.sampleZbil:null,usaMascara=!!(mask&&typeof orig==='function');
+  if(usaMascara)window.sampleZbil=(gg,x,y)=>{const m=mask.at(x,y);return m?((m>0)===!!modoUp?-1e9:1e9):orig(gg,x,y);};
+  try{for(const f of desenho)feats.push(...(cavaRecortaFeicaoNoMdt(f,g,modoUp,passo)||[]));}
+  finally{if(usaMascara)window.sampleZbil=orig;}
+  return {feats:feats.concat(inter),stats,poligonos,mask,cura:{casados:casados.size,curados,removidas,naoResolvidas}};
 }
 function cava2RecortaLimitesNoMdt(design,d,R,g,modoUp,passo){
   if(typeof cavaRecortaFeicaoNoMdt!=='function')return [];
@@ -1955,6 +2079,7 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
   if(typeof GeoMineCavaTerrain?.intersect!=='function')
     return mostraBrutaSemCorte(d,'O algoritmo de interseção da cava não está disponível.',true);
   if(saidaSuprimida(d,'intersection'))return null;
+  cava2ReconciliaContatosDoDesenho(d);
   const hash=hashCorteMdt(d,R,finalizado),existente=camadaCorteDoDesenho(d.id),
     fillCorte=camadaPreenchimentoCorteDoDesenho(d.id);
   if(!forcar&&existente&&estado.cutHashes[d.id]===hash){
@@ -1970,17 +2095,18 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
     return mostraBrutaSemCorte(d,silencioso?'':`${d.nome}: desenhe primeiro um limite fechado.`,!silencioso);
   }
   const passo=Math.min(.75,Math.abs(n(g.cs,.5))*.5,Math.abs(n(g.csy,g.cs))*.5),modoUp=d.tipo==='pilha';let q;
-  try{q=cava2RecortaSuperficieNoMdt(feicoesCompativeisCorte(src),g,modoUp,passo,finalizado,cava2RampasParaIntersecao(design,n(d.baseZ)));}
+  try{q=cava2RecortaSuperficieNoMdt(feicoesCompativeisCorte(src),g,modoUp,passo,finalizado,cava2RampasParaIntersecao(design,n(d.baseZ)),d.contatosApagados);}
   catch(e){console.error('Interseção Área 2D × MDT',e);return mostraBrutaSemCorte(d,
     `Falha ao calcular a interseção com “${R.name}”: ${e.message||e}`,true);}
   const normalizadas=normalizaCorteMdt(q?.feats,d,R);
   let todas=normalizadas.filter(f=>f.props?.ELEMENTO!=='Interseção');
   const inter=normalizadas.filter(f=>f.props?.ELEMENTO==='Interseção');
-  if(!inter.length&&(!finalizado||!todas.length)){
+  // todas as linhas de contato apagadas: a camada fica, vazia (não é falta de cota)
+  if(!inter.length&&!(q?.cura?.removidas>0)&&(!finalizado||!todas.length)){
     if(existente)removeCamadaGerada(existente);if(fillCorte)removeCamadaGerada(fillCorte);estado.cutHashes[d.id]=null;
     return mostraBrutaSemCorte(d,`${d.nome}: a superfície desenhada não encontra cotas válidas de “${R.name}” nesta extensão.`,!silencioso);
   }
-  todas=todas.concat(inter);
+  todas=todas.concat(inter);cava2ChavesContato(inter);
   const feats=finalizado?todas:inter,ativo=S.activeId;let C=existente;
   if(!C){
     C=addLayer({sourceLayer:camadaDoDesenho(d.id)||R,name:nomeCorteMdt(d,R),gtype:'line',features:feats,
@@ -1991,11 +2117,18 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
     C.src=finalizado?'Área 2D · Cava2 · cava cortada':'Área 2D · Cava2 · interseção entre superfícies';}
   C._cava2MdtId=R.id;C._cava2Kind=d.tipo;C._cava2Managed=true;C._cava2CutFinalized=finalizado;
   C._cava2IntersectionPreview=!finalizado;C.visible=true;estiloCamada(C,feats);
+  cava2RegistraContatos(C);C._cava2Cura=q?.cura||null;
   const L=camadaDoDesenho(d.id),F=camadaPreenchimentoDoDesenho(d.id),CF=camadaPreenchimentoCorteDoDesenho(d.id);
   if(finalizado){
-    const ramps=feicoesPreenchimentoDoDesign(design,n(d.baseZ),d).filter(f=>['Rampa','Retorno'].includes(f.props?.ELEMENTO))
-      .flatMap(f=>GeoMineCavaTerrain.clipPolygon(f.geom.map((p,i)=>[p[0],p[1],f.zg?.[i]??f.props.COTA]),g,{keepAbove:modoUp}));
-    C._cava2CutSurface={surface:q.poligonos.surface,floor:q.poligonos.floor,ramps};
+    const pistas=feicoesPreenchimentoDoDesign(design,n(d.baseZ),d).filter(f=>['Rampa','Retorno'].includes(f.props?.ELEMENTO)),
+      cortaPistas=lado=>pistas.flatMap(f=>GeoMineCavaTerrain.clipPolygon(f.geom.map((p,i)=>[p[0],p[1],f.zg?.[i]??f.props.COTA]),g,{keepAbove:lado}));
+    let ramps=cortaPistas(modoUp);
+    if(q.mask){
+      // nas regiões curadas a pista segue o projeto; na ilha retirada, sai
+      const ladoM=p=>{let x=0,y=0;for(const c of p){x+=c[0];y+=c[1];}return q.mask.at(x/p.length,y/p.length);};
+      ramps=ramps.filter(p=>ladoM(p)>=0).concat(cortaPistas(!modoUp).filter(p=>ladoM(p)>0));
+    }
+    C._cava2CutSurface={surface:q.poligonos.surface,floor:q.poligonos.floor,ramps,mask:q.mask||null};
   }
   if(L){L.visible=!finalizado;drawLayer(L);}if(F){F.visible=!finalizado;drawLayer(F);}
   if(CF){CF.visible=finalizado;drawLayer(CF);}drawLayer(C);if(CF)cava2OrdenaLinhaSobrePreenchimento(C,CF);
@@ -2005,7 +2138,7 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
 
 function limpaCamadasDoDesenho(){
   clearTimeout(estado.syncTimer);estado.syncTimer=0;const d=desenhoAtual();if(!d)return false;
-  d.engine=leEstadoMotor();estado.cutHashes[d.id]=null;d.apagadas=[];cava2AtualizaBotaoApagadas();
+  d.engine=leEstadoMotor();estado.cutHashes[d.id]=null;d.apagadas=[];d.contatosApagados=[];cava2AtualizaBotaoApagadas();
   const removidas=[camadaDoDesenho(d.id),camadaPreenchimentoDoDesenho(d.id),camadaCorteDoDesenho(d.id),
     camadaPreenchimentoCorteDoDesenho(d.id)].filter(Boolean);
   removidas.forEach(removeCamadaGerada);salvaRegistroLocal();if(typeof refreshUI==='function')refreshUI();atualizaContexto();

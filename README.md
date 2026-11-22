@@ -269,6 +269,30 @@ publicou de outro lugar e este repositório está desatualizado.
   desenho" e um limite novo zeram a lista. O motor da aba Cava, os volumes e a
   camada Recortada continuam usando o desenho paramétrico inteiro (a Recortada
   só é refeita quando o desenho ou o MDT mudam).
+- **Interseção apagada: o desenho bruto fica inteiro naquele trecho.** Pedido
+  de 22/11/2026, print IMG_0237 com um laço pequeno de interseção circulado
+  junto à rampa: "essas pequenas intersecções se eu apagá-las o desenho bruto
+  deve ser mantido". Cada linha de contato publicada (camada "Interseção — …" e
+  a Recortada) leva a chave `I|…`, e a camada guarda, da última publicação, 24
+  pontos e o comprimento de cada linha (`cava2Contatos`). A linha que some vira
+  um registro em `contatosApagados` do desenho (vai para o projeto); a que volta
+  por Ctrl+Z sai dele. Na prévia a linha casada com um registro não volta. No
+  **Cortar**, `GeoMineCavaTerrain.faces` rotula as regiões mantidas e cortadas
+  do projeto e `heal` decide: a região cortada vizinha da linha apagada passa a
+  seguir o desenho bruto (cristas, pés, rampa e MDT recortado de 0,20 m), salvo
+  quando o lado mantido é uma ilha pequena — menor que a vizinha e que 10% de
+  tudo o que fica —, que então sai. A medida é sobre a área mantida: com o DCE
+  da CSN na cota 315 o laço de 17 mil m² era 77% do que ficava e não pode ser
+  tratado como ilha. A máscara vai para o `rasterize` e, por uma troca
+  temporária de `sampleZbil`, para o corte das cristas e pés. O casamento é
+  geométrico (comprimento entre 0,5× e 2× e 80% dos pontos a menos de
+  max(0,5 m; ¼ da célula; 2% do comprimento)); linha sem dois lados claros fica
+  como está, com aviso. Apagar na Recortada registra e avisa para cortar de
+  novo (o corte não é refeito sozinho: o raster de 0,20 m e o arquivo .ccmgis
+  são pesados). O ↺ conta e traz de volta também as linhas de contato; "Limpar
+  desenho" e um limite novo zeram o registro. Sem nada apagado o corte é
+  idêntico ao anterior (conferido com a CSN: mesmo volume, mesmas células e
+  feições). Testes em `cava2-terrain-contact.test.cjs`.
 - **Interseção da cava/DCE com o MDT: faixa exata entre os anéis e rampa dentro
   do cálculo.** Pedido de 22/11/2026, com o print da pilha da CSN (Cantagalo):
   "veja se as interseções com a rampa estão bem feitas". Não estavam, por dois
