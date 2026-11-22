@@ -62,11 +62,10 @@ recuperá-las sozinho. Para recuperar:
 ### Arquivo de restauração
 
 `restaurar-morro-verde-drenagem.json` é um backup do Compasso só com o projeto
-Morro Verde 38_26 e lançamentos de recuperação que somam 35 h. Como o
-aplicativo não aceita lançamentos maiores que 24 h, as horas estão divididas em
-dias. Antes de importar, edite as datas, as atividades e o valor da hora
-(`rate`) para refletir o que foi feito; depois abra o Compasso, aba "Exportar e
-backup", "Importar backup" e escolha o arquivo. O projeto é reconhecido pelo
+Morro Verde 38_26 e lançamentos de recuperação que somam 35 h, distribuídas
+a pedido do usuário em terça 17, quarta 18, quinta 19 e sexta 20/11/2026
+(8 h 45 min por dia, valor da hora R$ 90). Para importar, abra o Compasso, aba
+"Exportar e backup", "Importar backup" e escolha o arquivo. O projeto é reconhecido pelo
 ID CCM, então nada é duplicado; os lançamentos entram como "A transferir".
 
 ## Para o futuro

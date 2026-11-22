@@ -14,9 +14,9 @@
     {
       "id": "restauracao-mv-drenagem-01",
       "projectId": "restauracao-morro-verde-38-26",
-      "date": "2026-11-10",
-      "activity": "Consolidação da drenagem (recuperação de horas apagadas)",
-      "ms": 25200000,
+      "date": "2026-11-17",
+      "activity": "Consolidação da drenagem",
+      "ms": 31500000,
       "rate": 90,
       "transferred": false,
       "created": 1763800000000
@@ -24,9 +24,9 @@
     {
       "id": "restauracao-mv-drenagem-02",
       "projectId": "restauracao-morro-verde-38-26",
-      "date": "2026-11-11",
-      "activity": "Consolidação da drenagem (recuperação de horas apagadas)",
-      "ms": 25200000,
+      "date": "2026-11-18",
+      "activity": "Consolidação da drenagem",
+      "ms": 31500000,
       "rate": 90,
       "transferred": false,
       "created": 1763800000001
@@ -34,9 +34,9 @@
     {
       "id": "restauracao-mv-drenagem-03",
       "projectId": "restauracao-morro-verde-38-26",
-      "date": "2026-11-12",
-      "activity": "Consolidação da drenagem (recuperação de horas apagadas)",
-      "ms": 25200000,
+      "date": "2026-11-19",
+      "activity": "Consolidação da drenagem",
+      "ms": 31500000,
       "rate": 90,
       "transferred": false,
       "created": 1763800000002
@@ -44,22 +44,12 @@
     {
       "id": "restauracao-mv-drenagem-04",
       "projectId": "restauracao-morro-verde-38-26",
-      "date": "2026-11-13",
-      "activity": "Consolidação da drenagem (recuperação de horas apagadas)",
-      "ms": 25200000,
+      "date": "2026-11-20",
+      "activity": "Consolidação da drenagem",
+      "ms": 31500000,
       "rate": 90,
       "transferred": false,
       "created": 1763800000003
-    },
-    {
-      "id": "restauracao-mv-drenagem-05",
-      "projectId": "restauracao-morro-verde-38-26",
-      "date": "2026-11-14",
-      "activity": "Consolidação da drenagem (recuperação de horas apagadas)",
-      "ms": 25200000,
-      "rate": 90,
-      "transferred": false,
-      "created": 1763800000004
     }
   ],
   "active": null,
