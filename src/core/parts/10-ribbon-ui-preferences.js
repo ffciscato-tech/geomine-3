@@ -724,12 +724,14 @@ const CATS=[
     G('Caixa de retenção',[['caixa-retencao','Gerar Caixa'],['relatorio-geotecnico','Memorial da Caixa']]),
   ]);
   set('geotecnia',[
-    G('Estabilidade',[['talude-geotecnia','Talude'],['secao-geotecnica','Seção Geotécnica'],['estabilidade-fs','Estabilidade (FS)'],['nivel-agua','NA (Nível d’Água)'],['dreno','Dreno']]),
+    /* Ordem pedida em 22/11/2026: primeiro a seção, depois a estabilidade e o nível d’água
+       (com a escolha do pior caso); o talude paramétrico vem depois. */
+    G('Estabilidade',[['secao-geotecnica','Seção Geotécnica'],['estabilidade-fs','Estabilidade (FS)'],['nivel-agua','NA (Nível d’Água)'],['talude-geotecnia','Talude'],['dreno','Dreno']]),
     G('Instrumentação',[['piezometro','Piezômetro'],['inclinometro','Inclinômetro'],['marco-superficial','Marco Superficial'],['instrumentacao','Instrumentação'],['monitoramento','Monitoramento']]),
     G('Comportamento',[['deformacao','Deformação'],['analise-sismica','Análise Sísmica'],['relatorio-geotecnico','Relatório Geotécnico']]),
   ]);
   set('barragens',[
-    G('Barragens',[['barragem','Barragem'],['dique-geotecnia','Dique'],['talude-geotecnia','Talude'],['secao-geotecnica','Seção Geotécnica'],['estabilidade-fs','Estabilidade (FS)']]),
+    G('Barragens',[['barragem','Barragem'],['dique-geotecnia','Dique'],['secao-geotecnica','Seção Geotécnica'],['estabilidade-fs','Estabilidade (FS)'],['talude-geotecnia','Talude']]),
     G('Monitoramento',[['piezometro','Piezômetro'],['inclinometro','Inclinômetro'],['marco-superficial','Marco Superficial'],['dreno','Dreno'],['nivel-agua','NA (Nível d’Água)']]),
   ]);
   set('drone',[

@@ -62,7 +62,7 @@
     ctx.save();
     ctx.fillStyle=op.limpo?T.papel:T.fundo; ctx.fillRect(0,0,w,h);
     ctx.lineJoin='round'; ctx.lineCap='round';
-    const F=GM.faixas(sec), L=GM.limites(sec), adm=GM.num(sec.fsAdm,1.5);
+    const F=GM.faixas(sec), L=GM.limites(sec), adm=GM.admEfetivo?GM.admEfetivo(sec):GM.num(sec.fsAdm,1.5);
 
     /* grade e eixos */
     const [mx0,mz1]=GM.mundo(v,0,0), [mx1,mz0]=GM.mundo(v,w,h), px=passo(mx1-mx0,w/90), pz=passo(mz1-mz0,h/55);
@@ -98,7 +98,14 @@
     ctx.strokeStyle=T.contorno; ctx.setLineDash([6,4]); ctx.beginPath(); ctx.moveTo(X(L.x0),Y(F.base)); ctx.lineTo(X(L.x1),Y(F.base)); ctx.stroke(); ctx.setLineDash([]);
 
     /* água */
-    const agua=sec.agua&&sec.agua.modo==='linha'&&sec.agua.linha.length>1?sec.agua.linha.slice().sort((a,b)=>a[0]-b[0]):null;
+    /* a linha da condição em cálculo (NA desenhado, crítico, saturado…); editando, a desenhada */
+    const desenhada=sec.agua&&sec.agua.modo==='linha'&&sec.agua.linha.length>1?sec.agua.linha.slice().sort((a,b)=>a[0]-b[0]):null;
+    const condW=GM.condicaoEfetiva?GM.condicaoEfetiva(sec):'desenhado', agua=op.editaNA||!GM.linhaCondicao?desenhada:GM.linhaCondicao(sec,condW);
+    if(desenhada&&agua!==desenhada&&!op.editaNA){
+      ctx.strokeStyle=T.agua; ctx.lineWidth=1.2; ctx.setLineDash([5,4]); ctx.globalAlpha=.75; ctx.beginPath();
+      desenhada.forEach((p,i)=>{ if(i) ctx.lineTo(X(p[0]),Y(p[1])); else ctx.moveTo(X(p[0]),Y(p[1])); });
+      ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
+    }
     if(agua){
       const zw=F.X.map(x=>lerp(agua,x));
       ctx.beginPath();                                         /* solo abaixo do NA */
@@ -115,7 +122,7 @@
       /* marca ▽ do nível d'água */
       const im=Math.floor(agua.length/2), pm=agua.length>2?agua[im]:[(agua[0][0]+agua[1][0])/2,(agua[0][1]+agua[1][1])/2], ax=X(pm[0]), ay=Y(pm[1]);
       ctx.fillStyle=T.agua; ctx.beginPath(); ctx.moveTo(ax-6,ay-11); ctx.lineTo(ax+6,ay-11); ctx.lineTo(ax,ay-2); ctx.closePath(); ctx.fill();
-      ctx.fillText('NA',ax+9,ay-4);
+      ctx.fillText(op.editaNA||condW==='desenhado'?'NA':condW==='critico'?'NA crítico':'NA (saturado)',ax+9,ay-4);
     }
 
     /* terreno */

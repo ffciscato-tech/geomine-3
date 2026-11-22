@@ -1657,6 +1657,7 @@
       "parts": [
         "modules/geotech/slope-stability.js",
         "modules/geotech/geomec-core.js",
+        "modules/geotech/geomec-litologias.js",
         "modules/geotech/geomec-canvas.js",
         "modules/geotech/geomec-graficos.js",
         "modules/geotech/geomec-workspace.js"

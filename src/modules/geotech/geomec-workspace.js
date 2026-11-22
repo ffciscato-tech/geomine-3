@@ -9,7 +9,7 @@
   const ver={mapa:true, fatias:true, empuxo:false, legenda:true};
   const abertos=new Set(), estudos=new Map();
   let vista=null, vistaManual=false, aba='resumo', sel=null, modo='', manualRes=null, manualCirc=null, timer=0, fitFrame=0, rodada=0,
-    traco=null, pendente=null, montado=false, recolhido=false, envId='', emEstudo=false;
+    traco=null, pendente=null, montado=false, recolhido=false, envId='', emEstudo=false, litoAlvo='', litoBusca='';
   const sec=()=>GM.ativa(), res=()=>GM.resultado(sec());
   const sujoProjeto=()=>{ try{ root.GeoMineSessionAutosave?.markDirty?.('seções geomecânicas'); }catch(e){} };
   const aviso=t=>{ try{ toast(t); }catch(e){} };
@@ -148,12 +148,13 @@
     estado('calculando…','calc');
     const fim=r=>{
       if(minha!==rodada||sec()!==s) return;
-      estado(r&&r.ok?fmt(r.busca.validas,0)+' superfícies · '+fmt(r.ms/1000,1)+' s':'','');
+      estado(r&&r.ok?(r.pior&&r.condicao?'pior caso: '+GM.CONDICOES[r.condicao]+' · ':'')+fmt(r.busca.validas,0)+' superfícies · '+fmt(r.ms/1000,1)+' s':'','');
+      if(r&&r.condicoes) renderCards();
       if(modo==='manual') atualizaManual(false);
       sel=null; if(!vistaManual&&!tinha) vista=null;
       pintaTopo(); desenha(); pintaAba(); sincronizaMapa();
     };
-    GM.calculaAsync(s).then(fim,e=>{
+    GM.calculaAsync(s,(i,n,c)=>{ if(minha===rodada) estado('pior caso: '+GM.CONDICOES[c]+' ('+(i+1)+' de '+n+')…','calc'); }).then(fim,e=>{
       if(e&&e.cancelado) return;
       console.error('GEOMEC',e);
       fim(GM.aplica(s,{res:{ok:false, motivo:e&&e.message||'Falha no cálculo.'}, resumo:null}));
@@ -186,11 +187,11 @@
   function pintaTopo(){
     renderSeletor();
     const s=sec(), b=$('gmgFS'), r=res(); if(!b) return;
-    const adm=s?num(s.fsAdm,1.5):1.5;
+    const adm=s?GM.admEfetivo(s):1.5;
     if(pendente) b.hidden=true;
     else if(s&&r&&r.ok){
       const c=r.critica;
-      b.innerHTML=`<b>FS ${fmt(c.FS,3)}</b><small>${h(GM.METODOS[c.metodo]||'')} · ${c.sup.tipo==='circulo'?'circular':'não circular'} · ${c.FS>=adm?'atende a':'abaixo de'} ${fmt(adm,2)}</small>`;
+      b.innerHTML=`<b>FS ${fmt(c.FS,3)}</b><small>${r.condicao&&r.condicao!=='desenhado'||r.pior?h((r.pior?'pior caso: ':'')+GM.CONDICOES[r.condicao])+' · ':''}${h(GM.METODOS[c.metodo]||'')} · ${c.sup.tipo==='circulo'?'circular':'não circular'} · ${c.FS>=adm?'atende a':'abaixo de'} ${fmt(adm,2)}</small>`;
       b.style.setProperty('--gmg-cor',GM.corFS(c.FS,adm)); b.hidden=false;
     } else if(s&&r&&!r.ok){
       b.innerHTML=`<b>sem resultado</b><small>${h(r.motivo||'')}</small>`; b.style.setProperty('--gmg-cor',GM.corClasse.nd); b.hidden=false;
@@ -209,14 +210,14 @@
       <label class="field">Nome</label><input data-c="nome" value="${h(s.nome)}" autocomplete="off">
       ${p?`<div class="gmg-g2">${campo('Bancadas','data-p="bancadas"',p.bancadas)}${campo('Altura da bancada (m)','data-p="altura"',p.altura)}${campo('Ângulo da face (°)','data-p="angulo"',p.angulo)}${campo('Berma (m)','data-p="berma"',p.berma)}</div>
         <div class="gmg-nota" id="gmgTaludeNota">altura total ${fmt(t.altura,1)} m · ângulo geral ${fmt(t.geral,1)}°</div>`
-        :s.origem==='mapa'?`<div class="gmg-nota">Cortada no mapa · ${fmt(s.comprimento||0,1)} m · ${s.terreno.length} pontos no terreno${s.passo?' · passo '+fmt(s.passo,2)+' m':''}</div>`:''}
+        :s.origem==='mapa'?`<div class="gmg-nota">Cortada no mapa · ${fmt(s.comprimento||0,1)} m · ${s.terreno.length} pontos no terreno${s.passo?' · passo '+fmt(s.passo,2)+' m':''}${s.fontes?`<br>Topografia: ${h(s.fontes.topografia.nome)}${s.fontes.topografia.tipo==='vetor'?' (curvas/linhas com cota)':''} · ${s.fontes.projeto?'projeto ('+(s.fontes.projeto.papel==='cava'?'cava':'pilha')+'): '+h(s.fontes.projeto.nome):'sem projeto — talude natural'}`:''}</div>`:''}
       <div class="gmg-g2"><div><label class="field">Desliza para</label><select data-c="sentido"><option value="auto"${s.sentido==='auto'?' selected':''}>o lado mais baixo</option><option value="dir"${s.sentido==='dir'?' selected':''}>a direita</option><option value="esq"${s.sentido==='esq'?' selected':''}>a esquerda</option></select></div>
         ${campo('FS admissível','data-c="fsAdm"',s.fsAdm)}${campo('Base do modelo (cota)','data-c="base"',s.base,`placeholder="${fmt(GM.base(Object.assign({},s,{base:''})),1)}"`)}
         <div class="gmg-meio"><label class="gmg-check"><input type="checkbox" data-c="auto"${s.auto!==false?' checked':''}> recalcular a cada alteração</label></div></div>
     </section>`;
   }
   function corpoMaterial(id,m,k){
-    const md=m.modelo||'mc', bib=GM.biblioteca();
+    const md=m.modelo||'mc', bib=GM.biblioteca(), grupos=GM.GRUPOS_LITO||[...new Set(bib.map(b=>b.grupo||'Valores típicos'))], lito=m.lito&&GM.litologia?GM.litologia(m.lito):null;
     const f=(rot,key,extra)=>campo(rot,`data-m="${h(id)}" data-k="${key}"`,m[key],extra);
     let campos='';
     if(md==='mc') campos=f('c′ (kPa)','c')+f('φ′ (°)','phi')+f('ru','ru');
@@ -226,26 +227,38 @@
     else if(md==='tab') campos=`<div class="gmg-larga"><label class="field">Pontos σ′n τ (kPa), um par por linha</label><textarea data-m="${h(id)}" data-k="tab" rows="4">${h(m.tab||'')}</textarea></div>`;
     return `<div class="gmg-g2"><div class="gmg-larga"><label class="field">Nome</label><input data-m="${h(id)}" data-k="nome" value="${h(m.nome)}" autocomplete="off"></div>
         <div><label class="field">Cor</label><input type="color" data-m="${h(id)}" data-k="cor" value="${h(m.cor||'#c9a26b')}"></div>
-        <div><label class="field">Biblioteca</label><select data-bib="${h(id)}"><option value="">valores típicos…</option>${bib.map(b=>`<option value="${h(b.id)}">${h(b.nome)}</option>`).join('')}</select></div>
+        <div class="gmg-larga"><label class="field">Banco de litologias</label><div class="gmg-linha"><select data-bib="${h(id)}" aria-label="Litologia do banco"><option value="">escolher a litologia…</option>${grupos.map(g=>`<optgroup label="${h(g)}">${bib.filter(b=>(b.grupo||'Valores típicos')===g).map(b=>`<option value="${h(b.id)}"${lito===b?' selected':''}>${h(b.nome)}</option>`).join('')}</optgroup>`).join('')}</select><button type="button" class="mini" data-a="banco" data-id="${h(id)}" title="Tabela do banco, com faixas e fontes">tabela</button></div></div>
         <div class="gmg-larga"><label class="field">Resistência</label><select data-m="${h(id)}" data-k="modelo">${Object.entries(GM.MODELOS).filter(([v])=>v!=='rocha'||k>0).map(([v,t])=>`<option value="${v}"${v===md?' selected':''}>${h(t)}</option>`).join('')}</select></div>
         ${f('γ (kN/m³)','gama')}${md==='rocha'?'':f('γ saturado','gamaSat','placeholder="igual a γ"')}${campos}</div>
+      ${lito?`<p class="gmg-nota">${h(lito.nome)}: ${h(GM.faixaLitologia(lito))}${lito.nota?' — '+h(lito.nota):''}.<br>Fonte: ${h(GM.fonteLitologia(lito))}. Valores típicos: confirme com ensaios.</p>`:''}
       <div class="gmg-bts">${md==='hb'||md==='leps'||md==='tab'?`<button type="button" class="mini" data-a="envoltoria" data-id="${h(id)}">ver a envoltória τ × σ</button>`:''}
       ${k>0?`<button type="button" class="mini gmg-perigo" data-a="remove-camada" data-k="${k}">remover a camada</button>`:''}</div>`;
   }
   function cardMateriais(s){
-    return `<section class="gm-work-card" data-card="materiais"><div class="gm-card-heading"><span class="gm-card-step">2</span><b>Camadas e materiais</b>${info('Sobre as camadas','De cima para baixo. A primeira camada começa no terreno; cada uma das outras começa na sua linha de topo (um contato cortado no mapa ou uma cota) e nunca sobe acima das de cima — onde as linhas se encontram, a camada acunha. Os valores da biblioteca são típicos: confira com ensaios.')}</div>
+    return `<section class="gm-work-card" data-card="materiais"><div class="gm-card-heading"><span class="gm-card-step">2</span><b>Camadas e materiais</b>${info('Sobre as camadas','De cima para baixo. A primeira camada começa no terreno; cada uma das outras começa na sua linha de topo (um contato cortado no mapa ou uma cota) e nunca sobe acima das de cima — onde as linhas se encontram, a camada acunha. O banco de litologias traz valores típicos com a faixa e a fonte de cada um (solos residuais, estéril e rejeito, solos USCS, rochas por Hoek–Brown e planos fracos): são de partida, confira com ensaios.')}</div>
       <div id="gmgMats">${s.camadas.map((c,k)=>{ const m=s.materiais[c.mat]||{}, ab=abertos.has(c.mat);
         return `<div class="gmg-mat${ab?' aberta':''}" data-mat="${h(c.mat)}"><button type="button" class="gmg-mat-h" data-a="abre-mat" data-id="${h(c.mat)}" aria-expanded="${ab}"><i style="background:${h(m.cor||'#c9a26b')}"></i><span><b>${h(m.nome||c.mat)}</b><small>${h(GM.resumoMaterial(m))}</small></span><em>${ab?'▴':'▾'}</em></button>
           ${ab?`<div class="gmg-mat-b">${corpoMaterial(c.mat,m,k)}</div>`:''}</div>`; }).join('')}</div>
       <div class="gmg-linha"><input id="gmgCotaNova" inputmode="decimal" placeholder="cota do contato" aria-label="Cota do novo contato" autocomplete="off"><button type="button" class="mini" data-a="nova-camada">＋ camada por cota</button></div>
+      <button type="button" class="mini" data-a="banco" data-id="">Banco de litologias: φ′, c′ e γ com faixas e fontes</button>
     </section>`;
   }
   function cardAgua(s){
-    const a=s.agua||{modo:'nenhuma'};
-    return `<section class="gm-work-card" data-card="agua"><div class="gm-card-heading"><span class="gm-card-step">3</span><b>Água</b>${info('Sobre a água','A linha freática dá a poropressão na base de cada fatia (coluna de água até a linha). Onde a linha passa acima do terreno há lâmina d’água: o peso e o empuxo dela entram no cálculo. O coeficiente ru, quando usado, é informado em cada material.')}</div>
-      <select data-c="agua.modo" aria-label="Condição de água"><option value="nenhuma"${a.modo!=='linha'?' selected':''}>sem linha freática</option><option value="linha"${a.modo==='linha'?' selected':''}>linha freática</option></select>
+    const a=GM.agua(s), r=res(), tab=(r&&r.condicoes)||(s.resumo&&s.resumo.condicoes)||null, cond=a.condicao, efetiva=GM.condicaoEfetiva(s);
+    const nat=s.camadas.find(c=>c.fonte&&c.fonte.natural&&c.topo);
+    const linhaTab=c=>{ const disp=GM.condicaoDisponivel(s,c), t=tab&&tab.find(x=>x.cond===c), adm=GM.admCondicao(s,c),
+        fs=t&&t.ok?t.FS:(!tab&&r&&r.ok&&r.condicao===c?r.critica.FS:null), on=(cond==='pior'?r&&r.condicao===c:cond===c);
+      return `<tr class="${on?'on':''}${disp?'':' gmg-off'}"><td><label class="gmg-check"><input type="checkbox" data-c="agua.incluir.${c}"${a.incluir[c]?' checked':''}${disp?'':' disabled'} aria-label="Incluir ${h(GM.CONDICOES[c])} no pior caso"> <button type="button" class="gmg-link" data-a="cond" data-k="${c}"${disp?'':' disabled'}>${h(GM.CONDICOES[c])}</button></label></td>
+        <td>${fs!=null?`<b style="color:${GM.corFS(fs,adm)}">${fmt(fs,3)}</b>`:disp?'—':'<small>sem NA</small>'}</td><td>${fmt(adm,2)}${fs!=null?(fs>=adm?' ✓':' ✗'):''}</td></tr>`; };
+    return `<section class="gm-work-card" data-card="agua"><div class="gm-card-heading"><span class="gm-card-step">3</span><b>Água (NA)</b>${info('Sobre a água','Desenhe o NA da seção (a linha freática dá a poropressão na base de cada fatia; acima do terreno é lâmina d’água) e escolha a condição do cálculo: o NA desenhado, seco, NA crítico (o desenhado elevado de Δ, sem passar do terreno), saturado (NA na superfície) ou o pior caso — o GeoMine calcula cada condição marcada e fica com o menor FS. Referência para pilhas (NBR 13029:2017): FS ≥ 1,50 com o NA normal, no contato pilha/fundação, e ≥ 1,30 com o NA crítico, elevado no maciço da pilha. O ru dos materiais vale no NA desenhado e no crítico.')}</div>
+      <div class="gmg-g2"><div class="gmg-larga"><label class="field">Condição do cálculo</label><select data-c="agua.condicao" aria-label="Condição de água do cálculo">${['desenhado','seco','critico','saturado'].map(c=>`<option value="${c}"${cond===c?' selected':''}>${h(GM.CONDICOES[c])}</option>`).join('')}<option value="pior"${cond==='pior'?' selected':''}>Pior caso entre as marcadas</option></select></div>
+        <div><label class="field">NA desenhado</label><select data-c="agua.modo" aria-label="NA desenhado"><option value="nenhuma"${a.modo!=='linha'?' selected':''}>sem linha</option><option value="linha"${a.modo==='linha'?' selected':''}>linha freática</option></select></div>
+        ${campo('Δ do NA crítico (m)','data-c="agua.delta"',a.delta,`placeholder="${fmt(GM.deltaCritico(Object.assign({},s,{agua:Object.assign({},a,{delta:''})})),1)} (20% da altura)"`)}</div>
       ${a.modo==='linha'?`<div class="gmg-linha"><input id="gmgCotaNA" inputmode="decimal" placeholder="cota" aria-label="Cota do nível d’água horizontal" autocomplete="off"><button type="button" class="mini" data-a="na-horizontal">NA horizontal</button></div>
-      <button type="button" class="mini${modo==='na'?' on':''}" data-a="edita-na">${modo==='na'?'concluir a edição da linha':'editar a linha no desenho'}</button>`:''}
+      <div class="gmg-bts">${nat?'<button type="button" class="mini" data-a="na-contato" title="NBR 13029: NA normal no contato pilha/fundação">NA no contato pilha/fundação</button>':''}<button type="button" class="mini${modo==='na'?' on':''}" data-a="edita-na">${modo==='na'?'concluir a edição da linha':'editar a linha no desenho'}</button></div>`:''}
+      <table class="gmg-tab gmg-cond"><thead><tr><th>Condição <small>(marque para o pior caso)</small></th><th>FS</th><th>mín.</th></tr></thead><tbody>${GM.ORDEM_COND.map(linhaTab).join('')}</tbody></table>
+      <div class="gmg-g2">${campo('FS mín. NA crítico','data-c="agua.adm.critico"',a.adm.critico)}${campo('FS mín. saturado','data-c="agua.adm.saturado"',a.adm.saturado)}</div>
+      ${cond==='pior'&&r&&r.ok&&r.condicao?`<p class="gmg-nota">Pior caso: <b>${h(GM.CONDICOES[r.condicao])}</b> — a seção mostra o NA e a ruptura dessa condição.</p>`:cond!=='pior'&&efetiva!==cond?'':''}
     </section>`;
   }
   function cardCargas(s){
@@ -406,11 +419,11 @@
     manualCirc=GM.circuloES(s,s.manual.xe,s.manual.xs,s.manual.s);
     manualRes=manualCirc?GM.calculaManual(s,{tipo:'circulo', xc:manualCirc.xc, zc:manualCirc.zc, r:manualCirc.r},!!rapido):{ok:false, motivo:'Círculo inválido.'};
     const d=$('gmgDica');
-    if(d){ d.hidden=false; d.innerHTML=manualRes&&manualRes.ok?`Superfície à mão: <b style="color:${GM.corFS(manualRes.FS,num(s.fsAdm,1.5))}">FS ${fmt(manualRes.FS,3)}</b> · ${h(GM.METODOS[manualRes.metodo])} — arraste a entrada, a saída e o ponto do fundo.`:`Superfície à mão: ${h(manualRes&&manualRes.motivo||'sem solução')} — arraste as alças.`; }
+    if(d){ d.hidden=false; d.innerHTML=manualRes&&manualRes.ok?`Superfície à mão: <b style="color:${GM.corFS(manualRes.FS,GM.admEfetivo(s))}">FS ${fmt(manualRes.FS,3)}</b> · ${h(GM.METODOS[manualRes.metodo])} — arraste a entrada, a saída e o ponto do fundo.`:`Superfície à mão: ${h(manualRes&&manualRes.motivo||'sem solução')} — arraste as alças.`; }
   }
 
   /* ------------------------------ resultados ------------------------------ */
-  const ABAS=[['resumo','Resumo'],['gle','FS × λ'],['tensoes','Tensões'],['forcas','Forças'],['fatia','Fatia'],['porte','Porte'],['sens','Sensibilidade'],['mc','Probabilidade'],['sismo','Sismo'],['retro','Retroanálise'],['env','Envoltória'],['todas','Seções']];
+  const ABAS=[['resumo','Resumo'],['gle','FS × λ'],['tensoes','Tensões'],['forcas','Forças'],['fatia','Fatia'],['porte','Porte'],['sens','Sensibilidade'],['mc','Probabilidade'],['sismo','Sismo'],['retro','Retroanálise'],['env','Envoltória'],['lito','Litologias'],['todas','Seções']];
   const analiseAtual=()=>modo==='manual'?manualRes:(res()&&res().critica);
   const supDe=an=>an.sup.tipo==='circulo'?{tipo:'circulo', xc:an.sup.xc, zc:an.sup.zc, r:an.sup.r}:{tipo:'poli', pts:an.sup.pts};
   function comCurvas(s,an){
@@ -421,21 +434,28 @@
     const s=sec(), nav=$('gmgTabs'), cv=$('gmgGraf'), box=$('gmgGrafBox'), el=$('gmgHtml'); if(!nav||!s||pendente) return;
     const E=estudos.get(s.id)||{};
     if((aba==='retro'&&!E.retro)||(aba==='env'&&!s.materiais[envId])) aba='resumo';
-    nav.innerHTML=ABAS.filter(a=>(a[0]!=='retro'||E.retro)&&(a[0]!=='env'||aba==='env')&&(a[0]!=='todas'||GM.secoes().length>1||aba==='todas'))
+    nav.innerHTML=ABAS.filter(a=>(a[0]!=='retro'||E.retro)&&(a[0]!=='env'||aba==='env')&&(a[0]!=='lito'||aba==='lito')&&(a[0]!=='todas'||GM.secoes().length>1||aba==='todas'))
       .map(a=>`<button type="button" role="tab" data-a="aba" data-k="${a[0]}" class="${a[0]===aba?'on':''}" aria-selected="${a[0]===aba}">${a[1]}</button>`).join('');
     { const on=nav.querySelector('.on'); if(on){ const e0=on.offsetLeft-nav.offsetLeft, e1=e0+on.offsetWidth; nav.scrollLeft=e1>nav.clientWidth?e1-nav.clientWidth+10:0; } }
-    const r=res(), an=analiseAtual(), adm=num(s.fsAdm,1.5);
-    const mostra=(temGrafico,html)=>{ box.hidden=!temGrafico; el.innerHTML=html||''; el.hidden=!html; el.classList.toggle('sozinha',!temGrafico); el.classList.remove('gmg-embaixo'); };
+    const r=res(), an=analiseAtual(), adm=GM.admEfetivo(s);
+    const mostra=(temGrafico,html)=>{ box.hidden=!temGrafico; el.innerHTML=html||''; el.hidden=!html; el.classList.toggle('sozinha',!temGrafico); el.classList.remove('gmg-embaixo'); delete el.dataset.lito; };
     const grafico=(cfg,html)=>{ mostra(true,html); const a=ajusta(cv); if(a) GM.grafico(a.ctx,a.w,a.h,cfg,claro()); };
     const msg=t=>mostra(false,`<p class="gmg-msg">${t}</p>`);
     if(aba==='todas'){
       const L=GM.secoes().filter(x=>x.resumo);
       if(L.length>1) grafico({titulo:'Fator de segurança das seções calculadas, na ordem da tabela', x:{rotulo:'seção', dec:0, min:.4, max:L.length+.6}, y:{rotulo:'fator de segurança', zero:true, dec:2}, legenda:false,
-        series:[{x:L.map((x,i)=>i+1), y:L.map(x=>x.resumo.FS), tipo:'barras', cores:L.map(x=>GM.corFS(x.resumo.FS,num(x.fsAdm,1.5)))}], hmarcas:[{y:1, rotulo:'FS = 1', cor:'#dc2626'}]},htmlTodas());
+        series:[{x:L.map((x,i)=>i+1), y:L.map(x=>x.resumo.FS), tipo:'barras', cores:L.map(x=>GM.corFS(x.resumo.FS,GM.admEfetivo(x)))}], hmarcas:[{y:1, rotulo:'FS = 1', cor:'#dc2626'}]},htmlTodas());
       else mostra(false,htmlTodas());
       return;
     }
     if(aba==='env'){ const cfg=GM.grafEnvoltoria(s.materiais[envId],root.GeoMineSlope); if(cfg) grafico(cfg,''); else msg('Complete os parâmetros do material para ver a envoltória.'); return; }
+    if(aba==='lito'){
+      /* não refaz a tabela à toa: no iPad o teclado redimensiona a tela e a busca perderia o foco */
+      const chave=s.id+'|'+litoAlvo+'|'+s.camadas.map(c=>(s.materiais[c.mat]||{}).nome).join('|');
+      if(el.dataset.lito!==chave||!el.querySelector('.gmg-lito')){ mostra(false,htmlLito(s)); el.dataset.lito=chave; }
+      else { box.hidden=true; el.hidden=false; el.classList.add('sozinha'); el.classList.remove('gmg-embaixo'); }
+      filtraLito(); return;
+    }
     if(modo!=='manual'&&(!r||!r.ok)){ msg(r&&!r.ok?h(r.motivo||'Sem solução.'):s.auto===false&&!GM.ocupado()?'Toque em Calcular para procurar a superfície crítica.':'Calculando…'); return; }
     if(aba==='resumo'){ mostra(false,htmlResumo(s,r,an)); return; }
     if(!an||!an.ok){ msg(h(an&&an.motivo||'Sem solução nesta superfície.')); return; }
@@ -456,17 +476,32 @@
     if(aba==='retro'&&E.retro){ grafico(GM.grafRetro(E.retro),''); return; }
     msg('Sem dados para este gráfico.');
   }
+  /* Banco de litologias: tabela com busca; "usar" aplica a linha ao material escolhido. */
+  function htmlLito(s){
+    const bib=GM.biblioteca(), mats=s.camadas.map(c=>c.mat).filter((v,i,a)=>a.indexOf(v)===i);
+    if(!s.materiais[litoAlvo]) litoAlvo=mats[0]||'';
+    return `<div class="gmg-lito"><div class="gmg-linha"><input id="gmgLitoBusca" value="${h(litoBusca)}" placeholder="buscar: gnaisse, estéril, CL, xisto…" aria-label="Buscar litologia" autocomplete="off">
+        <label class="gmg-lito-alvo">aplicar em <select id="gmgLitoAlvo" aria-label="Material que recebe os valores">${mats.map(id=>`<option value="${h(id)}"${id===litoAlvo?' selected':''}>${h(s.materiais[id].nome)}</option>`).join('')}</select></label></div>
+      <table class="gmg-tab"><thead><tr><th>Litologia</th><th>Valores típicos e faixa</th><th></th></tr></thead><tbody>${(GM.GRUPOS_LITO||['']).map(g=>`<tr class="gmg-lito-g" data-g="${h(g)}"><td colspan="3">${h(g)}</td></tr>`+bib.filter(b=>(b.grupo||'')===g).map(b=>`<tr data-lito="${h((b.nome+' '+b.grupo+' '+(b.nota||'')+' '+GM.fonteLitologia(b)).toLowerCase())}" data-g="${h(g)}"><td><b>${h(b.nome)}</b>${b.nota?`<br><small>${h(b.nota)}</small>`:''}<br><small>${h(GM.fonteLitologia(b))}</small></td><td>${h(GM.faixaLitologia(b))}<br><small>${h(GM.MODELOS[b.modelo]||'')}</small></td><td><button type="button" class="mini" data-a="usa-lito" data-id="${h(b.id)}">usar</button></td></tr>`).join('')).join('')}</tbody></table>
+      <p class="gmg-nota">Valores de partida, para estudo e pré-projeto. O projeto pede ensaios do material do local.</p></div>`;
+  }
+  function filtraLito(){
+    const el=$('gmgHtml'); if(!el||aba!=='lito') return;
+    const q=String(litoBusca||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''), vis=new Set();
+    el.querySelectorAll('tr[data-lito]').forEach(tr=>{ const ok=!q||tr.dataset.lito.normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q); tr.hidden=!ok; if(ok) vis.add(tr.dataset.g); });
+    el.querySelectorAll('tr.gmg-lito-g').forEach(tr=>{ tr.hidden=!vis.has(tr.dataset.g); });
+  }
   const htmlPedir=(e,txt)=>`<div class="gmg-msg"><p>${txt}</p><button type="button" class="tbtn gmg-calc" data-a="estudo" data-e="${e}"${emEstudo?' disabled':''}>${emEstudo?'Calculando…':'Calcular'}</button></div>`;
   const NOME_PORTE={local:'local (bancada)', intermediaria:'intermediária', global:'global (talude geral)'};
   function htmlResumo(s,r,an){
-    const adm=num(s.fsAdm,1.5);
+    const adm=GM.admEfetivo(s);
     if(!an||!an.ok) return `<p class="gmg-msg">${h(an&&an.motivo||(r&&r.motivo)||'Sem solução.')}</p>`;
     const cor=GM.corFS(an.FS,adm), su=an.sup, ord=['mp','spencer','bishop','janbuC','janbu','ordinario'];
     const linhas=ord.filter(m=>an.F[m]>0).map(m=>`<tr${m===an.metodo?' class="on"':''}><td>${h(GM.METODOS[m])}</td><td>${fmt(an.F[m],3)}</td><td>${m==='mp'||m==='spencer'?'λ '+fmt(an.lam[m],3):m==='janbuC'?'f0 '+fmt(an.f0,3):''}</td></tr>`).join('');
     const falt=ord.filter(m=>!(an.F[m]>0)&&!(m==='ordinario'&&su.tipo!=='circulo')).map(m=>GM.METODOS[m]);
     const busca=modo!=='manual'&&r&&r.ok, porte=busca?r.busca.porte:[];
     return `<div class="gmg-resumo">
-      <div class="gmg-fsbox" style="--gmg-cor:${cor}"><b>${fmt(an.FS,3)}</b><span>${h(GM.METODOS[an.metodo])}</span><small>${an.FS>=adm?'atende ao admissível '+fmt(adm,2):an.FS<1?'ruptura: abaixo de 1':'abaixo do admissível '+fmt(adm,2)}</small></div>
+      <div class="gmg-fsbox" style="--gmg-cor:${cor}"><b>${fmt(an.FS,3)}</b><span>${h(GM.METODOS[an.metodo])}</span>${busca&&r.condicao?`<span>${h((r.pior?'pior caso: ':'')+GM.CONDICOES[r.condicao])}</span>`:''}<small>${an.FS>=adm?'atende ao admissível '+fmt(adm,2):an.FS<1?'ruptura: abaixo de 1':'abaixo do admissível '+fmt(adm,2)}</small></div>
       <div><table class="gmg-tab"><thead><tr><th>Método</th><th>FS</th><th></th></tr></thead><tbody>${linhas}</tbody></table>${falt.length?`<p class="gmg-nota">Sem solução nesta superfície: ${h(falt.join(', '))}.</p>`:''}</div>
       <div><table class="gmg-tab"><tbody>
         <tr><td>Superfície</td><td>${su.tipo==='circulo'?'circular':'não circular ('+su.pts.length+' vértices)'}${busca&&r.naoCircular?`<br>círculo ${fmt(r.circular.FS,3)} → otimizada ${fmt(r.naoCircular.FS,3)}`:''}</td></tr>
@@ -475,6 +510,7 @@
         <tr><td>Profundidade máxima</td><td>${fmt(an.profundidade,2)} m</td></tr>
         <tr><td>Massa deslizante</td><td>${fmt(an.area,1)} m² · ${fmt(an.peso,0)} kN/m</td></tr>
         <tr><td>Fatias</td><td>${an.n}</td></tr></tbody></table></div>
+      ${busca&&r.condicoes?`<div><table class="gmg-tab"><thead><tr><th>Condição de água</th><th>FS</th><th>mín.</th></tr></thead><tbody>${r.condicoes.map(c=>`<tr class="${c.cond===r.condicao?'on':''}"><td>${h(c.nome)}${c.cond===r.condicao?' <small>(pior caso)</small>':''}</td><td>${c.ok?`<b style="color:${GM.corFS(c.FS,c.adm)}">${fmt(c.FS,3)}</b>`:'<small>'+h(c.motivo)+'</small>'}</td><td>${fmt(c.adm,2)}${c.ok?(c.FS>=c.adm?' ✓':' ✗'):''}</td></tr>`).join('')}</tbody></table></div>`:''}
       ${porte.length?`<div><table class="gmg-tab"><thead><tr><th>Porte da ruptura</th><th>FS</th><th>desnível</th></tr></thead><tbody>${porte.map(p=>`<tr><td>${NOME_PORTE[p.classe]}</td><td style="color:${GM.corFS(p.FS,adm)};font-weight:700">${fmt(p.FS,3)}</td><td>${fmt(p.altura,1)} m</td></tr>`).join('')}</tbody></table></div>`:''}
       ${an.avisos&&an.avisos.length?`<ul class="gmg-avisos">${an.avisos.map(a=>`<li>${h(a)}</li>`).join('')}${an.avisos.some(a=>/tração/.test(a))?'<li>considere uma trinca de tração (card 4)</li>':''}</ul>`:''}
     </div>`;
@@ -485,7 +521,7 @@
   function htmlTodas(){
     const at=sec();
     return `<div class="gmg-todas"><table class="gmg-tab"><thead><tr><th>#</th><th>Seção</th><th>FS</th><th>Método</th><th>Superfície</th><th>Local</th><th>Interm.</th><th>Global</th><th>Adm.</th></tr></thead><tbody>${GM.secoes().map((s,i)=>{
-      const r=s.resumo, adm=num(s.fsAdm,1.5), p=c=>{ const q=r&&(r.porte||[]).find(x=>x.classe===c); return q?`<span style="color:${GM.corFS(q.FS,adm)}">${fmt(q.FS,2)}</span>`:'—'; };
+      const r=s.resumo, adm=GM.admEfetivo(s), p=c=>{ const q=r&&(r.porte||[]).find(x=>x.classe===c); return q?`<span style="color:${GM.corFS(q.FS,adm)}">${fmt(q.FS,2)}</span>`:'—'; };
       return `<tr data-a="ativa" data-id="${h(s.id)}" class="${s===at?'on':''}"><td>${i+1}</td><td>${h(s.nome)}</td><td>${r?`<b style="color:${GM.corFS(r.FS,adm)}">${fmt(r.FS,3)}</b>`:'—'}</td><td>${r?h(GM.METODOS[r.metodo]||''):''}</td><td>${r?(r.tipo==='circulo'?'circular':'não circular'):''}</td><td>${p('local')}</td><td>${p('intermediaria')}</td><td>${p('global')}</td><td>${fmt(adm,2)} ${r?(r.FS>=adm?'✓':'✗'):''}</td></tr>`; }).join('')}</tbody></table>
       <button type="button" class="mini" data-a="calcular-todas">Calcular todas as seções</button></div>`;
   }
@@ -518,12 +554,13 @@
   function poe(obj,caminho,v){ const p=caminho.split('.'); let o=obj; for(let i=0;i<p.length-1;i++) o=o[p[i]]=o[p[i]]||{}; o[p[p.length-1]]=v; }
   function naEntrada(e){
     const t=e.target, s=sec(); if(!s||pendente) return;
+    if(t.id==='gmgLitoBusca'){ litoBusca=t.value; filtraLito(); return; }
     if(t.id==='gmgFatiaR'){ sel=+t.value; desenha(); const an=analiseAtual(), a=ajusta($('gmgGraf')); if(a&&an&&an.ok) GM.desenhaFatia(a.ctx,a.w,a.h,an,sel,claro()); return; }
     if(t.type==='checkbox'||t.type==='radio'||t.tagName==='SELECT') return;
     if(t.dataset.c){
       poe(s,t.dataset.c,t.value);
       if(t.dataset.c==='nome'){ renderSeletor(); sujoProjeto(); return; }
-      if(t.dataset.c==='fsAdm'){ pintaTopo(); desenha(); pintaAba(); sujoProjeto(); return; }
+      if(t.dataset.c==='fsAdm'||t.dataset.c.startsWith('agua.adm.')){ pintaTopo(); desenha(); pintaAba(); sincronizaMapa(); sujoProjeto(); if(t.dataset.c!=='fsAdm') renderCards(); return; }
       mudou(); return;
     }
     if(t.dataset.m){
@@ -544,17 +581,21 @@
   function naMudanca(e){
     const t=e.target;
     if(pendente){
-      if(t.name==='gmgTer'){ pendente.terreno=t.value; pendente.contatos.delete(t.value); renderTudo(); }
-      else if(t.dataset.cont){ if(t.checked) pendente.contatos.add(t.dataset.cont); else pendente.contatos.delete(t.dataset.cont); }
+      if(t.dataset.pend==='topo'){ pendente.topo=t.value; pendente.contatos.delete(t.value); if(pendente.proj===t.value) pendente.proj=''; renderTudo(); }
+      else if(t.dataset.pend==='proj'){ pendente.proj=t.value; pendente.contatos.delete(t.value); const f=fonteDe(t.value); if(f&&f.projeto) pendente.tipo=f.projeto.tipo; renderTudo(); }
+      else if(t.name==='gmgPTipo'){ pendente.tipo=t.value==='cava'?'cava':'pilha'; }
+      else if(t.dataset.cont){ if(t.checked) pendente.contatos.add(t.dataset.cont); else pendente.contatos.delete(t.dataset.cont); desenhaPrevia(); }
       return;
     }
     const s=sec(); if(!s) return;
-    if(t.dataset.bib!=null){ const b=GM.biblioteca().find(x=>x.id===t.value), m=s.materiais[t.dataset.bib]; if(b&&m){ Object.assign(m,{nome:b.nome, modelo:'mc', gama:b.gama, c:b.c, phi:b.phi, ru:b.ru||0}); mudou(true); } return; }
+    if(t.id==='gmgLitoAlvo'){ litoAlvo=t.value; return; }
+    if(t.dataset.bib!=null){ const m=s.materiais[t.dataset.bib]; if(m&&GM.aplicaLitologia(m,t.value)){ abertos.add(t.dataset.bib); mudou(true); } return; }
     if(t.dataset.c){
       if(t.type!=='checkbox'&&t.tagName!=='SELECT') return;
       const k=t.dataset.c, v=t.type==='checkbox'?t.checked:t.value;
       poe(s,k,v);
       if(k==='agua.modo'){ if(v==='linha'&&(!s.agua.linha||s.agua.linha.length<2)) linhaAguaPadrao(s); if(v!=='linha'&&modo==='na') saiDoModo(); mudou(true); return; }
+      if(k==='agua.condicao'||k.startsWith('agua.incluir.')){ GM.esquece(s); mudou(true); return; }
       if(k==='busca.faixas'){ if(v==='manual'&&!(s.busca.entrada&&s.busca.saida)) faixasPadrao(s); mudou(true); return; }
       if(k==='busca.metodo'){ mudou(true); return; }
       if(k==='auto'){ sujoProjeto(); if(v&&!res()) calcula(); return; }
@@ -591,6 +632,10 @@
     if(a==='remove-camada'){ GM.removeCamada(s,+b.dataset.k); mudou(true); return; }
     if(a==='envoltoria'){ envId=b.dataset.id; aba='env'; pintaAba(); return; }
     if(a==='edita-na'){ if(modo==='na') saiDoModo(); else { saiDoModo(); modo='na'; const d=$('gmgDica'); d.hidden=false; d.textContent=DICA_NA; } renderCards(); pintaTopo(); desenha(); pintaAba(); return; }
+    if(a==='cond'){ const a2=GM.agua(s); if(a2.condicao!==b.dataset.k){ a2.condicao=b.dataset.k; GM.esquece(s); mudou(true); } return; }
+    if(a==='na-contato'){ const nat=s.camadas.find(c=>c.fonte&&c.fonte.natural&&c.topo); if(nat){ const a2=GM.agua(s); a2.modo='linha'; a2.linha=nat.topo.map(p=>[p[0],p[1]]); if(a2.condicao==='seco'||a2.condicao==='saturado') a2.condicao='desenhado'; mudou(true); aviso('NA normal no contato pilha/fundação (NBR 13029). O NA crítico sobe '+fmt(GM.deltaCritico(s),1)+' m a partir dele.'); } return; }
+    if(a==='banco'){ litoAlvo=b.dataset.id||litoAlvo||(s.camadas[0]&&s.camadas[0].mat)||''; aba='lito'; pintaAba(); return; }
+    if(a==='usa-lito'){ const alvo=s.materiais[litoAlvo]?litoAlvo:(s.camadas[0]&&s.camadas[0].mat), m=s.materiais[alvo]; if(m&&GM.aplicaLitologia(m,b.dataset.id)){ litoAlvo=alvo; abertos.add(alvo); mudou(true); pintaAba(); aviso(m.nome+': valores típicos aplicados.'); } return; }
     if(a==='na-horizontal'){ const z=num(($('gmgCotaNA')||{}).value,NaN), L=GM.limites(s); if(!Number.isFinite(z)){ aviso('Informe a cota do nível d’água.'); return; } s.agua.modo='linha'; s.agua.linha=[[L.x0,z],[L.x1,z]]; mudou(true); return; }
     if(a==='nova-carga'){
       const L=GM.limites(s), alto=lerp(s.terreno,L.x0)>=lerp(s.terreno,L.x1), W=L.x1-L.x0, r=res(), c=r&&r.ok&&r.critica.sup;
@@ -634,9 +679,64 @@
     return C.sample({points:linha, rasters:rs.map((r,i)=>fonte(r,grades&&grades[i])), step:passo, method:'bilinear', workCRS:S.workCRS,
       reproject:typeof reproj==='function'?reproj:undefined, sampleTin:typeof tinSampleZ==='function'?tinSampleZ:undefined});
   }
+  /* Camadas vetoriais com cota: curvas de nível (topografia vetorial) e as linhas do projeto
+     (crista, pé, rampa e limite do DCE/cava, ou um PDE importado). A cota vem do Z de cada
+     vértice e, na falta dele, de um campo de cota. */
+  const CAMPOS_Z=['Z','COTA','COTASUP','ELEVACAO','ELEVATION','ELEV','ALTITUDE','ALTIMETRIA','RL','NIVEL','CONTOUR'];
+  const normCampo=k=>String(k||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  function zCampo(f){
+    const p=(f&&f.props)||{}, ks=Object.keys(p);
+    for(const alvo of CAMPOS_Z){ const k=ks.find(x=>normCampo(x)===alvo); if(k!=null&&p[k]!==''&&p[k]!=null){ const v=Number(String(p[k]).replace(',','.')); if(Number.isFinite(v)) return v; } }
+    return null;
+  }
+  function partesDaFeicao(L,f,paraTrabalho){
+    const g=f&&f.geom; if(!Array.isArray(g)||!g.length||!Array.isArray(g[0])) return [];
+    const multi=Array.isArray(g[0][0]), aneis=multi?g:[g], zc=zCampo(f), out=[];
+    const conv=paraTrabalho&&L.crs&&L.crs!==S.workCRS&&typeof reproj==='function'?q=>reproj(L.crs,S.workCRS,+q[0],+q[1]):q=>q;
+    aneis.forEach((R,k)=>{
+      if(!Array.isArray(R)||R.length<2) return;
+      const zr=multi?(Array.isArray(f.zg)?f.zg[k]:f.zg):f.zg, pts=[];
+      for(let i=0;i<R.length;i++){
+        const p=R[i]; if(!Array.isArray(p)) continue;
+        let z=Array.isArray(zr)?+zr[i]:(zr!=null&&zr!==''?+zr:NaN);
+        if(!Number.isFinite(z)&&p.length>2) z=+p[2];
+        if(!Number.isFinite(z)&&zc!=null) z=zc;
+        const q=conv(p); pts.push([+q[0],+q[1],z]);
+      }
+      out.push({pts, fechada:L.gtype==='polygon'});
+    });
+    return out;
+  }
+  function temCota(L){
+    const F=L.features||[];
+    for(let i=0;i<F.length&&i<400;i++){ for(const pt of partesDaFeicao(L,F[i],false)) if(pt.pts.some(q=>Number.isFinite(q[2]))) return true; }
+    return false;
+  }
+  /* Camada gerada pelo editor de DCE/cava (o desenho bruto ou o recortado): é projeto. */
+  function papelProjeto(L){
+    const f=(L.features||[]).find(x=>x&&x.props&&x.props.DESIGN_ID!=null&&x.props.PROJETO);
+    if(!f) return null;
+    if(/Interse/i.test(L.name)) return null;
+    return {tipo:String(f.props.PROJETO)==='DCE'||/pilha|dce|pde/i.test(String(f.props.PROJETO))?'pilha':'cava', bruta:/— Bruta$/.test(L.name)};
+  }
+  /* Todas as fontes possíveis da seção: superfícies (MDT, TIN) e camadas vetoriais com cota. */
+  function fontesSecao(){
+    const R=superficies().map(r=>({id:'r:'+r.id, nome:r.name, tipo:'raster', r, tin:!!(r.d&&r.d.tin)}));
+    let V=[];
+    try{ V=(S.layers||[]).filter(L=>L&&(L.gtype==='line'||L.gtype==='polygon')&&L.name!==NOME_CAMADA&&!L._blasting&&temCota(L))
+      .map(L=>({id:'v:'+L.id, nome:L.name, tipo:'vetor', L, projeto:papelProjeto(L)})); }catch(e){ console.warn('GEOMEC: camadas com cota',e); }
+    return R.concat(V);
+  }
+  const fonteDe=id=>pendente&&pendente.fontes.find(f=>f.id===id)||null;
+  function partesDe(F){
+    const c=pendente&&pendente.cache; if(c&&c.has(F.id)) return c.get(F.id);
+    const P=[]; for(const f of F.L.features||[]) P.push(...partesDaFeicao(F.L,f,true));
+    if(c) c.set(F.id,P);
+    return P;
+  }
   /* traçado no mapa: dois toques */
   function iniciaTraco(){
-    if(!superficies().length){ aviso('Carregue um MDT ou uma superfície para cortar a seção — ou comece pelo talude paramétrico.'); return; }
+    if(!fontesSecao().length){ aviso('Carregue um MDT, uma superfície ou curvas de nível com cota para cortar a seção — ou comece pelo talude paramétrico.'); return; }
     pendente=null;
     vaiAoMapa();
     setTool('geomecSecao');
@@ -662,61 +762,100 @@
     if(traco.linha) traco.linha.setLatLngs(p); else traco.linha=L2.polyline(p,{color:'#7c3aed', weight:3, dashArray:'6 6', interactive:false, pane:'alagis_desenho'}).addTo(traco.grupo);
   }
   function fimDesenho(){ if(!traco) return; try{ map.off('mousemove',mapMove); map.removeLayer(traco.grupo); }catch(e){} traco=null; }
+  /* Pedido de 22/11/2026: a seção leva em conta a topografia (vetorial ou MDT) e os perfis do
+     PDE; para um talude fora do projeto basta a topografia. A janela sugere a topografia (o
+     MDT de trabalho ou as curvas de nível) e, se a linha cruza um desenho de DCE/cava, o projeto. */
   function preparaNova(linha){
-    const R=superficies();
-    let base=null; try{ base=R.find(r=>r===S.selRaster)||R.find(r=>String(r.id)===String(S.topoRasterId)); }catch(e){}
-    base=base||R.find(r=>r.visible!==false)||R[0];
-    pendente={linha, terreno:base?String(base.id):'', contatos:new Set(), ocupado:false, previa:null};
+    const F=fontesSecao(), L=Math.hypot(linha[1][0]-linha[0][0],linha[1][1]-linha[0][1]);
+    pendente={linha, fontes:F, topo:'', proj:'', tipo:'pilha', contatos:new Set(), ocupado:false, previa:null, cache:new Map()};
+    const passo=Math.max(L/240,.25), R=F.filter(f=>f.tipo==='raster');
+    const series=new Map(); let dist=null;
     try{
-      const L=Math.hypot(linha[1][0]-linha[0][0],linha[1][1]-linha[0][1]), p=pendente.previa=amostra(linha,R,null,Math.max(L/240,.25));
-      /* sugestão de terreno: a superfície que fica por cima na maior parte da linha */
-      const vence=R.map(()=>0);
-      for(let i=0;i<p.dist.length;i++){ let k=-1, z=-Infinity; p.series.forEach((sr,j)=>{ const v=sr.z[i]; if(Number.isFinite(v)&&v>z){ z=v; k=j; } }); if(k>=0) vence[k]++; }
-      const k=vence.indexOf(Math.max(...vence));
-      if(R.length>1&&vence[k]>0) pendente.terreno=String(R[k].id);
+      if(R.length){ const p=amostra(linha,R.map(f=>f.r),null,passo); dist=p.dist; R.forEach((f,k)=>series.set(f.id,p.series[k].z)); }
     }catch(e){ console.warn('GEOMEC: prévia das superfícies',e); }
+    if(!dist){ dist=[]; for(let d=0;d<=L+1e-9;d+=passo) dist.push(d); }
+    for(const f of F) if(f.tipo==='vetor'){ try{ const P=GM.perfilVetorial(linha,partesDe(f)); f.cruza=P.length; series.set(f.id,dist.map(d=>GM.cotaPerfil(P,d))); }catch(e){ f.cruza=0; } }
+    for(const f of F){ const z=series.get(f.id)||[]; f.cobre=z.filter(Number.isFinite).length; }
+    pendente.previa={dist, series};
+    /* topografia: o MDT de trabalho (nunca o recortado, se houver outro), senão as curvas */
+    let base=null;
+    try{ const sr=S.selRaster, tr=String(S.topoRasterId);
+      base=R.find(f=>f.r===sr&&!/recortad/i.test(f.nome))||R.find(f=>String(f.r.id)===tr)||R.find(f=>f.r.visible!==false&&!/recortad/i.test(f.nome)&&f.cobre)||R.find(f=>f.cobre)||null; }catch(e){}
+    if(!base){ const V=F.filter(f=>f.tipo==='vetor'&&!f.projeto&&f.cruza>1); base=V.find(f=>/curva|contour|topo|n[ií]vel|altim/i.test(f.nome))||V.sort((a,b)=>b.cruza-a.cruza)[0]||R[0]||null; }
+    pendente.topo=base?base.id:'';
+    /* projeto: o desenho bruto do DCE/cava que a linha cruza; senão um MDT recortado */
+    const P=F.filter(f=>f.tipo==='vetor'&&f.projeto&&f.cruza>1).sort((a,b)=>(b.projeto.bruta-a.projeto.bruta)||(b.cruza-a.cruza));
+    const pr=P[0]||R.find(f=>/recortad/i.test(f.nome)&&f.cobre&&f.id!==pendente.topo)||null;
+    if(pr){ pendente.proj=pr.id; pendente.tipo=pr.projeto?pr.projeto.tipo:'pilha'; }
     open();
-    if(R.length===1) criaPendente();
+    if(F.length===1&&!pendente.proj) criaPendente();
   }
   function htmlPendente(){
-    const R=superficies(), L=Math.hypot(pendente.linha[1][0]-pendente.linha[0][0],pendente.linha[1][1]-pendente.linha[0][1]);
-    return `<div class="gmg-boas gmg-pend"><h2>Nova seção — ${fmt(L,1)} m</h2><p>Escolha a superfície do <b>terreno</b> (o talude como está ou como ficará) e marque os <b>contatos</b>: superfícies que separam materiais abaixo dele — o terreno original sob uma pilha, o topo da rocha. Onde o terreno não tem cota, vale o contato mais alto.</p>
-      ${R.length>1?'<canvas id="gmgPrevia" aria-label="Superfícies ao longo da linha"></canvas>':''}
-      <table class="gmg-tab"><thead><tr><th>Terreno</th><th>Contato</th><th>Superfície</th></tr></thead><tbody>${R.map((r,k)=>`<tr><td><input type="radio" name="gmgTer" value="${h(r.id)}"${String(r.id)===pendente.terreno?' checked':''} aria-label="Terreno: ${h(r.name)}"></td><td><input type="checkbox" data-cont="${h(r.id)}"${pendente.contatos.has(String(r.id))?' checked':''}${String(r.id)===pendente.terreno?' disabled':''} aria-label="Contato: ${h(r.name)}"></td><td><i class="gmg-cor" style="background:${GM.PALETA[k%GM.PALETA.length]}"></i>${h(r.name)}${r.d&&r.d.tin?' <small>(TIN)</small>':''}</td></tr>`).join('')}</tbody></table>
-      <div class="gmg-bts"><button type="button" class="tbtn gmg-calc" data-a="cria-pendente"${pendente.ocupado?' disabled':''}>${pendente.ocupado?'Cortando na resolução nativa…':'Criar a seção'}</button><button type="button" class="tbtn" data-a="cancela-pendente">Cancelar</button></div></div>`;
+    const F=pendente.fontes, L=Math.hypot(pendente.linha[1][0]-pendente.linha[0][0],pendente.linha[1][1]-pendente.linha[0][1]);
+    const rot=f=>h(f.nome)+(f.tipo==='vetor'?(f.projeto?' — desenho de '+(f.projeto.tipo==='pilha'?'DCE/pilha':'cava'):' — linhas com cota'):f.tin?' — TIN':' — MDT')+(f.cobre?'':' (não cruza a linha)');
+    const opcoes=(sel,filtro)=>F.filter(filtro).map(f=>`<option value="${h(f.id)}"${f.id===sel?' selected':''}>${rot(f)}</option>`).join('');
+    const outros=F.filter(f=>f.id!==pendente.topo&&f.id!==pendente.proj);
+    return `<div class="gmg-boas gmg-pend"><h2>Nova seção — ${fmt(L,1)} m</h2>
+      <canvas id="gmgPrevia" aria-label="Topografia e projeto ao longo da linha"></canvas>
+      <div class="gmg-pend-cards">
+        <section class="gm-work-card"><div class="gm-card-heading"><span class="gm-card-step">1</span><b>Topografia</b>${info('Sobre a topografia','O terreno natural: um MDT ou TIN (cortado na resolução nativa) ou curvas de nível — qualquer camada de linhas com cota no vértice ou num campo COTA/Z/ELEV. Entre duas curvas a cota é interpolada em linha reta.')}</div>
+          <select data-pend="topo" aria-label="Topografia">${opcoes(pendente.topo,f=>!f.projeto)}</select></section>
+        <section class="gm-work-card"><div class="gm-card-heading"><span class="gm-card-step">2</span><b>Projeto (PDE, pilha ou cava)</b>${info('Sobre o projeto','O perfil do projeto: o desenho do DCE/cava (cristas, pés, rampas e limite), um PDE importado com cota ou um MDT do projeto. Pilha: a superfície é o maior entre o projeto e a topografia, e a topografia vira o contato pilha/fundação. Cava: o menor dos dois. Para um talude fora do projeto, deixe só a topografia.')}</div>
+          <select data-pend="proj" aria-label="Projeto"><option value="">nenhum — só a topografia (talude natural)</option>${opcoes(pendente.proj,f=>f.id!==pendente.topo)}</select>
+          ${pendente.proj?`<div class="gmg-seg" role="radiogroup" aria-label="Tipo do projeto"><label><input type="radio" name="gmgPTipo" value="pilha"${pendente.tipo!=='cava'?' checked':''}> pilha / DCE (aterro sobre o terreno)</label><label><input type="radio" name="gmgPTipo" value="cava"${pendente.tipo==='cava'?' checked':''}> cava (escavação)</label></div>`:''}</section>
+        ${outros.length?`<section class="gm-work-card"><div class="gm-card-heading"><span class="gm-card-step">3</span><b>Contatos abaixo do terreno</b>${info('Sobre os contatos','Superfícies que separam materiais abaixo do terreno — o topo da rocha, uma camada fraca. Cada uma vira o topo de uma camada; o que passar acima do terreno é cortado por ele.')}</div>
+          ${outros.map(f=>`<label class="gmg-check"><input type="checkbox" data-cont="${h(f.id)}"${pendente.contatos.has(f.id)?' checked':''}> ${rot(f)}</label>`).join('')}</section>`:''}
+      </div>
+      <div class="gmg-bts"><button type="button" class="tbtn gmg-calc" data-a="cria-pendente"${pendente.ocupado||!pendente.topo?' disabled':''}>${pendente.ocupado?'Cortando na resolução nativa…':'Criar a seção'}</button><button type="button" class="tbtn" data-a="cancela-pendente">Cancelar</button></div></div>`;
   }
   function desenhaPrevia(){
     const c=$('gmgPrevia'), p=pendente&&pendente.previa; if(!c||!p) return;
     const a=ajusta(c); if(!a) return;
-    const R=superficies();
-    GM.grafico(a.ctx,a.w,a.h,{titulo:'Superfícies ao longo da linha (prévia)', x:{rotulo:'distância (m)'}, y:{rotulo:'cota (m)'},
-      series:p.series.map((sr,k)=>({nome:sr.name, x:p.dist, y:sr.z, cor:GM.PALETA[k%GM.PALETA.length], largura:R[k]&&String(R[k].id)===pendente.terreno?3:1.6}))},claro());
+    const usados=[pendente.topo,pendente.proj,...pendente.contatos];
+    const series=pendente.fontes.filter(f=>p.series.has(f.id)&&f.cobre).map((f,k)=>({nome:f.nome+(f.id===pendente.topo?' (topografia)':f.id===pendente.proj?' (projeto)':''), x:p.dist, y:p.series.get(f.id),
+      cor:f.id===pendente.topo?'#7c4a1e':f.id===pendente.proj?'#7c3aed':GM.PALETA[k%GM.PALETA.length], largura:usados.includes(f.id)?3:1.2}));
+    GM.grafico(a.ctx,a.w,a.h,{titulo:'Ao longo da linha (prévia)', x:{rotulo:'distância (m)'}, y:{rotulo:'cota (m)'}, series},claro());
   }
   async function criaPendente(){
     const p=pendente; if(!p||p.ocupado) return;
-    const R=superficies(), ter=R.find(r=>String(r.id)===p.terreno);
-    if(!ter){ aviso('Escolha a superfície do terreno.'); return; }
-    const usados=[ter,...R.filter(r=>r!==ter&&p.contatos.has(String(r.id)))];
+    const topo=fonteDe(p.topo); if(!topo){ aviso('Escolha a topografia.'); return; }
+    const proj=p.proj?fonteDe(p.proj):null, conts=[...p.contatos].map(fonteDe).filter(f=>f&&f!==topo&&f!==proj);
+    const usados=[topo,...(proj?[proj]:[]),...conts], papel=f=>f===topo?'terreno':f===proj?'projeto':'contato';
     p.ocupado=true; renderTudo();
     try{
-      const grades=[];
-      for(const r of usados){
+      const L=Math.hypot(p.linha[1][0]-p.linha[0][0],p.linha[1][1]-p.linha[0][1]);
+      const R=usados.filter(f=>f.tipo==='raster'), grades=[];
+      for(const f of R){
         let g=null;
-        try{ g=await gridBruto(r,'cortar a seção geotécnica',[p.linha]); }catch(e){ console.warn('GEOMEC: grade nativa indisponível para '+r.name,e); }
+        try{ g=await gridBruto(f.r,'cortar a seção geotécnica',[p.linha]); }catch(e){ console.warn('GEOMEC: grade nativa indisponível para '+f.nome,e); }
         if(pendente!==p) return;
-        grades.push(g||r.d);
+        grades.push(g||f.r.d);
       }
-      const L=Math.hypot(p.linha[1][0]-p.linha[0][0],p.linha[1][1]-p.linha[0][1]), cs=Math.min(...grades.map(g=>+g.cs>0?+g.cs:1));
-      const passo=Math.max(.25,cs,L/6000), prof=amostra(p.linha,usados,grades,passo);
-      if(!prof) throw new Error('a linha não pôde ser amostrada');
-      const perfis=usados.map((r,k)=>({id:r.id, nome:r.name, papel:k===0?'terreno':'contato', z:prof.series[k].z}));
-      const s=GM.novaSecaoMapa(p.linha,S.workCRS,prof.dist,perfis,{});
-      s.passo=+(prof.effectiveStep||passo).toFixed(3);
+      const cs=R.length?Math.min(...grades.map(g=>+g.cs>0?+g.cs:1)):Math.max(.25,L/2000), passo=Math.max(.25,cs,L/6000);
+      const prof=R.length?amostra(p.linha,R.map(f=>f.r),grades,passo):null;
+      if(R.length&&!prof) throw new Error('a linha não pôde ser amostrada');
+      /* estações: as do MDT (ou passo regular) mais cada cruzamento das linhas com cota, para as
+         quebras de crista e pé do projeto entrarem exatas */
+      const V=usados.filter(f=>f.tipo==='vetor'), PV=new Map(V.map(f=>[f.id,GM.perfilVetorial(p.linha,partesDe(f))]));
+      const base=prof?prof.dist.slice():(()=>{ const d=[]; for(let x=0;x<=L+1e-9;x+=passo) d.push(x); if(d[d.length-1]<L-1e-6) d.push(L); return d; })();
+      const ds=new Set(base); PV.forEach(P=>P.forEach(q=>ds.add(+q[0].toFixed(4))));
+      const dist=[...ds].sort((a,b)=>a-b);
+      const naBase=(z0,d)=>{ let lo=0, hi=base.length-1; if(d<base[0]||d>base[hi]) return NaN; while(hi-lo>1){ const m=(lo+hi)>>1; if(base[m]<=d) lo=m; else hi=m; }
+        const a=z0[lo], b=z0[hi]; if(!Number.isFinite(a)||!Number.isFinite(b)) return Math.abs(d-base[lo])<1e-9?a:Math.abs(d-base[hi])<1e-9?b:NaN; return base[hi]>base[lo]?a+(b-a)*(d-base[lo])/(base[hi]-base[lo]):a; };
+      const perfis=usados.map(f=>{
+        let z;
+        if(f.tipo==='raster'){ const z0=prof.series[R.indexOf(f)].z; z=dist.map(d=>naBase(z0,d)); }
+        else { const P=PV.get(f.id); z=dist.map(d=>GM.cotaPerfil(P,d)); }
+        return {id:f.id, nome:f.nome, papel:papel(f), z, fonte:f.tipo, tipo:f===proj?p.tipo:undefined};
+      });
+      const s=GM.novaSecaoMapa(p.linha,S.workCRS,dist,perfis,{tipoProjeto:proj?p.tipo:undefined});
+      s.passo=+((prof&&prof.effectiveStep)||passo).toFixed(3);
       pendente=null; sujoProjeto();
-      const reduzidas=usados.filter((r,i)=>grades[i]===r.d&&(r.d.resampled>1||r.d.native===false)).map(r=>r.name);
+      const reduzidas=R.filter((f,i)=>grades[i]===f.r.d&&(f.r.d.resampled>1||f.r.d.native===false)).map(f=>f.nome);
       if(reduzidas.length) aviso('Sem o arquivo original de '+reduzidas.join(', ')+': usada a grade de trabalho nessas superfícies.');
+      else if(s.avisoProjeto) aviso(s.avisoProjeto);
       else if(s.ignorados&&s.ignorados.length) aviso('Sem efeito nesta seção (não passam abaixo do terreno): '+s.ignorados.join(', '));
-      try{ cmdLog('GEOMEC: seção '+s.nome+' cortada com passo de '+fmt(s.passo,2)+' m — terreno “'+ter.name+'”'+(s.camadas.length>1?' e '+(s.camadas.length-1)+' contato(s)':'')+'.','info'); }catch(e){}
+      try{ cmdLog('GEOMEC: seção '+s.nome+' cortada com passo de '+fmt(s.passo,2)+' m — topografia “'+topo.nome+'”'+(proj?', projeto “'+proj.nome+'” ('+p.tipo+')':'')+(s.camadas.length>1?', '+(s.camadas.length)+' camadas':'')+'.','info'); }catch(e){}
       trocaSecao(); sincronizaMapa({criar:true});
     }catch(err){ if(pendente===p){ p.ocupado=false; renderTudo(); } aviso('Não foi possível cortar a seção: '+(err&&err.message||err)); console.error('GEOMEC',err); }
   }
@@ -735,7 +874,7 @@
       if(!L&&(!op.criar||!lista.length)) return;
       const feats=[];
       for(const s of lista){
-        const r=s.resumo, adm=num(s.fsAdm,1.5), x1=s.terreno.at(-1)[0];
+        const r=s.resumo, adm=GM.admEfetivo(s), x1=s.terreno.at(-1)[0];
         feats.push({geom:[pontoNaLinha(s,s.terreno[0][0]),pontoNaLinha(s,x1)], multi:false, props:{GEOMEC:s.id, SECAO:s.nome, TIPO:'seção', FS:r?+r.FS.toFixed(3):null, CLASSE:'seção', ROTULO:s.nome+(r?' · FS '+fmt(r.FS,2):'')}});
         if(r&&r.sup&&Number.isFinite(r.sup.entrada)&&Number.isFinite(r.sup.saida)) feats.push({geom:[pontoNaLinha(s,r.sup.entrada),pontoNaLinha(s,r.sup.saida)], multi:false, props:{GEOMEC:s.id, SECAO:s.nome, TIPO:'ruptura crítica', FS:+r.FS.toFixed(3), CLASSE:GM.classe(r.FS,adm), ROTULO:''}});
       }
@@ -782,7 +921,7 @@
     const s=sec(), r=res(), an0=analiseAtual();
     if(!s||!an0||!an0.ok) return null;
     const an=comCurvas(s,an0)||an0, E=estudos.get(s.id)||{};
-    const W=1240, H=1754, K=2, F='Signika, system-ui, sans-serif', adm=num(s.fsAdm,1.5), cor=GM.corFS(an.FS,adm), paginas=[];
+    const W=1240, H=1754, K=2, F='Signika, system-ui, sans-serif', adm=GM.admEfetivo(s), cor=GM.corFS(an.FS,adm), paginas=[];
     let projeto=''; try{ projeto=typeof projectNameDisplay==='function'?projectNameDisplay(S.currentProjectName||''):String(S.currentProjectName||''); }catch(e){}
     const hoje=new Date().toLocaleDateString('pt-BR');
     const nova=titulo=>{
@@ -820,7 +959,7 @@
     y=tabela(ctx,40,y,'Materiais, de cima para baixo',s.camadas.map(cm=>{ const m=s.materiais[cm.mat]; return [m.nome+'  ['+GM.MODELOS[m.modelo||'mc']+']',GM.resumoMaterial(m)]; }),1160)+36;
     const busca=modo!=='manual'&&r&&r.ok;
     const cond=[['Origem',s.origem==='mapa'?'cortada no mapa'+(s.passo?', passo de '+fmt(s.passo,2)+' m':'')+' — '+s.camadas.map(c=>c.fonte&&c.fonte.nome).filter(Boolean).join(' / '):s.parametros?'talude paramétrico':'definida na seção'],
-      ['Água',s.agua.modo==='linha'?'linha freática de '+s.agua.linha.length+' pontos (γw 9,81 kN/m³)':'sem linha freática'],['Sismo pseudo-estático','kh '+fmt(num(s.sismo.kh,0),3)+' · kv '+fmt(num(s.sismo.kv,0),3)],
+      ['Água',descreveAgua(s,busca?r:null)],['Sismo pseudo-estático','kh '+fmt(num(s.sismo.kh,0),3)+' · kv '+fmt(num(s.sismo.kv,0),3)],
       ['Sobrecargas',(s.cargas||[]).length?s.cargas.map(q=>fmt(num(q.q,0),0)+' kPa de '+fmt(num(q.x1,0),1)+' a '+fmt(num(q.x2,0),1)+' m').join('; '):'nenhuma'],
       ['Trinca de tração',num(s.trinca.prof,0)>0?fmt(num(s.trinca.prof,0),2)+' m, '+fmt(num(s.trinca.agua,0),0)+'% de água':'não considerada'],
       ['Busca',busca?fmt(r.busca.validas,0)+' círculos válidos por entrada e saída'+(r.naoCircular?' + otimização não circular ('+fmt(r.circular.FS,3)+' → '+fmt(r.naoCircular.FS,3)+')':''):'superfície definida à mão']];
@@ -855,6 +994,13 @@
     }
     return {paginas, W:W*K, H:H*K};
   }
+  /* Texto da condição de água para o relatório. */
+  function descreveAgua(s,r){
+    const c=(r&&r.condicao)||GM.condicaoEfetiva(s), L=GM.temLinhaAgua(s)?s.agua.linha.length:0;
+    let t=GM.CONDICOES[c]+': '+(c==='seco'?'sem poropressão':c==='saturado'?'NA na superfície do terreno':c==='critico'?'NA desenhado ('+L+' pontos) elevado '+fmt(GM.deltaCritico(s),2)+' m, sem passar do terreno':L?'linha freática de '+L+' pontos':'sem linha freática')+(c!=='seco'&&c!=='saturado'&&GM.temRu(s)?' + ru dos materiais':'')+' (γw 9,81 kN/m³)';
+    if(r&&r.condicoes) t+='. Pior caso entre: '+r.condicoes.map(x=>x.nome+' '+(x.ok?fmt(x.FS,3):'sem solução')+' (mín. '+fmt(x.adm,2)+')').join(' · ');
+    return t;
+  }
   function exportaRelatorio(){
     const s=sec(); if(!s) return Promise.resolve(false);
     let R;
@@ -876,7 +1022,9 @@
     const s=sec();
     if(!s||pendente){ if(k!=='estabilidade') aviso('Crie uma seção primeiro: trace no mapa ou use o talude paramétrico.'); return; }
     if(k==='estabilidade'){ aba='resumo'; calcula(); }
-    else if(k==='agua'){ if(s.agua.modo!=='linha'){ s.agua.modo='linha'; linhaAguaPadrao(s); mudou(true); } saiDoModo(); modo='na'; const d=$('gmgDica'); d.hidden=false; d.textContent=DICA_NA; renderCards(); desenha(); }
+    else if(k==='agua'){ if(s.agua.modo!=='linha'){ s.agua.modo='linha'; linhaAguaPadrao(s); mudou(true); } saiDoModo(); modo='na'; const d=$('gmgDica'); d.hidden=false; d.textContent=DICA_NA;
+      recolhido=false; $('gmGeomecWorkspace').classList.remove('sem-cards'); renderCards(); desenha();
+      setTimeout(()=>{ try{ $('gmgSide').querySelector('[data-card="agua"]').scrollIntoView({block:'start', behavior:'smooth'}); }catch(e){} },60); }
     else if(k==='sismo'){ aba='sismo'; if(res()&&res().ok&&!GM.ocupado()) rodaEstudo('sismo'); else pintaAba(); }
     else if(k==='relatorio'){ if(res()&&res().ok&&!GM.ocupado()) exportaRelatorio(); else aviso('Assim que o cálculo terminar, peça o relatório de novo.'); }
   }
@@ -890,7 +1038,7 @@
   const api={open, mostrou, comando, mapClick, fimDesenho, snapshot:()=>GM.snapshot(), restore, reset:()=>restore(null), hasContent:()=>GM.temConteudo(),
     visivel:()=>montado&&!$('gmGeomecWorkspace').hidden,
     __teste:{GM, sec, res, calcula, exportaRelatorio, paginasRelatorio, exportaCSV, figura, sincronizaMapa, preparaNova, estudos,
-      estado:()=>({aba, modo, sel, vista, vistaManual, pendente:pendente?{terreno:pendente.terreno, contatos:[...pendente.contatos], ocupado:pendente.ocupado}:null, ocupado:GM.ocupado(), emEstudo, rodada})}};
+      estado:()=>({aba, modo, sel, vista, vistaManual, pendente:pendente?{topo:pendente.topo, proj:pendente.proj, tipo:pendente.tipo, contatos:[...pendente.contatos], ocupado:pendente.ocupado, fontes:pendente.fontes.map(f=>({id:f.id, nome:f.nome, tipo:f.tipo, cruza:f.cruza, cobre:f.cobre, projeto:f.projeto}))}:null, ocupado:GM.ocupado(), emEstudo, rodada})}};
   root.GeoMineGeomec=api;
   const liga=()=>{ try{ mount(); }catch(e){ console.warn('GEOMEC',e); } };
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(liga,0)); else setTimeout(liga,0);

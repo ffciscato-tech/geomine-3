@@ -144,3 +144,25 @@ body.gm-touch-ui.gm-geomec-view .gm-touch-actions{display:none!important}
 #gmGeomecWorkspace.gmg-estreito .gmg-res{flex-basis:clamp(200px,44%,360px)}
 #gmGeomecWorkspace.gmg-estreito .gmg-chips{max-width:calc(100% - 60px)}
 @media(max-height:560px){.gmg-res{flex-basis:44%}}
+/* seção nova: topografia, projeto e contatos em cards numerados (22/11/2026) */
+.gmg-pend-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;text-align:left}
+.gmg-pend-cards .gm-work-card{padding:8px;margin:0}
+.gmg-pend-cards select{width:100%}
+.gmg-pend-cards .gmg-check{min-height:28px}
+.gmg-seg{display:flex;flex-wrap:wrap;gap:2px 12px;margin-top:6px;font-size:11.5px}
+.gmg-seg label{display:flex;align-items:center;gap:5px;min-height:30px;cursor:pointer}
+.gmg-seg input{width:16px;height:16px;flex:none}
+/* água: tabela das condições */
+.gmg-cond{margin-top:6px}
+.gmg-cond td:first-child .gmg-check{min-height:26px;font-size:11.5px}
+.gmg-tab tr.gmg-off td{opacity:.55}
+.gmg-link{background:none;border:0;padding:0;margin:0;color:inherit;font:inherit;text-align:left;cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px}
+.gmg-link:disabled{cursor:default;text-decoration:none}
+/* banco de litologias */
+.gmg-lito .gmg-linha{flex-wrap:wrap;margin:0 0 6px}
+.gmg-lito .gmg-linha>input{min-width:180px}
+.gmg-lito-alvo{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-dim)}
+.gmg-lito-alvo select{max-width:220px}
+.gmg-lito .gmg-tab td+td{text-align:left}
+.gmg-lito .gmg-tab td:last-child{text-align:right;width:56px}
+.gmg-lito tr.gmg-lito-g td{font-weight:700;color:var(--amber);padding-top:8px;background:transparent;text-align:left;width:auto}

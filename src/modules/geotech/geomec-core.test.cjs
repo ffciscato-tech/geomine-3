@@ -6,7 +6,7 @@ function carrega(){
   const ctx={console, setTimeout, clearTimeout, structuredClone};
   ctx.window=ctx; ctx.self=ctx;
   vm.createContext(ctx);
-  for(const f of ['slope-stability.js','geomec-core.js']) vm.runInContext(fs.readFileSync(path.join(DIR,f),'utf8'),ctx,{filename:f});
+  for(const f of ['slope-stability.js','geomec-core.js','geomec-litologias.js']) vm.runInContext(fs.readFileSync(path.join(DIR,f),'utf8'),ctx,{filename:f});
   return {GM:ctx.GeoMineGeomecInterno, SL:ctx.GeoMineSlope, ctx};
 }
 const puro=v=>JSON.parse(JSON.stringify(v));
@@ -155,7 +155,7 @@ test('projeto: o que é salvo volta igual, sem os resultados pesados, e entradas
   const {GM}=carrega();
   const a=GM.novaSecaoTalude({bancadas:2}); GM.calcula(a);
   const b=GM.novaSecaoMapa([[10,20],[110,20]],'EPSG:31983',[0,50,100],[{id:1,nome:'mdt',papel:'terreno',z:[30,28,10]}],{});
-  b.agua={modo:'linha', linha:[[0,20],[100,8]]};
+  Object.assign(b.agua,{modo:'linha', linha:[[0,20],[100,8]]});
   const foto=GM.snapshot();
   assert.equal(foto.secoes.length,2); assert.equal(foto.ativa,b.id);
   assert.ok(JSON.stringify(foto).length<6000,'projeto enxuto: '+JSON.stringify(foto).length+' bytes');
@@ -190,4 +190,112 @@ test('cálculo em segundo plano: sem Worker cai no cálculo direto; o texto do m
   assert.doesNotThrow(()=>structuredClone({res:la, resumo:copia.resumo}),'o resultado atravessa a fronteira da thread');
   /* cancelar sem nada em andamento não quebra */
   GM.cancela(); assert.equal(GM.ocupado(),false);
+});
+
+/* ---------------- pedido de 22/11/2026: seção com topografia + PDE, NA com pior caso, litologias ---------------- */
+test('perfil por linhas com cota: curvas de nível e linhas de projeto cortadas pela seção',()=>{
+  const {GM}=carrega();
+  const linha=[[0,0],[100,0]];
+  /* três curvas de nível verticais (x = 20, 50, 80) com cotas 130, 120, 110, uma curva fora e uma paralela */
+  const curva=(x,z)=>({pts:[[x,-50,z],[x,50,z]]});
+  const partes=[curva(20,130),curva(50,120),curva(80,110),curva(150,100),{pts:[[0,5,90],[100,5,90]]},{pts:[[0,0,99],[100,0,99]]}];
+  const P=GM.perfilVetorial(linha,partes);
+  assert.deepEqual(puro(P),[[20,130],[50,120],[80,110]]);
+  assert.ok(Number.isNaN(GM.cotaPerfil(P,10))&&Number.isNaN(GM.cotaPerfil(P,90)),'fora das curvas não há cota');
+  assert.equal(GM.cotaPerfil(P,35),125); assert.equal(GM.cotaPerfil(P,80),110);
+  /* rampa: a cota varia ao longo da aresta; anel fechado cruza duas vezes; vértice comum conta uma vez */
+  const rampa={pts:[[40,-10,100],[40,10,120]]}, anel={pts:[[60,-5,140],[70,-5,140],[70,5,140],[60,5,140]], fechada:true};
+  const Q=GM.perfilVetorial(linha,[rampa,anel,{pts:[[10,-5,7],[10,0,8],[10,5,9]]}]);
+  assert.deepEqual(puro(Q),[[10,8],[40,110],[60,140],[70,140]]);
+  /* linha da seção ao contrário: as distâncias contam do primeiro ponto */
+  assert.deepEqual(puro(GM.perfilVetorial([[100,0],[0,0]],partes.slice(0,3))),[[20,110],[50,120],[80,130]]);
+});
+
+test('seção com topografia e PDE: pilha por cima do terreno natural, que vira o contato; cava pelo menor; só topografia',()=>{
+  const {GM}=carrega();
+  const dist=Array.from({length:101},(_,i)=>i);
+  const topo=dist.map(x=>100-0.2*x);                                   /* encosta suave */
+  const pde=dist.map(x=>x<20||x>70?NaN:(x<=40?112:112-(x-40)*0.6));   /* plataforma e talude da pilha */
+  const s=GM.novaSecaoMapa([[0,0],[100,0]],'EPSG:31983',dist,[{id:'t',nome:'Curvas',papel:'terreno',z:topo,fonte:'vetor'},{id:'p',nome:'DCE 1 — Bruta',papel:'projeto',z:pde,tipo:'pilha',fonte:'vetor'}],{});
+  const z=x=>GM.lerp(s.terreno,x);
+  assert.ok(Math.abs(z(10)-98)<1e-9,'fora da pilha vale a topografia');
+  assert.ok(Math.abs(z(30)-112)<1e-9,'na plataforma vale o projeto');
+  assert.ok(Math.abs(z(68)-Math.max(112-28*0.6,100-0.2*68))<1e-6);
+  assert.equal(s.camadas.length,2); const f=s.camadas[1];
+  assert.equal(f.fonte.natural,true); assert.ok(Math.abs(GM.lerp(f.topo,30)-94)<1e-9,'contato pilha/fundação = topografia');
+  assert.match(s.materiais[s.camadas[0].mat].nome,/Pilha/); assert.match(s.materiais[f.mat].nome,/Fundação/);
+  assert.equal(s.materiais[s.camadas[0].mat].lito,'esteril-lancado');
+  assert.deepEqual(puro(s.fontes),{topografia:{id:'t',nome:'Curvas',tipo:'vetor'},projeto:{id:'p',nome:'DCE 1 — Bruta',tipo:'vetor',papel:'pilha'}});
+  assert.ok(GM.calcula(s).ok,'a seção da pilha calcula');
+  /* cava: o menor dos dois, sem camada nova */
+  const cava=dist.map(x=>x<30||x>60?NaN:80);
+  const c=GM.novaSecaoMapa([[0,0],[100,0]],'EPSG:31983',dist,[{id:'t',nome:'MDT',papel:'terreno',z:topo},{id:'c',nome:'Cava',papel:'projeto',z:cava,tipo:'cava'}],{});
+  assert.equal(c.camadas.length,1); assert.equal(GM.lerp(c.terreno,45),80); assert.ok(Math.abs(GM.lerp(c.terreno,10)-98)<1e-9);
+  /* projeto todo abaixo da topografia numa pilha: fica só o terreno natural, com aviso */
+  const baixo=GM.novaSecaoMapa([[0,0],[100,0]],'EPSG:31983',dist,[{id:'t',nome:'MDT',papel:'terreno',z:topo},{id:'p',nome:'P',papel:'projeto',z:dist.map(()=>50),tipo:'pilha'}],{});
+  assert.equal(baixo.camadas.length,1); assert.match(baixo.avisoProjeto,/não passa acima/);
+  /* só a topografia (talude natural): como antes */
+  const so=GM.novaSecaoMapa([[0,0],[100,0]],'EPSG:31983',dist,[{id:'t',nome:'MDT',papel:'terreno',z:topo}],{});
+  assert.equal(so.camadas.length,1); assert.equal(so.fontes.projeto,null);
+});
+
+test('NA crítico: linha elevada de Δ sem passar do terreno; lâmina d’água fica como está',()=>{
+  const {GM}=carrega();
+  const terreno=[[0,20],[10,20],[30,0],[50,0]], na=[[0,8],[50,-2]];
+  const L=GM.elevaNA(na,terreno,5), z=x=>GM.lerp(L,x);
+  assert.ok(Math.abs(z(0)-13)<1e-9); assert.ok(Math.abs(z(50)-0)<1e-9,'no pé o NA elevado encosta no terreno');
+  for(let x=0;x<=50;x+=0.5){ const t=GM.lerp(terreno,x), l=GM.lerp(na,x); assert.ok(z(x)<=Math.max(t,l)+1e-6&&z(x)<=l+5+1e-6&&z(x)>=Math.min(l+5,t)-1e-3,'x='+x); }
+  /* um lago (linha acima do terreno) não sobe */
+  const lago=GM.elevaNA([[0,5],[50,5]],[[0,10],[20,0],[50,0]],3);
+  assert.ok(Math.abs(GM.lerp(lago,40)-5)<1e-9); assert.ok(Math.abs(GM.lerp(lago,0)-8)<1e-9);
+});
+
+test('condições de água: seco ≥ desenhado ≥ crítico ≥ saturado; o pior caso fica com o menor FS e diz qual foi',async()=>{
+  const {GM}=carrega();
+  const s=GM.novaSecaoTalude({bancadas:1, altura:20, angulo:35});
+  Object.assign(s.materiais.m1,{c:12, phi:30, gama:19, ru:0.2});
+  const L=GM.limites(s);
+  Object.assign(s.agua,{modo:'linha', linha:[[L.x0,6],[L.x1,0.5]]});
+  assert.deepEqual(puro(GM.condicoesPior(s)),['seco','desenhado','critico']);
+  assert.equal(GM.definicao(s,'seco').agua,null); assert.equal(GM.definicao(s,'seco').materiais.m1.ru,0);
+  assert.equal(GM.definicao(s,'desenhado').materiais.m1.ru,0.2);
+  assert.deepEqual(puro(GM.definicao(s,'saturado').agua.linha),puro(s.terreno));
+  assert.equal(GM.deltaCritico(s),4,'20% do desnível de 20 m');
+  const FS={};
+  for(const c of GM.ORDEM_COND){ const r=GM.calculaCond(s,c); assert.ok(r.ok,c); FS[c]=r.critica.FS; assert.equal(s.resumo.condicao,c); }
+  assert.ok(FS.seco>FS.desenhado&&FS.desenhado>FS.critico&&FS.critico>FS.saturado,JSON.stringify(FS));
+  s.agua.condicao='pior'; s.agua.incluir.saturado=true;
+  const r=GM.calcula(s);
+  assert.equal(r.condicao,'saturado'); assert.ok(Math.abs(r.critica.FS-FS.saturado)<1e-12);
+  assert.deepEqual(puro(r.condicoes.map(c=>[c.cond,+c.FS.toFixed(6),c.adm])),puro(GM.ORDEM_COND.map(c=>[c,+FS[c].toFixed(6),c==='critico'||c==='saturado'?1.3:1.5])));
+  assert.equal(s.resumo.condicao,'saturado'); assert.equal(s.resumo.condicoes.length,4);
+  assert.equal(GM.condicaoEfetiva(s),'saturado'); assert.equal(GM.admEfetivo(s),1.3);
+  assert.equal(GM.definicao(s).condicao,'saturado','os estudos usam a condição que governou');
+  /* em segundo plano: as condições vão uma a uma e o andamento é avisado */
+  s.agua.incluir.saturado=false; const passos=[];
+  const ra=await GM.calculaAsync(s,(i,n,c)=>passos.push([i,n,c]));
+  assert.deepEqual(puro(passos),[[0,3,'seco'],[1,3,'desenhado'],[2,3,'critico']]);
+  assert.equal(ra.condicao,'critico'); assert.ok(Math.abs(s.resumo.FS-FS.critico)<1e-9);
+  /* sem linha desenhada o NA crítico não existe; nada marcado dá um motivo claro */
+  s.agua.modo='nenhuma'; s.materiais.m1.ru=0;
+  assert.deepEqual(puro(GM.condicoesPior(s)),['seco']);
+  s.agua.incluir={seco:false, desenhado:false, critico:false, saturado:false};
+  const nada=GM.calcula(s); assert.equal(nada.ok,false); assert.match(nada.motivo,/Marque ao menos/);
+});
+
+test('banco de litologias: valores aplicados ao material, fontes e faixas; rocha por Hoek–Brown calcula',()=>{
+  const {GM}=carrega();
+  assert.ok(GM.LITOLOGIAS.length>=40); assert.equal(new Set(GM.LITOLOGIAS.map(x=>x.id)).size,GM.LITOLOGIAS.length,'ids únicos');
+  for(const b of GM.LITOLOGIAS){
+    assert.ok(GM.GRUPOS_LITO.includes(b.grupo),b.id); assert.ok(GM.FONTES_LITO[b.fonte],b.id+' sem fonte');
+    assert.ok(b.gama>=14&&b.gama<=30,b.id);
+    if(b.modelo==='mc'){ assert.ok(b.phi>=8&&b.phi<=45&&b.c>=0,b.id); if(b.faixa&&b.faixa.phi) assert.ok(b.phi>=b.faixa.phi[0]&&b.phi<=b.faixa.phi[1],b.id); if(b.faixa&&b.faixa.c) assert.ok(b.c>=b.faixa.c[0]&&b.c<=b.faixa.c[1],b.id); }
+    if(b.modelo==='hb') assert.ok(b.sci>=b.faixa.sci[0]&&b.sci<=b.faixa.sci[1]&&b.mi>0,b.id);
+    assert.ok(GM.faixaLitologia(b).length>5);
+  }
+  assert.equal(GM.litologia('marmore').mi,9); assert.equal(GM.litologia('gnaisse').mi,28); assert.equal(GM.litologia('granito').mi,32);
+  const s=GM.novaSecaoTalude({bancadas:3, altura:15, angulo:70, berma:8});
+  assert.ok(GM.aplicaLitologia(s.materiais.m1,'gnaisse')); assert.equal(s.materiais.m1.modelo,'hb'); assert.equal(s.materiais.m1.lito,'gnaisse');
+  const r=GM.calcula(s); assert.ok(r.ok&&r.critica.FS>1,'maciço de gnaisse GSI 50 fica de pé');
+  assert.equal(GM.aplicaLitologia(s.materiais.m1,'nada'),false);
 });

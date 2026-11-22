@@ -396,6 +396,32 @@ publicou de outro lugar e este repositório está desatualizado.
     interrompe. Sem Worker, calcula na própria página.
   - **O projeto guarda as seções e só o resumo do cálculo** (chave `geomec`);
     os resultados pesados são refeitos ao abrir a aba.
+  - **Seção primeiro, depois a estabilidade e o NA** (pedido de 22/11/2026, à
+    tarde, com o print da faixa: "A seção geotécnica deve vir em primeiro,
+    depois estabilidade e o nível de água eu devo poder escolher o pior caso
+    para analisar o FS lembrando que a seção deve levar em consideração a
+    topografia (vetorial ou mdt) e os perfis do PDE, caso quero analisar a
+    estabilidade de um talude que não esta in situ seleciono somente o perfil
+    topográfico, buscar em bancos de dados os fatores de angulo de atrito e de
+    coesão para diferentes litologias"). Na faixa: Seção Geotécnica,
+    Estabilidade (FS), NA, Talude, Dreno.
+  - **A seção nova pede 1 Topografia, 2 Projeto e 3 Contatos.** Topografia é
+    um MDT/TIN **ou** curvas de nível (qualquer camada de linhas com cota no
+    vértice ou em campo COTA/Z/ELEV). Projeto é o desenho do DCE/cava (as
+    linhas "— Bruta"), um PDE importado com cota ou um MDT do projeto; pilha =
+    maior entre projeto e topografia, com a topografia virando o contato
+    pilha/fundação; cava = o menor dos dois. "Nenhum" deixa só a topografia
+    (talude natural). Os cruzamentos das linhas com cota entram como estações,
+    para crista e pé ficarem exatos.
+  - **Água com condição de cálculo e pior caso**: NA desenhado, seco, NA
+    crítico (o desenhado elevado de Δ, sem passar do terreno), saturado (NA no
+    terreno) e "pior caso entre as marcadas", que calcula cada condição e
+    fica com o menor FS, mostrando a tabela. FS mínimo por condição (1,50
+    normal; 1,30 crítico e saturado, como na NBR 13029:2017 para pilhas) e o
+    botão "NA no contato pilha/fundação".
+  - **Banco de litologias com faixa e fonte em cada linha** (`geomec-litologias.js`):
+    não colocar valor sem fonte; onde a fonte só dá o típico, a linha não tem
+    faixa.
 - **Opacidade do preenchimento em 0% é transparente.** Pedido de 21/11/2026,
   com o print de um polígono laranja opaco e a barra "Opacidade do
   preenchimento" em 0%. O polígono sem preenchimento visível — hachura
@@ -1020,25 +1046,60 @@ largura; em área com menos de 700 px os cards viram uma gaveta (botão ☰).
 | `geomec-graficos.js` | Gráficos dos resultados e o corpo livre da fatia |
 | `geomec-workspace.js` | A tela: cards, interações, mapa, saídas (`GeoMineGeomec`) |
 | `styles/modules/geomec.css` | Estilo da aba |
+| `geomec-litologias.js` | Banco de litologias (φ′, c′, γ; σci e mi de rochas) com faixa e fonte |
 
 **Cards.** 1 Seção (nome, sentido, FS admissível, base do modelo, recalcular a
-cada alteração) · 2 Camadas e materiais · 3 Água · 4 Cargas, sismo e trinca ·
+cada alteração) · 2 Camadas e materiais · 3 Água (NA) · 4 Cargas, sismo e trinca ·
 5 Superfície de ruptura · 6 Estudos · 7 Saída. Cada um tem o ⓘ com a
 explicação.
 
 **De onde vem a seção.** *Seção Geotécnica* arma a ferramenta `geomecSecao`:
-dois toques no mapa (com ímã), acima da crista e além do pé. Com uma superfície
-no projeto a seção nasce direto; com mais de uma, a aba mostra a prévia de
-todas ao longo da linha e pede o **terreno** (sugere a que fica por cima) e os
-**contatos**, que viram topos de camada — o terreno original sob uma pilha, o
-topo da rocha. Onde o terreno não tem cota vale o contato mais alto; contato
-que não passa abaixo do terreno é ignorado, com aviso. As linhas são
+dois toques no mapa (com ímã), acima da crista e além do pé. Com uma única
+fonte de cota no projeto a seção nasce direto; senão a aba mostra a prévia de
+todas ao longo da linha e três cards: **1 Topografia** (MDT/TIN na resolução
+nativa ou curvas de nível — camada de linhas com Z nos vértices, `zg`, ou num
+campo COTA/Z/ELEV/ELEVACAO…; entre duas curvas a cota é linear), **2 Projeto**
+(nenhum, o desenho do DCE/cava — camada com `DESIGN_ID` e `PROJETO`, de
+preferência a "— Bruta" —, um PDE importado com cota ou um MDT do projeto;
+pilha ou cava) e **3 Contatos** (topo da rocha, camada fraca). A sugestão é a
+topografia de trabalho (nunca o MDT recortado, se houver outro) e, como
+projeto, o desenho que a linha cruza. Pilha: superfície = maior entre projeto
+e topografia, e a topografia sob o projeto vira o primeiro contato (camadas
+"Pilha (PDE)" e "Fundação", com valores de partida do banco). Cava: o menor
+dos dois. Os cruzamentos das linhas com cota (`GM.perfilVetorial`) entram como
+estações, além das do MDT. Onde a topografia não tem cota vale o contato mais
+alto; contato que não passa abaixo do terreno é ignorado, com aviso. As linhas são
 simplificadas com tolerância de 2 cm (ou 1/2500 do desnível). *Talude* cria um
 talude paramétrico (bancadas, altura, ângulo da face, berma). Cada seção
 cortada no mapa aparece na camada **Seções geomecânicas**, com o trecho entre a
 entrada e a saída da ruptura crítica colorido pela classe do fator de
 segurança; a camada nasce com a primeira seção e depois só é atualizada (se for
 apagada, não volta sozinha).
+
+**Água (card 3).** A linha desenhada (horizontal por cota, editada no desenho
+ou "no contato pilha/fundação") e a **condição do cálculo**: NA desenhado
+(com o ru dos materiais), seco (sem água e sem ru), NA crítico (o desenhado
+elevado de Δ — padrão 20% do desnível — sem subir acima do terreno onde estava
+abaixo dele, `GM.elevaNA`; leva o ru), saturado (NA na superfície, sem ru) ou
+**pior caso entre as marcadas**: cada condição vai para a thread de cálculo,
+uma de cada vez (o andamento aparece no topo), e fica a de menor FS
+(`GM.combinaPior`), com a tabela no card, no Resumo e no relatório. Os estudos
+usam a condição que governou. FS mínimo: o admissível da seção para seco e
+desenhado; 1,30 para crítico e saturado (editáveis), como a NBR 13029:2017
+para pilhas — 1,50 com o NA normal no contato pilha/fundação e 1,30 com o NA
+elevado no maciço. Tocar no nome de uma condição passa a calcular só ela.
+
+**Banco de litologias.** O seletor de cada material e a aba "Litologias"
+(busca e "usar" no material escolhido) trazem 50 linhas: solos residuais e
+naturais, estéril/rejeito/enrocamento, solos USCS compactados, rochas por
+Hoek–Brown (σci pela classe de resistência, mi ± desvio de Marinos & Hoek) e
+descontinuidades. Cada linha tem valor típico, faixa quando a fonte publica e
+a fonte: NAVFAC DM-7.02; Marinos & Hoek (2000/2001) e Hoek (2007); ensaios
+publicados em solos de gnaisse (RJ, SC) e GeoRio (2014); estéreis de PDE do
+Quadrilátero Ferrífero; Leps (1970) e Hawley & Cunning (2017); Barton &
+Choubey (1977); Skempton (1985); Terzaghi & Peck; a biblioteca anterior do
+GeoMine. Aplicar uma litologia guarda o papel da camada no nome ("Fundação —
+…"). São valores de partida: o card lembra de confirmar com ensaios.
 
 **Motor.** Método das fatias na formulação geral (GLE, Fredlund e Krahn, 1977),
 a mesma família do SLOPE/W: para cada λ há um fator de segurança que fecha os

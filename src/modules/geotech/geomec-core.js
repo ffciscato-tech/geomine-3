@@ -90,9 +90,11 @@
     do{ nome=prefixo+'-'+String(k++).padStart(2,'0'); }while(estado.secoes.some(s=>s.nome===nome));
     return nome;
   }
+  /* Água: a linha desenhada (modo/linha) e a condição usada no cálculo (ver GM.CONDICOES). */
+  const aguaVazia=()=>({modo:'nenhuma', linha:[], condicao:'desenhado', delta:'', incluir:{seco:true, desenhado:true, critico:true, saturado:false}, adm:{critico:1.3, saturado:1.3}});
   function secaoVazia(nome,origem){
     return {id:novoId('sec'), nome, origem, linha:null, crs:null, terreno:[], camadas:[], materiais:{}, sentido:'auto', base:'',
-      agua:{modo:'nenhuma', linha:[]}, cargas:[], sismo:{kh:0, kv:0}, trinca:{prof:0, agua:0},
+      agua:aguaVazia(), cargas:[], sismo:{kh:0, kv:0}, trinca:{prof:0, agua:0},
       busca:{metodo:'mp', faixas:'auto', entrada:null, saida:null, precisao:'normal', naoCircular:false, profMin:''},
       manual:null, fsAdm:1.5, auto:true, resumo:null, criada:new Date().toISOString()};
   }
@@ -119,20 +121,65 @@
     estado.secoes.push(s); estado.ativa=s.id;
     return s;
   };
-  /* Seção cortada no mapa. perfis = [{id, nome, papel:'terreno'|'contato', z:[…]}] nas mesmas
-     estações dist[]. O terreno vale onde tem cota; onde não tem (superfície de pilha fora da
-     pilha, por exemplo), vale o contato mais alto. Contatos viram topos de camada, de cima
-     para baixo pela cota média. */
+  /* --------------------------- perfis por linhas com cota --------------------------- */
+  /* Curvas de nível ou linhas de projeto (crista, pé, rampa, limite) cortadas pela linha da
+     seção. partes = [{pts:[[x,y,z],…], fechada}] no sistema da seção. Cada cruzamento dá
+     (distância desde o primeiro ponto da linha, cota), ordenados pela distância. */
+  GM.perfilVetorial=(linha,partes)=>{
+    const a=linha[0], b=linha[linha.length-1], dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy), out=[];
+    if(!(L>0)) return out;
+    const X0=Math.min(a[0],b[0]), X1=Math.max(a[0],b[0]), Y0=Math.min(a[1],b[1]), Y1=Math.max(a[1],b[1]);
+    for(const parte of partes||[]){
+      const P=parte.pts||parte, n=P.length; if(n<2) continue;
+      let bx0=Infinity, bx1=-Infinity, by0=Infinity, by1=-Infinity;
+      for(const q of P){ if(q[0]<bx0)bx0=q[0]; if(q[0]>bx1)bx1=q[0]; if(q[1]<by0)by0=q[1]; if(q[1]>by1)by1=q[1]; }
+      if(bx1<X0||bx0>X1||by1<Y0||by0>Y1) continue;
+      const m=parte.fechada?n:n-1;
+      for(let i=0;i<m;i++){
+        const p=P[i], q=P[(i+1)%n];
+        if(!Number.isFinite(p[2])||!Number.isFinite(q[2])) continue;
+        const ex=q[0]-p[0], ey=q[1]-p[1], den=dx*ey-dy*ex, le=Math.hypot(ex,ey);
+        if(!(le>0)||Math.abs(den)<=1e-12*L*le) continue;            /* paralela à seção */
+        const qx=p[0]-a[0], qy=p[1]-a[1], t=(qx*ey-qy*ex)/den, u=(qx*dy-qy*dx)/den;
+        if(t<-1e-9||t>1+1e-9||u<-1e-9||u>1+1e-9) continue;
+        const uu=Math.min(1,Math.max(0,u));
+        out.push([Math.min(1,Math.max(0,t))*L, p[2]+(q[2]-p[2])*uu]);
+      }
+    }
+    out.sort((p,q)=>p[0]-q[0]||p[1]-q[1]);
+    const fim=[];
+    for(const p of out){ const u=fim[fim.length-1]; if(u&&Math.abs(u[0]-p[0])<1e-6&&Math.abs(u[1]-p[1])<1e-6) continue; fim.push(p); }
+    return fim;
+  };
+  /* Cota do perfil vetorial numa distância: linear entre os cruzamentos; fora deles, NaN. */
+  GM.cotaPerfil=(P,d)=>{
+    const n=P.length; if(!n||d<P[0][0]-1e-9||d>P[n-1][0]+1e-9) return NaN;
+    if(n===1) return P[0][1];
+    let lo=0, hi=n-1; while(hi-lo>1){ const m=(lo+hi)>>1; if(P[m][0]<=d) lo=m; else hi=m; }
+    const a=P[lo], b=P[hi]; return b[0]>a[0]?a[1]+(b[1]-a[1])*(Math.min(b[0],Math.max(a[0],d))-a[0])/(b[0]-a[0]):Math.max(a[1],b[1]);
+  };
+
+  /* Seção cortada no mapa. perfis = [{id, nome, papel:'terreno'|'projeto'|'contato', z:[…]}]
+     nas mesmas estações dist[]. O terreno (a topografia) vale onde tem cota; onde não tem,
+     vale o contato mais alto. Com um PROJETO (pedido de 22/11/2026: a seção leva em conta a
+     topografia e os perfis do PDE): pilha — a superfície é o maior entre o projeto e a
+     topografia, e a topografia vira o contato pilha/fundação; cava — o menor dos dois. Sem
+     projeto a seção é só a topografia (talude natural). Contatos viram topos de camada, de
+     cima para baixo pela cota média. */
   GM.novaSecaoMapa=(linha,crs,dist,perfis,op)=>{
     op=op||{};
-    const ter=perfis.find(p=>p.papel==='terreno'), cont=perfis.filter(p=>p.papel==='contato');
-    if(!ter) throw new Error('Escolha a superfície do terreno.');
-    const n=dist.length, zt=new Array(n).fill(NaN);
+    const ter=perfis.find(p=>p.papel==='terreno'), proj=perfis.find(p=>p.papel==='projeto'), cont=perfis.filter(p=>p.papel==='contato');
+    if(!ter) throw new Error('Escolha a topografia (a superfície do terreno).');
+    const n=dist.length, zt=new Array(n).fill(NaN), zn=new Array(n).fill(NaN), pilha=!!proj&&(op.tipoProjeto||proj.tipo)!=='cava';
     for(let i=0;i<n;i++){
       let z=ter.z[i];
       if(!Number.isFinite(z)){ z=-Infinity; for(const c of cont) if(Number.isFinite(c.z[i])&&c.z[i]>z) z=c.z[i]; if(z===-Infinity) z=NaN; }
-      zt[i]=z;
+      zn[i]=z;
+      const zp=proj?proj.z[i]:NaN;
+      zt[i]=Number.isFinite(zp)?(Number.isFinite(z)?(pilha?Math.max(zp,z):Math.min(zp,z)):zp):z;
     }
+    /* na pilha, a topografia sob o projeto é o primeiro contato (pilha sobre a fundação) */
+    if(pilha) cont.unshift({id:ter.id, nome:ter.nome, z:zn, natural:true});
     let a=0, b=n-1;
     while(a<n&&!Number.isFinite(zt[a])) a++;
     while(b>a&&!Number.isFinite(zt[b])) b--;
@@ -148,16 +195,25 @@
     /* contatos: abaixo do terreno (o que passar acima é cortado pelo terreno), do mais alto ao mais baixo */
     const media=c=>{ let s2=0, k=0; for(let i=a;i<=b;i++) if(Number.isFinite(c.z[i])){ s2+=Math.min(c.z[i],zt[i]); k++; } return k?s2/k:-Infinity; };
     const usados=cont.filter(c=>{ for(let i=a;i<=b;i++) if(Number.isFinite(c.z[i])&&c.z[i]<zt[i]-tol) return true; return false; }).sort((p,q)=>media(q)-media(p));
-    s.materiais={m1:GM.materialPadrao(0,op.material0||'Material 1')};
-    s.camadas=[{mat:'m1', fonte:{tipo:'raster', id:ter.id, nome:ter.nome}}];
+    const tipoFonte=p=>p.fonte||'raster';
+    s.materiais={m1:GM.materialPadrao(0,op.material0||(pilha?'Pilha (PDE)':'Material 1'))};
+    s.camadas=[{mat:'m1', fonte:{tipo:tipoFonte(proj&&pilha?proj:ter), id:(proj&&pilha?proj:ter).id, nome:(proj&&pilha?proj:ter).nome}}];
     usados.forEach((c,k)=>{
-      const z=new Array(n); let ant=NaN;
-      for(let i=a;i<=b;i++){ const v=Number.isFinite(c.z[i])?Math.min(c.z[i],zt[i]):zt[i]; z[i]=v; ant=v; }
+      const z=new Array(n);
+      for(let i=a;i<=b;i++){ const v=Number.isFinite(c.z[i])?Math.min(c.z[i],zt[i]):zt[i]; z[i]=v; }
       const id='m'+(k+2);
-      s.materiais[id]=GM.materialPadrao(k+1,'Material '+(k+2));
-      s.camadas.push({mat:id, topo:linhaDe(z), fonte:{tipo:'raster', id:c.id, nome:c.nome}});
+      s.materiais[id]=GM.materialPadrao(k+1,c.natural?'Fundação (terreno natural)':'Material '+(k+2));
+      s.camadas.push({mat:id, topo:linhaDe(z), fonte:{tipo:c.natural?tipoFonte(ter):tipoFonte(c), id:c.id, nome:c.nome, natural:!!c.natural}});
     });
-    s.ignorados=cont.filter(c=>!usados.includes(c)).map(c=>c.nome);
+    /* materiais de partida do banco de litologias (a pessoa ajusta) */
+    if(pilha){
+      s.materiais.m1.papel='Pilha (PDE)';
+      const f=s.camadas.find(c=>c.fonte&&c.fonte.natural); if(f) s.materiais[f.mat].papel='Fundação';
+      if(typeof GM.aplicaLitologia==='function'){ GM.aplicaLitologia(s.materiais.m1,'esteril-lancado'); if(f) GM.aplicaLitologia(s.materiais[f.mat],'residual-maduro'); }
+    }
+    s.fontes={topografia:{id:ter.id, nome:ter.nome, tipo:tipoFonte(ter)}, projeto:proj?{id:proj.id, nome:proj.nome, tipo:tipoFonte(proj), papel:pilha?'pilha':'cava'}:null};
+    s.ignorados=cont.filter(c=>!usados.includes(c)&&!c.natural).map(c=>c.nome);
+    if(proj&&!usados.some(c=>c.natural)&&pilha) s.avisoProjeto='O projeto não passa acima da topografia nesta linha: a seção ficou só com o terreno natural.';
     estado.secoes.push(s); estado.ativa=s.id;
     return s;
   };
@@ -208,11 +264,78 @@
     if(!sec.camadas.some(x=>x.mat===c.mat)) delete sec.materiais[c.mat];
   };
 
+  /* --------------------------- condições de água --------------------------- */
+  /* Pedido de 22/11/2026: escolher o pior caso do nível d’água para o FS. Condições:
+     desenhado — a linha freática da seção (e o ru dos materiais, que também vale no crítico);
+     seco      — sem água;
+     critico   — o NA desenhado elevado de Δ sem passar do terreno (NBR 13029: “elevação do
+                 nível de água no maciço da pilha”, FS mínimo 1,30; o normal, com o NA no contato
+                 pilha/fundação, pede 1,50);
+     saturado  — NA na superfície do terreno;
+     pior      — calcula as condições marcadas e fica com o menor FS. */
+  GM.CONDICOES={seco:'Seco', desenhado:'NA desenhado', critico:'NA crítico', saturado:'Saturado'};
+  GM.ORDEM_COND=['seco','desenhado','critico','saturado'];
+  GM.agua=sec=>{
+    const p=aguaVazia(), a=sec.agua||(sec.agua=p);
+    for(const k of ['modo','condicao','delta']) if(a[k]==null) a[k]=p[k];
+    if(!Array.isArray(a.linha)) a.linha=[];
+    a.incluir=Object.assign(p.incluir,a.incluir||{}); a.adm=Object.assign(p.adm,a.adm||{});
+    return a;
+  };
+  GM.temLinhaAgua=sec=>!!(sec.agua&&sec.agua.modo==='linha'&&Array.isArray(sec.agua.linha)&&sec.agua.linha.length>1);
+  GM.temRu=sec=>Object.values(sec.materiais||{}).some(m=>num(m.ru,0)>0);
+  /* Δ do NA crítico: o informado ou 20% do desnível do terreno (meio metro de precisão). */
+  GM.deltaCritico=sec=>{
+    const d=num(GM.agua(sec).delta,NaN); if(Number.isFinite(d)&&d>=0) return d;
+    let lo=Infinity, hi=-Infinity; for(const p of sec.terreno){ if(p[1]<lo)lo=p[1]; if(p[1]>hi)hi=p[1]; }
+    return Math.max(.5,Math.round(.4*(hi-lo))/2);
+  };
+  GM.condicaoDisponivel=(sec,c)=>c==='seco'||c==='saturado'||(c==='critico'&&GM.temLinhaAgua(sec))||(c==='desenhado'&&(GM.temLinhaAgua(sec)||GM.temRu(sec)));
+  GM.condicoesPior=sec=>{ const a=GM.agua(sec); return GM.ORDEM_COND.filter(c=>a.incluir[c]&&GM.condicaoDisponivel(sec,c)); };
+  /* A condição usada agora: a escolhida ou, no pior caso, a que deu o menor FS no último cálculo. */
+  GM.condicaoEfetiva=sec=>{
+    const a=GM.agua(sec);
+    if(a.condicao!=='pior') return GM.CONDICOES[a.condicao]?a.condicao:'desenhado';
+    const r=sec.resumo; if(r&&r.condicao&&GM.condicaoDisponivel(sec,r.condicao)) return r.condicao;
+    return GM.condicoesPior(sec)[0]||'desenhado';
+  };
+  GM.admCondicao=(sec,c)=>{ const v=num((GM.agua(sec).adm||{})[c],NaN); return (c==='critico'||c==='saturado')&&v>0?v:num(sec.fsAdm,1.5)||1.5; };
+  GM.admEfetivo=sec=>GM.admCondicao(sec,GM.condicaoEfetiva(sec));
+  /* NA elevado de Δ, sem subir acima do terreno onde estava abaixo dele (onde a linha passa
+     acima do terreno, a lâmina d’água fica como está). Exato nos vértices das duas linhas e
+     nos cruzamentos, que são achados por bisseção. */
+  GM.elevaNA=(linha,terreno,delta)=>{
+    const W=linha.slice().sort((p,q)=>p[0]-q[0]), T=terreno;
+    if(W.length<2||T.length<2) return W;
+    const x0=Math.min(W[0][0],T[0][0]), x1=Math.max(W[W.length-1][0],T[T.length-1][0]);
+    const f=x=>{ const l=lerp(W,x), t=lerp(T,x); return Math.min(l+delta,Math.max(t,l)); };
+    const g1=x=>lerp(W,x)+delta-lerp(T,x), g2=x=>lerp(W,x)-lerp(T,x);
+    const xs=new Set([x0,x1]); W.forEach(p=>xs.add(p[0])); T.forEach(p=>xs.add(p[0]));
+    const X=[...xs].filter(x=>x>=x0&&x<=x1).sort((a,b)=>a-b), P=[];
+    const corta=(g,a,b)=>{ let ga=g(a); for(let k=0;k<50;k++){ const m=(a+b)/2, gm=g(m); if((gm>0)===(ga>0)){ a=m; ga=gm; } else b=m; } return (a+b)/2; };
+    for(let i=0;i<X.length;i++){
+      if(i){ const a=X[i-1], b=X[i], c=[];
+        for(const g of [g1,g2]){ const ga=g(a), gb=g(b); if(ga*gb<0) c.push(corta(g,a,b)); }
+        c.sort((p,q)=>p-q).forEach(x=>P.push([x,f(x)])); }
+      P.push([X[i],f(X[i])]);
+    }
+    return GM.simplifica(P,1e-4).map(q=>[+q[0].toFixed(3),+q[1].toFixed(3)]);
+  };
+  /* Linha freática de cada condição (null = sem água). */
+  GM.linhaCondicao=(sec,c)=>{
+    const L=GM.temLinhaAgua(sec)?sec.agua.linha.slice().sort((p,q)=>p[0]-q[0]):null;
+    if(c==='seco') return null;
+    if(c==='saturado') return sec.terreno.map(p=>[p[0],p[1]]);
+    if(c==='critico') return L?GM.elevaNA(L,sec.terreno,GM.deltaCritico(sec)):null;
+    return L;
+  };
+
   /* --------------------------- definição para o motor --------------------------- */
-  GM.definicao=sec=>{
-    const mats={};
+  GM.definicao=(sec,condicao)=>{
+    const mats={}, cond=condicao||GM.condicaoEfetiva(sec), linhaW=GM.linhaCondicao(sec,cond);
     for(const [id,m] of Object.entries(sec.materiais)){
-      const o={nome:m.nome, modelo:m.modelo||'mc', gama:num(m.gama,NaN), gamaSat:num(m.gamaSat,0), ru:num(m.ru,0)};
+      /* ru acompanha o NA desenhado e o crítico (que parte dele); seco e saturado não o usam */
+      const o={nome:m.nome, modelo:m.modelo||'mc', gama:num(m.gama,NaN), gamaSat:num(m.gamaSat,0), ru:cond==='desenhado'||cond==='critico'?num(m.ru,0):0};
       if(o.modelo==='mc'){ o.c=num(m.c,0); o.phi=num(m.phi,0); }
       else if(o.modelo==='su'){ o.su=num(m.su,0); o.suK=num(m.suK,0); o.zRef=num(m.zRef,0); }
       else if(o.modelo==='hb'){ o.sci=num(m.sci,NaN); o.GSI=num(m.GSI,NaN); o.mi=num(m.mi,NaN); o.D=num(m.D,0); }
@@ -222,7 +345,7 @@
     }
     const b=sec.busca||{};
     return {terreno:sec.terreno, camadas:sec.camadas.map((c,k)=>k===0?{mat:c.mat}:{mat:c.mat, topo:c.topo}), materiais:mats,
-      agua:sec.agua&&sec.agua.modo==='linha'&&sec.agua.linha.length>1?{linha:sec.agua.linha.slice().sort((p,q)=>p[0]-q[0])}:null,
+      agua:linhaW&&linhaW.length>1?{linha:linhaW}:null, condicao:cond,
       cargas:(sec.cargas||[]).map(q=>({x1:num(q.x1,NaN), x2:num(q.x2,NaN), q:num(q.q,0)})).filter(q=>Number.isFinite(q.x1)&&Number.isFinite(q.x2)&&q.q),
       sismo:{kh:num(sec.sismo&&sec.sismo.kh,0), kv:num(sec.sismo&&sec.sismo.kv,0)},
       trinca:sec.trinca&&num(sec.trinca.prof,0)>0?{prof:num(sec.trinca.prof,0), agua:num(sec.trinca.agua,0)/100}:null,
@@ -239,12 +362,16 @@
   /* --------------------------- cálculo --------------------------- */
   /* Calcula a seção: busca circular, otimização não circular se pedida. Guarda o resultado
      em memória e o resumo (o que vai para o projeto) na própria seção. */
-  GM.calcula=sec=>{
-    const t0=Date.now(), def=GM.definicao(sec);
+  GM.calcula=sec=>GM.agua(sec).condicao==='pior'?GM.calculaPior(sec):GM.calculaCond(sec,GM.agua(sec).condicao);
+  /* Uma condição de água. No pior caso cada condição passa por aqui (na thread de cálculo,
+     uma de cada vez, para a tela mostrar o andamento) e GM.combinaPior escolhe o menor FS. */
+  GM.calculaCond=(sec,cond)=>{
+    cond=GM.CONDICOES[cond]?cond:'desenhado';
+    const t0=Date.now(), def=GM.definicao(sec,cond);
     let M;
-    try{ M=SL().modelo(def); }catch(e){ const r={ok:false, motivo:e.message}; resultados.set(sec.id,r); sec.resumo=null; return r; }
+    try{ M=SL().modelo(def); }catch(e){ const r={ok:false, motivo:e.message, condicao:cond}; resultados.set(sec.id,r); sec.resumo=null; return r; }
     const op=GM.opcoesBusca(sec), b=SL().busca(M,op);
-    const r={ok:b.ok, motivo:b.motivo||(b.critica&&b.critica.motivo), def, sentido:M.sentido, busca:b, critica:b.ok?b.critica:null, circular:b.ok?b.critica:null, naoCircular:null};
+    const r={ok:b.ok, motivo:b.motivo||(b.critica&&b.critica.motivo), def, sentido:M.sentido, busca:b, critica:b.ok?b.critica:null, circular:b.ok?b.critica:null, naoCircular:null, condicao:cond};
     if(b.ok&&sec.busca.naoCircular&&op.metodo!=='bishop'&&op.metodo!=='ordinario'){
       const o=SL().otimizaVarias(M,[b.critica.sup,...b.porte.map(p=>p.sup)],{metodo:op.metodo});
       if(o.ok){ r.naoCircular=o; if(o.FS<b.critica.FS-1e-4) r.critica=o.critica; }
@@ -253,8 +380,25 @@
     resultados.set(sec.id,r);
     sec.resumo=r.ok?{FS:r.critica.FS, metodo:r.critica.metodo, F:r.critica.F, lam:r.critica.lam, sup:r.critica.sup, tipo:r.critica.sup.tipo,
       FScircular:b.critica.FS, FSnaoCircular:r.naoCircular?r.naoCircular.FS:null, porte:b.porte.map(p=>({classe:p.classe, FS:p.FS, altura:p.altura})),
-      avisos:r.critica.avisos, tentativas:b.validas, em:new Date().toISOString(), sentido:M.sentido}:null;
+      avisos:r.critica.avisos, tentativas:b.validas, em:new Date().toISOString(), sentido:M.sentido, condicao:cond}:null;
     return r;
+  };
+  /* Junta as condições calculadas: fica o resultado de menor FS, com a tabela de todas. */
+  GM.combinaPior=(sec,lista)=>{
+    const tabela=lista.map(({cond,pacote})=>{ const r=pacote&&pacote.res, ok=!!(r&&r.ok);
+      return {cond, nome:GM.CONDICOES[cond], ok, FS:ok?r.critica.FS:null, metodo:ok?r.critica.metodo:null, adm:GM.admCondicao(sec,cond), motivo:ok?'':(r&&r.motivo)||'sem solução'}; });
+    let pior=null;
+    lista.forEach((x,i)=>{ if(tabela[i].ok&&(!pior||tabela[i].FS<pior.t.FS)) pior={x, t:tabela[i]}; });
+    if(!pior){ const res={ok:false, motivo:lista.length?'Nenhuma condição de água teve solução.':'Marque ao menos uma condição de água para o pior caso.', condicoes:tabela, condicao:null};
+      resultados.set(sec.id,res); sec.resumo=null; return {res, resumo:null}; }
+    const res=Object.assign(pior.x.pacote.res,{condicoes:tabela, condicao:pior.x.cond, pior:true});
+    const resumo=Object.assign({},pior.x.pacote.resumo,{condicoes:tabela, condicao:pior.x.cond, pior:true});
+    resultados.set(sec.id,res); sec.resumo=resumo;
+    return {res, resumo};
+  };
+  GM.calculaPior=sec=>{
+    const lista=GM.condicoesPior(sec).map(cond=>{ const res=GM.calculaCond(sec,cond); return {cond, pacote:{res, resumo:sec.resumo}}; });
+    return GM.combinaPior(sec,lista).res;
   };
   /* Superfície escolhida à mão (círculo ou poligonal): análise direta, sem busca. */
   GM.calculaManual=(sec,sup,rapido)=>{
@@ -339,12 +483,13 @@
   /* A busca leva de meio segundo a alguns segundos. Ela roda numa thread à parte, com o
      mesmo código (o texto do motor e deste arquivo), e a tela continua respondendo. Sem
      Worker disponível, o cálculo é feito aqui mesmo depois de ceder a vez ao desenho. */
-  const direto=(fn,sec,args)=>fn==='calcula'?{res:GM.calcula(sec), resumo:sec.resumo}:GM[fn].apply(null,[sec].concat(args||[]));
+  const COM_RESUMO={calcula:1, calculaCond:1};
+  const direto=(fn,sec,args)=>COM_RESUMO[fn]?{res:GM[fn].apply(null,[sec].concat(args||[])), resumo:sec.resumo}:GM[fn].apply(null,[sec].concat(args||[]));
   function servico(){                              /* corpo do Worker */
     self.onmessage=e=>{
       const q=e.data, G=self.GeoMineGeomecInterno;
       try{
-        const r=q.fn==='calcula'?{res:G.calcula(q.sec), resumo:q.sec.resumo}:G[q.fn].apply(null,[q.sec].concat(q.args||[]));
+        const r=q.fn==='calcula'||q.fn==='calculaCond'?{res:G[q.fn].apply(null,[q.sec].concat(q.args||[])), resumo:q.sec.resumo}:G[q.fn].apply(null,[q.sec].concat(q.args||[]));
         self.postMessage({id:q.id, r});
       }catch(err){ self.postMessage({id:q.id, erro:String(err&&err.message||err)}); }
     };
@@ -380,10 +525,21 @@
   GM.ocupado=()=>pedidos.size>0;
   /* Guarda na seção o que voltou do cálculo. */
   GM.aplica=(sec,pacote)=>{ resultados.set(sec.id,pacote.res); sec.resumo=pacote.resumo||null; return pacote.res; };
-  GM.calculaAsync=sec=>GM.pede('calcula',sec).catch(e=>{
-    if(e&&e.semOperario) return GM.pede('calcula',sec);        /* a thread falhou: refaz aqui mesmo */
+  const pedeCond=(sec,cond)=>GM.pede('calculaCond',sec,[cond]).catch(e=>{
+    if(e&&e.semOperario) return GM.pede('calculaCond',sec,[cond]);   /* a thread falhou: refaz aqui mesmo */
     throw e;
-  }).then(pacote=>GM.aplica(sec,pacote));
+  });
+  /* No pior caso as condições vão uma de cada vez; avanca(i, n, condição) mostra o andamento. */
+  GM.calculaAsync=async(sec,avanca)=>{
+    const a=GM.agua(sec);
+    if(a.condicao!=='pior') return GM.aplica(sec,await pedeCond(sec,a.condicao));
+    const conds=GM.condicoesPior(sec), lista=[];
+    for(let i=0;i<conds.length;i++){
+      if(avanca) try{ avanca(i,conds.length,conds[i]); }catch(e){}
+      lista.push({cond:conds[i], pacote:await pedeCond(sec,conds[i])});
+    }
+    return GM.combinaPior(sec,lista).res;
+  };
   GM.fonte=()=>'('+fabrica.toString()+')(self);';
   }
   fabrica(root);
