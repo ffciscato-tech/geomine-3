@@ -298,6 +298,25 @@ publicou de outro lugar e este repositório está desatualizado.
   desenho" e um limite novo zeram a lista. O motor da aba Cava, os volumes e a
   camada Recortada continuam usando o desenho paramétrico inteiro (a Recortada
   só é refeita quando o desenho ou o MDT mudam).
+- **As camadas da cava/DCE já nascem em grupos.** Pedido de 22/11/2026:
+  "quando for gerar a Cava, já gera em um grupo, Cava ou PDE, DCE1 bruto e DCE1
+  cortado, já em grupos". Cada desenho tem dois subgrupos — "<nome> — Bruta"
+  (linhas, preenchimento e rampas, interseção com o MDT) e "<nome> — Recortada"
+  (o corte congelado) — dentro do grupo do tipo: **Cava** para cavas, **PDE**
+  para pilhas (`CAVA2_GRUPO_RAIZ`, em `cava2-workspace.js`). Um grupo que a
+  pessoa já tenha criado com esse nome é aproveitado; se estiver vazio, passa a
+  ficar onde as camadas estão. Regras: (1) cada camada é agrupada **uma vez**,
+  quando nasce — ou, em projeto anterior, ao abrir, e só se estiver solta na
+  raiz. Depois a árvore é de quem usa: camada arrastada para outro lugar não é
+  puxada de volta (`d.grupos.feito`, no registro do desenho, que vai para o
+  projeto junto com os ids dos grupos). (2) Grupo novo não ganha chave própria
+  na pilha: aparece onde as camadas estão, e a ordem de desenho do mapa não
+  muda. (3) O **MDT recortado continua junto do MDT de origem**: a ordem da
+  árvore é a ordem de desenho, e um raster no alto da árvore cobriria as
+  camadas de baixo. (4) A Recortada nova não herda mais o grupo da Bruta; a
+  que já existe fica onde estiver a cada novo corte. (5) Excluir o desenho
+  leva os subgrupos que ficaram vazios, e o Ctrl+Z os traz de volta com as
+  camadas no mesmo lugar; o grupo do tipo fica.
 - **Na aba Cava, o MDT ligado na árvore aparece sobre o fundo, e a barra dos
   desenhos é baixa.** Pedido de 22/11/2026 (print IMG_0239: "DIMINUIR" sobre a
   barra "＋ Nova · abas · fundo" e a camada DEM, com o olho ligado, apontada com

@@ -1130,7 +1130,12 @@ function removeDesenhoDaCamada(L,snapshot){
   const idx=estado.desenhos.findIndex(d=>d.id===id);if(!id||idx<0)return false;
   clearTimeout(estado.syncTimer);estado.syncTimer=0;
   const eraAtivo=estado.desenhoId===id;
+  // a árvore pode ser refeita entre a exclusão e o Ctrl+Z: guarda de que grupo cada camada saiu
+  const gruposDe=[L,...(S.layers||[]).filter(q=>q._cava2DesignId===id||q._cava2CutOf===id||q._cava2CutFillOf===id)]
+    .filter(Boolean).map(q=>[q,q.groupId??null]);
   for(const q of [...(S.layers||[])])if(q._cava2DesignId===id||q._cava2CutOf===id||q._cava2CutFillOf===id)removeCamadaGerada(q);
+  const gruposFora=cava2RemoveGruposVazios(estado.desenhos[idx]);
+  if(snapshot&&gruposFora.length){snapshot.grupos=gruposFora;snapshot.gruposDe=gruposDe;}
   estado.desenhos.splice(idx,1);delete estado.cutHashes[id];
   if(eraAtivo){
     const proximo=estado.desenhos[Math.min(idx,estado.desenhos.length-1)]||null;
@@ -1147,12 +1152,16 @@ function restauraExclusaoCamada(snapshot,Lrestaurada){
   if(!snapshot?.id||!snapshot.design)return false;
   if(!estado.desenhos.some(d=>d.id===snapshot.id))
     estado.desenhos.splice(Math.min(snapshot.index??estado.desenhos.length,estado.desenhos.length),0,clone(snapshot.design));
+  for(const g of snapshot.grupos||[])if(!cava2GrupoPorId(g.id)&&(g.parentId==null||cava2GrupoPorId(g.parentId)))S.groups.push(g);
+  for(const [q,g] of snapshot.gruposDe||[])if(q&&g!=null&&cava2GrupoPorId(g))q.groupId=g;
   for(const x of (snapshot.companions||[]).slice().sort((a,b)=>a.idx-b.idx)){
     if((S.layers||[]).some(q=>q===x.L||q.id===x.L.id))continue;
     S.layers.splice(Math.min(x.idx??S.layers.length,S.layers.length),0,x.L);
     try{if(x.L.visible&&x.L.llayer&&typeof map!=='undefined')x.L.llayer.addTo(map);}catch(e){}
     try{if(typeof drawLayer==='function')drawLayer(x.L);}catch(e){}
   }
+  // as camadas voltam sem posição na pilha: a linha fica de novo por cima do preenchimento
+  if(snapshot.grupos?.length)cava2OrdenaLinhaSobrePreenchimento(camadaDoDesenho(snapshot.id),camadaPreenchimentoDoDesenho(snapshot.id));
   estado.cutHashes[snapshot.id]=snapshot.cutHash;
   estado.desenhoId=estado.desenhos.some(d=>d.id===snapshot.activeId)?snapshot.activeId:
     (estado.desenhoId||snapshot.id);
@@ -1494,6 +1503,7 @@ function aplicaEstadoProjeto(st){
   migraCamadasAntigas();
   for(const d of estado.desenhos){const L=camadaDoDesenho(d.id);if(!d.engine&&L?._cava2Engine)d.engine=clone(L._cava2Engine);}
   cava2RegistraBaseDasCamadas();
+  for(const d of estado.desenhos)cava2AgrupaCamadas(d);
   aplicaPainel();if(desenhoAtual())aplicaDesenho(desenhoAtual(),false);else limpaMotorSemDesenho();reconstroiCamadasAusentes();
   renderAbas();atualizaContexto();salvaRegistroLocal();if(typeof refreshUI==='function')refreshUI();return true;
 }
@@ -1738,6 +1748,84 @@ function cava2OrdenaCorteCongelado(d,camadas){
     (anterior.get(a.id)??0)-(anterior.get(b.id)??0));
   try{if(typeof zApply==='function')zApply();}catch(e){}
 }
+/* GRUPOS NA ÁRVORE (22/11/2026 — "quando for gerar a Cava, já gera em um grupo, Cava ou PDE,
+   DCE1 bruto e DCE1 cortado, já em grupos"). Cada desenho tem dois subgrupos — "<nome> — Bruta"
+   (linhas, preenchimento e rampas, interseção com o MDT) e "<nome> — Recortada" (o corte
+   congelado) — dentro do grupo do tipo: "Cava" para cavas, "PDE" para pilhas. Um grupo que a
+   pessoa já tenha criado com esse nome é aproveitado.
+   Cada camada é agrupada UMA vez, quando nasce (ou, em projeto anterior, na primeira vez em que
+   o desenho é carregado, e só se ela estiver solta na raiz). Depois disso a árvore é de quem
+   usa: camada arrastada para outro lugar não é puxada de volta. Os ids dos grupos ficam no
+   registro do desenho (d.grupos), que vai para o projeto. Grupo novo não ganha chave própria na
+   pilha: ele aparece onde estão as camadas, e a ordem de desenho do mapa não muda.
+   O MDT recortado continua junto do MDT de origem — a ordem da árvore é a ordem de desenho, e
+   um raster no alto da árvore cobriria as camadas de baixo. */
+const CAVA2_GRUPO_RAIZ={cava:'Cava',pilha:'PDE'};
+function cava2GrupoPorId(id){return id==null?null:(S.groups||[]).find(g=>String(g.id)===String(id))||null;}
+function cava2GrupoVazio(g){
+  return !(S.groups||[]).some(x=>x.parentId===g.id)&&
+    ![...(S.layers||[]),...(S.rasters||[])].some(o=>o.groupId===g.id)&&!(S.img&&S.img.groupId===g.id);
+}
+function cava2GrupoRaiz(d){
+  const nome=CAVA2_GRUPO_RAIZ[d.tipo]||tipoNome(d.tipo),igual=g=>String(g.name||'').trim().toLowerCase()===nome.toLowerCase();
+  let g=cava2GrupoPorId(d.grupos?.raiz);
+  if(!g)for(const q of estado.desenhos){if(q!==d&&q.tipo===d.tipo&&(g=cava2GrupoPorId(q.grupos?.raiz)))break;}
+  if(!g)g=(S.groups||[]).find(x=>x.parentId==null&&igual(x))||(S.groups||[]).find(igual)||null;
+  if(!g){g={id:gid++,name:nome,parentId:null,collapsed:false};S.groups.push(g);}
+  // grupo vazio da pessoa: passa a ficar onde as camadas estão, em vez de levá-las para onde ele estava
+  else if(cava2GrupoVazio(g))S.stack=(S.stack||[]).filter(k=>k!==`G:${g.id}`);
+  return g;
+}
+function cava2NomeGrupo(d,variante){return variante==='recortada'?`${d.nome} — Recortada`:nomeCamada(d);}
+function cava2GrupoVariante(d,variante){
+  d.grupos=d.grupos||{};
+  let g=cava2GrupoPorId(d.grupos[variante]);
+  if(!g){
+    const raiz=cava2GrupoRaiz(d);d.grupos.raiz=raiz.id;
+    g={id:gid++,name:cava2NomeGrupo(d,variante),parentId:raiz.id,collapsed:false};
+    S.groups.push(g);d.grupos[variante]=g.id;
+  }
+  return g;
+}
+/* A camada deste papel acabou de ser criada: volta a ter direito ao seu grupo. */
+function cava2CamadaNova(d,papel){if(d?.grupos?.feito)delete d.grupos.feito[papel];}
+function cava2AgrupaCamadas(d,dadas){
+  if(!d||typeof S==='undefined'||!Array.isArray(S.groups))return false;
+  // `dadas`: camadas que o chamador acabou de criar e que o registro do desenho ainda não aponta
+  const res=camadasResultadoCava(d),papeis=[
+    ['line',camadaDoDesenho(d.id),'bruta'],['fill',camadaPreenchimentoDoDesenho(d.id),'bruta'],
+    ['cut',camadaCorteDoDesenho(d.id),'bruta'],['cutFill',camadaPreenchimentoCorteDoDesenho(d.id),'bruta'],
+    ['rec',dadas?.rec||res.line,'recortada'],['recFill',dadas?.recFill||res.fill,'recortada']];
+  let mudou=false;
+  for(const [papel,L,variante] of papeis){
+    if(!L||d.grupos?.feito?.[papel])continue;
+    d.grupos=d.grupos||{};(d.grupos.feito=d.grupos.feito||{})[papel]=1;
+    if(L.groupId!=null&&cava2GrupoPorId(L.groupId))continue;            // já está num grupo: fica onde está
+    L.groupId=cava2GrupoVariante(d,variante).id;mudou=true;
+  }
+  if(mudou){
+    try{if(typeof stackSync==='function')stackSync();}catch(e){}
+    try{if(typeof zApply==='function')zApply();}catch(e){}
+  }
+  return mudou;
+}
+/* Desenho renomeado: os subgrupos acompanham, se ainda têm o nome que o GeoMine deu. */
+function cava2RenomeiaGrupos(d,antes){
+  for(const variante of ['bruta','recortada']){
+    const g=cava2GrupoPorId(d.grupos?.[variante]);
+    if(g&&g.name===antes[variante])g.name=cava2NomeGrupo(d,variante);
+  }
+}
+/* Desenho excluído: os subgrupos dele que ficaram vazios saem junto (o grupo do tipo fica). */
+function cava2RemoveGruposVazios(d){
+  const fora=[];
+  for(const variante of ['bruta','recortada']){
+    const g=cava2GrupoPorId(d?.grupos?.[variante]);
+    if(!g||!cava2GrupoVazio(g))continue;
+    S.groups=S.groups.filter(x=>x!==g);S.stack=(S.stack||[]).filter(k=>k!==`G:${g.id}`);fora.push(g);
+  }
+  return fora;
+}
 function cava2PublicaMdtRecortado(d,source,grid){
   if(saidaSuprimida(d,'cutSurface'))return null;
   let R=S.rasters.find(r=>r.id===d.resultadoCorte?.surfaceId);
@@ -1763,14 +1851,17 @@ function cava2CongelaCorte(d,R,C,CF){
     src:'Área 2D · Cava2 · corte congelado'});
   Object.assign(L,comum,{name:nome});
   delete L._cava2DesignId;delete L._cava2CutOf;delete L._cava2CutFillOf;
-  cava2CopiaAparencia(C,L);L.groupId=grupo;L.visible=true;L._cava2Kind=d.tipo;
+  // Camada nova: sai do grupo herdado da interseção e vai para o subgrupo "Recortada" (se a
+  // Bruta está num grupo que a pessoa escolheu, fica junto dela). A que já existia fica onde está.
+  if(!anterior.line){const b=cava2GrupoPorId(d.grupos?.bruta);L.groupId=grupo!=null&&(!b||grupo!==b.id)?grupo:null;cava2CamadaNova(d,'rec');}
+  cava2CopiaAparencia(C,L);L.visible=true;L._cava2Kind=d.tipo;
   L.sym.cats=L.sym.cats.filter(c=>['Interseção','Crista','Pé','Rampa'].includes(c.value));
   for(const c of L.sym.cats)c.count=L.features.filter(f=>f.props.ELEMENTO===c.value).length;
   L._cava2CutSnapshotOf=d.id;L._cava2CutSnapshotId=corteId;L._cava2CutZ=n(d.baseZ);
   L._cava2SnapshotRole='line';L._cava2MdtId=R?.id??null;L._cava2Managed=false;
   if(anterior.fill)removeCamadaGerada(anterior.fill);
   if(typeof drawLayer==='function')drawLayer(L);
-  cava2OrdenaCorteCongelado(d,[L]);S.activeId=L.id;
+  cava2OrdenaCorteCongelado(d,[L]);cava2AgrupaCamadas(d,{rec:L});S.activeId=L.id;
   return {line:L,fill:null,id:corteId,name:nome};
 }
 
@@ -1957,21 +2048,23 @@ function publicaDesenho(d,design,silencioso){
     F=addLayer({name:nomeCamadaPreenchimento(d),gtype:'polygon',features:areas,
       fields:['FID','DESENHO','DESIGN_ID','PROJETO','ELEMENTO','COTA','ROTULO','ORDEM','BANCO','ORIGEM'],
       crs:d.crs||S.workCRS,color:d.tipo==='pilha'?'#9aa0a8':'#c9b18a',src:'Área 2D · Cava2 · estilo'});
-    F._cava2DesignId=d.id;F._cava2Role='fill';criou=true;
+    F._cava2DesignId=d.id;F._cava2Role='fill';criou=true;cava2CamadaNova(d,'fill');
   }else if(F){F.features=areas;F.crs=d.crs||F.crs||S.workCRS;F.src='Área 2D · Cava2 · estilo';F.name=nomeCamadaPreenchimento(d);}
   if(F){F._cava2Kind=d.tipo;F._cava2Engine=clone(d.engine);estiloCamadaPreenchimento(F,areas);cava2RegistraPublicadas(F,areas);}
-  if(!L&&!feats.length){if(F&&typeof drawLayer==='function')drawLayer(F);return null;}
+  if(!L&&!feats.length){if(F&&typeof drawLayer==='function')drawLayer(F);cava2AgrupaCamadas(d);return null;}
   if(!L){
     L=addLayer({name:nomeCamada(d),gtype:'line',features:feats,
       fields:['FID','DESENHO','DESIGN_ID','PROJETO','ELEMENTO','COTA','ROTULO','ORDEM','BANCO','ORIGEM'],
       crs:d.crs||S.workCRS,color:'#111111',src:'Área 2D · Cava2'});
-    L._cava2DesignId=d.id;L._cava2Role='line';criou=true;
+    L._cava2DesignId=d.id;L._cava2Role='line';criou=true;cava2CamadaNova(d,'line');
   }else{L.features=feats;L.crs=d.crs||L.crs||S.workCRS;L.src='Área 2D · Cava2';L.name=nomeCamada(d);}
   L._cava2Kind=d.tipo;L._cava2Engine=clone(d.engine);estiloCamada(L,feats);cava2RegistraPublicadas(L,feats);
   if(F&&criou)cava2OrdenaLinhaSobrePreenchimento(L,F);
+  const agrupou=cava2AgrupaCamadas(d);
   if(F&&typeof drawLayer==='function')drawLayer(F);if(typeof drawLayer==='function')drawLayer(L);
   if(ativo!=null&&S.layers.some(x=>x.id===ativo))S.activeId=ativo;
   if(!silencioso&&typeof refreshUI==='function')refreshUI();
+  else if(agrupou)setTimeout(()=>{try{if(typeof refreshUI==='function')refreshUI();}catch(_){}} ,0);
   return L;
 }
 
@@ -2112,7 +2205,7 @@ function cava2PublicaPreenchimentoCortado(d,R,areas){
       fields:['FID','DESENHO','DESIGN_ID','PROJETO','ELEMENTO','COTA','ROTULO','ORDEM','BANCO','MDT','ORIGEM'],
       crs:d.crs||S.workCRS,color:d.tipo==='pilha'?'#9aa0a8':'#c9b18a',
       src:'Área 2D · Cava2 · preenchimento cortado pelo MDT'});
-    F._cava2CutFillOf=d.id;F._cava2Role='cut-fill';
+    F._cava2CutFillOf=d.id;F._cava2Role='cut-fill';cava2CamadaNova(d,'cutFill');
   }else{F.features=areas;F.crs=d.crs||F.crs||S.workCRS;F.name=nomeCamadaPreenchimentoCorte(d);}
   F._cava2MdtId=R.id;F._cava2Kind=d.tipo;F._cava2Managed=true;F.visible=true;
   estiloCamadaPreenchimento(F,areas);
@@ -2160,7 +2253,7 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
     C=addLayer({sourceLayer:camadaDoDesenho(d.id)||R,name:nomeCorteMdt(d,R),gtype:'line',features:feats,
       fields:['FID','DESENHO','DESIGN_ID','PROJETO','ELEMENTO','COTA','ROTULO','ORDEM','BANCO','MDT','ORIGEM'],
       crs:d.crs||S.workCRS,color:'#000000',src:'Área 2D · Cava2 · interseção entre superfícies'});
-    C._cava2CutOf=d.id;
+    C._cava2CutOf=d.id;cava2CamadaNova(d,'cut');
   }else{C.features=feats;C.crs=d.crs||C.crs||S.workCRS;C.name=nomeCorteMdt(d,R);
     C.src=finalizado?'Área 2D · Cava2 · cava cortada':'Área 2D · Cava2 · interseção entre superfícies';}
   C._cava2MdtId=R.id;C._cava2Kind=d.tipo;C._cava2Managed=true;C._cava2CutFinalized=finalizado;
@@ -2179,8 +2272,11 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
   }
   if(L){L.visible=!finalizado;drawLayer(L);}if(F){F.visible=!finalizado;drawLayer(F);}
   if(CF){CF.visible=finalizado;drawLayer(CF);}drawLayer(C);if(CF)cava2OrdenaLinhaSobrePreenchimento(C,CF);
+  const agrupou=cava2AgrupaCamadas(d);
   if(ativo!=null&&S.layers.some(x=>x.id===ativo))S.activeId=ativo;
-  estado.cutHashes[d.id]=hash;if(!silencioso&&typeof refreshUI==='function')refreshUI();return C;
+  estado.cutHashes[d.id]=hash;if(!silencioso&&typeof refreshUI==='function')refreshUI();
+  else if(agrupou)setTimeout(()=>{try{if(typeof refreshUI==='function')refreshUI();}catch(_){}} ,0);
+  return C;
 }
 
 function limpaCamadasDoDesenho(){
@@ -2193,7 +2289,9 @@ function limpaCamadasDoDesenho(){
   try{if(S._view==='v3d'&&typeof v3Auto==='function')v3Auto();}catch(e){}return true;
 }
 function renomeiaAtual(nome){
-  const d=desenhoAtual();if(!d)return;d.nome=nomeUnico(nome||proximoNome(d.tipo),d.id);
+  const d=desenhoAtual();if(!d)return;
+  const gruposAntes={bruta:cava2NomeGrupo(d,'bruta'),recortada:cava2NomeGrupo(d,'recortada')};
+  d.nome=nomeUnico(nome||proximoNome(d.tipo),d.id);cava2RenomeiaGrupos(d,gruposAntes);
   const e=document.getElementById('cava2Name');if(e)e.value=d.nome;
   const L=camadaDoDesenho(d.id),F=camadaPreenchimentoDoDesenho(d.id),C=camadaCorteDoDesenho(d.id),
     CF=camadaPreenchimentoCorteDoDesenho(d.id);
