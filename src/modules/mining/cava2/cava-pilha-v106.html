@@ -563,9 +563,9 @@ function fixaTrava(){
                     linha desenhada, não se mexe (só a berma alarga);
      ❄ de DENTRO → a linha e tudo o que está por fora andam para fora, a linha desenhada junto;
                     a vizinha de dentro é FIXADA (ver "LINHAS FIXADAS" acima) e não cede nada.
-   Só se congela o lado em que há BERMA entre a linha e a vizinha (mesma cota). Do lado em que há
-   talude não existe o que absorver sem mudar o ângulo da face: o botão aparece apagado. Voltar
-   desfaz o alargamento até a berma nominal, nunca além. Vale para a seleção: outra linha
+   Os dois ❄ valem sempre (ver "O TALUDE NUNCA MUDA", abaixo): o que absorve é a berma da linha,
+   e quem anda é a borda dela do lado livre. Voltar desfaz o alargamento até a berma nominal,
+   nunca além. Vale para a seleção: outra linha
    selecionada, ou outra ferramenta, e o lado é solto. */
 let ladoCongelado = null;        // {alvo, idx, lado:"fora"|"dentro"}
 function ladoDaSelecao(){
@@ -575,6 +575,28 @@ function ladoDaSelecao(){
 function parDeBermaDoLado(an, idx, lado){
   const j = lado==="fora" ? idx+1 : idx-1;
   return (an && an[idx] && an[j] && Math.abs(an[j].z-an[idx].z)<1e-9) ? j : -1;
+}
+/* O TALUDE NUNCA MUDA (22/11/2026, 19h50: "a gente tem que partir do princípio sempre que o
+   ângulo de talude não pode variar … a única coisa que varia é o tamanho da berma … tem que
+   aparecer a opção de congelar os dois lados"). Toda linha é borda de uma berma — a dela, ou,
+   na linha do topo, a que fica do outro lado do talude. Os DOIS ❄ valem sempre, e o que muda é
+   só essa berma:
+     ❄ de fora   → a borda de DENTRO da berma anda para dentro, com tudo o que está por dentro;
+     ❄ de dentro → a borda de FORA anda para fora, com tudo o que está por fora.
+   Quem anda pode ser a linha clicada ou a vizinha dela: a que estiver do lado livre. A outra
+   fica com o lado congelado, presa a ele pelo talude. */
+function bermaDaLinha(an, idx){
+  if(!an || !an[idx]) return null;
+  const mesma=(i,j)=>!!(an[i] && an[j] && Math.abs(an[i].z-an[j].z)<1e-9);
+  if(mesma(idx,idx+1))   return {iIn:idx,   iOut:idx+1, propria:true};
+  if(mesma(idx-1,idx))   return {iIn:idx-1, iOut:idx,   propria:true};
+  if(mesma(idx+1,idx+2)) return {iIn:idx+1, iOut:idx+2, propria:false};
+  if(mesma(idx-2,idx-1)) return {iIn:idx-2, iOut:idx-1, propria:false};
+  return null;
+}
+function planoDoLado(an, idx, lado){
+  const b=bermaDaLinha(an, idx); if(!b) return null;
+  return lado==="fora" ? {anda:b.iIn, par:b.iOut, berma:b} : {anda:b.iOut, par:b.iIn, berma:b};
 }
 // onde ficam, na tela, os dois ❄ da string selecionada: junto do ponto em que ela foi tocada
 function botoesDeLado(){
@@ -587,10 +609,10 @@ function botoesDeLado(){
   let tx=B.x-A.x, ty=B.y-A.y; const l=Math.hypot(tx,ty); if(!(l>1e-9)) return null;
   tx/=l; ty/=l;
   let nx=ty, ny=-tx; if(areaAssinada(a.P)<0){ nx=-nx; ny=-ny; }     // normal para FORA
-  const [sx,sy]=W2S(p.x,p.y), d=26;
+  const [sx,sy]=W2S(p.x,p.y), d=26, temBerma=!!bermaDaLinha(an, sel.idx);
   return {base:{x:sx,y:sy},
-    fora:  {x:sx+nx*d, y:sy-ny*d, ok:parDeBermaDoLado(an,sel.idx,"fora")>=0},
-    dentro:{x:sx-nx*d, y:sy+ny*d, ok:parDeBermaDoLado(an,sel.idx,"dentro")>=0},
+    fora:  {x:sx+nx*d, y:sy-ny*d, ok:temBerma},
+    dentro:{x:sx-nx*d, y:sy+ny*d, ok:temBerma},
     // ↺ ao longo da linha: desfaz o alargamento e solta as fixações desta string (o R/Delete do teclado)
     volta: pendenciasDaSel() ? {x:sx+tx*34, y:sy-ty*34} : null};
 }
@@ -598,7 +620,7 @@ function alternaLadoCongelado(lado, ok){
   if(!sel) return;
   if(!ok){
     ladoCongelado=null;
-    ultimaEdicao="deste lado da linha há um <b>talude</b>, não uma berma: congelá-lo e mover a linha mudaria o ângulo da face. Use o ❄ do outro lado, ou selecione a linha da outra ponta do talude.";
+    ultimaEdicao="este desenho não tem <b>berma</b> junto desta linha — só talude, e o ângulo dele não muda. Para mexer aqui, arraste os vértices da linha desenhada.";
   }else{
     ladoCongelado = ladoDaSelecao()===lado ? null : {alvo:sel.alvo, idx:sel.idx, lado};
     ultimaEdicao="";
@@ -608,11 +630,19 @@ function alternaLadoCongelado(lado, ok){
 function desenhaBotoesDeLado(an){
   const B=botoesDeLado(); if(!B) return;
   const ativo=ladoDaSelecao();
-  // o lado congelado: a vizinha (a outra borda da berma) em azul grosso
-  if(ativo){
-    const j=parDeBermaDoLado(an, sel.idx, ativo);
-    if(j>=0 && !tracaLinhaPorCota(an[j].P,true,cotaAbsolutaDoDesign(an[j].z),{color:"#2c7fb8",weight:3.4}))
-      tracaAnel(an[j].P,"#2c7fb8",3.4,false);
+  // o lado congelado: a borda da berma que fica, em azul grosso; a que anda, em laranja, com os
+  // vértices de arrastar (quando não é a própria linha selecionada, é a vizinha dela)
+  const plano=ativo ? planoDoLado(an, sel.idx, ativo) : null;
+  if(plano){
+    const F=an[plano.par], Mv=an[plano.anda];
+    if(!tracaLinhaPorCota(F.P,true,cotaAbsolutaDoDesign(F.z),{color:"#2c7fb8",weight:3.4})) tracaAnel(F.P,"#2c7fb8",3.4,false);
+    if(!tracaLinhaPorCota(Mv.P,true,cotaAbsolutaDoDesign(Mv.z),{color:"#e67e22",weight:3})) tracaAnel(Mv.P,"#e67e22",3,false);
+    ctx.save(); ctx.setLineDash([]);
+    for(const q of Mv.P){ if(q.si==null) continue;
+      const [hx,hy]=W2S(q.x,q.y);
+      ctx.fillStyle="#fff"; ctx.fillRect(hx-5.5,hy-5.5,11,11); ctx.fillStyle="#e67e22"; ctx.fillRect(hx-4,hy-4,8,8);
+    }
+    ctx.restore();
   }
   ctx.save(); ctx.setLineDash([]);
   for(const lado of ["fora","dentro"]){
@@ -634,7 +664,11 @@ function desenhaBotoesDeLado(an){
     ctx.fillText("↺", b.x, b.y+1);
   }
   ctx.restore();
-  if(ativo){ const b=B[ativo]; rotuloHalo(ativo==="fora"?"lado de fora congelado":"lado de dentro congelado", b.x+18, b.y-16, "#2c7fb8", 10.5); }
+  if(ativo){
+    const b=B[ativo], livre=B[ativo==="fora"?"dentro":"fora"];
+    rotuloHalo("congelado", b.x+17, b.y-15, "#2c7fb8", 10.5);
+    rotuloHalo(ativo==="fora"?"arraste para dentro":"arraste para fora", livre.x+17, livre.y+17, "#b45309", 10.5);
+  }
 }
 // linhas fixadas pelo ❄ de dentro: traço azul fino e a marca, para se saber por que não andam
 function desenhaLinhasFixadas(k, an){
@@ -4275,29 +4309,43 @@ cv.addEventListener("pointerdown", e=>{
       if(anel){
         // só pega vértice que EXISTE na linha desenhada (mesmo critério do
         // desenho dos handles): editar string intermediária = editar a externa
-        let vi=-1, vd=1e30;
-        anel.P.forEach((p,i)=>{
-          if(p.si==null) return;
-          const [sx,sy]=W2S(p.x,p.y);
-          const d=Math.hypot(e.offsetX-sx, e.offsetY-sy);
-          if(d<10 && d<vd){vd=d; vi=i;}
-        });
+        // Com um lado congelado quem é arrastada é a BORDA QUE ANDA da berma: a própria linha
+        // ou a vizinha dela. Pega-se por um vértice dela, pelo vértice correspondente da linha
+        // selecionada, ou pela própria linha (vale o vértice mais próximo) — no dedo, exigir o
+        // quadradinho de 10 px fazia o arrasto falhar e ainda desmarcava a seleção.
+        const ladoE=ladoDaSelecao(), plano=ladoE ? planoDoLado(design.aneis, sel.idx, ladoE) : null;
+        const iEd=plano ? plano.anda : sel.idx, anelEd=design.aneis[iEd];
+        const raio=plano ? 17 : 10;
+        const perto=(A2,r)=>{ let bi=-1, bd=1e30;
+          A2.P.forEach((p,i)=>{ if(p.si==null) return;
+            const [sx,sy]=W2S(p.x,p.y), d=Math.hypot(e.offsetX-sx, e.offsetY-sy);
+            if(d<r && d<bd){ bd=d; bi=i; } });
+          return {i:bi, d:bd}; };
+        let {i:vi, d:vd}=perto(anelEd, raio);
+        if(vi<0 && plano && iEd!==sel.idx){
+          const c=perto(anel, raio);
+          if(c.i>=0){ vi=anelEd.P.findIndex(q2=>q2.si===anel.P[c.i].si); vd=c.d; }
+        }
+        if(vi<0 && plano && !(melhor && melhor.d<10)){
+          const naLinha=Math.min(distAoAnel(anelEd.P,q), distAoAnel(anel.P,q))*escala<=13;
+          if(naLinha){ const c=perto(anelEd, 90); if(c.i>=0){ vi=c.i; vd=11; } }
+        }
         if(vi>=0 && !(melhor && melhor.d<=vd)){
-          editando={tipo:"anel", alvo:sel.alvo, idx:sel.idx, vi,
-                    orig:anel.P.map(p=>({x:p.x,y:p.y,si:p.si})),   // si = qual vértice
-                    work:anel.P.map(p=>({x:p.x,y:p.y,si:p.si})),   // da linha desenhada
-                    p0:{x:anel.P[vi].x, y:anel.P[vi].y}};
+          editando={tipo:"anel", alvo:sel.alvo, idx:iEd, vi,
+                    orig:anelEd.P.map(p=>({x:p.x,y:p.y,si:p.si})),   // si = qual vértice
+                    work:anelEd.P.map(p=>({x:p.x,y:p.y,si:p.si})),   // da linha desenhada
+                    p0:{x:anelEd.P[vi].x, y:anelEd.P[vi].y}};
           // lado congelado: o vértice só desliza na normal, afastando-se desse lado; para o
           // outro sentido vai só até desfazer o alargamento que já existe neste vértice
-          const ladoE=ladoDaSelecao(), jpE=ladoE?parDeBermaDoLado(design.aneis,sel.idx,ladoE):-1;
-          if(ladoE && jpE>=0){
-            const gE=design.aneis.length-1-Math.min(sel.idx,jpE), siE=anel.P[vi].si, oE=objs[sel.alvo];
+          if(plano){
+            const jpE=plano.par, gE=design.aneis.length-1-Math.min(iEd,jpE), siE=anelEd.P[vi].si, oE=objs[sel.alvo];
             editando.lado=ladoE; editando.nv=normais(editando.orig)[vi];
+            editando.c0={x:q.x, y:q.y};      // o dedo pode ter pego fora do vértice: vale o deslocamento
             // quanto dá para voltar: de fora, o alargamento gravado neste vértice; de dentro, o
             // que a berma tem hoje além do nominal (a distância até a linha fixada)
             editando.extra0 = ladoE==="fora"
-              ? ((oE.bermas||{})[gE]||[]).filter(q=>q.si===siE).reduce((a2,q)=>a2+q.delta,0)
-              : Math.max(0, distAoAnel(design.aneis[jpE].P, anel.P[vi]) - (+parametrosDe(sel.alvo).berma||0));
+              ? ((oE.bermas||{})[gE]||[]).filter(q2=>q2.si===siE).reduce((a2,q2)=>a2+q2.delta,0)
+              : Math.max(0, distAoAnel(design.aneis[jpE].P, anelEd.P[vi]) - (+parametrosDe(sel.alvo).berma||0));
           }
           cv.setPointerCapture(e.pointerId);
           return;
@@ -4602,8 +4650,8 @@ function atualizaDicaSel(){
   const ehEsta = congelada && congelada.alvo===sel.alvo && congelada.idx===sel.idx;
   const ladoS=ladoDaSelecao();
   $("st_dica").innerHTML=`<b>EDITAR</b> — ${sel.alvo} · string #${sel.idx} (${a.tp} @ ${fmt(a.z,0)} m${a.ov?", berma editada ✎":""}) — `
-    + (ladoS ? `<span style="color:#2c7fb8">❄ lado de ${ladoS==="fora"?"fora":"dentro"} congelado</span>: arraste um vértice para ${ladoS==="fora"?"dentro":"fora"} — a berma alarga e tudo o que está para ${ladoS==="fora"?"dentro":"fora"} acompanha`
-             : `arraste os vértices · toque num <b>❄</b> ao lado da linha para congelar aquele lado`+(pendenciasDaSel()?` · <b>↺</b> (ou R/Delete) devolve a berma ao nominal e solta a fixação`:``)+` · <b>F</b> ${ehEsta?"solta":"congela"} esta string`)
+    + (ladoS ? `<span style="color:#2c7fb8">❄ lado de ${ladoS==="fora"?"fora":"dentro"} congelado</span>: arraste a linha <span style="color:#e67e22">laranja</span> para ${ladoS==="fora"?"dentro":"fora"} — só a berma alarga (o talude não muda) e tudo o que está para ${ladoS==="fora"?"dentro":"fora"} acompanha`
+             : `toque num <b>❄</b> para congelar aquele lado da linha e arrastar o outro · sem ❄, arraste os vértices`+(pendenciasDaSel()?` · <b>↺</b> (ou R/Delete) devolve a berma ao nominal e solta a fixação`:``)+` · <b>F</b> ${ehEsta?"solta":"congela"} esta string`)
     + (cg && !ehEsta ? ` &nbsp;·&nbsp; <span style="color:#2c7fb8">❄ limite: ${congelada.alvo} #${congelada.idx} (${cg.tp} @ ${fmt(cg.z,0)} m)</span>` : "")
     + (ultimaEdicao ? ` &nbsp;·&nbsp; <span style="color:#f0b429">${ultimaEdicao}</span>` : "");
 }
@@ -4620,7 +4668,8 @@ cv.addEventListener("pointermove", e=>{
     if(editando.tipo==="anel"){
       // move SÓ o vértice pego — a string selecionada tem os vértices da linha
       // desenhada, então editar uma string é igual a editar a linha externa
-      let dx=q.x-editando.p0.x, dy=q.y-editando.p0.y;
+      const c0=editando.c0||editando.p0;
+      let dx=q.x-c0.x, dy=q.y-c0.y;
       if(editando.lado && editando.nv){
         const N=editando.nv, volta=Math.max(0,editando.extra0||0);
         let d=dx*N.x+dy*N.y;                                   // + = para fora
@@ -4713,13 +4762,13 @@ cv.addEventListener("pointerup", e=>{
           /* já recusado acima */
         }else if(ladoC){
           const jp=parDeBermaDoLado(an, editando.idx, ladoC);
-          if(jp<0) bloqueado="deste lado da linha há um talude, não uma berma — mover mudaria o ângulo da face";
+          if(jp<0) bloqueado="não há berma deste lado da linha que anda — o talude não muda";
           else if(ladoC==="dentro" && fixaQueSegura)
             bloqueado="do lado que anda há uma linha fixada ❄ (a azul): ela não pode acompanhar. Solte-a no ↺, ou congele o lado de fora para alargar a berma para dentro";
           else if(ladoC==="fora"){
             // lado de fora parado: só a berma alarga; a linha e tudo o que está por dentro andam
             if(travasFixas(editando.alvo).some(t=>t.g===nA-1-editando.idx))
-              bloqueado="esta linha está fixada (o lado de dentro dela foi congelado antes) — solte-a no ↺ para alargar a berma para dentro, ou use o ❄ de dentro na linha de fora";
+              bloqueado="a borda de dentro desta berma está fixada ❄ (o lado de dentro foi congelado antes) — solte-a no ↺ para alargar a berma para dentro, ou congele o lado de dentro e alargue para fora";
             else{
               dBerma = -delta;                             // + = afasta do lado congelado = a berma alarga
               gB = nA-1-Math.min(editando.idx, jp);        // a berma é chaveada pela borda de dentro
@@ -5129,6 +5178,12 @@ cv.addEventListener("pointerup", e=>{
         }
             }else{
         objs[editando.alvo].design.aneis[editando.idx].P=editando.orig;
+        // arrastou para o lado congelado: nada anda, e a barra diz por quê
+        if(editando.lado && editando.c0){
+          const qf=S2W(e.offsetX,e.offsetY);
+          if(Math.hypot(qf.x-editando.c0.x, qf.y-editando.c0.y)*escala>12)
+            ultimaEdicao=`com o lado de ${editando.lado==="fora"?"fora":"dentro"} congelado a linha só anda para ${editando.lado==="fora"?"dentro":"fora"}. Para o outro sentido, toque no ❄ do outro lado.`;
+        }
       }
     }
     else if(editando.tipo==="base"){
@@ -5228,18 +5283,21 @@ document.addEventListener("keydown", e=>{
 function pendenciasDaSel(){
   if(!sel) return null;
   const o=objs[sel.alvo], an=o && o.design && o.design.aneis; if(!an || !an[sel.idx] || !o.bermas) return null;
-  const g=an.length-1-sel.idx, jp=parDeBermaDoLado(an, sel.idx, "dentro"), gp=jp>=0 ? an.length-1-jp : -1, T=travasFixas(sel.alvo);
-  const r={g, berma:!!(o.bermas[g] && o.bermas[g].length), fixa:T.some(t=>t.g===g), fixaPar:gp>=0 && T.some(t=>t.g===gp), gp};
-  return (r.berma||r.fixa||r.fixaPar) ? r : null;
+  // a berma é chaveada pela borda de DENTRO: o alargamento (❄ de fora) e a fixação (❄ de
+  // dentro) ficam os dois na geração dela, seja qual for a linha da berma que está selecionada
+  const b=bermaDaLinha(an, sel.idx), T=travasFixas(sel.alvo), g0=an.length-1-sel.idx, g=b ? an.length-1-b.iIn : g0;
+  const r={g, berma:!!(o.bermas[g] && o.bermas[g].length), fixa:T.some(t=>t.g===g),
+           g0, berma0:g0!==g && !!(o.bermas[g0] && o.bermas[g0].length)};
+  return (r.berma||r.fixa||r.berma0) ? r : null;
 }
 function reverteSel(){   // devolve a berma da string selecionada ao nominal e solta as fixações dela
   const r=pendenciasDaSel(); if(!r) return;
   const o=objs[sel.alvo];
   marcaHistorico();
   if(r.berma) delete o.bermas[r.g];
+  if(r.berma0) delete o.bermas[r.g0];
   if(r.fixa) soltaAnel(sel.alvo, r.g);
-  if(r.fixaPar) soltaAnel(sel.alvo, r.gp);
-  ultimaEdicao = (r.fixa||r.fixaPar) ? "fixação ❄ solta: o lado de dentro voltou a acompanhar a linha desenhada, com a berma nominal" : "berma de volta ao nominal";
+  ultimaEdicao = r.fixa ? "fixação ❄ solta: o lado de dentro voltou a acompanhar a linha desenhada, com a berma nominal" : "berma de volta ao nominal";
   regen(); atualizaDicaSel();
 }
 let diagMarcas=null;      // achados do último diagnóstico, desenhados no canvas

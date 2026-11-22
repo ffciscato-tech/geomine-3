@@ -8,12 +8,31 @@ vm.runInContext('const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)); let objs={}, tr
   +trecho('function dentroDe(','function distAoAnel(')+trecho('function distAoAnel(','\n}\n')+'\n}\n'
   +trecho('function travasFixas(','// grava/limpa o esqueleto da string congelada')
   +trecho('function parDeBermaDoLado(','function botoesDeLado(')
-  +';this.api={travasFixas,travaDe,fixaAnel,soltaAnel,invasaoDasFixadas,parDeBermaDoLado,set:(o,t)=>{objs=o;travaSk=t||null;},objs:()=>objs};',ctx);
+  +';this.api={travasFixas,travaDe,fixaAnel,soltaAnel,invasaoDasFixadas,parDeBermaDoLado,bermaDaLinha,planoDoLado,set:(o,t)=>{objs=o;travaSk=t||null;},objs:()=>objs};',ctx);
 const A=ctx.api;
 const quad=(m,z,tp)=>({z,tp,P:[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i})),Sk:[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i}))});
 // pilha de 2 bancos: de dentro para fora — crista@20, pé@10 | crista@10, pé@0 (a linha desenhada)
 const pilha=()=>({pilha:{bermas:{},design:{aneis:[quad(20,20,'crista'),quad(40,10,'pe'),quad(48,10,'crista'),quad(68,0,'pe')]}}});
 
+test('o talude nunca muda: os dois lados valem em qualquer linha, e quem anda é a borda da berma do lado livre',()=>{
+  const an=pilha().pilha.design.aneis, puro=v=>JSON.parse(JSON.stringify(v));
+  // crista@10 (2) e pé@10 (1) são a MESMA berma: o resultado depende só do lado congelado
+  for(const linha of [1,2]){
+    assert.deepEqual(puro(A.bermaDaLinha(an,linha)),{iIn:1,iOut:2,propria:true});
+    const f=A.planoDoLado(an,linha,'fora'),d=A.planoDoLado(an,linha,'dentro');
+    assert.equal(f.anda,1,'❄ de fora: anda a borda de dentro (e o miolo), para dentro');assert.equal(f.par,2);
+    assert.equal(d.anda,2,'❄ de dentro: anda a borda de fora (e o que está por fora), para fora');assert.equal(d.par,1);
+    assert.equal(A.parDeBermaDoLado(an,f.anda,'fora'),f.par,'a linha que anda tem a berma do lado congelado');
+    assert.equal(A.parDeBermaDoLado(an,d.anda,'dentro'),d.par);
+  }
+  // linha do topo (0) e linha desenhada (3) não têm berma própria: vale a que fica depois do talude
+  assert.deepEqual(puro(A.bermaDaLinha(an,0)),{iIn:1,iOut:2,propria:false});
+  assert.deepEqual(puro(A.bermaDaLinha(an,3)),{iIn:1,iOut:2,propria:false});
+  assert.equal(A.planoDoLado(an,0,'fora').anda,1,'topo, ❄ de fora: o pé de baixo dela anda para dentro, e ela junto');
+  // um banco só: não há berma, não há o que variar
+  const um=[quad(20,10,'crista'),quad(40,0,'pe')];
+  assert.equal(A.bermaDaLinha(um,0),null);assert.equal(A.planoDoLado(um,0,'fora'),null);
+});
 test('só existe lado para congelar onde há berma: a vizinha na mesma cota',()=>{
   const an=pilha().pilha.design.aneis;
   assert.equal(A.parDeBermaDoLado(an,1,'fora'),2,'pé@10: por fora está a crista@10');
