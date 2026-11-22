@@ -55,6 +55,12 @@ body.gm-touch-ui.gm-geomec-view .gm-touch-actions{display:none!important}
 .gmg-linha{display:flex;gap:6px;margin-top:6px;align-items:center}
 .gmg-linha>input{flex:1 1 0}
 .gmg-linha>.mini{flex:none}
+/* contato por distância: campo curto, referência e botão; quebra de linha no painel estreito */
+.gmg-linha.gmg-dist{flex-wrap:wrap}
+.gmg-linha.gmg-dist>input{flex:1 1 96px;min-width:96px}
+.gmg-linha.gmg-dist>select{flex:2 1 130px;min-width:0}
+.gmg-linha.gmg-pend-dist>input{flex:0 1 96px;min-width:64px}
+.gmg-linha.gmg-pend-dist>span{font-size:12px;color:var(--ink-dim)}
 .gmg-bts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .gmg-bts>.mini{flex:1 1 auto}
 .gmg-side .gm-work-card>.mini{width:100%;margin-top:6px}

@@ -212,6 +212,9 @@
       if(typeof GM.aplicaLitologia==='function'){ GM.aplicaLitologia(s.materiais.m1,'esteril-lancado'); if(f) GM.aplicaLitologia(s.materiais[f.mat],'residual-maduro'); }
     }
     s.fontes={topografia:{id:ter.id, nome:ter.nome, tipo:tipoFonte(ter)}, projeto:proj?{id:proj.id, nome:proj.nome, tipo:tipoFonte(proj), papel:pilha?'pilha':'cava'}:null};
+    /* na cava a superfície é a escavação: a topografia original fica guardada, para um contato
+       por distância poder acompanhá-la (na pilha ela já é o contato com a fundação) */
+    if(proj&&!pilha){ let ok=true; for(let i=a;i<=b;i++) if(!Number.isFinite(zn[i])){ ok=false; break; } if(ok) s.natural=linhaDe(zn); }
     s.ignorados=cont.filter(c=>!usados.includes(c)&&!c.natural).map(c=>c.nome);
     if(proj&&!usados.some(c=>c.natural)&&pilha) s.avisoProjeto='O projeto não passa acima da topografia nesta linha: a seção ficou só com o terreno natural.';
     estado.secoes.push(s); estado.ativa=s.id;
@@ -225,6 +228,7 @@
     sec.camadas.forEach(c=>{
       if(!c.topo) return;
       if(c.fonte&&c.fonte.tipo==='cota') c.topo=[[0,c.fonte.z],[t.comprimento,c.fonte.z]];
+      else if(c.fonte&&c.fonte.tipo==='profundidade'&&(c.fonte.ref==='terreno'||c.fonte.ref==='natural')) c.topo=t.terreno.map(q=>[q[0],+(q[1]-c.fonte.h).toFixed(3)]);
       else c.topo=c.topo.map(q=>[+(q[0]*t.comprimento/antes).toFixed(3),q[1]]);
     });
     if(sec.agua&&sec.agua.linha) sec.agua.linha=sec.agua.linha.map(q=>[+(q[0]*t.comprimento/antes).toFixed(3),q[1]]);
@@ -257,6 +261,66 @@
     for(let i=1;i<sec.camadas.length;i++) if(media(sec.camadas[i])<z){ pos=i; break; }
     sec.camadas.splice(pos,0,nova);
     return nova;
+  };
+  /* CONTATO POR DISTÂNCIA (pedido de 22/11/2026: "no caso de não haver uma superfície de contato
+     embaixo da topografia, eu devo poder dizer que distância considerar, tipo 5 metros, e fazer
+     uma linha"). O contato é uma linha paralela a uma referência, h metros abaixo dela, medidos
+     na vertical (como a profundidade de um furo). Referências, a primeira é a de partida:
+     a topografia natural — o contato pilha/fundação na pilha, a topografia original na cava, o
+     próprio terreno no talude natural —, a superfície do talude quando há projeto, e o topo de
+     cada contato que a seção já tem. */
+  GM.referenciasContato=sec=>{
+    const out=[], nat=sec.camadas.find(c=>c.topo&&c.fonte&&c.fonte.natural);
+    if(nat) out.push({id:'natural', nome:'da topografia', linha:nat.topo});
+    else if(sec.natural&&sec.natural.length>1) out.push({id:'natural', nome:'da topografia', linha:sec.natural, ar:true});
+    out.push({id:'terreno', nome:out.length?'da superfície do talude':'da topografia', linha:sec.terreno});
+    sec.camadas.forEach((c,k)=>{ if(k>0&&c.topo&&c!==nat) out.push({id:c.mat, nome:'do topo de “'+((sec.materiais[c.mat]||{}).nome||c.mat)+'”', linha:c.topo}); });
+    return out;
+  };
+  /* cota de uma polilinha [x,z] num x (fora dela vale a ponta) e média ao longo do comprimento */
+  const cotaEm=(P,x)=>{ if(x<=P[0][0]) return P[0][1]; const n=P.length; if(x>=P[n-1][0]) return P[n-1][1];
+    let lo=0, hi=n-1; while(hi-lo>1){ const m=(lo+hi)>>1; if(P[m][0]<=x) lo=m; else hi=m; }
+    const a=P[lo], b=P[hi]; return b[0]>a[0]?a[1]+(b[1]-a[1])*(x-a[0])/(b[0]-a[0]):Math.min(a[1],b[1]); };
+  const mediaLinha=P=>{ let A=0, L=0; for(let i=1;i<P.length;i++){ const dx=P[i][0]-P[i-1][0]; A+=dx*(P[i][1]+P[i-1][1])/2; L+=dx; } return L>0?A/L:P[0][1]; };
+  /* a linha deslocada, sem passar acima do terreno (na cava a topografia original fica no ar) */
+  function linhaAbaixo(sec,ref,h){
+    const P=ref.linha, T=sec.terreno, xs=[...new Set(P.map(q=>q[0]).concat(ref.ar?T.map(q=>q[0]):[]))].sort((a,b)=>a-b), out=[];
+    const f=x=>ref.ar?Math.min(cotaEm(P,x)-h,cotaEm(T,x)):cotaEm(P,x)-h;
+    for(let i=0;i<xs.length;i++){
+      if(i&&ref.ar){                        /* cruzamento com o terreno entre duas estações */
+        const x0=xs[i-1], x1=xs[i], d0=cotaEm(P,x0)-h-cotaEm(T,x0), d1=cotaEm(P,x1)-h-cotaEm(T,x1);
+        if(d0*d1<0){ const x=x0+(x1-x0)*d0/(d0-d1); out.push([+x.toFixed(3),+f(x).toFixed(3)]); }
+      }
+      out.push([+xs[i].toFixed(3),+f(xs[i]).toFixed(3)]);
+    }
+    return out;
+  }
+  const rotuloDist=(h,ref)=>String(+h.toFixed(2)).replace('.',',')+' m abaixo '+ref.nome;
+  GM.novaCamadaProfundidade=(sec,dist,refId)=>{
+    const h=num(dist,NaN);
+    if(!(h>0)) throw new Error('Informe a distância abaixo da topografia, em metros (por exemplo, 5).');
+    const refs=GM.referenciasContato(sec), ref=refs.find(r=>r.id===refId)||refs[0];
+    let k=1; while(sec.materiais['m'+k]) k++;
+    const id='m'+k;
+    sec.materiais[id]=GM.materialPadrao(sec.camadas.length,'Material '+(sec.camadas.length+1));
+    const nova={mat:id, topo:linhaAbaixo(sec,ref,h), fonte:{tipo:'profundidade', h, ref:ref.id, nome:rotuloDist(h,ref)}};
+    /* entra na ordem das cotas médias, logo abaixo da referência */
+    const z=mediaLinha(nova.topo), iRef=ref.id==='natural'?sec.camadas.findIndex(c=>c.fonte&&c.fonte.natural):sec.camadas.findIndex(c=>c.mat===ref.id);
+    let pos=sec.camadas.length;
+    for(let i=Math.max(1,iRef+1);i<sec.camadas.length;i++) if(mediaLinha(sec.camadas[i].topo)<z){ pos=i; break; }
+    sec.camadas.splice(pos,0,nova);
+    return nova;
+  };
+  /* Outra distância para um contato já criado: a linha sobe ou desce pela diferença. */
+  GM.mudaProfundidade=(sec,k,dist)=>{
+    const c=sec.camadas[k], h=num(dist,NaN);
+    if(!c||!c.topo||!c.fonte||c.fonte.tipo!=='profundidade') return false;
+    if(!(h>0)) throw new Error('A distância precisa ser maior que zero.');
+    const ref=GM.referenciasContato(sec).find(r=>r.id===c.fonte.ref&&r.linha!==c.topo);
+    if(ref){ c.topo=linhaAbaixo(sec,ref,h); c.fonte.nome=rotuloDist(h,ref); }
+    else { const d=c.fonte.h-h; c.topo=c.topo.map(q=>[q[0],+(q[1]+d).toFixed(3)]); c.fonte.nome=String(+h.toFixed(2)).replace('.',',')+' m abaixo da referência'; }
+    c.fonte.h=h;
+    return true;
   };
   GM.removeCamada=(sec,k)=>{
     if(k<=0||k>=sec.camadas.length) return;

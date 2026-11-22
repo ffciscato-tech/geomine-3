@@ -231,15 +231,17 @@
         <div class="gmg-larga"><label class="field">Resistência</label><select data-m="${h(id)}" data-k="modelo">${Object.entries(GM.MODELOS).filter(([v])=>v!=='rocha'||k>0).map(([v,t])=>`<option value="${v}"${v===md?' selected':''}>${h(t)}</option>`).join('')}</select></div>
         ${f('γ (kN/m³)','gama')}${md==='rocha'?'':f('γ saturado','gamaSat','placeholder="igual a γ"')}${campos}</div>
       ${lito?`<p class="gmg-nota">${h(lito.nome)}: ${h(GM.faixaLitologia(lito))}${lito.nota?' — '+h(lito.nota):''}.<br>Fonte: ${h(GM.fonteLitologia(lito))}. Valores típicos: confirme com ensaios.</p>`:''}
+      ${(()=>{ const c=(sec()||{camadas:[]}).camadas[k]; return c&&c.fonte&&c.fonte.tipo==='profundidade'?`<div class="gmg-g2">${campo('Topo: distância abaixo (m)',`data-dist="${k}"`,c.fonte.h)}<p class="gmg-nota gmg-larga">${h(c.fonte.nome||'')}</p></div>`:''; })()}
       <div class="gmg-bts">${md==='hb'||md==='leps'||md==='tab'?`<button type="button" class="mini" data-a="envoltoria" data-id="${h(id)}">ver a envoltória τ × σ</button>`:''}
       ${k>0?`<button type="button" class="mini gmg-perigo" data-a="remove-camada" data-k="${k}">remover a camada</button>`:''}</div>`;
   }
   function cardMateriais(s){
-    return `<section class="gm-work-card" data-card="materiais"><div class="gm-card-heading"><span class="gm-card-step">2</span><b>Camadas e materiais</b>${info('Sobre as camadas','De cima para baixo. A primeira camada começa no terreno; cada uma das outras começa na sua linha de topo (um contato cortado no mapa ou uma cota) e nunca sobe acima das de cima — onde as linhas se encontram, a camada acunha. O banco de litologias traz valores típicos com a faixa e a fonte de cada um (solos residuais, estéril e rejeito, solos USCS, rochas por Hoek–Brown e planos fracos): são de partida, confira com ensaios.')}</div>
+    return `<section class="gm-work-card" data-card="materiais"><div class="gm-card-heading"><span class="gm-card-step">2</span><b>Camadas e materiais</b>${info('Sobre as camadas','De cima para baixo. A primeira camada começa no terreno; cada uma das outras começa na sua linha de topo (um contato cortado no mapa ou uma cota) e nunca sobe acima das de cima — onde as linhas se encontram, a camada acunha. O banco de litologias traz valores típicos com a faixa e a fonte de cada um (solos residuais, estéril e rejeito, solos USCS, rochas por Hoek–Brown e planos fracos): são de partida, confira com ensaios. Sem uma superfície de contato, informe a distância: a linha acompanha a topografia (ou outro contato) nessa profundidade, medida na vertical.')}</div>
       <div id="gmgMats">${s.camadas.map((c,k)=>{ const m=s.materiais[c.mat]||{}, ab=abertos.has(c.mat);
         return `<div class="gmg-mat${ab?' aberta':''}" data-mat="${h(c.mat)}"><button type="button" class="gmg-mat-h" data-a="abre-mat" data-id="${h(c.mat)}" aria-expanded="${ab}"><i style="background:${h(m.cor||'#c9a26b')}"></i><span><b>${h(m.nome||c.mat)}</b><small>${h(GM.resumoMaterial(m))}</small></span><em>${ab?'▴':'▾'}</em></button>
           ${ab?`<div class="gmg-mat-b">${corpoMaterial(c.mat,m,k)}</div>`:''}</div>`; }).join('')}</div>
       <div class="gmg-linha"><input id="gmgCotaNova" inputmode="decimal" placeholder="cota do contato" aria-label="Cota do novo contato" autocomplete="off"><button type="button" class="mini" data-a="nova-camada">＋ camada por cota</button></div>
+      ${(()=>{ const R=GM.referenciasContato(s); return `<div class="gmg-linha gmg-dist"><input id="gmgDistNova" inputmode="decimal" placeholder="distância (m)" aria-label="Distância do novo contato abaixo da referência, em metros (por exemplo, 5)" autocomplete="off">${R.length>1?`<select id="gmgDistRef" aria-label="Abaixo de quê">${R.map(r=>`<option value="${h(r.id)}">abaixo ${h(r.nome)}</option>`).join('')}</select>`:''}<button type="button" class="mini" data-a="nova-camada-dist">＋ camada ${R.length>1?'por distância':'abaixo da topografia'}</button></div>`; })()}
       <button type="button" class="mini" data-a="banco" data-id="">Banco de litologias: φ′, c′ e γ com faixas e fontes</button>
     </section>`;
   }
@@ -563,6 +565,11 @@
       if(t.dataset.c==='fsAdm'||t.dataset.c.startsWith('agua.adm.')){ pintaTopo(); desenha(); pintaAba(); sincronizaMapa(); sujoProjeto(); if(t.dataset.c!=='fsAdm') renderCards(); return; }
       mudou(); return;
     }
+    if(t.dataset.dist!=null){
+      const hd=num(t.value,NaN), k=+t.dataset.dist;
+      if(hd>0) try{ if(GM.mudaProfundidade(s,k,hd)){ const n=t.closest('.gmg-g2'), nota=n&&n.querySelector('.gmg-nota'); if(nota) nota.textContent=s.camadas[k].fonte.nome; mudou(); } }catch(_){}
+      return;
+    }
     if(t.dataset.m){
       const m=s.materiais[t.dataset.m]; if(!m) return;
       m[t.dataset.k]=t.value;
@@ -584,7 +591,8 @@
       const p=pendente, ajustaProj=()=>{ if(p.proj&&(p.proj===p.topo||!candidatos('proj',p.tipoProj).some(f=>f.id===p.proj))){ p.proj=p.tipoProj?sugere('proj',p.tipoProj):''; } const f=fonteDe(p.proj); if(f&&f.projeto) p.tipo=f.projeto.tipo; p.contatos.delete(p.topo); p.contatos.delete(p.proj); };
       if(t.name==='gmgTipoTopo'){ p.tipoTopo=t.value==='vet'?'vet':'img'; p.topo=sugere('topo',p.tipoTopo); ajustaProj(); renderTudo(); }
       else if(t.name==='gmgTipoProj'){ p.tipoProj=t.value==='vet'?'vet':t.value==='img'?'img':''; p.proj=p.tipoProj?sugere('proj',p.tipoProj):''; ajustaProj(); renderTudo(); }
-      else if(t.name==='gmgTipoCont'){ p.tipoCont=t.value==='vet'?'vet':'img'; renderTudo(); }
+      else if(t.name==='gmgTipoCont'){ p.tipoCont=t.value==='vet'?'vet':t.value==='dist'?'dist':'img'; renderTudo(); }
+      else if(t.dataset.pend==='dist'){ p.distContato=t.value; renderTudo(); }
       else if(t.dataset.pend==='topo'){ pendente.topo=t.value; ajustaProj(); renderTudo(); }
       else if(t.dataset.pend==='proj'){ pendente.proj=t.value; pendente.contatos.delete(t.value); const f=fonteDe(t.value); if(f&&f.projeto) pendente.tipo=f.projeto.tipo; renderTudo(); }
       else if(t.name==='gmgPTipo'){ pendente.tipo=t.value==='cava'?'cava':'pilha'; }
@@ -633,6 +641,7 @@
     if(a==='enquadrar'){ vista=null; vistaManual=false; desenha(); return; }
     if(a==='abre-mat'){ const id=b.dataset.id; if(abertos.has(id)) abertos.delete(id); else abertos.add(id); renderCards(); return; }
     if(a==='nova-camada'){ try{ const c=GM.novaCamadaCota(s,($('gmgCotaNova')||{}).value); abertos.add(c.mat); mudou(true); }catch(err){ aviso(err.message); } return; }
+    if(a==='nova-camada-dist'){ try{ const c=GM.novaCamadaProfundidade(s,($('gmgDistNova')||{}).value,($('gmgDistRef')||{}).value); abertos.add(c.mat); mudou(true); }catch(err){ aviso(err.message); } return; }
     if(a==='remove-camada'){ GM.removeCamada(s,+b.dataset.k); mudou(true); return; }
     if(a==='envoltoria'){ envId=b.dataset.id; aba='env'; pintaAba(); return; }
     if(a==='edita-na'){ if(modo==='na') saiDoModo(); else { saiDoModo(); modo='na'; const d=$('gmgDica'); d.hidden=false; d.textContent=DICA_NA; } renderCards(); pintaTopo(); desenha(); pintaAba(); return; }
@@ -819,15 +828,17 @@
     if(des){ p.tipoProj='vet'; p.proj=des.id; p.tipo=des.projeto.tipo; }
     else if(rec){ p.tipoProj='img'; p.proj=rec.id; }
     else { p.tipoProj=''; p.proj=''; }
-    p.tipoCont=candidatos('cont','img').length||!candidatos('cont','vet').length?'img':'vet';
+    /* sem nenhuma superfície de contato na linha, o card já abre pedindo a distância */
+    p.tipoCont=candidatos('cont','img').length?'img':candidatos('cont','vet').length?'vet':'dist';
     open();
     if(F.filter(cruzaLinha).length===1&&p.topo&&!p.proj) criaPendente();
   }
   function htmlPendente(){
     const p=pendente, L=Math.hypot(p.linha[1][0]-p.linha[0][0],p.linha[1][1]-p.linha[0][1]);
     const rot=f=>h(f.nome)+(f.projeto?' — desenho de '+(f.projeto.tipo==='pilha'?'DCE/pilha':'cava'):f.tin?' — TIN':'');
-    const DICA={'':'Só a topografia: talude natural', img:'MDT, TIN ou outra superfície raster', vet:'Linhas com cota: curvas de nível, desenho do DCE/cava, PDE importado'};
-    const tipos=(nome,atual,comNenhuma)=>`<div class="gmg-tipo" role="radiogroup" aria-label="Tipo da superfície: imagem ou vetorial">${(comNenhuma?[['','Nenhuma']]:[]).concat(Object.entries(TIPOS)).map(([v,t])=>`<label class="${v===atual?'on':''}" title="${h(DICA[v])}"><input type="radio" name="${nome}" value="${v}"${v===atual?' checked':''}>${h(t)}</label>`).join('')}</div>`;
+    const DICA={'':'Só a topografia: talude natural', img:'MDT, TIN ou outra superfície raster', vet:'Linhas com cota: curvas de nível, desenho do DCE/cava, PDE importado', dist:'Sem superfície de contato: uma linha paralela à topografia, na distância informada'};
+    const hd=num(p.distContato,NaN), temDist=hd>0;
+    const tipos=(nome,atual,comNenhuma,comDistancia)=>`<div class="gmg-tipo" role="radiogroup" aria-label="Tipo da superfície: imagem ou vetorial">${(comNenhuma?[['','Nenhuma']]:[]).concat(Object.entries(TIPOS),comDistancia?[['dist','Distância']]:[]).map(([v,t])=>`<label class="${v===atual?'on':''}" title="${h(DICA[v])}"><input type="radio" name="${nome}" value="${v}"${v===atual?' checked':''}>${h(t)}</label>`).join('')}</div>`;
     const vazio=tipo=>`<p class="gmg-nota">${tipo==='vet'?'Nenhuma camada vetorial com cota (curvas de nível, linhas 3D) cruza a linha.':'Nenhuma imagem (MDT, TIN ou superfície) cruza a linha.'}</p>`;
     const lista=(papel,tipo,sel,attr)=>{ const C=candidatos(papel,tipo); return C.length?`<select data-pend="${attr}" aria-label="${attr==='topo'?'Topografia':'Superfície de análise'}">${C.map(f=>`<option value="${h(f.id)}"${f.id===sel?' selected':''}>${rot(f)}</option>`).join('')}</select>`:vazio(tipo); };
     const C3=candidatos('cont',p.tipoCont), marcados=[...p.contatos].map(fonteDe).filter(Boolean), fora=p.fontes.filter(f=>!cruzaLinha(f)).length;
@@ -842,10 +853,11 @@
           ${tipos('gmgTipoProj',p.tipoProj,true)}
           ${p.tipoProj?lista('proj',p.tipoProj,p.proj,'proj'):'<p class="gmg-nota">Só a topografia: talude natural.</p>'}
           ${p.proj?`<div class="gmg-seg" role="radiogroup" aria-label="Pilha ou cava"><label><input type="radio" name="gmgPTipo" value="pilha"${p.tipo!=='cava'?' checked':''}> pilha / DCE (aterro)</label><label><input type="radio" name="gmgPTipo" value="cava"${p.tipo==='cava'?' checked':''}> cava (escavação)</label></div>`:''}</section>
-        <section class="gm-work-card"><div class="gm-card-heading"><span class="gm-card-step">3</span><b>Superfícies de contato</b>${info('Sobre os contatos','Superfícies que separam materiais abaixo do terreno — o topo da rocha, uma camada fraca. Cada uma vira o topo de uma camada; o que passar acima do terreno é cortado por ele. Podem ser imagem (MDT) ou vetoriais (linhas com cota): troque o tipo para ver as opções de cada um; o que foi marcado continua marcado.')}</div>
-          ${tipos('gmgTipoCont',p.tipoCont,false)}
-          ${C3.length?`<div class="gmg-pend-lista">${C3.map(f=>`<label class="gmg-check"><input type="checkbox" data-cont="${h(f.id)}"${p.contatos.has(f.id)?' checked':''}> ${rot(f)}</label>`).join('')}</div>`:vazio(p.tipoCont)}
-          ${marcados.length?`<p class="gmg-nota">Marcadas: ${marcados.map(f=>h(f.nome)).join(' · ')}</p>`:''}</section>
+        <section class="gm-work-card"><div class="gm-card-heading"><span class="gm-card-step">3</span><b>Superfícies de contato</b>${info('Sobre os contatos','Superfícies que separam materiais abaixo do terreno — o topo da rocha, uma camada fraca. Cada uma vira o topo de uma camada; o que passar acima do terreno é cortado por ele. Podem ser imagem (MDT) ou vetoriais (linhas com cota): troque o tipo para ver as opções de cada um; o que foi marcado continua marcado. Sem nenhuma superfície, escolha Distância e informe quantos metros abaixo da topografia fica o contato (5, por exemplo).')}</div>
+          ${tipos('gmgTipoCont',p.tipoCont,false,true)}
+          ${p.tipoCont==='dist'?`<div class="gmg-linha gmg-pend-dist"><input data-pend="dist" inputmode="decimal" placeholder="ex.: 5" value="${h(p.distContato||'')}" aria-label="Distância do contato abaixo da topografia, em metros" autocomplete="off"><span>m abaixo da topografia</span></div><p class="gmg-nota">Sem superfície de contato: o GeoMine traça uma linha paralela à topografia nessa distância, medida na vertical.</p>`
+            :C3.length?`<div class="gmg-pend-lista">${C3.map(f=>`<label class="gmg-check"><input type="checkbox" data-cont="${h(f.id)}"${p.contatos.has(f.id)?' checked':''}> ${rot(f)}</label>`).join('')}</div>`:vazio(p.tipoCont)}
+          ${marcados.length||(temDist&&p.tipoCont!=='dist')?`<p class="gmg-nota">Marcadas: ${marcados.map(f=>h(f.nome)).concat(temDist?['linha a '+String(+hd.toFixed(2)).replace('.',',')+' m da topografia']:[]).join(' · ')}</p>`:''}</section>
       </div>
       ${fora?`<p class="gmg-nota">${fora} camada(s) com cota não cruzam esta linha e ficaram de fora das listas.</p>`:''}</div>`;
   }
@@ -855,6 +867,8 @@
     const usados=[pendente.topo,pendente.proj,...pendente.contatos];
     const series=pendente.fontes.filter(f=>p.series.has(f.id)&&cruzaLinha(f)).map((f,k)=>({nome:f.nome+(f.id===pendente.topo?' (topografia)':f.id===pendente.proj?' (análise)':pendente.contatos.has(f.id)?' (contato)':''), x:p.dist, y:p.series.get(f.id),
       cor:f.id===pendente.topo?'#7c4a1e':f.id===pendente.proj?'#7c3aed':GM.PALETA[k%GM.PALETA.length], largura:usados.includes(f.id)?3:1.2}));
+    const hd=num(pendente.distContato,NaN), zt=p.series.get(pendente.topo);
+    if(hd>0&&zt) series.push({nome:'contato a '+String(+hd.toFixed(2)).replace('.',',')+' m da topografia', x:p.dist, y:zt.map(z=>Number.isFinite(z)?z-hd:NaN), cor:'#b45309', largura:3});
     GM.grafico(a.ctx,a.w,a.h,{titulo:'Ao longo da linha (prévia)', x:{rotulo:'distância (m)'}, y:{rotulo:'cota (m)'}, series},claro());
   }
   async function criaPendente(){
@@ -891,6 +905,8 @@
       });
       const s=GM.novaSecaoMapa(p.linha,S.workCRS,dist,perfis,{tipoProjeto:proj?p.tipo:undefined});
       s.passo=+((prof&&prof.effectiveStep)||passo).toFixed(3);
+      /* sem superfície de contato: a linha na distância informada, abaixo da topografia */
+      const hdist=num(p.distContato,NaN); if(hdist>0) try{ GM.novaCamadaProfundidade(s,hdist,'natural'); }catch(e){ console.warn('GEOMEC: contato por distância',e); }
       pendente=null; sujoProjeto();
       const reduzidas=R.filter((f,i)=>grades[i]===f.r.d&&(f.r.d.resampled>1||f.r.d.native===false)).map(f=>f.nome);
       if(reduzidas.length) aviso('Sem o arquivo original de '+reduzidas.join(', ')+': usada a grade de trabalho nessas superfícies.');
@@ -1114,7 +1130,7 @@
   const api={open, mostrou, comando, mapClick, fimDesenho, snapshot:()=>GM.snapshot(), restore, reset:()=>restore(null), hasContent:()=>GM.temConteudo(),
     visivel:()=>montado&&!$('gmGeomecWorkspace').hidden,
     __teste:{GM, sec, res, calcula, exportaRelatorio, paginasRelatorio, exportaCSV, figura, sincronizaMapa, preparaNova, estudos,
-      estado:()=>({aba, modo, sel, vista, vistaManual, pendente:pendente?{topo:pendente.topo, proj:pendente.proj, tipo:pendente.tipo, tipoTopo:pendente.tipoTopo, tipoProj:pendente.tipoProj, tipoCont:pendente.tipoCont, contatos:[...pendente.contatos], ocupado:pendente.ocupado, fontes:pendente.fontes.map(f=>({id:f.id, nome:f.nome, tipo:f.tipo, cruza:f.cruza, cobre:f.cobre, projeto:f.projeto}))}:null, ocupado:GM.ocupado(), emEstudo, rodada})}};
+      estado:()=>({aba, modo, sel, vista, vistaManual, pendente:pendente?{topo:pendente.topo, proj:pendente.proj, tipo:pendente.tipo, tipoTopo:pendente.tipoTopo, tipoProj:pendente.tipoProj, tipoCont:pendente.tipoCont, distContato:pendente.distContato||'', contatos:[...pendente.contatos], ocupado:pendente.ocupado, fontes:pendente.fontes.map(f=>({id:f.id, nome:f.nome, tipo:f.tipo, cruza:f.cruza, cobre:f.cobre, projeto:f.projeto}))}:null, ocupado:GM.ocupado(), emEstudo, rodada})}};
   root.GeoMineGeomec=api;
   const liga=()=>{ try{ mount(); }catch(e){ console.warn('GEOMEC',e); } };
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(liga,0)); else setTimeout(liga,0);

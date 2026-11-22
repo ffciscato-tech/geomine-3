@@ -299,3 +299,62 @@ test('banco de litologias: valores aplicados ao material, fontes e faixas; rocha
   const r=GM.calcula(s); assert.ok(r.ok&&r.critica.FS>1,'maciço de gnaisse GSI 50 fica de pé');
   assert.equal(GM.aplicaLitologia(s.materiais.m1,'nada'),false);
 });
+
+test('contato por distância: linha paralela à topografia, referências por tipo de seção, edição e talude refeito',()=>{
+  const {GM}=carrega();
+  const dist=Array.from({length:101},(_,i)=>i), topo=dist.map(x=>100-0.2*x);
+  const mapa=perfis=>GM.novaSecaoMapa([[0,0],[100,0]],'EPSG:31983',dist,perfis,{});
+  /* talude natural: a única referência é o terreno */
+  const so=mapa([{id:'t',nome:'MDT',papel:'terreno',z:topo}]);
+  assert.deepEqual(puro(GM.referenciasContato(so).map(r=>[r.id,r.nome])),[['terreno','da topografia']]);
+  const c=GM.novaCamadaProfundidade(so,'5');
+  assert.equal(so.camadas.length,2); assert.equal(so.camadas[1],c);
+  assert.deepEqual(puro(c.fonte),{tipo:'profundidade',h:5,ref:'terreno',nome:'5 m abaixo da topografia'});
+  for(const x of [0,37.5,100]) assert.ok(Math.abs(GM.lerp(c.topo,x)-(GM.lerp(so.terreno,x)-5))<1e-6,'5 m abaixo em x='+x);
+  assert.ok(GM.base(so)<Math.min(...c.topo.map(p=>p[1])),'a base do modelo desce junto');
+  assert.ok(GM.calcula(so).ok,'a seção com a camada nova calcula');
+  assert.throws(()=>GM.novaCamadaProfundidade(so,''),/distância/); assert.throws(()=>GM.novaCamadaProfundidade(so,'-2'),/distância/); assert.equal(so.camadas.length,2);
+  /* outra distância: a linha desce pela diferença; valores com vírgula */
+  assert.equal(GM.mudaProfundidade(so,1,'7,5'),true);
+  assert.ok(Math.abs(GM.lerp(c.topo,50)-(GM.lerp(so.terreno,50)-7.5))<1e-6); assert.equal(c.fonte.h,7.5); assert.match(c.fonte.nome,/^7,5 m abaixo/);
+  assert.throws(()=>GM.mudaProfundidade(so,1,'0'),/maior que zero/); assert.equal(GM.mudaProfundidade(so,0,'3'),false);
+  /* um segundo contato abaixo do primeiro entra depois dele */
+  const c2=GM.novaCamadaProfundidade(so,4,c.mat);
+  assert.equal(so.camadas[2],c2); assert.ok(Math.abs(GM.lerp(c2.topo,20)-(GM.lerp(so.terreno,20)-11.5))<1e-6); assert.match(c2.fonte.nome,/do topo de “Material 2”/);
+  /* e um mais raso que os dois entra antes deles */
+  const c3=GM.novaCamadaProfundidade(so,2);
+  assert.equal(so.camadas[1],c3); assert.deepEqual(puro(so.camadas.map(q=>q.mat)),['m1',c3.mat,c.mat,c2.mat]);
+
+  /* pilha: a topografia é o contato pilha/fundação; a linha fica 5 m abaixo dele, sob a pilha também */
+  const pde=dist.map(x=>x<20||x>70?NaN:(x<=40?112:112-(x-40)*0.6));
+  const p=mapa([{id:'t',nome:'MDT',papel:'terreno',z:topo},{id:'p',nome:'DCE 1 — Bruta',papel:'projeto',z:pde,tipo:'pilha'}]);
+  assert.deepEqual(puro(GM.referenciasContato(p).map(r=>r.id)),['natural','terreno']);
+  const cp=GM.novaCamadaProfundidade(p,5,'natural');
+  assert.deepEqual(puro(p.camadas.map(q=>q.mat)),['m1','m2',cp.mat]);
+  assert.ok(Math.abs(GM.lerp(cp.topo,30)-(100-0.2*30-5))<1e-6,'sob a plataforma segue a topografia, não a pilha');
+  assert.ok(Math.abs(GM.lerp(cp.topo,90)-(100-0.2*90-5))<1e-6);
+  assert.equal(cp.fonte.nome,'5 m abaixo da topografia'); assert.ok(GM.calcula(p).ok);
+  /* abaixo da superfície do talude (a pilha) também pode */
+  const cs=GM.novaCamadaProfundidade(p,3,'terreno');
+  assert.ok(Math.abs(GM.lerp(cs.topo,30)-109)<1e-6); assert.equal(cs.fonte.nome,'3 m abaixo da superfície do talude');
+
+  /* cava: a topografia original fica guardada; a linha não passa acima da escavação */
+  const cava=dist.map(x=>x<30||x>60?NaN:80);
+  const v=mapa([{id:'t',nome:'MDT',papel:'terreno',z:topo},{id:'c',nome:'Cava',papel:'projeto',z:cava,tipo:'cava'}]);
+  assert.ok(Array.isArray(v.natural)&&Math.abs(GM.lerp(v.natural,45)-91)<1e-6,'topografia original guardada');
+  const cv=GM.novaCamadaProfundidade(v,5);
+  assert.equal(cv.fonte.ref,'natural');
+  assert.ok(Math.abs(GM.lerp(cv.topo,10)-93)<1e-6,'fora da cava: 5 m abaixo da topografia');
+  assert.ok(Math.abs(GM.lerp(cv.topo,45)-80)<1e-6,'no fundo da cava a linha para no terreno');
+  for(const q of cv.topo) assert.ok(q[1]<=GM.lerp(v.terreno,q[0])+1e-6,'nunca acima da escavação em x='+q[0]);
+  assert.ok(cv.topo.every((q,i,a)=>i===0||q[0]>=a[i-1][0]),'distâncias em ordem');
+
+  /* talude paramétrico: ao refazer a geometria o contato acompanha o terreno novo */
+  const t=GM.novaSecaoTalude({bancadas:2, altura:10, angulo:45, berma:5, pe:20, crista:20, cota:100});
+  const ct=GM.novaCamadaProfundidade(t,5);
+  t.parametros.bancadas='3'; GM.regeraTalude(t);
+  assert.equal(ct.topo.length,t.terreno.length);
+  t.terreno.forEach((q,i)=>{ assert.equal(ct.topo[i][0],q[0]); assert.ok(Math.abs(ct.topo[i][1]-(q[1]-5))<1e-9); });
+  /* o projeto guarda e devolve a origem do contato */
+  const volta=JSON.parse(JSON.stringify(so)); assert.equal(volta.camadas[2].fonte.tipo,'profundidade'); assert.equal(volta.camadas[2].fonte.h,7.5);
+});

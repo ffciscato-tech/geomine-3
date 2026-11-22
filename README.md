@@ -1175,7 +1175,8 @@ campo COTA/Z/ELEV/ELEVACAO…; entre duas curvas a cota é linear), **2 Superfí
 de análise** (nenhuma, o desenho do DCE/cava — camada com `DESIGN_ID` e `PROJETO`, de
 preferência a "— Bruta" —, um PDE importado com cota ou um MDT do projeto;
 pilha ou cava) e **3 Superfícies de contato** (topo da rocha, camada fraca;
-o que foi marcado num tipo continua marcado ao trocar para o outro). A sugestão é a
+o que foi marcado num tipo continua marcado ao trocar para o outro; o terceiro
+tipo, *Distância*, está descrito abaixo). A sugestão é a
 topografia de trabalho (nunca o MDT recortado, se houver outro) e, como
 projeto, o desenho que a linha cruza. Pilha: superfície = maior entre projeto
 e topografia, e a topografia sob o projeto vira o primeiro contato (camadas
@@ -1196,6 +1197,28 @@ excluída; se a pessoa apagar a camada, ela não volta sozinha (só pelo "Ver no
 mapa"). A marca `_geomecSecao` vai para o projeto; em projeto antigo a camada é
 achada pelas feições (todas com o mesmo GEOMEC). A camada única de antes,
 "Seções geomecânicas", vira uma camada por seção no primeiro cálculo.
+
+**Contato por distância.** Pedido de 22/11/2026: "no caso de não haver uma
+superfície de contato embaixo da topografia, eu devo poder dizer que distância
+considerar, tipo 5 metros, e fazer uma linha". O contato é uma linha paralela
+a uma referência, *h* metros abaixo dela, **medidos na vertical** (como a
+profundidade de um furo), e vira o topo de uma camada nova
+(`GM.novaCamadaProfundidade(sec, h, ref)`; `fonte:{tipo:'profundidade', h,
+ref}`). Dois lugares: (1) na seção nova, o card 3 tem o tipo **Distância** —
+campo "m abaixo da topografia", com a linha já desenhada na prévia; quando
+nenhuma superfície de contato cruza a linha, o card abre nesse tipo; (2) na
+seção existente, o card 2 tem a linha "distância (m) · abaixo de… · ＋ camada",
+e a camada criada mostra a distância num campo que pode ser alterado
+(`GM.mudaProfundidade`). Referências (`GM.referenciasContato`, a primeira é a
+de partida): a **topografia** — na pilha, o contato pilha/fundação (a linha
+segue o terreno natural também sob a pilha); na cava, a topografia original,
+que a seção passa a guardar em `s.natural`, com a linha limitada pela
+escavação; no talude natural, o próprio terreno —, a **superfície do talude**
+quando há projeto, e o **topo de cada contato** que a seção já tem. A camada
+entra na ordem das cotas médias, logo abaixo da referência. No talude
+paramétrico o contato acompanha o terreno quando a geometria é refeita. Seção
+de cava criada antes desta versão não tem `s.natural`: nela a referência é a
+superfície escavada.
 
 **Água (card 3).** A linha desenhada (horizontal por cota, editada no desenho
 ou "no contato pilha/fundação") e a **condição do cálculo**: NA desenhado
