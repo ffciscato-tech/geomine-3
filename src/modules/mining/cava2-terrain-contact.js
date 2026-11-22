@@ -679,17 +679,22 @@ function sides(F,geom,fn){
   return probes;
 }
 /* Decide o que muda com as linhas apagadas ("lines": geometria de cada uma).
-   A região cortada vizinha passa a mantida — o desenho bruto continua inteiro
-   ali —, salvo quando a mantida é uma ilha pequena (menor que a vizinha e que
-   10% de tudo o que está mantido): aí é a ilha que sai. A conta é sobre a área
-   mantida, não sobre a projetada: num projeto em que o MDT corta quase tudo, o
-   corpo principal do que fica não pode passar por "ilha" (teste com o DCE da
-   CSN na cota 315: o laço de 17 mil m² era 77% do que ficava). Devolve:
-     mask.at(x, y)  +1 = vale o projeto, −1 = fica cortado, 0 = não mexe
+   Apagar uma interseção NUNCA retira desenho (22/11/2026, print IMG_0240:
+   "quando cortei essas linhas sumiram" — a primeira versão retirava a "ilha"
+   pequena do lado mantido, e as cristas, pés e bordas de rampa dela sumiam do
+   corte). A regra agora só acrescenta: a região cortada vizinha da linha
+   apagada passa a seguir o desenho bruto. Exceção, sem mexer em nada: quando
+   o lado mantido é uma ilha pequena (menor que a vizinha e que 10% de tudo o
+   que está mantido), o desenho ali já é o bruto, e estender o bruto por toda
+   a região cortada em volta seria desproporcional — a linha só deixa de ser
+   desenhada. Devolve:
+     mask.at(x, y)  +1 = vale o projeto, 0 = não mexe
      separates(geom) a linha ainda separa dois lados diferentes?
-     flips          regiões que mudaram; unresolved, linhas sem dois lados claros */
+     flips          regiões que passaram a mantidas
+     islands        linhas em volta de ilha pequena (nada mudou)
+     unresolved     linhas sem dois lados claros */
 function heal(F,lines,options={}){
-  const none={mask:null,flips:[],unresolved:[],separates:()=>true};
+  const none={mask:null,flips:[],unresolved:[],islands:[],separates:()=>true};
   if(!F||!lines?.length)return none;
   const {h,nc,nr,ox,oy,st,lab,area,state}=F,final=state.slice(),pairs=[],unresolved=[],island=options.islandShare??.1,
     mantido=area.reduce((s,a,i)=>s+(state[i]===1?a:0),0);
@@ -699,26 +704,26 @@ function heal(F,lines,options={}){
       const key=state[p]===1?p+'|'+q:q+'|'+p;votes.set(key,(votes.get(key)||0)+1);});
     let best=null,bn=0;for(const [key,n] of votes)if(n>bn){bn=n;best=key;}
     if(!best||bn<Math.max(1,.25*probes)){unresolved.push(li);return;}
-    pairs.push(best.split('|').map(Number));
+    const [k,c]=best.split('|').map(Number);pairs.push({li,k,c});
   });
-  // Várias linhas podem tocar a mesma região: repete até nenhuma separar mais nada.
+  // Só há mudança de cortado para mantido: a ordem das linhas não altera o resultado.
+  const ilha=q=>area[q.k]<area[q.c]&&area[q.k]<island*mantido;
   for(let pass=0,changed=true;changed&&pass<8;pass++){
     changed=false;
-    for(const [p,q] of pairs){
-      if(final[p]===final[q])continue;
-      const k=final[p]===1?p:q,c=k===p?q:p;
-      if(area[k]<area[c]&&area[k]<island*mantido)final[k]=2;else final[c]=1;
-      changed=true;
+    for(const q of pairs){
+      if(final[q.c]===1||ilha(q))continue;
+      final[q.c]=1;changed=true;
     }
   }
+  const islands=pairs.filter(q=>final[q.c]!==1).map(q=>q.li);
   const fl=new Int8Array(nc*nr),flips=[];let any=false;
-  for(let id=1;id<final.length;id++)if(final[id]!==state[id])flips.push({id,to:final[id]===1?1:-1,area:area[id]});
-  if(!flips.length)return {...none,unresolved};
-  for(let i=0;i<nc*nr;i++){const id=lab[i];if(id&&final[id]!==state[id]){fl[i]=final[id]===1?1:-1;any=true;}}
-  if(!any)return {...none,unresolved};
+  for(let id=1;id<final.length;id++)if(final[id]!==state[id])flips.push({id,to:1,area:area[id]});
+  if(!flips.length)return {...none,unresolved,islands};
+  for(let i=0;i<nc*nr;i++){const id=lab[i];if(id&&final[id]!==state[id]){fl[i]=1;any=true;}}
+  if(!any)return {...none,unresolved,islands};
   /* A borda da região na grade pode ficar até uma célula aquém do contato de
-     verdade: a máscara avança duas células, só sobre o que já está do lado de
-     destino (ou fora do projeto) — nunca sobre outra região a mudar. */
+     verdade: a máscara avança duas células, só sobre o que já está mantido
+     (ou fora do projeto) — nunca sobre outra região cortada. */
   for(let pass=0;pass<2;pass++){
     const src=fl.slice();
     for(let j=0;j<nr;j++)for(let c=0;c<nc;c++){
@@ -726,11 +731,11 @@ function heal(F,lines,options={}){
       let v=0;
       for(let dj=-1;dj<=1&&!v;dj++){const jj=j+dj;if(jj<0||jj>=nr)continue;
         for(let dc=-1;dc<=1;dc++){const cc=c+dc;if(cc<0||cc>=nc)continue;const w=src[jj*nc+cc];if(w){v=w;break;}}}
-      if(v&&(st[i]===0||st[i]===(v>0?1:2)))fl[i]=v;
+      if(v&&(st[i]===0||st[i]===1))fl[i]=v;
     }
   }
   const stateAt=id=>id?final[id]:0;
-  return {flips,unresolved,
+  return {flips,unresolved,islands,
     mask:{h,at:(x,y)=>{const c=Math.floor((x-ox)/h),j=Math.floor((y-oy)/h);return c<0||j<0||c>=nc||j>=nr?0:fl[j*nc+c];}},
     // em dúvida (um só lado visível, borda do projeto, vazio do MDT) a linha fica
     separates:geom=>{let dif=0,same=0;sides(F,geom,(p,q)=>{if(stateAt(p)!==stateAt(q))dif++;else same++;});return dif>=same;}};

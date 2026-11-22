@@ -244,22 +244,23 @@ test('interseção pequena apagada: a ilha cortada no talude volta a seguir o pr
  assert(Number.isNaN(em(sem,25.1,.1)));assert(Math.abs(em(com,25.1,.1)-4.9)<1e-5);
  assert(com.cutVolume.validCells>sem.cutVolume.validCells);assert(Math.abs(com.cutVolume.volume-sem.cutVolume.volume)<1e-9,'o furo não soma volume');
 });
-test('ilha do lado mantido: a pequena sai; a que é quase tudo o que fica faz o desenho bruto valer em volta',()=>{
+test('ilha do lado mantido: apagar a interseção nunca retira desenho; a ilha que é quase tudo o que fica faz o bruto valer em volta',()=>{
  // face leste enterrada (terreno x − 10) e, nela, uma cova onde a pilha reaparece numa ilha pequena
  const pequena=(x,y)=>x-10-16*Math.exp(-((x-26)**2+y*y)/8),{lines,F}=corta(pequena);
  const laco=lines.find(closed);assert(laco,'o contorno da cova é um laço fechado');
  const ilha=F.at(26,0),face=F.at(28,8),corpo=F.at(0,0);
  assert.equal(F.state[ilha],1);assert.equal(F.state[face],2);assert.equal(F.state[corpo],1);
  const mantido=F.area.reduce((s,a,i)=>s+(F.state[i]===1?a:0),0);assert(F.area[ilha]<.1*mantido);
+ // 22/11/2026, "quando cortei essas linhas sumiram": a ilha pequena fica como está, nada é retirado
  const cura=T.heal(F,[laco.geom]);
- assert.deepEqual(puro(cura.flips.map(f=>[f.id,f.to])),[[ilha,-1]]);
- assert.equal(cura.mask.at(26,0),-1);assert.equal(cura.mask.at(0,0),0);assert.equal(cura.separates(laco.geom),false);
+ assert.deepEqual(puro(cura.flips),[]);assert.equal(cura.mask,null);
+ assert.deepEqual(puro(cura.islands),[0]);assert.deepEqual(puro(cura.unresolved),[]);
  // pilha toda enterrada, menos na cova: a ilha é tudo o que fica, então o desenho bruto passa a valer em volta
  const cova=(x,y)=>20-25*Math.exp(-((x-25)**2+y*y)/8),Q=corta(cova);
  assert.equal(Q.lines.length,1);assert(closed(Q.lines[0]));
  const so=Q.F.at(25,0),resto=Q.F.at(0,0);assert.equal(Q.F.state[so],1);assert.equal(Q.F.state[resto],2);
  const tudo=T.heal(Q.F,[Q.lines[0].geom]);
- assert.deepEqual(puro(tudo.flips.map(f=>[f.id,f.to])),[[resto,1]]);
+ assert.deepEqual(puro(tudo.flips.map(f=>[f.id,f.to])),[[resto,1]]);assert.deepEqual(puro(tudo.islands),[]);
  assert.equal(tudo.mask.at(0,0),1);assert.equal(tudo.mask.at(25,0),0);assert.equal(tudo.separates(Q.lines[0].geom),false);
 });
 test('linha principal apagada: o lado cortado inteiro volta a ser o desenho bruto; linha alheia não muda nada',()=>{
@@ -282,7 +283,11 @@ test('duas linhas apagadas na mesma vizinhança: ilha mantida dentro do furo cur
  const cura=T.heal(F,lines.map(l=>l.geom));
  assert.deepEqual(puro(cura.flips.map(f=>[f.id,f.to])),[[anel,1]],'só o anel cortado muda; o miolo já era mantido');
  assert(lines.every(l=>!cura.separates(l.geom)));
- // apagando só a linha de dentro, o miolo (ilha pequena) é que sai e a de fora continua valendo
+ // a ordem em que as linhas chegam não muda o resultado: nenhuma região mantida vira cortada
+ const inverso=T.heal(F,lines.map(l=>l.geom).reverse());
+ assert.deepEqual(puro(inverso.flips.map(f=>[f.id,f.to])),[[anel,1]]);assert.equal(inverso.mask.at(24,0),0);assert.equal(inverso.mask.at(24,1.8),1);
+ for(const c of [cura,inverso])assert(c.flips.every(f=>f.to===1),'só há mudança de cortado para mantido');
+ // apagando só a linha de dentro, o miolo (ilha pequena) fica como está e a de fora continua valendo
  const dentro=lines.find(l=>l.geom.every(p=>Math.hypot(p[0]-24,p[1])<1.8)),fora=lines.find(l=>l!==dentro),so=T.heal(F,[dentro.geom]);
- assert.deepEqual(puro(so.flips.map(f=>[f.id,f.to])),[[miolo,-1]]);assert.equal(so.separates(dentro.geom),false);assert.equal(so.separates(fora.geom),true);
+ assert.deepEqual(puro(so.flips),[]);assert.equal(so.mask,null);assert.deepEqual(puro(so.islands),[0]);assert.equal(so.separates(fora.geom),true);
 });

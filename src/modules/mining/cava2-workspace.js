@@ -1323,6 +1323,7 @@ async function executaCorteMdtAtual(forcar){
   const ni=congelado.line.features.filter(f=>f.props?.ELEMENTO==='Interseção').length;
   status(`${d.nome}: Bruta preservada · Recortada aberta · ${ni} interseção(ões)`+
     (cura?.curados?` · ${cura.curados} trecho(s) seguem o desenho bruto (interseção apagada)`:'')+
+    (cura?.ilhas?` · ${cura.ilhas} interseção(ões) apagada(s) em volta de trecho pequeno que já seguia o desenho bruto: nada foi retirado`:'')+
     (cura?.naoResolvidas?` · ${cura.naoResolvidas} interseção(ões) apagada(s) sem dois lados claros: o corte ficou como antes ali`:'')+'.');
   window.GeoMineWorkspaceResume?.request();
   estado.savingCut=salvaArquivoDaCava(d).catch(e=>{status(`Recorte mantido no projeto; falha ao gerar o arquivo: ${e.message||e}`,true);return false;});
@@ -1832,11 +1833,13 @@ function cava2ReconciliaInativos(){
    chave I|… e a camada guarda, da última publicação, uma amostra de 24 pontos
    e o comprimento de cada linha. A linha que some da camada vira um registro
    em d.contatosApagados (vai para o projeto); a que volta (Ctrl+Z) sai dele.
-   Na prévia a linha casada com um registro não é redesenhada. No Cortar, o
-   motor (GeoMineCavaTerrain.faces/heal) decide o lado: a região cortada
-   vizinha passa a seguir o desenho bruto, salvo quando o lado mantido é uma
-   ilha pequena (menor que a vizinha e que 10% de tudo o que fica) — aí é a
-   ilha que sai. Linha sem dois lados claros fica como está. O casamento é geométrico: comprimento entre 0,5× e 2× e 80% dos pontos
+   A linha casada com um registro não é redesenhada, nem na prévia nem na
+   Recortada. No Cortar, o motor (GeoMineCavaTerrain.faces/heal) faz a região
+   cortada vizinha seguir o desenho bruto. Nunca se retira desenho: quando o
+   lado mantido é uma ilha pequena (menor que a vizinha e que 10% de tudo o
+   que fica), nada muda ali — a primeira versão retirava a ilha e as linhas
+   dela sumiam do corte (print IMG_0240, "quando cortei essas linhas
+   sumiram"). Linha sem dois lados claros também não muda o corte. O casamento é geométrico: comprimento entre 0,5× e 2× e 80% dos pontos
    a menos de max(0,5 m; ¼ da célula; 2% do comprimento) da linha nova. */
 const cava2Contatos=new WeakMap();let cava2SeqContato=0;
 function cava2AmostraLinha(geom,nPts=24){
@@ -2021,7 +2024,7 @@ function cava2RampasParaIntersecao(design,baseZ){
 
 /* Publica somente o contato calculado entre a superfície de projeto e o
    MDT. Componentes abertas permanecem abertas, inclusive junto a NoData. */
-function cava2RecortaSuperficieNoMdt(src,g,modoUp,passo,guardarAreas,rampas,apagados){
+function cava2RecortaSuperficieNoMdt(src,g,modoUp,passo,guardarAreas,rampas,apagados,pistas){
   const linhas=[],desenho=[];
   for(const f of src||[]){
     const e=String(f.props?.ELEMENTO||''),ring=cava2GeomFechada((f.geom||[]).map(p=>({x:p[0],y:p[1]})));
@@ -2039,30 +2042,40 @@ function cava2RecortaSuperficieNoMdt(src,g,modoUp,passo,guardarAreas,rampas,apag
     props:{TIPO:'Interseção cava × terreno',BANCO:null,COTA:null,CLASSE:'daylight',
       METODO:'superfície de projeto × MDT — amostragem por célula',
       TOPOLOGIA:Math.hypot(f.geom[0][0]-f.geom.at(-1)[0],f.geom[0][1]-f.geom.at(-1)[1])<1e-6?'fechada':'aberta'}}));
-  // linhas de contato que a pessoa apagou
-  const casados=cava2CasaContatos(inter,apagados,g);let mask=null,curados=0,removidas=0,naoResolvidas=0;
-  if(casados.size&&!guardarAreas){inter=inter.filter(f=>!casados.has(f));removidas=casados.size;}
-  else if(casados.size){
-    const geoms=[...casados.keys()].map(f=>f.geom);
-    let cura=null;
-    try{const F=GeoMineCavaTerrain.faces(poligonos.surface.concat(poligonos.floor),linhas,g);cura=F?GeoMineCavaTerrain.heal(F,geoms):null;}
-    catch(e){console.warn('Cava2: interseção apagada não pôde ser resolvida',e);}
-    naoResolvidas=cura?cura.unresolved.length:geoms.length;
-    if(cura?.mask){
-      mask=cura.mask;curados=cura.flips.length;
-      const lado=p=>{let x=0,y=0;for(const q of p){x+=q[0];y+=q[1];}return mask.at(x/p.length,y/p.length);};
-      for(const t of ['surface','floor'])poligonos[t]=poligonos[t].filter(p=>lado(p)>=0);
-      // o outro lado do contato: o projeto onde o MDT o cortava, só nas regiões curadas
-      GeoMineCavaTerrain.intersect(linhas,g,{keepAbove:!modoUp,ramps:rampas,onPolygon:(p,t)=>{if(lado(p)>0)poligonos[t].push(p);}});
-      const antes=inter.length;inter=inter.filter(f=>cura.separates(f.geom));removidas=antes-inter.length;
+  // linhas de contato que a pessoa apagou: não voltam a ser desenhadas; no corte, a
+  // região cortada vizinha passa a seguir o desenho bruto (nunca se retira desenho)
+  const casados=cava2CasaContatos(inter,apagados,g);let mask=null,curados=0,removidas=0,naoResolvidas=0,ilhas=0;
+  if(casados.size){
+    const antes=inter.length,geoms=[...casados.keys()].map(f=>f.geom);
+    inter=inter.filter(f=>!casados.has(f));
+    if(guardarAreas){
+      let cura=null;
+      try{
+        /* a pista também é projeto, inclusive o trecho que sai do anel de fora (o início da
+           rampa): sem ela nas regiões, esse trecho ficava sem cura */
+        const fill=(pistas||[]).filter(P=>P?.length>=3),
+          mantidas=fill.flatMap(P=>GeoMineCavaTerrain.clipPolygon(P,g,{keepAbove:modoUp})),
+          F=GeoMineCavaTerrain.faces(poligonos.surface.concat(poligonos.floor,mantidas),
+            linhas.concat(fill.map(P=>({ring:P.map(q=>[q[0],q[1]])}))),g);
+        cura=F?GeoMineCavaTerrain.heal(F,geoms):null;
+      }catch(e){console.warn('Cava2: interseção apagada não pôde ser resolvida',e);}
+      naoResolvidas=cura?cura.unresolved.length:geoms.length;ilhas=cura?.islands?.length||0;
+      if(cura?.mask){
+        mask=cura.mask;curados=cura.flips.length;
+        const lado=p=>{let x=0,y=0;for(const q of p){x+=q[0];y+=q[1];}return mask.at(x/p.length,y/p.length);};
+        // o outro lado do contato: o projeto onde o MDT o cortava, só nas regiões curadas
+        GeoMineCavaTerrain.intersect(linhas,g,{keepAbove:!modoUp,ramps:rampas,onPolygon:(p,t)=>{if(lado(p)>0)poligonos[t].push(p);}});
+        inter=inter.filter(f=>cura.separates(f.geom));
+      }
     }
+    removidas=antes-inter.length;
   }
-  // cristas, pés e rampas cortados pelo MDT; onde a máscara manda, vale o projeto (ou o corte)
+  // cristas, pés e rampas cortados pelo MDT; onde a máscara manda, vale o projeto
   const feats=[],orig=typeof window!=='undefined'?window.sampleZbil:null,usaMascara=!!(mask&&typeof orig==='function');
-  if(usaMascara)window.sampleZbil=(gg,x,y)=>{const m=mask.at(x,y);return m?((m>0)===!!modoUp?-1e9:1e9):orig(gg,x,y);};
+  if(usaMascara)window.sampleZbil=(gg,x,y)=>mask.at(x,y)>0?(modoUp?-1e9:1e9):orig(gg,x,y);
   try{for(const f of desenho)feats.push(...(cavaRecortaFeicaoNoMdt(f,g,modoUp,passo)||[]));}
   finally{if(usaMascara)window.sampleZbil=orig;}
-  return {feats:feats.concat(inter),stats,poligonos,mask,cura:{casados:casados.size,curados,removidas,naoResolvidas}};
+  return {feats:feats.concat(inter),stats,poligonos,mask,cura:{casados:casados.size,curados,removidas,naoResolvidas,ilhas}};
 }
 function cava2RecortaLimitesNoMdt(design,d,R,g,modoUp,passo){
   if(typeof cavaRecortaFeicaoNoMdt!=='function')return [];
@@ -2128,7 +2141,9 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
     return mostraBrutaSemCorte(d,silencioso?'':`${d.nome}: desenhe primeiro um limite fechado.`,!silencioso);
   }
   const passo=Math.min(.75,Math.abs(n(g.cs,.5))*.5,Math.abs(n(g.csy,g.cs))*.5),modoUp=d.tipo==='pilha';let q;
-  try{q=cava2RecortaSuperficieNoMdt(feicoesCompativeisCorte(src),g,modoUp,passo,finalizado,cava2RampasParaIntersecao(design,n(d.baseZ)),d.contatosApagados);}
+  const pistas=finalizado?feicoesPreenchimentoDoDesign(design,n(d.baseZ),d).filter(f=>['Rampa','Retorno'].includes(f.props?.ELEMENTO))
+    .map(f=>f.geom.map((p,i)=>[p[0],p[1],f.zg?.[i]??f.props.COTA])):[];
+  try{q=cava2RecortaSuperficieNoMdt(feicoesCompativeisCorte(src),g,modoUp,passo,finalizado,cava2RampasParaIntersecao(design,n(d.baseZ)),d.contatosApagados,pistas);}
   catch(e){console.error('Interseção Área 2D × MDT',e);return mostraBrutaSemCorte(d,
     `Falha ao calcular a interseção com “${R.name}”: ${e.message||e}`,true);}
   const normalizadas=normalizaCorteMdt(q?.feats,d,R);
@@ -2153,13 +2168,12 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
   cava2RegistraContatos(C);C._cava2Cura=q?.cura||null;
   const L=camadaDoDesenho(d.id),F=camadaPreenchimentoDoDesenho(d.id),CF=camadaPreenchimentoCorteDoDesenho(d.id);
   if(finalizado){
-    const pistas=feicoesPreenchimentoDoDesign(design,n(d.baseZ),d).filter(f=>['Rampa','Retorno'].includes(f.props?.ELEMENTO)),
-      cortaPistas=lado=>pistas.flatMap(f=>GeoMineCavaTerrain.clipPolygon(f.geom.map((p,i)=>[p[0],p[1],f.zg?.[i]??f.props.COTA]),g,{keepAbove:lado}));
+    const cortaPistas=lado=>pistas.flatMap(P=>GeoMineCavaTerrain.clipPolygon(P,g,{keepAbove:lado}));
     let ramps=cortaPistas(modoUp);
     if(q.mask){
-      // nas regiões curadas a pista segue o projeto; na ilha retirada, sai
+      // nas regiões curadas a pista segue o projeto também onde o MDT a cortava
       const ladoM=p=>{let x=0,y=0;for(const c of p){x+=c[0];y+=c[1];}return q.mask.at(x/p.length,y/p.length);};
-      ramps=ramps.filter(p=>ladoM(p)>=0).concat(cortaPistas(!modoUp).filter(p=>ladoM(p)>0));
+      ramps=ramps.concat(cortaPistas(!modoUp).filter(p=>ladoM(p)>0));
     }
     C._cava2CutSurface={surface:q.poligonos.surface,floor:q.poligonos.floor,ramps,mask:q.mask||null};
   }
