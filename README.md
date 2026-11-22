@@ -364,6 +364,35 @@ publicou de outro lugar e este repositório está desatualizado.
   desenho" e um limite novo zeram o registro. Sem nada apagado o corte é
   idêntico ao anterior (conferido com a CSN: mesmo volume, mesmas células e
   feições). Testes em `cava2-terrain-contact.test.cjs`.
+- **Na aba Cava, a linha selecionada tem um ❄ de cada lado: congela-se um lado
+  e só o outro se move, com tudo o que estiver daquele lado.** Print IMG_0247
+  (22/11/2026), com uma linha selecionada: "no momento que eu selecionei uma
+  linha, vão aparecer dois botõezinhos, um de cada lado, para escolher qual
+  lado eu quero congelar … eu seleciono, congelo um lado, e o outro lado,
+  quando eu movimentar, tudo que estiver daquele lado vai ser movimentado".
+  Vale para qualquer crista ou pé, da cava e do DCE. Regras, em
+  `cava-pilha-v106.html` (`botoesDeLado`, `parDeBermaDoLado`, `fixaAnel`,
+  `invasaoDasFixadas`): (1) só se congela o lado em que há **berma** entre a
+  linha e a vizinha (mesma cota); do lado do talude o botão fica apagado,
+  porque mover mudaria o ângulo da face; (2) **❄ de fora**: a linha e tudo o
+  que está por dentro andam para dentro, a berma alarga e o lado de fora — a
+  linha desenhada inclusive — não se mexe; a largura é iterada até a linha
+  parar onde foi solta, medida na perpendicular; (3) **❄ de dentro**: a
+  vizinha de dentro é **fixada** (ela e tudo o que está por dentro passam a
+  nascer do esqueleto gravado em `bermas._travas`, a única forma exata — a
+  compensação pela berma deixava o lado "parado" ceder 2 m num arrasto de 5 m)
+  e quem anda é a linha, com tudo o que está por fora e a linha desenhada; (4)
+  o sentido contrário só volta até a berma nominal; (5) a linha fixada aparece
+  em azul com "❄ fixada", vai com o projeto, com o desfazer e com a cadeia de
+  blocos, e é solta no **↺** ao lado da linha (ou R/Delete), que também devolve
+  a berma ao nominal; (6) linha fixada não é editada por engano nem atropelada:
+  arrasto livre nela ou por dentro dela é recusado com o motivo, ❄ de dentro
+  com uma fixada do lado que anda também, e um arrasto que faria a linha de
+  fora entrar na fixada é desfeito com aviso; (7) várias fixadas convivem (uma
+  por linha) e com a trava da tecla F. Limite conhecido: com uma fixada mais
+  para fora, o ❄ de dentro numa linha mais interna é recusado — a ordem que
+  funciona é de dentro para fora, ou o ❄ de fora. Testes em
+  `cava2/cava-lado.test.cjs`.
 - **Na aba Cava, a régua traça a Seção A–A′, e a figura tem de fazer sentido.**
   Print IMG_0245 (22/11/2026), com a régua da barra de baixo circulada e o
   painel "Seção A–A′ · L = 19 m · z: 315 a 405 m · EV 0,04×": "esta seção

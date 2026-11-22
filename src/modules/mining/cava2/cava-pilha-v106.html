@@ -492,7 +492,52 @@ const estilosIntegracao={cava:{},pilha:{}};
 let congelada = null;            // {alvo, idx}
 let travaSk = null;              // {alvo, g, S} — esqueleto gravado da congelada
 // a trava só vale para o objeto congelado
-function travaDe(k){ return (travaSk && travaSk.alvo===k) ? travaSk : null; }
+/* LINHAS FIXADAS (❄ de dentro). A "trava" faz o gerador recomeçar de um esqueleto gravado: dali
+   para dentro nada depende mais da linha desenhada — é a única forma EXATA de o lado de dentro
+   ficar parado enquanto o de fora anda (a compensação pela berma deixava o lado "parado" ceder
+   ~2 m num arrasto de 5 m; dividir em blocos encadeados reassenta a rampa do bloco de dentro).
+   A trava da tecla F vale só na sessão. As do ❄ ficam em o.bermas._travas, que acompanha as
+   bermas editadas em tudo: projeto, desfazer, cadeia de blocos — e é descartada com elas quando
+   a estrutura de bancos muda. */
+function travasFixas(k){ const o=objs[k]; return (o && o.bermas && Array.isArray(o.bermas._travas)) ? o.bermas._travas : []; }
+function travaDe(k){
+  const fixas=travasFixas(k), t=(travaSk && travaSk.alvo===k) ? travaSk : null;
+  if(!fixas.length) return t;
+  return t ? fixas.filter(f=>f.g!==t.g).concat([t]) : fixas;
+}
+// fixa o anel idx — e tudo o que está por dentro dele — como está no design atual
+function fixaAnel(alvo, idx){
+  const o=objs[alvo], an=o && o.design && o.design.aneis, a=an && an[idx];
+  if(!a || !a.Sk || a.Sk.length<4) return null;
+  const g=an.length-1-idx, cop=a.Sk.map(q=>({x:q.x, y:q.y, si:q.si}));
+  o.bermas=o.bermas||{};
+  const t={g, S:cop, Sin:cop.map(q=>({x:q.x, y:q.y, si:q.si})), P:a.P.map(q=>({...q})),
+           projecaoEntrada:a.projecaoEntrada?JSON.parse(JSON.stringify(a.projecaoEntrada)):null,
+           est:a.est?JSON.parse(JSON.stringify(a.est)):null};
+  o.bermas._travas=travasFixas(alvo).filter(q=>q.g!==g).concat([t]);
+  return t;
+}
+function soltaAnel(alvo, g){
+  const o=objs[alvo]; if(!o || !o.bermas || !o.bermas._travas) return false;
+  const n=o.bermas._travas.length;
+  o.bermas._travas=o.bermas._travas.filter(q=>q.g!==g);
+  if(!o.bermas._travas.length) delete o.bermas._travas;
+  return (o.bermas._travas||[]).length!==n;
+}
+// Quanto a linha de fora de cada fixada entra nela (m). A fixada não acompanha a linha desenhada:
+// sem esta medida um arrasto da linha de fora passava por cima dela. As rampas fazem linhas
+// vizinhas se tocarem, então o que vale é a comparação antes × depois do arrasto.
+function invasaoDasFixadas(k, troca){
+  const o=objs[k], an=o && o.design && o.design.aneis; if(!an) return 0;
+  let pior=0;
+  for(const t of travasFixas(k)){
+    const i=an.length-1-t.g, a=an[i], f=an[i+1]; if(!a || !f) continue;
+    const Pa=(troca && troca.idx===i) ? troca.P : a.P, Pf=(troca && troca.idx===i+1) ? troca.P : f.P;
+    for(const q of Pf) if(dentroDe(Pa,q)) pior=Math.max(pior, distAoAnel(Pa,q));
+    for(const q of Pa) if(!dentroDe(Pf,q)) pior=Math.max(pior, distAoAnel(Pf,q));
+  }
+  return pior;
+}
 // grava/limpa o esqueleto da string congelada a partir do design ATUAL
 function fixaTrava(){
   travaSk=null;
@@ -506,6 +551,99 @@ function fixaTrava(){
            S:cop, Sin:cop.map(q=>({x:q.x, y:q.y, si:q.si})),
            P:a.P.map(q=>({...q})),projecaoEntrada:a.projecaoEntrada?JSON.parse(JSON.stringify(a.projecaoEntrada)):null,
            est: a.est ? JSON.parse(JSON.stringify(a.est)) : null};
+}
+
+/* LADO CONGELADO NA SELEÇÃO (22/11/2026, print IMG_0247: "no momento que eu selecionei uma
+   linha, vão aparecer dois botõezinhos, um de cada lado, para escolher qual lado eu quero
+   congelar … e aí eu só vou movimentar o outro lado: tudo o que estiver daquele lado vai ser
+   movimentado"). A string selecionada ganha um ❄ de cada lado. Com um lado escolhido, o
+   arrasto de um vértice só afasta a linha desse lado — a berma entre eles alarga — e o outro
+   lado inteiro acompanha:
+     ❄ de FORA   → a linha e tudo o que está por dentro andam para dentro; o lado de fora, com a
+                    linha desenhada, não se mexe (só a berma alarga);
+     ❄ de DENTRO → a linha e tudo o que está por fora andam para fora, a linha desenhada junto;
+                    a vizinha de dentro é FIXADA (ver "LINHAS FIXADAS" acima) e não cede nada.
+   Só se congela o lado em que há BERMA entre a linha e a vizinha (mesma cota). Do lado em que há
+   talude não existe o que absorver sem mudar o ângulo da face: o botão aparece apagado. Voltar
+   desfaz o alargamento até a berma nominal, nunca além. Vale para a seleção: outra linha
+   selecionada, ou outra ferramenta, e o lado é solto. */
+let ladoCongelado = null;        // {alvo, idx, lado:"fora"|"dentro"}
+function ladoDaSelecao(){
+  return (sel && ladoCongelado && ladoCongelado.alvo===sel.alvo && ladoCongelado.idx===sel.idx) ? ladoCongelado.lado : null;
+}
+// a vizinha do lado dado, se entre as duas há uma berma (mesma cota); senão −1 (é talude)
+function parDeBermaDoLado(an, idx, lado){
+  const j = lado==="fora" ? idx+1 : idx-1;
+  return (an && an[idx] && an[j] && Math.abs(an[j].z-an[idx].z)<1e-9) ? j : -1;
+}
+// onde ficam, na tela, os dois ❄ da string selecionada: junto do ponto em que ela foi tocada
+function botoesDeLado(){
+  if(!sel || ferramenta!=="editar") return null;
+  const o=objs[sel.alvo], an=o && o.design && o.design.aneis, a=an && an[sel.idx];
+  if(!a || !a.P || a.P.length<3 || sel.idx===an.length-1) return null;
+  const ref=sel.toque || S2W(cv.clientWidth/2, cv.clientHeight/2), cum=cumulativo(a.P),
+    arco=arcoMaisProximo(a.P, cum, ref), p=pontoNoArco(a.P, cum, arco.s), n=a.P.length,
+    A=a.P[p.i], B=a.P[(p.i+1)%n];
+  let tx=B.x-A.x, ty=B.y-A.y; const l=Math.hypot(tx,ty); if(!(l>1e-9)) return null;
+  tx/=l; ty/=l;
+  let nx=ty, ny=-tx; if(areaAssinada(a.P)<0){ nx=-nx; ny=-ny; }     // normal para FORA
+  const [sx,sy]=W2S(p.x,p.y), d=26;
+  return {base:{x:sx,y:sy},
+    fora:  {x:sx+nx*d, y:sy-ny*d, ok:parDeBermaDoLado(an,sel.idx,"fora")>=0},
+    dentro:{x:sx-nx*d, y:sy+ny*d, ok:parDeBermaDoLado(an,sel.idx,"dentro")>=0},
+    // ↺ ao longo da linha: desfaz o alargamento e solta as fixações desta string (o R/Delete do teclado)
+    volta: pendenciasDaSel() ? {x:sx+tx*34, y:sy-ty*34} : null};
+}
+function alternaLadoCongelado(lado, ok){
+  if(!sel) return;
+  if(!ok){
+    ladoCongelado=null;
+    ultimaEdicao="deste lado da linha há um <b>talude</b>, não uma berma: congelá-lo e mover a linha mudaria o ângulo da face. Use o ❄ do outro lado, ou selecione a linha da outra ponta do talude.";
+  }else{
+    ladoCongelado = ladoDaSelecao()===lado ? null : {alvo:sel.alvo, idx:sel.idx, lado};
+    ultimaEdicao="";
+  }
+  atualizaDicaSel(); redesenha();
+}
+function desenhaBotoesDeLado(an){
+  const B=botoesDeLado(); if(!B) return;
+  const ativo=ladoDaSelecao();
+  // o lado congelado: a vizinha (a outra borda da berma) em azul grosso
+  if(ativo){
+    const j=parDeBermaDoLado(an, sel.idx, ativo);
+    if(j>=0 && !tracaLinhaPorCota(an[j].P,true,cotaAbsolutaDoDesign(an[j].z),{color:"#2c7fb8",weight:3.4}))
+      tracaAnel(an[j].P,"#2c7fb8",3.4,false);
+  }
+  ctx.save(); ctx.setLineDash([]);
+  for(const lado of ["fora","dentro"]){
+    const b=B[lado], on=ativo===lado;
+    ctx.strokeStyle="rgba(44,127,184,.55)"; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.moveTo(B.base.x,B.base.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    ctx.beginPath(); ctx.arc(b.x,b.y,13,0,7);
+    ctx.fillStyle = on ? "#2c7fb8" : b.ok ? "rgba(255,255,255,.96)" : "rgba(226,226,226,.9)"; ctx.fill();
+    ctx.strokeStyle = b.ok ? "#2c7fb8" : "#a8a8a8"; ctx.lineWidth = on ? 2.4 : 1.6; ctx.stroke();
+    ctx.fillStyle = on ? "#fff" : b.ok ? "#2c7fb8" : "#9a9a9a";
+    ctx.font="15px Signika, sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("❄", b.x, b.y+1);
+  }
+  if(B.volta){
+    const b=B.volta;
+    ctx.beginPath(); ctx.arc(b.x,b.y,12,0,7); ctx.fillStyle="rgba(255,255,255,.96)"; ctx.fill();
+    ctx.strokeStyle="#b45309"; ctx.lineWidth=1.6; ctx.stroke();
+    ctx.fillStyle="#b45309"; ctx.font="bold 15px Signika, sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText("↺", b.x, b.y+1);
+  }
+  ctx.restore();
+  if(ativo){ const b=B[ativo]; rotuloHalo(ativo==="fora"?"lado de fora congelado":"lado de dentro congelado", b.x+18, b.y-16, "#2c7fb8", 10.5); }
+}
+// linhas fixadas pelo ❄ de dentro: traço azul fino e a marca, para se saber por que não andam
+function desenhaLinhasFixadas(k, an){
+  for(const t of travasFixas(k)){
+    const a=an[an.length-1-t.g]; if(!a) continue;
+    if(!tracaLinhaPorCota(a.P,true,cotaAbsolutaDoDesign(a.z),{color:"#2c7fb8",weight:2})) tracaAnel(a.P,"#2c7fb8",2,false);
+    const cum=cumulativo(a.P), p=pontoNoArco(a.P,cum,cum[cum.length-1]*0.38), [sx,sy]=W2S(p.x,p.y);
+    rotuloHalo("❄ fixada", sx, sy, "#2c7fb8", 10);
+  }
 }
 
 // ===== CADEIA DE LIMITES =====
@@ -1745,6 +1883,10 @@ function projetaArcoEntradaFisico({P,Sk,corr,sourceRamp,z,tanFace,tanReference,s
 }
 
 function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos, acessoExterno=true, entradaHerdada=null){
+  // `trava` pode ser uma só (a string congelada pela tecla F) ou uma LISTA: as linhas fixadas
+  // pelo ❄ de dentro, guardadas em bermas._travas. Cada uma vale na sua geração.
+  const travas=Array.isArray(trava)?trava.filter(Boolean):(trava?[trava]:[]);
+  const travaEm=g=>travas.find(t=>t.g===g)||null;
   bermas = bermas || {};
   // SEMENTE DA IDENTIDADE: cada vértice da linha desenhada é marcado com o seu
   // índice (si). Como o offset é miter puro, esse si viaja intacto para TODAS
@@ -2038,21 +2180,22 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos, acessoExterno
       // berma UNIFORME e contínua — a rampa corre na face, não sobre a berma
       // (se a string foi editada, a cadeia regenera a partir dela)
       // a berma pode ter LARGURA EDITADA em janelas locais; fora delas é nominal
-      if(trava && trava.g===aneis.length && trava.est){
+      const tAqui=travaEm(aneis.length);
+      if(tAqui && tAqui.est){
         // a própria fronteira: restaura o estado da rampa ANTES de construí-la,
         // senão o corte da rampa nela muda quando a linha externa muda
-        anc={x:trava.est.anc.x, y:trava.est.anc.y};
-        ancBoca={x:trava.est.ancBoca.x, y:trava.est.ancBoca.y};
-        voltas=trava.est.voltas; LtA=trava.est.LtA;
-        arestaFim=trava.est.arestaFim ? {b1:{x:trava.est.arestaFim.b1.x,y:trava.est.arestaFim.b1.y},
-                                         dir:{x:trava.est.arestaFim.dir.x,y:trava.est.arestaFim.dir.y}} : null;
-        if(trava.est.entradaFisica)entradaFisica=JSON.parse(JSON.stringify(trava.est.entradaFisica));
+        anc={x:tAqui.est.anc.x, y:tAqui.est.anc.y};
+        ancBoca={x:tAqui.est.ancBoca.x, y:tAqui.est.ancBoca.y};
+        voltas=tAqui.est.voltas; LtA=tAqui.est.LtA;
+        arestaFim=tAqui.est.arestaFim ? {b1:{x:tAqui.est.arestaFim.b1.x,y:tAqui.est.arestaFim.b1.y},
+                                         dir:{x:tAqui.est.arestaFim.dir.x,y:tAqui.est.arestaFim.dir.y}} : null;
+        if(tAqui.est.entradaFisica)entradaFisica=JSON.parse(JSON.stringify(tAqui.est.entradaFisica));
       }
       const edB=bermas[aneis.length];
       // a PRÓPRIA congelada nasce do esqueleto gravado (não só o que vem depois
       // dela): senão ela mesma andava ~1,3 m junto com a linha desenhada
-      const SkC2=(trava && trava.g===aneis.length && trava.S && trava.S.length>=4)
-        ? trava.S.map(q=>({x:q.x, y:q.y, si:q.si}))
+      const SkC2=(tAqui && tAqui.S && tAqui.S.length>=4)
+        ? tAqui.S.map(q=>({x:q.x, y:q.y, si:q.si}))
         : offsetBermaVar(SkP, p.berma, edB);
       // ">" estrito: berma 0 dá área IGUAL (offset nulo) e é válida
       if(SkC2.length<4 || perimetro(SkC2)<minPer || areaAssinada(SkC2)<=0 ||
@@ -2127,18 +2270,19 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos, acessoExterno
       // qualquer string de fora) NÃO pode mover nada do lado de dentro — que é
       // a razão de existir o congelamento. Sem isso o projeto inteiro descende
       // da linha desenhada e qualquer mudança lá atravessa a cava toda.
-      if(trava && trava.g===aneis.length-1 && trava.Sin && trava.Sin.length>=4){
-        Sk = trava.Sin.map(q=>({x:q.x, y:q.y, si:q.si}));
-        if(trava.est){        // a rampa do bloco de dentro também congela
-          anc={x:trava.est.anc.x, y:trava.est.anc.y};
-          ancBoca={x:trava.est.ancBoca.x, y:trava.est.ancBoca.y};
-          voltas=trava.est.voltas; LtA=trava.est.LtA;
-          arestaFim=trava.est.arestaFim ? {b1:{x:trava.est.arestaFim.b1.x,y:trava.est.arestaFim.b1.y},
-                                           dir:{x:trava.est.arestaFim.dir.x,y:trava.est.arestaFim.dir.y}} : null;
-          if(trava.est.entradaFisica)entradaFisica=JSON.parse(JSON.stringify(trava.est.entradaFisica));
-          if(Number.isFinite(trava.est.bermasEntrada))bermasEntrada=trava.est.bermasEntrada;
-          bermasEntradaEditadas=!!trava.est.bermasEntradaEditadas;
-          z=trava.est.z; rest=trava.est.rest; Hef=trava.est.Hef;
+      const tSeed=travaEm(aneis.length-1);
+      if(tSeed && tSeed.Sin && tSeed.Sin.length>=4){
+        Sk = tSeed.Sin.map(q=>({x:q.x, y:q.y, si:q.si}));
+        if(tSeed.est){        // a rampa do bloco de dentro também congela
+          anc={x:tSeed.est.anc.x, y:tSeed.est.anc.y};
+          ancBoca={x:tSeed.est.ancBoca.x, y:tSeed.est.ancBoca.y};
+          voltas=tSeed.est.voltas; LtA=tSeed.est.LtA;
+          arestaFim=tSeed.est.arestaFim ? {b1:{x:tSeed.est.arestaFim.b1.x,y:tSeed.est.arestaFim.b1.y},
+                                           dir:{x:tSeed.est.arestaFim.dir.x,y:tSeed.est.arestaFim.dir.y}} : null;
+          if(tSeed.est.entradaFisica)entradaFisica=JSON.parse(JSON.stringify(tSeed.est.entradaFisica));
+          if(Number.isFinite(tSeed.est.bermasEntrada))bermasEntrada=tSeed.est.bermasEntrada;
+          bermasEntradaEditadas=!!tSeed.est.bermasEntradaEditadas;
+          z=tSeed.est.z; rest=tSeed.est.rest; Hef=tSeed.est.Hef;
         }
       }else Sk = SkC2;
     }
@@ -2160,7 +2304,7 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos, acessoExterno
   // propagar o ajuste da boca para outras paredes ou bancadas. A decisão é
   // de fora para dentro: um banco profundo recusado não desfaz o topo já
   // resolvido (inclusive quando ele é separado como novo limite).
-  if(entradaFisica||trava?.P){
+  if(entradaFisica||travas.some(t=>t.P)){
     const originais=aneis.map(a=>a.P),igual=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y)<1e-7,
       propostas=aneis.map(a=>a.projecaoEntrada?.candidato||a.P);
     const trecho=(P,local)=>{
@@ -2208,9 +2352,9 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos, acessoExterno
     }
     if(recusou&&entradaFisica&&!avisos.some(s=>s.startsWith('Projeção da entrada:')))
       avisos.push('Projeção da entrada: alguns bancos exigiriam alterar outra parte da cava/DCE; esses trechos foram preservados. Reposicione R.');
-    if(trava?.P&&aneis[trava.g]){
-      aneis[trava.g].P=trava.P.map(q=>({...q}));
-      aneis[trava.g].projecaoEntrada=trava.projecaoEntrada?JSON.parse(JSON.stringify(trava.projecaoEntrada)):null;
+    for(const tP of travas)if(tP.P&&aneis[tP.g]){
+      aneis[tP.g].P=tP.P.map(q=>({...q}));
+      aneis[tP.g].projecaoEntrada=tP.projecaoEntrada?JSON.parse(JSON.stringify(tP.projecaoEntrada)):null;
     }
   }
   let entradaProjecao=null,baseDerivadaEntrada=null;
@@ -2227,7 +2371,7 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos, acessoExterno
       if(i){const dz=Math.abs(aneis[i].z-aneis[i-1].z);recuo+=dz>1e-9?dz/tanF:p.berma;}
       const a=aneis[i],original=aneisLegadosEntrada[i];
       // O anel congelado tem prioridade também sobre a berma inicial.
-      if(trava?.P&&trava.g===i){propostas.push(trava.P.map(q=>({...q})));metas.push(trava.projecaoEntrada||null);continue;}
+      {const tI=travaEm(i);if(tI?.P){propostas.push(tI.P.map(q=>({...q})));metas.push(tI.projecaoEntrada||null);continue;}}
       if(i<=baseInicio&&!entradaHerdada){propostas.push(original);metas.push(null);continue;}
       const r=projetaArcoEntradaFisico({P:original,Sk:a.Sk||E,sourceRamp:fonteEntrada.sourceRamp,
         portal:fonteEntrada.portal,dir:fonteEntrada.dir,bancoOffsetConstant:recuo,
@@ -3441,6 +3585,9 @@ function desenhaObjeto(k){
       ctx.stroke();
     }
   }
+  // linhas fixadas (❄ de dentro) e os dois ❄ da string selecionada: escolher o lado que fica parado
+  desenhaLinhasFixadas(k, an);
+  if(sel && sel.alvo===k && ferramenta==="editar" && an[sel.idx]) desenhaBotoesDeLado(an);
   // STRING CONGELADA: limite declarado pelo usuário — desenhada em azul grosso
   if(congelada && congelada.alvo===k && an[congelada.idx]){
     const C=an[congelada.idx];
@@ -3870,7 +4017,7 @@ function defineTool(t){
   ferramenta=t;
   if(t!=="cava"&&t!=="pilha") desenho=null;
   if(t!=="secao"){ secTemp=null; if(secA&&!secB) secA=null; }
-  if(t!=="editar") sel=null;
+  if(t!=="editar"){ sel=null; ladoCongelado=null; }
   for(const id of ["t_mover","t_cava","t_pilha","t_editar","t_rampa","t_retorno","t_secao"])
     $(id).classList.remove("ativa");
   const idAtivo={mover:"t_mover",cava:"t_cava",pilha:"t_pilha",editar:"t_editar",rampa:"t_rampa",retorno:"t_retorno",secao:"t_secao"}[t];
@@ -4095,6 +4242,16 @@ cv.addEventListener("pointerdown", e=>{
     // ESCOLHER UMA LINHA, não para editar: pular a pegada de vértice (senão o
     // clique agarrava o vértice da linha solta e nunca chegava na seleção).
     const escolhendoLinha = !!modoLinha;
+    // os dois ❄ da string selecionada (lado congelado) ganham de qualquer outra pegada
+    if(sel && !escolhendoLinha){
+      const B=botoesDeLado();
+      if(B){
+        for(const lado of ["fora","dentro"]){
+          if(Math.hypot(e.offsetX-B[lado].x, e.offsetY-B[lado].y)<=17){ alternaLadoCongelado(lado, B[lado].ok); return; }
+        }
+        if(B.volta && Math.hypot(e.offsetX-B.volta.x, e.offsetY-B.volta.y)<=16){ reverteSel(); redesenha(); return; }
+      }
+    }
     // 0) vértices das LINHAS DESENHADAS (quadrados magenta) — procurados ANTES
     // da string selecionada. A linha que o Finalizar solta cai exatamente em
     // cima da última string do bloco de fora; com a string selecionada, o
@@ -4130,6 +4287,18 @@ cv.addEventListener("pointerdown", e=>{
                     orig:anel.P.map(p=>({x:p.x,y:p.y,si:p.si})),   // si = qual vértice
                     work:anel.P.map(p=>({x:p.x,y:p.y,si:p.si})),   // da linha desenhada
                     p0:{x:anel.P[vi].x, y:anel.P[vi].y}};
+          // lado congelado: o vértice só desliza na normal, afastando-se desse lado; para o
+          // outro sentido vai só até desfazer o alargamento que já existe neste vértice
+          const ladoE=ladoDaSelecao(), jpE=ladoE?parDeBermaDoLado(design.aneis,sel.idx,ladoE):-1;
+          if(ladoE && jpE>=0){
+            const gE=design.aneis.length-1-Math.min(sel.idx,jpE), siE=anel.P[vi].si, oE=objs[sel.alvo];
+            editando.lado=ladoE; editando.nv=normais(editando.orig)[vi];
+            // quanto dá para voltar: de fora, o alargamento gravado neste vértice; de dentro, o
+            // que a berma tem hoje além do nominal (a distância até a linha fixada)
+            editando.extra0 = ladoE==="fora"
+              ? ((oE.bermas||{})[gE]||[]).filter(q=>q.si===siE).reduce((a2,q)=>a2+q.delta,0)
+              : Math.max(0, distAoAnel(design.aneis[jpE].P, anel.P[vi]) - (+parametrosDe(sel.alvo).berma||0));
+          }
           cv.setPointerCapture(e.pointerId);
           return;
         }
@@ -4205,7 +4374,8 @@ cv.addEventListener("pointerdown", e=>{
         if(d<8 && (!melS||d<melS.d)) melS={alvo:k, idx:i, d};
       });
     }
-    sel = melS ? {alvo:melS.alvo, idx:melS.idx} : null;
+    sel = melS ? {alvo:melS.alvo, idx:melS.idx, toque:{x:q.x,y:q.y}} : null;
+    if(!ladoDaSelecao()) ladoCongelado=null;
     if(sel && objs[sel.alvo]){
       blocoAtivo=sel.alvo; blocoParaPainel();
       if(modoLinha){
@@ -4387,10 +4557,12 @@ function replaceBasePoints(alvo,points){
   // si é o índice da fonte: remapear os pontos preservados; nos removidos,
   // manter a âncora espacial existente da edição de berma, sem índice velho.
   const ids=new Map(P.map((p,i)=>[p.x+','+p.y,i]));
-  for(const edits of Object.values(bermas))for(const e of edits||[]){
-    const old=o.base[e.si];e.si=old?(ids.get(old.x+','+old.y)??null):null;
+  const remapeia=e=>{ const old=o.base[e.si]; e.si=old?(ids.get(old.x+','+old.y)??null):null; };
+  for(const [kk,edits] of Object.entries(bermas)){
+    if(kk==="_travas"){ for(const t of edits||[]) for(const L of [t.S,t.Sin,t.P]) for(const q of L||[]) if(q.si!=null) remapeia(q); }
+    else for(const e of edits||[]) remapeia(e);
   }
-  const trial=geraDesign(P,parametrosDe(alvo),tipoDe(alvo),o.anc,bermas,null,o.retornos,!objs[o.paiDe]?.base?.length);
+  const trial=geraDesign(P,parametrosDe(alvo),tipoDe(alvo),o.anc,bermas,Array.isArray(bermas._travas)?bermas._travas:null,o.retornos,!objs[o.paiDe]?.base?.length);
   if(!trial?.aneis?.length)throw Error("Não foi possível reconstruir as bancadas com essa linha.");
   marcaHistorico();const before=o.base.length;
   o.base=P;o.bermas=bermas;editando=null;desenho=null;modoLinha=null;selecaoMultipla=[];
@@ -4428,7 +4600,10 @@ function atualizaDicaSel(){
   const cg = congelada && objs[congelada.alvo] && objs[congelada.alvo].design
              && objs[congelada.alvo].design.aneis[congelada.idx];
   const ehEsta = congelada && congelada.alvo===sel.alvo && congelada.idx===sel.idx;
-  $("st_dica").innerHTML=`<b>EDITAR</b> — ${sel.alvo} · string #${sel.idx} (${a.tp} @ ${fmt(a.z,0)} m${a.ov?", berma editada ✎":""}) — arraste os vértices · <b>F</b> ${ehEsta?"solta":"congela"} esta string · R/Delete devolve a berma ao nominal`
+  const ladoS=ladoDaSelecao();
+  $("st_dica").innerHTML=`<b>EDITAR</b> — ${sel.alvo} · string #${sel.idx} (${a.tp} @ ${fmt(a.z,0)} m${a.ov?", berma editada ✎":""}) — `
+    + (ladoS ? `<span style="color:#2c7fb8">❄ lado de ${ladoS==="fora"?"fora":"dentro"} congelado</span>: arraste um vértice para ${ladoS==="fora"?"dentro":"fora"} — a berma alarga e tudo o que está para ${ladoS==="fora"?"dentro":"fora"} acompanha`
+             : `arraste os vértices · toque num <b>❄</b> ao lado da linha para congelar aquele lado`+(pendenciasDaSel()?` · <b>↺</b> (ou R/Delete) devolve a berma ao nominal e solta a fixação`:``)+` · <b>F</b> ${ehEsta?"solta":"congela"} esta string`)
     + (cg && !ehEsta ? ` &nbsp;·&nbsp; <span style="color:#2c7fb8">❄ limite: ${congelada.alvo} #${congelada.idx} (${cg.tp} @ ${fmt(cg.z,0)} m)</span>` : "")
     + (ultimaEdicao ? ` &nbsp;·&nbsp; <span style="color:#f0b429">${ultimaEdicao}</span>` : "");
 }
@@ -4445,7 +4620,13 @@ cv.addEventListener("pointermove", e=>{
     if(editando.tipo==="anel"){
       // move SÓ o vértice pego — a string selecionada tem os vértices da linha
       // desenhada, então editar uma string é igual a editar a linha externa
-      const dx=q.x-editando.p0.x, dy=q.y-editando.p0.y;
+      let dx=q.x-editando.p0.x, dy=q.y-editando.p0.y;
+      if(editando.lado && editando.nv){
+        const N=editando.nv, volta=Math.max(0,editando.extra0||0);
+        let d=dx*N.x+dy*N.y;                                   // + = para fora
+        d = editando.lado==="fora" ? Math.min(d,volta) : Math.max(d,-volta);
+        dx=N.x*d; dy=N.y*d;
+      }
       for(let j=0;j<editando.orig.length;j++) editando.work[j]=editando.orig[j];
       editando.work[editando.vi]={...editando.orig[editando.vi],x:editando.p0.x+dx, y:editando.p0.y+dy};
       objs[editando.alvo].design.aneis[editando.idx].P=editando.work;
@@ -4463,6 +4644,9 @@ cv.addEventListener("pointermove", e=>{
 cv.addEventListener("pointerup", e=>{
   if(arrasto){arrasto=null; cv.classList.remove("arrastando");if(pinturaPendente)redesenha();}
   if(editando){
+    const alvoEd=editando.alvo, topoHist0=histUndo[histUndo.length-1], nHist0=histUndo.length;
+    const invasao0=travasFixas(alvoEd).length
+      ? invasaoDasFixadas(alvoEd, editando.tipo==="anel" && editando.orig ? {idx:editando.idx, P:editando.orig} : null) : 0;
     if(editando.tipo==="anel"){
       // só grava override se houve movimento real — clique parado não congela a string
       const mudou=editando.work.some((p,j)=>
@@ -4505,7 +4689,53 @@ cv.addEventListener("pointerup", e=>{
         // correspondente da linha desenhada), e a interpretação de berma só entra
         // quando existe uma string CONGELADA — que é exatamente para isso que ela
         // serve, e aí o lado congelado é que obriga a absorver na berma.
-        const temTrava = !!(congelada && congelada.alvo===editando.alvo
+        // ===== LADO CONGELADO ESCOLHIDO NA SELEÇÃO =====
+        // Nada a deduzir: a berma que absorve é a que fica entre a linha e o lado
+        // congelado, e quem anda é o outro lado inteiro.
+        const ladoC=editando.lado||null;
+        // Alargar uma berma pode tirar (ou devolver) uma bancada no topo. O índice dos anéis
+        // conta de dentro para fora e muda junto; a GERAÇÃO (contada da linha desenhada) não.
+        // No caminho do lado congelado o anel é procurado pela geração, para a medida do
+        // arrasto continuar valendo quando a estrutura muda.
+        const anelG=(dd,i0)=>dd && dd.aneis[dd.aneis.length-1-(nA-1-i0)] || null;
+        const estruturaServe=dd=>!!dd && (ladoC ? !!anelG(dd,editando.idx) : dd.aneis.length===nA);
+        const anelDe=(dd,i0)=>ladoC ? anelG(dd,i0) : dd.aneis[i0];
+        let fixouAgora=null;
+        // linhas fixadas (❄ de dentro): a geração conta da linha desenhada (0) para dentro; uma
+        // fixada em gT segura a própria linha e tudo o que está por dentro dela
+        const gE=nA-1-editando.idx, fixas=travasFixas(editando.alvo);
+        const fixaQueSegura=fixas.filter(t=>t.g<=gE).sort((a2,b2)=>b2.g-a2.g)[0]||null;
+        if(!ladoC && fixaQueSegura && !(congelada && congelada.alvo===editando.alvo))
+          bloqueado = fixaQueSegura.g===gE
+            ? "FIXADA::esta linha está fixada ❄ (o lado de dentro dela foi congelado). Toque no ↺ ao lado dela para soltar"
+            : "FIXADA::esta linha fica do lado de dentro de uma linha fixada ❄ (a azul). Escolha um lado no ❄ para alargar a berma aqui, ou solte a fixada no ↺";
+        if(bloqueado){
+          /* já recusado acima */
+        }else if(ladoC){
+          const jp=parDeBermaDoLado(an, editando.idx, ladoC);
+          if(jp<0) bloqueado="deste lado da linha há um talude, não uma berma — mover mudaria o ângulo da face";
+          else if(ladoC==="dentro" && fixaQueSegura)
+            bloqueado="do lado que anda há uma linha fixada ❄ (a azul): ela não pode acompanhar. Solte-a no ↺, ou congele o lado de fora para alargar a berma para dentro";
+          else if(ladoC==="fora"){
+            // lado de fora parado: só a berma alarga; a linha e tudo o que está por dentro andam
+            if(travasFixas(editando.alvo).some(t=>t.g===nA-1-editando.idx))
+              bloqueado="esta linha está fixada (o lado de dentro dela foi congelado antes) — solte-a no ↺ para alargar a berma para dentro, ou use o ❄ de dentro na linha de fora";
+            else{
+              dBerma = -delta;                             // + = afasta do lado congelado = a berma alarga
+              gB = nA-1-Math.min(editando.idx, jp);        // a berma é chaveada pela borda de dentro
+              jPar = jp;
+            }
+          }else{
+            // lado de dentro parado: a vizinha de dentro é FIXADA (ela e tudo o que está por dentro
+            // passam a nascer do esqueleto gravado) e quem anda é a linha desenhada, com tudo o
+            // que está por fora. Nenhuma berma é gravada: ela alarga porque um lado ficou.
+            jPar = jp;
+            if(delta < -((editando.extra0||0)+0.05))
+              bloqueado="com o lado de dentro congelado a linha só anda para fora (ou volta até a berma nominal)";
+            else if(!travasFixas(editando.alvo).some(t=>t.g===nA-1-jp)) fixouAgora=fixaAnel(editando.alvo, jp);
+          }
+        }
+        const temTrava = !ladoC && !!(congelada && congelada.alvo===editando.alvo
                             && congelada.idx!==editando.idx && an[congelada.idx]);
         if(temTrava){
           let jp=-1;
@@ -4525,7 +4755,7 @@ cv.addEventListener("pointerup", e=>{
         // da congelada. Se daquele lado o que separa as duas é uma FACE, não há
         // o que absorver sem mudar o ângulo do talude — e aí o arrasto é recusado
         // com o motivo, em vez de fazer outra coisa escondido.
-        if(congelada && congelada.alvo===editando.alvo
+        if(!ladoC && congelada && congelada.alvo===editando.alvo
            && congelada.idx!==editando.idx && an[congelada.idx]){
           const iF=congelada.idx, iD=editando.idx;
           const congPorFora = iF>iD;
@@ -4586,6 +4816,8 @@ cv.addEventListener("pointerup", e=>{
                             && (totalBerma>0.01 || (extraAtual>0.01 && dBerma<0));
         const voltouAoNominal = !bloqueado && dBerma!==null && dBerma<0
                                 && extraAtual>0.01 && totalBerma<=0.01;
+        if(ladoC==="fora" && !bloqueado && !alargaBerma)
+          bloqueado="com o lado de fora congelado a linha só anda para dentro (ou volta até a berma nominal)";
         if(si==null && !alargaBerma && !bloqueado) semPar=true;
         const gravaBerma=dB=>{
           const lista=(o.bermas[gB]||[]).filter(e=>e!==marcaB);
@@ -4602,7 +4834,10 @@ cv.addEventListener("pointerup", e=>{
           // andando 22 m — foi isso que o usuário sentiu como movimento preso
           // ou indo para onde não devia.
           if(voltouAoNominal){
-            gravaBerma(-extraAtual);
+            if(ladoC){
+              o.bermas[gB]=(o.bermas[gB]||[]).filter(e=>e.si!==si);
+              if(!o.bermas[gB].length) delete o.bermas[gB];
+            }else gravaBerma(-extraAtual);
             dBerma=-extraAtual; erroEdicao=null; encostouNominal=true;
           }else{
           const alvoB={x:work[vi].x, y:work[vi].y};
@@ -4614,19 +4849,24 @@ cv.addEventListener("pointerup", e=>{
             let dT;
             try{ dT=geraDesign(o.base, prmB, tipoDe(editando.alvo), o.anc, o.bermas, travaDe(editando.alvo), o.retornos,!objs[o.paiDe]?.base?.length,entradaHerdadaDoBloco(editando.alvo,prmB)); }
             catch(err){ break; }
-            if(!dT || dT.aneis.length!==nA || !dT.aneis[editando.idx]) break;
-            const pt=dT.aneis[editando.idx].P.find(q=>q.si===si);
+            if(!estruturaServe(dT) || !anelDe(dT,editando.idx)) break;
+            const pt=anelDe(dT,editando.idx).P.find(q=>q.si===si);
             if(!pt) break;
-            const e2=Math.hypot(alvoB.x-pt.x, alvoB.y-pt.y);
+            const passo=(alvoB.x-pt.x)*Nb.x + (alvoB.y-pt.y)*Nb.y;   // erro na normal
+            // Com o lado escolhido no ❄ o arrasto já vem preso à normal: o que se cobra é a
+            // LARGURA (o erro na normal). O desvio de lado é da geometria — a berma alarga
+            // perpendicular à linha que ficou — e não é falha do arrasto.
+            const e2=ladoC ? Math.abs(passo) : Math.hypot(alvoB.x-pt.x, alvoB.y-pt.y);
             if(e2<melhorEB){ melhorEB=e2; melhorB=dB; }
             if(e2<0.05) break;
-            const passo=(alvoB.x-pt.x)*Nb.x + (alvoB.y-pt.y)*Nb.y;   // erro na normal
             const andouB=(pt.x-orig[vi].x)*Nb.x + (pt.y-orig[vi].y)*Nb.y;
             const gB2=(Math.abs(dB)>1e-6 && Math.abs(andouB)>1e-6)
                       ? clamp(Math.abs(andouB/dB), 0.12, 3) : 1;
-            const novo=dB - (passo/gB2)*Math.sign(delta||1);
+            // ❄ de fora: a linha arrastada é a borda de DENTRO da berma — alargar leva o ponto
+            // para dentro (contra a normal), nos dois sentidos do arrasto
+            const novo=ladoC ? dB - passo/gB2 : dB - (passo/gB2)*Math.sign(delta||1);
             if(!isFinite(novo) || Math.abs(novo-dB)<0.02) break;
-            dB=Math.max(0.01, novo);
+            dB=ladoC ? Math.max(0.01-extraAtual, novo) : Math.max(0.01, novo);
           }
           gravaBerma(melhorB);
           dBerma=melhorB; erroEdicao=melhorEB;
@@ -4737,14 +4977,14 @@ cv.addEventListener("pointerup", e=>{
             let dTeste;
             try{ dTeste=geraDesign(o.base, prmA, tipoDe(editando.alvo), o.anc, o.bermas, travaDe(editando.alvo), o.retornos,!objs[o.paiDe]?.base?.length,entradaHerdadaDoBloco(editando.alvo,prmA)); }
             catch(err){ break; }
-            if(!dTeste || dTeste.aneis.length!==nA) break;   // mudou de estrutura: para
-            const pt=dTeste.aneis[editando.idx].P.find(q=>q.si===si);
+            if(!estruturaServe(dTeste)) break;                // mudou de estrutura: para
+            const pt=anelDe(dTeste,editando.idx).P.find(q=>q.si===si);
             if(!pt) break;
             const ex=alvoT.x-pt.x, ey=alvoT.y-pt.y, err=Math.hypot(ex,ey);
             // quanto o bloco que deveria estar CONGELADO andou?
             let fuga=0;
-            if(parAntes && dTeste.aneis[iTrava]){
-              const aPar=dTeste.aneis[iTrava].P;
+            if(parAntes && anelDe(dTeste,iTrava)){
+              const aPar=anelDe(dTeste,iTrava).P;
               if(travaDura){
                 // congelada: mede o PIOR ponto da string inteira
                 for(const q of aPar) fuga=Math.max(fuga, arcoMaisProximo(parAntes, cumPar, q).d);
@@ -4835,14 +5075,20 @@ cv.addEventListener("pointerup", e=>{
           if(nb.length>=5 && Math.hypot(nb[0].x-nb[nb.length-1].x, nb[0].y-nb[nb.length-1].y)<0.3) nb.pop();
           o.base=nb.map(q=>{const d2=deslocaEm(q); return {x:+(q.x+d2.x).toFixed(2), y:+(q.y+d2.y).toFixed(2)};});
         }
+        if(bloqueado && fixouAgora) soltaAnel(editando.alvo, fixouAgora.g);   // recusado: a fixação recém-criada sai junto
         const arr=Math.hypot(work[vi].x-orig[vi].x, work[vi].y-orig[vi].y);
-        const falhou = erroEdicao!=null && erroEdicao>Math.max(0.5, 0.15*arr);
+        const semMedida = erroEdicao!=null && !(erroEdicao<1e29);     // a estrutura mudou antes de haver medida
+        const falhou = erroEdicao!=null && !semMedida && erroEdicao>Math.max(0.5, 0.15*arr);
         if(sementeRuim){
           ultimaEdicao=`<b>arrasto desfeito</b> — puxar esse vértice para lá deixaria a parede do bloco de dentro cruzando consigo mesma. Puxe menos, ou em outra direção.`;
         }else if(moveSemente){
           ultimaEdicao=`vértice movido ${fmt(arr,1)} m no bloco de DENTRO — a string congelada e todo o lado de fora ficaram parados`;
         }else if(encostouNominal){
-          ultimaEdicao=`<b>berma de volta ao nominal</b> — o alargamento que havia aqui foi desfeito, e nada passou para o outro lado. Para continuar além disso, solte o congelamento (❄ / F).`;
+          ultimaEdicao=`<b>berma de volta ao nominal</b> — o alargamento que havia aqui foi desfeito, e nada passou para o outro lado. Para continuar além disso, `+(ladoC?`toque no ❄ aceso para soltar o lado.`:`solte o congelamento (❄ / F).`);
+        }else if(bloqueado && bloqueado.startsWith("FIXADA::")){
+          ultimaEdicao=`<b>arrasto recusado</b> — ${bloqueado.slice(8)}.`;
+        }else if(bloqueado && ladoC){
+          ultimaEdicao=`<b>arrasto recusado</b> — ${bloqueado}. Toque no ❄ aceso para soltar o lado, ou no do outro lado para trocar.`;
         }else if(bloqueado){
           ultimaEdicao = bloqueado.startsWith("EMPURRARIA::")
             ? `<b>arrasto recusado</b> — ${bloqueado.slice(12)}, e ela é o limite que você marcou. Puxe menos, ou solte o congelamento (❄ / F).`
@@ -4853,10 +5099,23 @@ cv.addEventListener("pointerup", e=>{
           ultimaEdicao=`<b>encostou no limite</b> — andou ${fmt(travouNoLimite,1)} m dos ${fmt(arr,1)} m pedidos`
             + (fugaFinal!=null ? ` (a congelada cedeu ${fmt(fugaFinal,2)} m)` : "")
             + `. Solte o congelamento (❄ / F) para ir além.`;
+        }else if(semMedida){
+          ultimaEdicao=`vértice movido ${fmt(arr,1)} m — <b>a quantidade de bancadas mudou com este arrasto</b>; confira o topo/fundo do projeto (Ctrl+Z desfaz)`;
+        }else if(falhou && ladoC){
+          ultimaEdicao=`<b>a linha parou a ${fmt(erroEdicao,1)} m de onde foi solta</b> — do lado que anda não há mais espaço para acompanhar neste trecho (Ctrl+Z desfaz)`;
         }else if(falhou){
           ultimaEdicao=`<b>a string só chegou a ${fmt(erroEdicao,1)} m do ponto</b> — o fundo ali está espremido entre a rampa e a parede; abra o limite nesse trecho ou reduza a profundidade`;
         }else if(fugaFinal!=null && alargaBerma && andaBase){
           ultimaEdicao=`arrastada ${fmt(arr,1)} m: tudo do lado de fora acompanhou e a <b>string congelada cedeu só ${fmt(fugaFinal,2)} m</b>`;
+        }else if(ladoC==="dentro" && !falhou && !semMedida){
+          ultimaEdicao = delta>=0
+            ? `linha movida ${fmt(arr,1)} m para fora: <b>a berma alargou</b>; tudo o que está para fora acompanhou (a linha desenhada junto) e o lado de dentro ficou <b>fixado ❄</b>, exatamente onde estava`
+            : `voltando ${fmt(arr,1)} m: a berma estreitou e o lado de dentro continua fixado ❄`;
+        }else if(ladoC && alargaBerma){
+          const para=ladoC==="fora"?"dentro":"fora",parado=ladoC==="fora"?"de fora":"de dentro";
+          ultimaEdicao = dBerma>=0
+            ? `linha movida ${fmt(arr,1)} m para ${para}: <b>berma alargada ${fmt(dBerma,1)} m</b>; tudo o que está para ${para} acompanhou${andaBase?" (a linha desenhada junto)":""} e o lado ${parado} ficou parado`
+            : `voltando ${fmt(arr,1)} m: <b>alargamento desfeito em ${fmt(-dBerma,1)} m</b> (a berma tem agora ${fmt(Math.max(0,totalBerma),1)} m acima do nominal aqui) — o lado ${parado} ficou parado`;
         }else if(alargaBerma && andaBase){
           ultimaEdicao=`pé puxado ${fmt(arr,1)} m para fora: <b>berma alargada ${fmt(dBerma,1)} m e tudo acima acompanhou</b> (a linha desenhada junto) — o fundo da cava ficou imóvel`;
         }else if(alargaBerma){
@@ -4881,6 +5140,14 @@ cv.addEventListener("pointerup", e=>{
       }
     }
     editando=null; regen(); atualizaDicaSel();
+    // LINHA FIXADA ❄ NÃO É ATROPELADA: se este arrasto fez a linha de fora entrar nela, é desfeito
+    const marcou = histUndo.length!==nHist0 || histUndo[histUndo.length-1]!==topoHist0;
+    if(marcou && travasFixas(alvoEd).length && invasaoDasFixadas(alvoEd)>invasao0+0.3){
+      desfaz(); histRedo.pop(); atualizaBotoesHist();
+      ultimaEdicao="<b>arrasto desfeito</b> — a linha passaria por cima de uma linha fixada ❄ (a azul). Puxe menos, ou solte a fixada no ↺.";
+      if(sel) atualizaDicaSel(); else $("st_dica").innerHTML=`<b>EDITAR</b> — <span style="color:#f0b429">${ultimaEdicao}</span>`;
+      redesenha();
+    }
   }
 });
 function cancelaArrasteCava(){
@@ -4956,14 +5223,23 @@ document.addEventListener("keydown", e=>{
   }
   else if((e.key==="r"||e.key==="R"||e.key==="Delete") && sel && !editando) reverteSel();
 });
-function reverteSel(){   // devolve a berma da string selecionada ao nominal
-  if(!sel) return;
+// o que a string selecionada tem para desfazer: alargamento gravado nela, fixação nela, ou a
+// fixação da vizinha de dentro (a outra borda da berma, criada pelo ❄ de dentro)
+function pendenciasDaSel(){
+  if(!sel) return null;
+  const o=objs[sel.alvo], an=o && o.design && o.design.aneis; if(!an || !an[sel.idx] || !o.bermas) return null;
+  const g=an.length-1-sel.idx, jp=parDeBermaDoLado(an, sel.idx, "dentro"), gp=jp>=0 ? an.length-1-jp : -1, T=travasFixas(sel.alvo);
+  const r={g, berma:!!(o.bermas[g] && o.bermas[g].length), fixa:T.some(t=>t.g===g), fixaPar:gp>=0 && T.some(t=>t.g===gp), gp};
+  return (r.berma||r.fixa||r.fixaPar) ? r : null;
+}
+function reverteSel(){   // devolve a berma da string selecionada ao nominal e solta as fixações dela
+  const r=pendenciasDaSel(); if(!r) return;
   const o=objs[sel.alvo];
-  if(!o.design || !o.bermas) return;
-  const g=o.design.aneis.length-1-sel.idx;
-  if(!o.bermas[g] || !o.bermas[g].length) return;
   marcaHistorico();
-  delete o.bermas[g];
+  if(r.berma) delete o.bermas[r.g];
+  if(r.fixa) soltaAnel(sel.alvo, r.g);
+  if(r.fixaPar) soltaAnel(sel.alvo, r.gp);
+  ultimaEdicao = (r.fixa||r.fixaPar) ? "fixação ❄ solta: o lado de dentro voltou a acompanhar a linha desenhada, com a berma nominal" : "berma de volta ao nominal";
   regen(); atualizaDicaSel();
 }
 let diagMarcas=null;      // achados do último diagnóstico, desenhados no canvas
