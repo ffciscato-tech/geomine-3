@@ -364,6 +364,23 @@ publicou de outro lugar e este repositório está desatualizado.
   desenho" e um limite novo zeram o registro. Sem nada apagado o corte é
   idêntico ao anterior (conferido com a CSN: mesmo volume, mesmas células e
   feições). Testes em `cava2-terrain-contact.test.cjs`.
+- **Na aba Cava, a régua traça a Seção A–A′, e a figura tem de fazer sentido.**
+  Print IMG_0245 (22/11/2026), com a régua da barra de baixo circulada e o
+  painel "Seção A–A′ · L = 19 m · z: 315 a 405 m · EV 0,04×": "esta seção
+  (imagem) não tem sentido — apareceu quando cliquei aqui". O painel desenhava
+  só o projeto e incluía sempre a cota de trabalho na faixa vertical; numa
+  linha de 19 m no alto de uma pilha de 90 m saía um bloco achatado. Regras, em
+  `quadroDaSecao` e `desenhaSecPainel` (`cava-pilha-v106.html`): (1) dois
+  perfis — o **projeto**, só onde a linha passa por ele, e o **terreno**, do
+  MDT de trabalho —, com aterro (projeto acima) e corte (abaixo) entre eles;
+  (2) a faixa de cotas é a dos perfis ao longo da linha; a cota de trabalho só
+  entra se estiver perto, senão vira nota no título; (3) a figura **nunca é
+  achatada**: sem caber em 1:1, encolhe por igual e fica centrada; o exagero
+  vertical só aumenta (inteiro, até 10×); (4) linha curta sobre aterro alto: o
+  terreno faria a figura virar uma coluna de poucos pixels, então a faixa fica
+  só com o projeto e o terreno vai para o título; (5) o título traz a medida
+  da régua — distância, desnível de A para A′ e inclinação — e, cabendo, as
+  cotas de cada perfil. Testes em `cava2/cava-secao.test.cjs`.
 - **Raspão: onde o contato deu a superfície como mantida, a linha e o MDT
   recortado ficam.** Print IMG_0244 (22/11/2026, 17h40), com dois trechos
   circulados na chegada da rampa à berma: "ainda não aparece a linha, ela

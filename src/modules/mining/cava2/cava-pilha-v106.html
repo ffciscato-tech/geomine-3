@@ -3627,6 +3627,59 @@ function redesenha(){
 }
 
 /* ================= seção ================= */
+/* SEÇÃO A–A′ (22/11/2026, print IMG_0245: "esta seção (imagem) não tem sentido — apareceu
+   quando cliquei aqui", com a régua da barra de baixo circulada). O painel desenhava só o
+   projeto e incluía sempre a cota de trabalho na faixa vertical: numa linha de 19 m no alto de
+   uma pilha de 90 m saía um bloco marrom achatado, "z: 315 a 405 m · EV 0,04×". Agora:
+   - dois perfis: o PROJETO (só onde a linha passa por ele) e o TERRENO, do MDT de trabalho;
+     entre os dois, aterro (projeto acima do terreno) ou corte (abaixo);
+   - a faixa de cotas é a dos perfis ao longo da linha; a cota de trabalho só entra se estiver
+     perto dela — longe, vira uma nota no título;
+   - a figura nunca é achatada: se não cabe em escala 1:1, encolhe por igual e fica centrada;
+     o exagero vertical só aumenta (até 10×), para relevo baixo;
+   - como é a régua que arma esta ferramenta, o título traz a medida: distância, desnível de A
+     para A′ e inclinação. */
+function perfisDaSecao(a,b,M){
+  const zp=[],zt=[];
+  for(let i=0;i<=M;i++){
+    const t=i/M,q={x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t};
+    let dentro=false;
+    for(const k of alvos()){const o=objs[k];if(o&&o.design&&cotaEm(o.design,q)!==null){dentro=true;break;}}
+    zp.push(dentro?cotaAbsolutaDoDesign(cotaTotal(q)):NaN);
+    zt.push(amostraSuperficieTrabalho(q.x,q.y));
+  }
+  return {zp,zt};
+}
+/* Faixa de cotas, escalas e medidas: tudo o que o desenho precisa, sem tocar no canvas.
+   Linha curta sobre um aterro alto (ou no fundo de uma cava): com o terreno na faixa a figura
+   em escala verdadeira vira uma coluna de poucos pixels. Nesse caso a faixa fica só com o
+   projeto — é dele que a pessoa está tirando a medida — e o terreno vai para o título. */
+function quadroDaSecao(L,zp,zt,base,W,H){
+  const fin=Number.isFinite;let lo=Infinity,hi=-Infinity,tlo=Infinity,thi=-Infinity;
+  for(const z of zp)if(fin(z)){if(z<lo)lo=z;if(z>hi)hi=z;}
+  for(const z of zt)if(fin(z)){if(z<tlo)tlo=z;if(z>thi)thi=z;}
+  const projeto=lo<=hi?[lo,hi]:null,terreno=tlo<=thi?[tlo,thi]:null;
+  const mE=52,mD=16,mT=38,mB=20,larg=Math.max(40,W-mE-mD),alt=Math.max(30,H-mT-mB);
+  const monta=comTerreno=>{
+    let zMin=comTerreno?Math.min(lo,tlo):lo,zMax=comTerreno?Math.max(hi,thi):hi;
+    if(!(zMin<=zMax)){zMin=zMax=fin(base)?base:0;}
+    const relevo=Math.max(1,zMax-zMin);
+    // a cota de trabalho só entra na faixa quando está perto do que a linha atravessa
+    const mostraBase=fin(base)&&base>=zMin-.35*relevo&&base<=zMax+.35*relevo;
+    if(mostraBase){zMin=Math.min(zMin,base);zMax=Math.max(zMax,base);}
+    const folga=Math.max(.5,.08*(zMax-zMin));zMin-=folga;zMax+=folga;
+    const altura=zMax-zMin;let escH=larg/L,escV=escH,ev=1;
+    if(altura*escV>alt){escV=alt/altura;escH=escV;}                     // não cabe em 1:1: encolhe por igual
+    else if(altura*escV<alt*.45){ev=Math.min(10,Math.max(1,Math.floor((alt*.75/altura)/escH)));escV=escH*ev;}
+    return {zMin,zMax,mostraBase,escH,escV,ev,x0:mE+(larg-L*escH)/2};
+  };
+  let q=monta(true),terrenoFora=false;
+  if(projeto&&terreno&&L*q.escH<.4*larg){q=monta(false);terrenoFora=true;}
+  // desnível de A para A′: pelo projeto quando as duas pontas estão nele; senão pelo terreno
+  const pa=zp[0],pb=zp[zp.length-1],ta=zt[0],tb=zt[zt.length-1],
+    dz=fin(pa)&&fin(pb)?pb-pa:fin(ta)&&fin(tb)?tb-ta:NaN,doProjeto=fin(pa)&&fin(pb);
+  return {...q,projeto,terreno,terrenoFora,mT,mB,mE,mD,dz,doProjeto,incl:fin(dz)&&L>0?100*dz/L:NaN};
+}
 function desenhaSecPainel(){
   const painel=$("painelSec");
   const estava=painel.classList.contains("aberto");
@@ -3641,51 +3694,76 @@ function desenhaSecPainel(){
   ctxSec.fillStyle="#f6f4ee"; ctxSec.fillRect(0,0,W,H);
 
   const L=Math.hypot(secB.x-secA.x, secB.y-secA.y);
-  if(L<1){return;}
-  const M=Math.min(500, Math.max(120, Math.round(L/2)));
-  const zs=[],baseSec=Number.isFinite(+superficieTrabalho?.workZ)?+superficieTrabalho.workZ:0;
-  let zMin=baseSec,zMax=baseSec;
-  for(let i=0;i<=M;i++){
-    const t=i/M;
-    const z=cotaAbsolutaDoDesign(cotaTotal({x:secA.x+(secB.x-secA.x)*t, y:secA.y+(secB.y-secA.y)*t}));
-    zs.push(z); zMin=Math.min(zMin,z); zMax=Math.max(zMax,z);
+  ctxSec.fillStyle="#555"; ctxSec.font="11px Signika, sans-serif"; ctxSec.textAlign="left"; ctxSec.textBaseline="top";
+  if(L<.05){ctxSec.fillText("Seção A–A′: os dois pontos coincidem. Toque em outro ponto para A′.",12,8);return;}
+  const M=Math.min(600, Math.max(120, Math.round(L/.5)));
+  const baseSec=Number.isFinite(+superficieTrabalho?.workZ)?+superficieTrabalho.workZ:NaN,
+    {zp,zt}=perfisDaSecao(secA,secB,M),Q=quadroDaSecao(L,zp,zt,baseSec,W,H),fin=Number.isFinite;
+  const X=d=>Q.x0+d*Q.escH, Y=z=>H-Q.mB-(z-Q.zMin)*Q.escV, D=i=>i/M*L, yBase=H-Q.mB;
+  // entre o terreno e o projeto: aterro ou corte; sem terreno na figura, o maciço vai até a base do quadro
+  ctxSec.save();ctxSec.beginPath();ctxSec.rect(0,Q.mT-3,W,yBase-Q.mT+3);ctxSec.clip();
+  // um polígono por trecho seguido do mesmo tipo (não um por amostra: as emendas apareciam como listras)
+  const tipo=i=>{const p0=zp[i],p1=zp[i+1];if(!fin(p0)||!fin(p1))return 0;
+    const t0=zt[i],t1=zt[i+1];if(Q.terrenoFora||!fin(t0)||!fin(t1))return 1;return (p0+p1)<(t0+t1)?3:2;};   // 1 maciço · 2 aterro · 3 corte
+  for(let i=0;i<M;){
+    const k=tipo(i);if(!k){i++;continue;}
+    let j=i;while(j<M&&tipo(j)===k)j++;
+    ctxSec.beginPath();ctxSec.moveTo(X(D(i)),Y(zp[i]));
+    for(let q=i+1;q<=j;q++)ctxSec.lineTo(X(D(q)),Y(zp[q]));
+    if(k===1){ctxSec.lineTo(X(D(j)),yBase);ctxSec.lineTo(X(D(i)),yBase);}
+    else for(let q=j;q>=i;q--)ctxSec.lineTo(X(D(q)),Y(zt[q]));
+    ctxSec.closePath();ctxSec.fillStyle=k===3?"rgba(201,96,74,.38)":"#d9c9a3";ctxSec.fill();
+    i=j;
   }
-  const mrg=34, altura=Math.max(10, zMax-zMin);
-  let ev=1;
-  const escH=(W-2*mrg)/L;
-  let escV=escH;
-  if(altura*escV<(H-2*mrg)*0.35){ // exagero vertical automático
-    ev=Math.min(5, Math.max(1, Math.round(((H-2*mrg)*0.6/altura)/escH)));
-    escV=escH*ev;
+  // grade de cotas: três a cinco valores redondos
+  const passos=[.5,1,2,5,10,20,25,50,100,200,500],faixa=Q.zMax-Q.zMin,passo=passos.find(v=>faixa/v<=5)||1000;
+  ctxSec.font="10.5px Signika, sans-serif";ctxSec.textBaseline="middle";ctxSec.textAlign="right";
+  for(let z=Math.ceil(Q.zMin/passo)*passo;z<=Q.zMax+1e-9;z+=passo){
+    const y=Y(z);if(y<Q.mT-4||y>yBase+1)continue;
+    ctxSec.strokeStyle="rgba(90,84,70,.16)";ctxSec.lineWidth=1;ctxSec.beginPath();ctxSec.moveTo(Q.mE-4,y);ctxSec.lineTo(W-10,y);ctxSec.stroke();
+    ctxSec.fillStyle="#666";ctxSec.fillText(fmt(z,passo<1?1:0)+" m",Q.mE-8,y);
   }
-  if(altura*escV>H-2*mrg){ escV=(H-2*mrg)/altura; ev=escV/escH; }
-  const X=t=>mrg+t*escH, Y=z=>H-mrg-(z-zMin)*escV;
-
-  // perfil preenchido (maciço/aterro abaixo da superfície)
-  ctxSec.beginPath();
-  ctxSec.moveTo(X(0), H-6);
-  for(let i=0;i<=M;i++) ctxSec.lineTo(X(i/M*L), Y(zs[i]));
-  ctxSec.lineTo(X(L), H-6); ctxSec.closePath();
-  ctxSec.fillStyle="#d9c9a3"; ctxSec.fill();
-  // plano da cota de trabalho do projeto
-  ctxSec.setLineDash([5,5]); ctxSec.strokeStyle="#3f5a2a"; ctxSec.lineWidth=1.2;
-  ctxSec.beginPath(); ctxSec.moveTo(X(0),Y(baseSec)); ctxSec.lineTo(X(L),Y(baseSec)); ctxSec.stroke();
+  // plano da cota de trabalho, quando está na faixa
+  if(Q.mostraBase){
+    ctxSec.setLineDash([5,5]); ctxSec.strokeStyle="#3f5a2a"; ctxSec.lineWidth=1.2;
+    ctxSec.beginPath(); ctxSec.moveTo(X(0),Y(baseSec)); ctxSec.lineTo(X(L),Y(baseSec)); ctxSec.stroke();
+    ctxSec.setLineDash([]);
+  }
+  const traca=(zs,cor,larg)=>{ctxSec.strokeStyle=cor;ctxSec.lineWidth=larg;ctxSec.lineJoin="round";ctxSec.beginPath();let aberto=false;
+    for(let i=0;i<=M;i++){if(!fin(zs[i])){aberto=false;continue;}const px=X(D(i)),py=Y(zs[i]);if(aberto)ctxSec.lineTo(px,py);else{ctxSec.moveTo(px,py);aberto=true;}}
+    ctxSec.stroke();};
+  if(!Q.terrenoFora)traca(zt,"#2f7a46",1.6);   // terreno (MDT de trabalho)
+  traca(zp,"#4a3823",2.2);                      // projeto
+  ctxSec.restore();
+  // pontas A e A′
+  ctxSec.strokeStyle="rgba(42,127,82,.55)";ctxSec.lineWidth=1;ctxSec.setLineDash([3,3]);
+  for(const d of [0,L]){ctxSec.beginPath();ctxSec.moveTo(X(d),Q.mT-4);ctxSec.lineTo(X(d),yBase);ctxSec.stroke();}
   ctxSec.setLineDash([]);
-  // perfil
-  ctxSec.strokeStyle="#4a3823"; ctxSec.lineWidth=2;
-  ctxSec.beginPath();
-  for(let i=0;i<=M;i++){const px=X(i/M*L), py=Y(zs[i]); i?ctxSec.lineTo(px,py):ctxSec.moveTo(px,py);}
-  ctxSec.stroke();
-  // eixos/rotulagem
-  ctxSec.fillStyle="#555"; ctxSec.font="10.5px Signika, sans-serif";
-  ctxSec.textAlign="left"; ctxSec.textBaseline="top";
-  ctxSec.fillText("A", X(0), 6); ctxSec.textAlign="right"; ctxSec.fillText("A'", X(L), 6);
-  ctxSec.textAlign="left";
-  ctxSec.fillText(`Seção A–A'  ·  L = ${fmt(L,0)} m  ·  z: ${fmt(zMin,0)} a ${fmt(zMax,0)} m` + (Math.abs(ev-1)>0.05?`  ·  EV ${fmt(ev,2)}×`:""), X(0)+18, 6);
-  for(const z of [zMin,baseSec,zMax]){
-    if(Math.abs(z-baseSec)<1e-6 && zMin===baseSec && zMax===baseSec) continue;
-    ctxSec.fillText(fmt(z,0)+" m", 4, Y(z)-5);
+  ctxSec.fillStyle="#2a7f52";ctxSec.font="bold 11px Signika, sans-serif";ctxSec.textBaseline="bottom";
+  ctxSec.textAlign="center";ctxSec.fillText("A",X(0),Q.mT-5);ctxSec.fillText("A′",X(L),Q.mT-5);
+  ctxSec.fillStyle="#666";ctxSec.font="10.5px Signika, sans-serif";ctxSec.textBaseline="top";
+  ctxSec.textAlign="center";ctxSec.fillText("0",X(0),yBase+4);ctxSec.fillText(fmt(L,1)+" m",X(L),yBase+4);
+  // título: a medida da régua e as cotas de cada perfil
+  const sinal=v=>(v>0?"+":"")+fmt(v,2),faixaDe=r=>fmt(r[0],1)+(Math.abs(r[1]-r[0])>.05?" a "+fmt(r[1],1):"")+" m",partes=["Seção A–A′","distância "+fmt(L,L<100?2:1)+" m"];
+  if(fin(Q.dz))partes.push("desnível "+sinal(Q.dz)+" m ("+fmt(Math.abs(Q.incl),1)+"%"+(Q.doProjeto?"":", terreno")+")");
+  if(Math.abs(Q.ev-1)>.05)partes.push("exagero vertical "+fmt(Q.ev,0)+"×");
+  if(Q.projeto)partes.push("projeto "+faixaDe(Q.projeto));
+  if(Q.terreno)partes.push("terreno "+faixaDe(Q.terreno)+(Q.terrenoFora?" (fora da figura)":""));
+  else partes.push("sem MDT nesta linha");
+  if(!Q.projeto)partes.push("fora do projeto");
+  if(fin(baseSec)&&!Q.mostraBase)partes.push("cota de trabalho "+fmt(baseSec,0)+" m (fora da figura)");
+  // legenda, à direita; o título fica com o espaço que sobra
+  const itens=(Q.projeto?[["projeto","#4a3823"]]:[]).concat(Q.terreno&&!Q.terrenoFora?[["terreno (MDT)","#2f7a46"]]:[]);
+  let lx=W-12;ctxSec.textAlign="right";ctxSec.font="10.5px Signika, sans-serif";
+  for(const [nome,cor] of itens.reverse()){
+    ctxSec.fillStyle="#555";ctxSec.fillText(nome,lx,6);lx-=ctxSec.measureText(nome).width+6;
+    ctxSec.strokeStyle=cor;ctxSec.lineWidth=2.2;ctxSec.beginPath();ctxSec.moveTo(lx-16,12);ctxSec.lineTo(lx,12);ctxSec.stroke();lx-=28;
   }
+  ctxSec.fillStyle="#3a3a3a";ctxSec.font="11px Signika, sans-serif";ctxSec.textAlign="left";ctxSec.textBaseline="top";
+  let titulo=partes.join("  ·  ");const cabe=lx-14;
+  // sem espaço: saem primeiro as cotas dos perfis, do fim para o começo; a medida fica sempre
+  while(partes.length>2&&ctxSec.measureText(titulo).width>cabe){partes.pop();titulo=partes.join("  ·  ");}
+  ctxSec.fillText(titulo,10,5);
 }
 
 /* ================= exportação ================= */
