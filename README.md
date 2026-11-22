@@ -3,14 +3,14 @@
 Código-fonte do GeoMine, o GIS web da CCM publicado em https://geomine-3.web.app/
 (projeto Firebase `geomine-3`).
 
-A raiz deste repositório corresponde à versão publicada em 22/11/2026 às 15h40
+A raiz deste repositório corresponde à versão publicada em 22/11/2026 às 16h07
 (horário de Brasília), e a montagem feita a partir daqui reproduz o site byte a
 byte:
 
 | Arquivo gerado | SHA-256 |
 |---|---|
-| `dist/GeoMine.html` | `a7ffb392b3ac3ed19d772f8bc88efc87af011b4ab73c69d8ca81ee7231ff0ed6` |
-| `public/index.html` | `2280971f0ecc56d25e0efb2f3f1bcbca74dd2e43c901ea9c49d213330881e27a` |
+| `dist/GeoMine.html` | `0ce51cef56c9cecb43e965e8ca9a4daa29abb6be2713ce96a51d0990ebf5cfd4` |
+| `public/index.html` | `d43be1fa51206c85076bf72b9848b94b1568ae163c9612a6974794fa88b2e0b0` |
 
 Os mesmos valores estão em `CURRENT_RELEASE.json` (`distSha256` e
 `publishedSha256`), junto com o histórico de publicações e validações.
@@ -301,7 +301,7 @@ publicou de outro lugar e este repositório está desatualizado.
   interseção nunca retira desenho.** A primeira versão (15h14) retirava a
   "ilha" pequena do lado mantido, e as cristas, pés e bordas de rampa dela
   sumiam do corte — print IMG_0240, "quando cortei essas linhas sumiram".
-  Desde as 15h58, quando o lado mantido é uma ilha pequena (menor que a vizinha
+  Desde as 16h07, quando o lado mantido é uma ilha pequena (menor que a vizinha
   e que 10% de tudo o que fica), nada muda no corte: o desenho ali já é o bruto
   e a linha só deixa de ser desenhada. A medida é sobre a área mantida: com o
   DCE da CSN na cota 315 o laço de 17 mil m² era 77% do que ficava e não pode
