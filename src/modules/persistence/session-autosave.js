@@ -253,11 +253,16 @@ window.recuperarAutosave=recuperarAutosaveProtegido;
 
 function installChangeTracking(){
   if(STATE.trackingInstalled)return;STATE.trackingInstalled=true;
+  /* Janelas que não editam o projeto (a busca da janela Abrir do Drive) ficam
+     de fora: digitar ali marcava o projeto como alterado, e o Abrir descartava
+     em silêncio o arquivo escolhido em seguida, por achar que o projeto tinha
+     mudado enquanto a janela estava aberta. */
+  const semEdicao=event=>!!event.target?.closest?.('[data-gm-no-dirty]');
   document.addEventListener('input',event=>{
-    if(event.target?.type!=='file')markDirty('entrada alterada');
+    if(event.target?.type!=='file'&&!semEdicao(event))markDirty('entrada alterada');
   },true);
   document.addEventListener('change',event=>{
-    if(event.target?.type!=='file')markDirty('opção alterada');
+    if(event.target?.type!=='file'&&!semEdicao(event))markDirty('opção alterada');
   },true);
   document.addEventListener('pointerup',event=>{
     if(event.target&&event.target.closest&&event.target.closest('#map,#map3d,#layoutCanvas,.leaflet-container'))

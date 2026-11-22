@@ -29,6 +29,19 @@ function lastFolder(){try{const id=localStorage.getItem(FOLDER_KEY)||'';return /
 function rememberFolder(id){if(id&&/^[\w-]{1,200}$/.test(id))try{localStorage.setItem(FOLDER_KEY,id);}catch(_){}}
 async function pick(options={}){
   const provider=drive(),token=await provider.driveAccess(true);
+  /* iPad e celular: a janela Abrir do próprio GeoMine (drive-folder-browser.js),
+     organizada e que volta na última pasta. O seletor do Google fica para o
+     computador (pedido do usuário em 22/11/2026: "para PC não precisa") e
+     para quando a pessoa o pede no rodapé da janela. */
+  const own=root.GeoMineDriveFolderBrowser;
+  if(own&&typeof own.pick==='function'&&typeof root.fsApiOK==='function'&&!root.fsApiOK()){
+    try{
+      const chosen=await own.pick({title:options.title||'Abrir projeto',parent:options.parent||lastFolder(),files:options.files,memoryKey:options.memoryKey});
+      const source={kind:'drive',id:chosen?.id,resourceKey:chosen?.resourceKey||''};
+      if(!isSource(source))throw Error('O Google Drive não identificou o arquivo escolhido.');
+      return source;
+    }catch(error){if(error?.name!=='GeoMineGooglePicker')throw error;}
+  }
   await pickerReady();
   const {appId,key}=provider.drivePickerConfig;
   return new Promise((resolve,reject)=>{

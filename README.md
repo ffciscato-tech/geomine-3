@@ -635,6 +635,34 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
     Drive, também não baixa o projeto de novo.
   - Em navegador de mesa com seletor de arquivos o Salvar continua gravando no
     arquivo local, como antes.
+- **No iPad, o Abrir do Google Drive usa uma janela do próprio GeoMine.**
+  Pedido de 22/11/2026, com o print do seletor do Google (grade de miniaturas
+  com todo tipo de arquivo misturado): "essa janela tem que ser bem mais
+  organizada, aparecer as opções de pastas com estrela, arquivos recentes e
+  sempre ficar memorizada a última pasta que abri… para PC não precisa".
+  `GeoMineDriveFolderBrowser.pick()` (`drive-folder-browser.js`) é a mesma
+  janela compacta do Salvar Como, em dois cards numerados:
+  - **1 · Onde procurar:** atalhos Recentes, Com estrela, Meu Drive e Drives
+    compartilhados, e busca por nome. Recentes mostra primeiro o que foi aberto
+    neste aparelho (`geomine.drive.recentes.v1:<conta>`) e depois os
+    modificados no Drive.
+  - **2 · Escolha o projeto:** caminho da pasta e lista só de pastas e
+    projetos (inclusive o projeto que chegou como `.ccmgis.txt`); um toque no
+    arquivo abre. Na escolha do original de um raster (`drive-originals.js`) a
+    mesma janela lista só pastas e TIFF.
+  - **A última pasta visitada fica guardada** no aparelho, por conta
+    (`geomine.drive.navegacao.v1` para projetos e
+    `geomine.drive.navegacao.originais.v1` para originais), e a janela abre
+    nela; se a pasta sumiu, abre na do último projeto e, por fim, em Meu Drive.
+  - A estrela das pastas pode ser posta e tirada na própria janela quando a
+    conta já autorizou a gravação (primeiro Salvar); sem isso a estrela só
+    aparece, parada, nas pastas que já a têm.
+  - "Seletor do Google" continua no rodapé. No computador o Abrir do Drive
+    segue com o seletor do Google, como antes (`GeoMineDriveProject.pick`
+    decide por `fsApiOK()`).
+  - A janela leva `data-gm-no-dirty`: `session-autosave.js` não conta a busca
+    como edição do projeto. Sem isso, digitar na busca marcava o projeto como
+    alterado e o Abrir descartava em silêncio o arquivo escolhido.
 - **No iPad, exportar grava direto na pasta do projeto no Google Drive.**
   Pedido de 22/11/2026 ("quando vou salvar um projeto ele abre outra janela",
   com o print da prancha em PDF no Layout). Sem seletor de arquivos para

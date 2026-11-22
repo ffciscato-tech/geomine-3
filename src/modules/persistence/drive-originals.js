@@ -207,7 +207,8 @@ function restore(options={}){
 /* Escolha manual, já na pasta onde o último original foi encontrado. */
 async function choose(item,kind){
   if(!root.GeoMineDriveProject?.pick)throw Error('Seletor do Google Drive indisponível.');
-  const picked=await root.GeoMineDriveProject.pick({title:'Escolher o arquivo original',parent:lastFolder()});
+  // No iPad a janela do GeoMine lista só as pastas e os TIFF e guarda a última pasta visitada para os originais.
+  const picked=await root.GeoMineDriveProject.pick({title:'Escolher o arquivo original',parent:lastFolder(),files:'tiff',memoryKey:'geomine.drive.navegacao.originais.v1'});
   await token(false);
   const meta=await (await call(API+'/'+encodeURIComponent(picked.id)+'?fields=id,name,size,parents,modifiedTime,resourceKey&supportsAllDrives=true')).json();
   return restore({item,kind,interactive:false,file:{...meta,resourceKey:meta.resourceKey||picked.resourceKey||''}});
