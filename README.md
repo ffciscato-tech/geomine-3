@@ -269,6 +269,36 @@ publicou de outro lugar e este repositório está desatualizado.
   desenho" e um limite novo zeram a lista. O motor da aba Cava, os volumes e a
   camada Recortada continuam usando o desenho paramétrico inteiro (a Recortada
   só é refeita quando o desenho ou o MDT mudam).
+- **Interseção da cava/DCE com o MDT: faixa exata entre os anéis e rampa dentro
+  do cálculo.** Pedido de 22/11/2026, com o print da pilha da CSN (Cantagalo):
+  "veja se as interseções com a rampa estão bem feitas". Não estavam, por dois
+  motivos. (1) A superfície de projeto entre um pé e a crista seguinte era
+  montada ligando os dois anéis **pelo comprimento de arco**; junto de cantos
+  e dos degraus que a rampa abre nos anéis a faixa torcia e a linha
+  "Interseção" ganhava dentes falsos e se partia em pedaços. (2) A rampa não
+  entrava no cálculo: a faixa de cada bancada era um talude único do pé à
+  crista, e a linha não passava onde as linhas da própria rampa encontram o
+  terreno. Desde então `GeoMineCavaTerrain.intersect`
+  (`cava2-terrain-contact.js`) triangula exatamente a região entre os dois
+  anéis (a malha é só suporte) e tira a cota de uma função da faixa
+  (`bandSurface`): razão das distâncias aos dois anéis — a regra que o motor
+  usa na seção (`cotaEm`) —, medida pelas retas das arestas nos cantos, para
+  as faces seguirem planas até a aresta de encontro. Rampa
+  (`cava2RampasParaIntersecao`, `cava2-workspace.js`): dentro da pista vale o
+  greide dela; ao lado, o talude conserva o ângulo da face (anel de fora →
+  borda de fora, borda de dentro → anel de dentro); o patamar entre dois
+  trechos fica na cota da chegada; o começo de um trecho que ainda corre sobre
+  a berma também conta. Sem triangulação ou com anéis não aninhados vale a
+  faixa antiga. Medido no MDT de Cantagalo (12,5 m) com uma pilha de 8
+  bancadas e rampa, contra uma superfície de referência calculada à parte: o
+  desvio da linha caiu de 10–12 m (95% dos pontos; máximo 17–25 m) para
+  0,3–0,5 m (máximo 2,9 m); das 14 pontas das linhas de rampa cortadas no
+  terreno, 12 ficavam a mais de 1 m da interseção (até 22,7 m) e agora todas
+  ficam a menos de 0,35 m; o volume do corte passou de +1,0% para +0,2% em
+  relação à referência. Não alterar a regra da faixa sem repetir essa
+  conferência (`cava2-terrain-contact.test.cjs` tem os casos de resposta
+  exata: canto, degrau, rampa em pilha e em cava, patamar, rampa sobre a
+  berma).
 - **Opacidade do preenchimento em 0% é transparente.** Pedido de 21/11/2026,
   com o print de um polígono laranja opaco e a barra "Opacidade do
   preenchimento" em 0%. O polígono sem preenchimento visível — hachura

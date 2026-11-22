@@ -1,8 +1,297 @@
 /* Contato da Cava 2 com o MDT. Não completa arcos, não extrapola a cava e
    não reamostra o raster. Os triângulos de projeto são subdivididos até a
-   célula do terreno; cada cruzamento é resolvido na amostra do próprio MDT. */
+   célula do terreno; cada cruzamento é resolvido na amostra do próprio MDT.
+   Entre dois anéis (pé e crista) a malha cobre exatamente a faixa e a cota do
+   projeto vem de uma função — razão das distâncias aos dois anéis, com a
+   rampa da bancada dentro dela —, não da correspondência entre os vértices. */
 (function(root){
 'use strict';
+const MITER_LIMIT=3; // mesmo limite de junta de canto do motor da Cava 2 (offsetU)
+const CHUNK=8;       // arestas por trecho nas caixas de busca
+const BLEND=.2;      // faixa (±20%) em que pista e anel se misturam como limite do talude
+/* Polilinha (anel fechado ou borda aberta) como vetores de arestas, com uma
+   caixa por trecho de arestas: o ponto mais próximo é achado sem percorrer a
+   linha inteira. Arestas nulas ficam de fora. */
+function polyData(P,closed){
+  const x=[],y=[],dx=[],dy=[],za=[],zb=[],m=closed?P.length:P.length-1;
+  for(let i=0;i<m;i++){const a=P[i],b=P[(i+1)%P.length],ex=b[0]-a[0],ey=b[1]-a[1];
+    if(ex*ex+ey*ey<1e-18)continue;x.push(a[0]);y.push(a[1]);dx.push(ex);dy.push(ey);za.push(a[2]??0);zb.push(b[2]??0);}
+  const n=x.length,nc=Math.ceil(n/CHUNK),bx0=new Float64Array(nc).fill(Infinity),by0=new Float64Array(nc).fill(Infinity),
+    bx1=new Float64Array(nc).fill(-Infinity),by1=new Float64Array(nc).fill(-Infinity);
+  for(let i=0;i<n;i++){const c=(i/CHUNK)|0,u=x[i]+dx[i],v=y[i]+dy[i];
+    bx0[c]=Math.min(bx0[c],x[i],u);bx1[c]=Math.max(bx1[c],x[i],u);by0[c]=Math.min(by0[c],y[i],v);by1[c]=Math.max(by1[c],y[i],v);}
+  return {n,nc,closed:!!closed,x:Float64Array.from(x),y:Float64Array.from(y),dx:Float64Array.from(dx),dy:Float64Array.from(dy),
+    za:Float64Array.from(za),zb:Float64Array.from(zb),bx0,by0,bx1,by1,hint:0,bi:-1,bt:0};
+}
+// Distância comum ao ponto mais próximo; guarda em R.bi/R.bt a aresta e o
+// parâmetro. Com "list" só as arestas indicadas são testadas.
+function polyPlain(R,px,py,list){
+  const n=R.n,x=R.x,y=R.y,dx=R.dx,dy=R.dy;let best=Infinity,bi=-1,bt=0;
+  if(list){
+    for(let k=0;k<list.length;k++){const i=list[k],ux=px-x[i],uy=py-y[i],vx=dx[i],vy=dy[i],t=(ux*vx+uy*vy)/(vx*vx+vy*vy),
+      tc=t<0?0:t>1?1:t,qx=ux-tc*vx,qy=uy-tc*vy,d2=qx*qx+qy*qy;if(d2<best){best=d2;bi=i;bt=t;}}
+    R.bi=bi;R.bt=bt;return Math.sqrt(best);
+  }
+  const hc=(R.hint/CHUNK)|0;
+  for(let k=-1;k<R.nc;k++){
+    const c=k<0?hc:k;if(k===hc)continue;
+    if(k>=0){const ex=px<R.bx0[c]?R.bx0[c]-px:px>R.bx1[c]?px-R.bx1[c]:0,ey=py<R.by0[c]?R.by0[c]-py:py>R.by1[c]?py-R.by1[c]:0;
+      if(ex*ex+ey*ey>=best)continue;}
+    for(let i=c*CHUNK,e=Math.min(n,i+CHUNK);i<e;i++){
+      const ux=px-x[i],uy=py-y[i],vx=dx[i],vy=dy[i],t=(ux*vx+uy*vy)/(vx*vx+vy*vy),tc=t<0?0:t>1?1:t,
+        qx=ux-tc*vx,qy=uy-tc*vy,d2=qx*qx+qy*qy;
+      if(d2<best){best=d2;bi=i;bt=t;}
+    }
+  }
+  if(bi>=0)R.hint=bi;R.bi=bi;R.bt=bt;return Math.sqrt(best);
+}
+/* Distância "de offset" de um ponto a uma polilinha. No interior de uma aresta
+   é a distância perpendicular. Na cunha de um vértice vale a maior distância
+   às retas das duas arestas vizinhas (junta miter, com o limite do motor): as
+   faces de um canto seguem planas até a aresta de encontro, em vez de virarem
+   um cone em torno do vértice. Em R.zn fica a cota do ponto mais próximo e em
+   R.dp a distância comum. */
+function polyDist(R,px,py,list){
+  const d=polyPlain(R,px,py,list),bi=R.bi,bt=R.bt,n=R.n;R.dp=d; // dp: distância comum
+  if(bi<0){R.zn=NaN;R.act=-1;return Infinity;}
+  R.zn=R.za[bi]+(R.zb[bi]-R.za[bi])*(bt<0?0:bt>1?1:bt);R.act=bi; // reta que define a distância
+  if(bt>0&&bt<1)return d;
+  let j=bt<=0?bi-1:bi+1;
+  if(R.closed)j=(j+n)%n;else if(j<0||j>=n)return d; // ponta de borda aberta
+  const pi=polyPerp(R,bi,px,py),pj=polyPerp(R,j,px,py),m=pi>=pj?pi:pj;
+  if(pj>pi)R.act=j;
+  if(d/MITER_LIMIT>m){R.act=-1;return d/MITER_LIMIT;}
+  return m;
+}
+// Distância de um ponto à RETA de uma aresta.
+function polyPerp(R,i,px,py){return Math.abs((px-R.x[i])*R.dy[i]-(py-R.y[i])*R.dx[i])/Math.hypot(R.dx[i],R.dy[i]);}
+/* Arestas que podem ser a mais próxima de ALGUM ponto de um disco (centro e
+   raio): as que distam do centro até a menor distância + 2 raios. Reduz a
+   lista herdada do triângulo pai; o triângulo filho cabe no disco do pai. */
+const SCRATCH={d:new Float64Array(64)};
+function polyNarrow(R,list,mx,my,rad){
+  const m=list?list.length:R.n;if(m<=1)return list;
+  if(SCRATCH.d.length<m)SCRATCH.d=new Float64Array(m*2);
+  const d=SCRATCH.d,x=R.x,y=R.y,dx=R.dx,dy=R.dy;let dmin=Infinity;
+  for(let k=0;k<m;k++){const i=list?list[k]:k,ux=mx-x[i],uy=my-y[i],vx=dx[i],vy=dy[i];
+    let t=(ux*vx+uy*vy)/(vx*vx+vy*vy);t=t<0?0:t>1?1:t;const qx=ux-t*vx,qy=uy-t*vy,v=Math.sqrt(qx*qx+qy*qy);d[k]=v;if(v<dmin)dmin=v;}
+  const lim=dmin+2*rad+1e-9;let cnt=0;for(let k=0;k<m;k++)if(d[k]<=lim)cnt++;
+  if(cnt===m)return list;
+  const out=new Int32Array(cnt);for(let k=0,q=0;k<m;k++)if(d[k]<=lim)out[q++]=list?list[k]:k;
+  return out;
+}
+function inRing(P,px,py){
+  let ins=false;
+  for(let i=0,j=P.length-1;i<P.length;j=i++){const a=P[i],b=P[j];
+    if((a[1]>py)!==(b[1]>py)&&px<(b[0]-a[0])*(py-a[1])/(b[1]-a[1])+a[0])ins=!ins;}
+  return ins;
+}
+/* Rampas na ordem de viagem: bordas de fora (b1) e de dentro (b2), pareadas e
+   com cota. Dois trechos consecutivos na mesma cota ganham o patamar que os
+   liga (a mesma "ponte" do motor): as bordas do trecho seguinte são
+   estendidas até o fim do anterior. A pista é a sequência de quadriláteros
+   entre seções consecutivas; cada seção é uma linha de nível. Retornos em
+   patamar não entram na superfície das faces. */
+function prepRamps(list){
+  const out=[];let prev=null;
+  const ok=P=>Array.isArray(P)&&P.length>=2&&P.every(p=>Array.isArray(p)&&p.length>=3&&Number.isFinite(+p[0])&&Number.isFinite(+p[1])&&Number.isFinite(+p[2]));
+  for(const r of list||[]){
+    if(r?.flat)continue; // retorno em patamar: não entra nem interrompe a sequência dos trechos
+    if(!ok(r?.b1)||!ok(r?.b2)||r.b1.length!==r.b2.length){prev=null;continue;}
+    const b1=r.b1.map(p=>[+p[0],+p[1],+p[2]]),b2=r.b2.map(p=>[+p[0],+p[1],+p[2]]);let e1=b1,e2=b2;
+    if(prev){
+      const a1=prev.b1.at(-1),a2=prev.b2.at(-1),w=Math.hypot(b1[0][0]-b2[0][0],b1[0][1]-b2[0][1]),
+        gap=Math.hypot((a1[0]+a2[0]-b1[0][0]-b2[0][0])/2,(a1[1]+a2[1]-b1[0][1]-b2[0][1])/2);
+      if(Math.abs(a1[2]-b1[0][2])<=1e-6*Math.max(1,Math.abs(a1[2]))&&gap<=6*w+20){
+        e1=[[a1[0],a1[1],b1[0][2]]].concat(b1);e2=[[a2[0],a2[1],b2[0][2]]].concat(b2);}
+    }
+    prev={b1,b2};
+    const m=e1.length-1,nc=Math.ceil(m/CHUNK),qx0=new Float64Array(nc).fill(Infinity),qy0=new Float64Array(nc).fill(Infinity),
+      qx1=new Float64Array(nc).fill(-Infinity),qy1=new Float64Array(nc).fill(-Infinity);
+    let zlo=Infinity,zhi=-Infinity,width=Infinity;
+    for(let i=0;i<=m;i++){const c=Math.min(nc-1,(i/CHUNK)|0);
+      for(const cc of i%CHUNK===0&&i>0&&i<m?[c-1,c]:[c])for(const p of [e1[i],e2[i]]){
+        qx0[cc]=Math.min(qx0[cc],p[0]);qx1[cc]=Math.max(qx1[cc],p[0]);qy0[cc]=Math.min(qy0[cc],p[1]);qy1[cc]=Math.max(qy1[cc],p[1]);}
+      zlo=Math.min(zlo,e1[i][2],e2[i][2]);zhi=Math.max(zhi,e1[i][2],e2[i][2]);
+      const w=Math.hypot(e1[i][0]-e2[i][0],e1[i][1]-e2[i][1]);if(w>1e-6)width=Math.min(width,w);}
+    // contorno da pista: borda de fora, borda de dentro e as duas tampas
+    out.push({e1,e2,m,nc,qx0,qy0,qx1,qy1,zlo,zhi,width,E1:polyData(e1,false),E2:polyData(e2,false),
+      C0:polyData([e1[0],e2[0]],false),C1:polyData([e1[m],e2[m]],false),z0:(e1[0][2]+e2[0][2])/2,z1:(e1[m][2]+e2[m][2])/2});
+  }
+  return out;
+}
+// Cota da pista no ponto, ou NaN fora dela.
+function rampZ(r,px,py){
+  const e1=r.e1,e2=r.e2;
+  for(let c=0;c<r.nc;c++){
+    if(px<r.qx0[c]||px>r.qx1[c]||py<r.qy0[c]||py>r.qy1[c])continue;
+    for(let i=c*CHUNK,e=Math.min(r.m,i+CHUNK);i<e;i++){
+      const a=e1[i],b=e1[i+1],d=e2[i],f=e2[i+1];let ins=false;
+      // quadrilátero a → b → f → d
+      if((a[1]>py)!==(b[1]>py)&&px<(b[0]-a[0])*(py-a[1])/(b[1]-a[1])+a[0])ins=!ins;
+      if((b[1]>py)!==(f[1]>py)&&px<(f[0]-b[0])*(py-b[1])/(f[1]-b[1])+b[0])ins=!ins;
+      if((f[1]>py)!==(d[1]>py)&&px<(d[0]-f[0])*(py-f[1])/(d[1]-f[1])+f[0])ins=!ins;
+      if((d[1]>py)!==(a[1]>py)&&px<(a[0]-d[0])*(py-d[1])/(a[1]-d[1])+d[0])ins=!ins;
+      if(!ins)continue;
+      // distância a cada seção (linha de nível); seção degenerada vale como ponto
+      const sec=(u,v)=>{const ex=v[0]-u[0],ey=v[1]-u[1],l=Math.hypot(ex,ey);
+        return l>1e-9?Math.abs((px-u[0])*ey-(py-u[1])*ex)/l:Math.hypot(px-u[0],py-u[1]);},
+        d0=sec(a,d),d1=sec(b,f),z0=(a[2]+d[2])/2,z1=(b[2]+f[2])/2;
+      return d0+d1>1e-12?(z0*d1+z1*d0)/(d0+d1):z0;
+    }
+  }
+  return NaN;
+}
+/* Superfície de projeto entre dois anéis consecutivos (A por fora, B por
+   dentro). A cota de um ponto é a razão das distâncias aos dois anéis — a
+   regra que o motor da Cava 2 usa na seção (cotaEm) — e não depende de como os
+   anéis foram digitalizados nem do seu comprimento. Rampa: dentro da pista
+   vale o greide dela; ao lado, o talude liga o anel de fora à borda de fora,
+   ou a borda de dentro ao anel de dentro, e conserva o ângulo da face. */
+function bandSurface(A,B,zA,zB,ramps){
+  const RA=polyData(A,true),RB=polyData(B,true),dz=zB-zA,lo=Math.min(zA,zB),hi=Math.max(zA,zB),widths=[];
+  for(const p of B)widths.push(polyPlain(RA,p[0],p[1]));for(const p of A)widths.push(polyPlain(RB,p[0],p[1]));
+  widths.sort((a,b)=>a-b);
+  const wmin=widths[0],wmed=widths[widths.length>>1],wmax=widths.at(-1),e=1e-6*Math.max(1,Math.abs(dz)),near=[];
+  let zlo=lo,zhi=hi,wr=Infinity;
+  /* Rampas que interessam à faixa. Num talude, só a da própria bancada (cotas
+     entre as dos dois anéis). Numa berma, só o trecho que chega ou parte na
+     cota dela e que de fato corre por cima dela com outra cota — o começo de
+     um trecho que ainda sobe sobre a berma. Rampas de outras bancadas não
+     mexem na faixa, mesmo que os polígonos se sobreponham num topo espremido. */
+  const flat=!(Math.abs(dz)>1e-9),ez=1e-6*Math.max(1,Math.abs(zA));
+  const invade=r=>{ // amostra as duas bordas (a cada ~1 m, no máximo 16 pontos por trecho)
+    for(const P of [r.e1,r.e2])for(let i=0;i<P.length-1;i++){
+      const a=P[i],b=P[i+1],n=Math.max(1,Math.min(16,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1]))));
+      for(let k=0;k<=n;k++){const t=k/n,x=a[0]+(b[0]-a[0])*t,y=a[1]+(b[1]-a[1])*t,z=a[2]+(b[2]-a[2])*t;
+        if(Math.abs(z-zA)<=1e-3)continue;
+        if(inRing(A,x,y)&&!inRing(B,x,y)&&polyPlain(RA,x,y)>1e-6&&polyPlain(RB,x,y)>1e-6)return true;}
+    }
+    return false;
+  };
+  for(const r of ramps||[]){
+    if(flat?!((Math.abs(r.z0-zA)<=ez||Math.abs(r.z1-zA)<=ez)&&invade(r)):!(r.zhi>lo+e&&r.zlo<hi-e))continue;
+    near.push(r);zlo=Math.min(zlo,r.zlo);zhi=Math.max(zhi,r.zhi);wr=Math.min(wr,r.width);
+  }
+  if(!near.length&&!(Math.abs(dz)>1e-9))return null; // berma sem rampa: cota única, não precisa de função
+  const hd=Math.min(1,Math.max(.25,wmed/6)),check=Math.max(hd,wmed/3),checkR=Math.max(hd,Math.min(check,wr/2)),
+    slope=wmin>1e-6?MITER_LIMIT*Math.abs(dz)/wmin:Infinity;
+  // junto de rampa? (caixas dos trechos da pista, alargadas pela largura da faixa, com folga)
+  const reach=wmax*1.25+1e-6,nearRamp=(x0,y0,x1,y1)=>{
+    for(const r of near)for(let c=0;c<r.nc;c++)
+      if(x1>=r.qx0[c]-reach&&x0<=r.qx1[c]+reach&&y1>=r.qy0[c]-reach&&y0<=r.qy1[c]+reach)return true;
+    return false;
+  };
+  // cand: o que interessa a um triângulo — arestas candidatas de cada anel
+  // (A, B) e se ele está junto de rampa (nr)
+  const z=(px,py,cand)=>{
+    // A pista vem primeiro, inclusive em cima de um anel que ela atravesse:
+    // as duas faixas vizinhas veem ali a mesma cota.
+    const nr=near.length>0&&(cand?cand.nr:nearRamp(px,py,px,py));
+    if(nr)for(const r of near){const zr=rampZ(r,px,py);if(zr===zr)return zr;}
+    const dA=polyDist(RA,px,py,cand?cand.A:null),pA=RA.dp,dB=polyDist(RB,px,py,cand?cand.B:null),pB=RB.dp;
+    if(!(dA>1e-9))return zA;if(!(dB>1e-9))return zB;
+    if(nr){
+      /* Fora da pista, o trecho do contorno dela mais próximo do ponto diz
+         o papel da pista ali. Borda de fora (e tampa na cota do anel de
+         dentro): a pista é o limite ALTO do talude que sobe do anel de fora.
+         Borda de dentro (e tampa na cota do anel de fora): a pista é o limite
+         BAIXO do talude que vai até o anel de dentro. O anel correspondente
+         continua valendo onde está mais perto que a pista; na vizinhança da
+         igualdade (±20%) os dois limites são misturados, para a superfície não
+         ganhar um degrau onde um anel passa sob a pista com outra cota. Lado e
+         precedência usam a distância comum (a de offset encurta muito além
+         de um canto fechado da borda); a cota usa a de offset. */
+      let d=0,pd=Infinity,zc=0,high=true,f=0;
+      for(const r of near){ // com mais de uma rampa, vale a de contorno aplicável mais próximo
+        const d1=polyDist(r.E1,px,py),p1=r.E1.dp,d2=polyDist(r.E2,px,py),p2=r.E2.dp,
+          q0=r.C0.n?polyPlain(r.C0,px,py):Infinity,q1=r.C1.n?polyPlain(r.C1,px,py):Infinity,m=Math.min(p1,p2,q0,q1);
+        if(!(m<pd))continue;
+        let dd,zz,hh;
+        if(m===p1){dd=d1;zz=r.E1.zn;hh=true;}
+        else if(m===p2){dd=d2;zz=r.E2.zn;hh=false;}
+        else if(m===q0){dd=q0;zz=r.z0;hh=Math.abs(zz-zB)<Math.abs(zz-zA);}
+        else{dd=q1;zz=r.z1;hh=Math.abs(zz-zB)<Math.abs(zz-zA);}
+        const ratio=m/(hh?pB:pA);
+        if(ratio<1+BLEND){pd=m;d=dd;zc=zz;high=hh;f=ratio<=1-BLEND?0:(ratio-(1-BLEND))/(2*BLEND);}
+      }
+      if(pd<Infinity){
+        if(high){const zh=zc+(zB-zc)*f,dh=d+(dB-d)*f;return zA+(zh-zA)*dA/(dA+dh);}
+        const zl=zc+(zA-zc)*f,dl=d+(dA-d)*f;return zl+(zB-zl)*dl/(dl+dB);
+      }
+    }
+    return zA+dz*dA/(dA+dB);
+  };
+  const tolLin=Math.max(1e-3,Math.abs(dz)*5e-4),tolD=1e-7*Math.max(1,wmax),
+    box=(a,b,c)=>nearRamp(Math.min(a[0],b[0],c[0]),Math.min(a[1],b[1],c[1]),Math.max(a[0],b[0],c[0]),Math.max(a[1],b[1],c[1])),
+    // a função coincide com o plano do triângulo numa grade de pontos (n divisões por lado)?
+    planar=(a,b,c,n,cand)=>{
+      for(let i=0;i<=n;i++)for(let j=0;j<=n-i;j++){
+        const k=n-i-j;if(i===n||j===n||k===n)continue;const u=i/n,v=j/n,w=k/n;
+        if(Math.abs(z(a[0]*u+b[0]*v+c[0]*w,a[1]*u+b[1]*v+c[1]*w,cand)-(a[2]*u+b[2]*v+c[2]*w))>tolLin)return false;}
+      return n%3===0||Math.abs(z((a[0]+b[0]+c[0])/3,(a[1]+b[1]+c[1])/3,cand)-(a[2]+b[2]+c[2])/3)<=tolLin;
+    },
+    // só a aresta i e as suas vizinhas podem ser as mais próximas?
+    local=(R,list,i)=>{if(!list||list.length>3)return false;
+      for(let k=0;k<list.length;k++){const d=Math.abs(list[k]-i);if(d>1&&d!==R.n-1)return false;}return true;},
+    /* Face plana sem amostrar: nos três vértices (e no baricentro) a distância
+       a cada anel é a distância à MESMA reta, as duas retas são paralelas e só
+       arestas vizinhas concorrem. A região onde uma reta manda é convexa
+       (fica entre as bissetrizes dos seus dois cantos), logo o triângulo
+       inteiro está nela e a cota é linear. */
+    facet=(a,b,c,cand)=>{
+      if(!cand||cand.nr)return false;
+      const mx=(a[0]+b[0]+c[0])/3,my=(a[1]+b[1]+c[1])/3;
+      polyDist(RA,mx,my,cand.A);const i=RA.act;polyDist(RB,mx,my,cand.B);const j=RB.act;
+      if(i<0||j<0||!local(RA,cand.A,i)||!local(RB,cand.B,j))return false;
+      if(Math.abs(RA.dx[i]*RB.dy[j]-RA.dy[i]*RB.dx[j])>1e-9*Math.hypot(RA.dx[i],RA.dy[i])*Math.hypot(RB.dx[j],RB.dy[j]))return false;
+      for(const p of [a,b,c])if(Math.abs(polyDist(RA,p[0],p[1],cand.A)-polyPerp(RA,i,p[0],p[1]))>tolD||
+        Math.abs(polyDist(RB,p[0],p[1],cand.B)-polyPerp(RB,j,p[0],p[1]))>tolD)return false;
+      return true;
+    };
+  return {z,lo:zlo,hi:zhi,hd,
+    // arestas dos dois anéis que interessam a um triângulo (herdadas do pai)
+    narrow:(cand,a,b,c)=>{
+      const mx=(a[0]+b[0]+c[0])/3,my=(a[1]+b[1]+c[1])/3,
+        rad=Math.sqrt(Math.max((a[0]-mx)**2+(a[1]-my)**2,(b[0]-mx)**2+(b[1]-my)**2,(c[0]-mx)**2+(c[1]-my)**2));
+      const nr=near.length>0&&(!cand||cand.nr)&&box(a,b,c);
+      if(rad>4*wmax&&!(cand&&(cand.A||cand.B)))return {A:null,B:null,nr}; // muito maior que a faixa: a lista não encurtaria
+      return {A:polyNarrow(RA,cand?cand.A:null,mx,my,rad),B:polyNarrow(RB,cand?cand.B:null,mx,my,rad),nr};
+    },
+    // margem para os limites de cota de um triângulo: longe de rampa a função
+    // tem inclinação limitada; junto de rampa vale a faixa inteira
+    margin:(L,cand)=>cand.nr?Infinity:slope*L,
+    // triângulo que já pode ser tratado como plano: pequeno, face plana
+    // reconhecida pelas retas, ou conferido numa grade tanto mais fina quanto
+    // maior ele for (junto de rampa, mais fina)
+    flatEnough:(a,b,c,L,cand)=>{
+      if(L<=hd||facet(a,b,c,cand))return true;
+      const n=2*Math.ceil(L/(cand.nr?checkR:check));
+      return n<=12&&planar(a,b,c,n,cand);
+    }};
+}
+/* Triângulos que cobrem exatamente a região entre dois anéis aninhados. A
+   malha serve só de suporte: a cota vem de bandSurface. Devolve null se os
+   anéis não estiverem aninhados ou se a triangulação não fechar a área. */
+function bandFaces(A,B){
+  const T=root.THREE;if(!T?.ShapeUtils?.triangulateShape||!T.Vector2)return null;
+  // origem local: com coordenadas UTM as áreas perderiam a precisão do teste
+  const ox=A[0][0],oy=A[0][1],
+    area=r=>{let s=0;for(let i=0;i<r.length;i++){const p=r[i],q=r[(i+1)%r.length];s+=(p[0]-ox)*(q[1]-oy)-(q[0]-ox)*(p[1]-oy);}return Math.abs(s)/2;},
+    aA=area(A),aB=area(B);
+  if(!(aA>aB)||!(aB>0))return null;
+  // o anel de dentro tem de estar inteiro dentro do de fora (encostar pode)
+  const RA=polyData(A,true),folga=1e-7*Math.max(1,Math.sqrt(aA));
+  for(const p of B)if(!inRing(A,p[0],p[1])&&polyPlain(RA,p[0],p[1])>folga)return null;
+  let faces;const C=A.map(p=>new T.Vector2(p[0]-ox,p[1]-oy)),H=B.map(p=>new T.Vector2(p[0]-ox,p[1]-oy));
+  try{faces=T.ShapeUtils.triangulateShape(C,[H]);}catch(e){return null;}
+  if(C.length!==A.length||H.length!==B.length||!faces?.length)return null;
+  const P=C.concat(H),out=[];let sum=0;
+  for(const f of faces){const a=P[f[0]],b=P[f[1]],c=P[f[2]];if(!a||!b||!c)return null;
+    sum+=Math.abs((b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x))/2;out.push([f[0],f[1],f[2]]);}
+  if(Math.abs(sum-(aA-aB))>1e-6*aA+1e-9)return null;
+  return out;
+}
 function intersect(input,g,options={}){
   if(!g||(!input?.length&&!options.triangles?.length))return [];
   const sample=options.sample||root.sampleZbil;
@@ -27,25 +316,28 @@ function intersect(input,g,options={}){
         if(!best||cost<best.cost)best={ring,cost};}}
     return best.ring;};
   const rings=[];
-  for(const q of input){let ring=clean(q.ring);if(ring.length<3||!Number.isFinite(+q.z))continue;
-    if(rings.length)ring=align(rings.at(-1).ring,ring);rings.push({ring,z:+q.z});}
+  for(const q of input){const ring=clean(q.ring);if(ring.length<3||!Number.isFinite(+q.z))continue;rings.push({ring,z:+q.z});}
   if(rings.length<2&&!options.triangles?.length)return [];
   const emit=typeof options.onPolygon==='function'?options.onPolygon:null,
     keep=p=>options.keepAbove?p[3]>=-epsZ:p[3]<=epsZ;
-  const vertex=(x,y,z)=>[x,y,z,z-sample(g,x,y)],mid=(a,b)=>vertex((a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2);
-  const cross=(a,b)=>{
+  // Numa faixa com superfície por função (surf) a cota de um ponto novo vem
+  // dela; nos demais casos é a interpolação linear da aresta.
+  const vertex=(x,y,z)=>[x,y,z,z-sample(g,x,y)],
+    mid=(a,b,surf,cand)=>{const x=(a[0]+b[0])/2,y=(a[1]+b[1])/2;return vertex(x,y,surf?surf.z(x,y,cand):(a[2]+b[2])/2);};
+  const cross=(a,b,surf,cand)=>{
     if(!Number.isFinite(a[3])||!Number.isFinite(b[3]))return null;
     if(Math.abs(a[3])<=epsZ)return a.slice(0,3);if(Math.abs(b[3])<=epsZ)return b.slice(0,3);
     if(a[3]*b[3]>=0)return null;
     let lo=a,hi=b;
-    for(let k=0;k<40;k++){const m=mid(lo,hi);if(!Number.isFinite(m[3]))return null;
+    for(let k=0;k<40;k++){const m=mid(lo,hi,surf,cand);if(!Number.isFinite(m[3]))return null;
       if(Math.abs(m[3])<=epsZ||Math.hypot(lo[0]-hi[0],lo[1]-hi[1])<tol*.05)return m.slice(0,3);
       if((m[3]<0)===(lo[3]<0))lo=m;else hi=m;}
-    return mid(lo,hi).slice(0,3);
+    return mid(lo,hi,surf,cand).slice(0,3);
   };
-  // Limites conservadores por blocos de células: pula apenas triângulos
+  // Limites conservadores do terreno sob um triângulo: pula apenas triângulos
   // inteiramente acima/abaixo de TODAS as cotas da sua caixa. Isso mantém
-  // depressões internas e reduz o custo durante o arraste das bermas.
+  // depressões internas e reduz o custo durante o arraste das bermas. Caixa
+  // de poucas células: cotas das próprias células; caixa grande: blocos.
   const tiles=new Map(),tileSize=16,grid=ArrayBuffer.isView(g.z)||Array.isArray(g.z)&&!Array.isArray(g.z[0]);
   const range=(a,b,c)=>{
     if(!grid||g.tin||options.sample)return null;
@@ -56,6 +348,11 @@ function intersect(input,g,options={}){
       r0=Math.max(0,Math.floor(fr0)),r1=Math.min(g.nr-1,Math.ceil(fr1));
     if(c0>c1||r0>r1)return [Infinity,-Infinity,false];let min=Infinity,max=-Infinity,
       valid=fc0>=0&&fc1<=g.nc-1&&fr0>=0&&fr1<=g.nr-1;
+    if((c1-c0+1)*(r1-r0+1)<=36){
+      for(let j=r0;j<=r1;j++)for(let i=c0;i<=c1;i++){
+        const z=g.z[j*g.nc+i];if(Number.isFinite(z)){if(z<min)min=z;if(z>max)max=z;}else valid=false;}
+      return [min,max,valid];
+    }
     for(let r=Math.floor(r0/tileSize);r<=Math.floor(r1/tileSize);r++)for(let c=Math.floor(c0/tileSize);c<=Math.floor(c1/tileSize);c++){
       const key=r+','+c;let v=tiles.get(key);
       if(!v){v=[Infinity,-Infinity,true];for(let j=r*tileSize;j<Math.min(g.nr,(r+1)*tileSize);j++)for(let i=c*tileSize;i<Math.min(g.nc,(c+1)*tileSize);i++){
@@ -65,41 +362,71 @@ function intersect(input,g,options={}){
     return [min,max,valid];
   };
   let visited=0;
-  const triangle=(a,b,c,depth=0,part='surface')=>{
-    visited++;const r=range(a,b,c);
+  // Face inteira do lado mantido, numa faixa com cota por função: só é
+  // entregue em pedaços que já são planos.
+  const emitSurf=(a,b,c,depth,part,surf,cand,ready)=>{
+    const ab=Math.hypot(a[0]-b[0],a[1]-b[1]),bc=Math.hypot(b[0]-c[0],b[1]-c[1]),ca=Math.hypot(c[0]-a[0],c[1]-a[1]);
+    if(!ready)cand=surf.narrow(cand,a,b,c);
+    if(depth>=48||surf.flatEnough(a,b,c,Math.max(ab,bc,ca),cand)){emit([a,b,c].map(p=>p.slice(0,3)),part);return;}
+    const pt=(p,q)=>{const x=(p[0]+q[0])/2,y=(p[1]+q[1])/2;return [x,y,surf.z(x,y,cand)];};
+    if(ab>=bc&&ab>=ca){const m=pt(a,b);emitSurf(a,m,c,depth+1,part,surf,cand);emitSurf(m,b,c,depth+1,part,surf,cand);}
+    else if(bc>=ca){const m=pt(b,c);emitSurf(a,b,m,depth+1,part,surf,cand);emitSurf(a,m,c,depth+1,part,surf,cand);}
+    else{const m=pt(c,a);emitSurf(a,b,m,depth+1,part,surf,cand);emitSurf(m,b,c,depth+1,part,surf,cand);}
+  };
+  const triangle=(a,b,c,depth=0,part='surface',surf=null,cand=null)=>{
+    visited++;
+    const ab=Math.hypot(a[0]-b[0],a[1]-b[1]),bc=Math.hypot(b[0]-c[0],b[1]-c[1]),ca=Math.hypot(c[0]-a[0],c[1]-a[1]),
+      L=Math.max(ab,bc,ca),r=range(a,b,c);
+    if(r&&r[0]===Infinity)return;
+    if(surf)cand=surf.narrow(cand,a,b,c);
     if(r){
-      if(r[0]===Infinity)return;
-      const below=Math.max(a[2],b[2],c[2])<r[0]-epsZ,above=Math.min(a[2],b[2],c[2])>r[1]+epsZ;
+      let zmin=Math.min(a[2],b[2],c[2]),zmax=Math.max(a[2],b[2],c[2]);
+      if(surf){const m=surf.margin(L,cand);zmin=Math.max(surf.lo,zmin-m);zmax=Math.min(surf.hi,zmax+m);}
+      const below=zmax<r[0]-epsZ,above=zmin>r[1]+epsZ;
       if(below||above){
         if(!emit)return;
         if(options.keepAbove?below:above)return;
-        if(r[2]){emit([a,b,c].map(p=>p.slice(0,3)),part);return;}
+        if(r[2]){if(surf)emitSurf(a,b,c,depth,part,surf,cand,true);else emit([a,b,c].map(p=>p.slice(0,3)),part);return;}
       }
     }
-    const ab=Math.hypot(a[0]-b[0],a[1]-b[1]),bc=Math.hypot(b[0]-c[0],b[1]-c[1]),ca=Math.hypot(c[0]-a[0],c[1]-a[1]);
-    if(Math.max(ab,bc,ca)>step&&depth<48){
-      if(ab>=bc&&ab>=ca){const m=mid(a,b);triangle(a,m,c,depth+1,part);triangle(m,b,c,depth+1,part);}
-      else if(bc>=ca){const m=mid(b,c);triangle(a,b,m,depth+1,part);triangle(a,m,c,depth+1,part);}
-      else{const m=mid(c,a);triangle(a,b,m,depth+1,part);triangle(m,b,c,depth+1,part);}return;
+    if((L>step||surf&&!surf.flatEnough(a,b,c,L,cand))&&depth<48){
+      if(ab>=bc&&ab>=ca){const m=mid(a,b,surf,cand);triangle(a,m,c,depth+1,part,surf,cand);triangle(m,b,c,depth+1,part,surf,cand);}
+      else if(bc>=ca){const m=mid(b,c,surf,cand);triangle(a,b,m,depth+1,part,surf,cand);triangle(a,m,c,depth+1,part,surf,cand);}
+      else{const m=mid(c,a,surf,cand);triangle(a,b,m,depth+1,part,surf,cand);triangle(m,b,c,depth+1,part,surf,cand);}return;
     }
     // Não cruza vazios do MDT nem cria uma borda falsa na fronteira NoData.
     if(![a,b,c].every(p=>Number.isFinite(p[3])))return;
     if(emit){
       const p=[a,b,c],clipped=[];
       for(let i=0;i<3;i++){const u=p[i],v=p[(i+1)%3],iu=keep(u),iv=keep(v);
-        if(iu)clipped.push(u.slice(0,3));if(iu!==iv){const q=cross(u,v);if(q)clipped.push(q);}}
+        if(iu)clipped.push(u.slice(0,3));if(iu!==iv){const q=cross(u,v,surf,cand);if(q)clipped.push(q);}}
       if(clipped.length>=3)emit(clipped,part);
     }
     if([a,b,c].every(p=>Math.abs(p[3])<=epsZ))return; // superfícies coincidentes não definem uma linha única
     const points=[];
-    for(const p of [cross(a,b),cross(b,c),cross(c,a)])if(p&&!points.some(q=>Math.hypot(q[0]-p[0],q[1]-p[1])<=tol))points.push(p);
+    for(const p of [cross(a,b,surf,cand),cross(b,c,surf,cand),cross(c,a,surf,cand)])if(p&&!points.some(q=>Math.hypot(q[0]-p[0],q[1]-p[1])<=tol))points.push(p);
     if(points.length===2&&Math.hypot(points[0][0]-points[1][0],points[0][1]-points[1][1])>tol)segments.push(points);
   };
+  /* Faixa entre anéis consecutivos. A malha cobre exatamente a região entre os
+     dois anéis e a cota vem da função da faixa: a correspondência por
+     comprimento de arco torcia a faixa junto de cantos e dos degraus da rampa
+     e criava dentes falsos na linha de contato. Sem triangulação disponível
+     ou com anéis não aninhados, vale a faixa antiga por comprimento de arco. */
+  const ramps=prepRamps(options.ramps);let bands=0,strips=0;
   for(let k=0;k<rings.length-1;k++){
-    const A=prep(rings[k].ring),B=prep(rings[k+1].ring),us=[...new Set(A.cum.concat(B.cum).map(v=>+v.toFixed(12)))].sort((a,b)=>a-b);
+    const A=rings[k],B=rings[k+1],faces=options.strips?null:bandFaces(A.ring,B.ring);
+    if(faces){
+      bands++;
+      const surf=Math.abs(A.z-B.z)>1e-9||ramps.length?bandSurface(A.ring,B.ring,A.z,B.z,ramps):null,nA=A.ring.length,
+        P=A.ring.concat(B.ring),V=P.map((p,i)=>vertex(p[0],p[1],surf?surf.z(p[0],p[1]):i<nA?A.z:B.z));
+      for(const f of faces)triangle(V[f[0]],V[f[1]],V[f[2]],0,'surface',surf);
+      continue;
+    }
+    strips++;
+    const PA=prep(A.ring),PB=prep(align(A.ring,B.ring)),us=[...new Set(PA.cum.concat(PB.cum).map(v=>+v.toFixed(12)))].sort((a,b)=>a-b);
     for(let i=1;i<us.length;i++){
-      const a0=at(A,us[i-1]),a1=at(A,us[i]),b0=at(B,us[i-1]),b1=at(B,us[i]),
-        va=vertex(...a0,rings[k].z),vb=vertex(...a1,rings[k].z),vc=vertex(...b0,rings[k+1].z),vd=vertex(...b1,rings[k+1].z);
+      const a0=at(PA,us[i-1]),a1=at(PA,us[i]),b0=at(PB,us[i-1]),b1=at(PB,us[i]),
+        va=vertex(...a0,A.z),vb=vertex(...a1,A.z),vc=vertex(...b0,B.z),vd=vertex(...b1,B.z);
       triangle(va,vc,vd);triangle(va,vd,vb);
     }
   }
@@ -123,7 +450,7 @@ function intersect(input,g,options={}){
     if(p.length>1)out.push({geom:p.map(q=>q.slice(0,2)),zg:p.map(q=>q[2]),_metodo:'malha-adaptativa-x-mdt',_cell:cell});};
   for(const n of nodes)if(n.e.length!==2)while(n.e.some(e=>!e.used))trace(n);
   for(const e of edges)if(!e.used)trace(e.a);
-  if(options.stats)Object.assign(options.stats,{visited,segments:segments.length,components:out.length,cell,tiles:tiles.size});
+  if(options.stats)Object.assign(options.stats,{visited,segments:segments.length,components:out.length,cell,tiles:tiles.size,bands,strips});
   return out;
 }
 function clipPolygon(points,g,options={}){

@@ -1172,7 +1172,7 @@ function assinaturaMdt(R){
     valor(0,0),valor(0,Math.max(0,nc-1)),valor(Math.floor(nr/2),Math.floor(nc/2)),valor(Math.max(0,nr-1),Math.max(0,nc-1))]);
 }
 function hashCorteMdt(d,R,finalizado){
-  return `contato-mdt-3|${assinaturaMdt(R)}|${finalizado?'corte':'preview'}|${d.tipo}|${n(d.baseZ)}|${JSON.stringify(d.engine||{})}`;
+  return `contato-mdt-4|${assinaturaMdt(R)}|${finalizado?'corte':'preview'}|${d.tipo}|${n(d.baseZ)}|${JSON.stringify(d.engine||{})}`;
 }
 function mostraBrutaSemCorte(d,mensagem,erro){
   const L=camadaDoDesenho(d?.id),C=camadaCorteDoDesenho(d?.id);
@@ -1877,9 +1877,18 @@ function mostraBrutaSemCorte(d,mensagem,erro){
   if(mensagem)status(mensagem,erro);return null;
 }
 
+/* Rampas do projeto para o cálculo do contato: bordas de fora e de dentro de
+   cada trecho, na ordem de viagem, com a cota absoluta. Sem elas a faixa de
+   cada bancada era tratada como um talude único entre o pé e a crista e a
+   linha de interseção não acompanhava a pista. */
+function cava2RampasParaIntersecao(design,baseZ){
+  const linha=P=>(Array.isArray(P)?P:[]).map(p=>[+p.x,+p.y,n(baseZ)+n(p.z)]);
+  return (design?.corredores||[]).map(c=>({b1:linha(c?.borda1),b2:linha(c?.borda2),flat:!!c?.gancho}));
+}
+
 /* Publica somente o contato calculado entre a superfície de projeto e o
    MDT. Componentes abertas permanecem abertas, inclusive junto a NoData. */
-function cava2RecortaSuperficieNoMdt(src,g,modoUp,passo,guardarAreas){
+function cava2RecortaSuperficieNoMdt(src,g,modoUp,passo,guardarAreas,rampas){
   const feats=[],linhas=[];
   for(const f of src||[]){
     const e=String(f.props?.ELEMENTO||''),ring=cava2GeomFechada((f.geom||[]).map(p=>({x:p[0],y:p[1]})));
@@ -1891,7 +1900,7 @@ function cava2RecortaSuperficieNoMdt(src,g,modoUp,passo,guardarAreas){
   const area=r=>{const o=r[0];let a=0;for(let i=1;i<r.length-1;i++)
     a+=(r[i][0]-o[0])*(r[i+1][1]-o[1])-(r[i][1]-o[1])*(r[i+1][0]-o[0]);return Math.abs(a);};
   linhas.sort((a,b)=>(modoUp?a.z-b.z:b.z-a.z)||area(b.ring)-area(a.ring));
-  const stats={},poligonos={surface:[],floor:[]},inter=GeoMineCavaTerrain.intersect(linhas,g,{stats,keepAbove:modoUp,
+  const stats={},poligonos={surface:[],floor:[]},inter=GeoMineCavaTerrain.intersect(linhas,g,{stats,keepAbove:modoUp,ramps:rampas,
     onPolygon:guardarAreas?(p,t)=>poligonos[t].push(p):null}).map(f=>({geom:f.geom,zg:f.zg,multi:false,
     props:{TIPO:'Interseção cava × terreno',BANCO:null,COTA:null,CLASSE:'daylight',
       METODO:'superfície de projeto × MDT — amostragem por célula',
@@ -1961,7 +1970,7 @@ function publicaCorteMdt(d,design,silencioso,forcar,finalizar){
     return mostraBrutaSemCorte(d,silencioso?'':`${d.nome}: desenhe primeiro um limite fechado.`,!silencioso);
   }
   const passo=Math.min(.75,Math.abs(n(g.cs,.5))*.5,Math.abs(n(g.csy,g.cs))*.5),modoUp=d.tipo==='pilha';let q;
-  try{q=cava2RecortaSuperficieNoMdt(feicoesCompativeisCorte(src),g,modoUp,passo,finalizado);}
+  try{q=cava2RecortaSuperficieNoMdt(feicoesCompativeisCorte(src),g,modoUp,passo,finalizado,cava2RampasParaIntersecao(design,n(d.baseZ)));}
   catch(e){console.error('Interseção Área 2D × MDT',e);return mostraBrutaSemCorte(d,
     `Falha ao calcular a interseção com “${R.name}”: ${e.message||e}`,true);}
   const normalizadas=normalizaCorteMdt(q?.feats,d,R);
