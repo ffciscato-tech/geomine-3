@@ -2079,27 +2079,99 @@ function buildPDF(jpegBytes, PWmm, PHmm, pxW, pxH){
   push(enc(x));
   return new Blob(parts,{type:'application/pdf'});
 }
+/* Gera o PDF da prancha aberta (300 dpi). Usado por Exportar → PDF e por
+   Compartilhar; o arquivo pronto fica guardado para o Compartilhar (ver
+   shareLayoutPDF) enquanto a prancha não mudar. */
+async function layoutPDFFile(){
+  /* O PDF deve reproduzir exatamente a prévia aberta. `buildLayout()` já
+     resolve a fotografia congelada da prancha e, quando existe, o rascunho
+     atual vindo do mapa 2D. Reaplicar `pl.conv` aqui apagava esse rascunho
+     e fazia ícones voltarem ao tamanho antigo somente na exportação. */
+  await buildLayout();                       // garante SVG e papel atuais
+  const P=S._loPaper;
+  const cv=await rasterizeLayout(300);        // 300 dpi
+  const jpeg=b64ToBytes(cv.toDataURL('image/jpeg',0.92).split(',')[1]);
+  const blob=buildPDF(jpeg,P.PW,P.PH,cv.width,cv.height);
+  const pl=S.plates.find(p=>p.id===S.plateId);
+  const fmt=P.format||'auto';
+  const nome=(P.mode==='a4' && pl)? pl.name.replace(/[^\w\-]+/g,'_')+'_'+fmt.toUpperCase() : (P.mode==='a4'?'prancha_'+fmt.toUpperCase():'figura');
+  const rot=P.format==='a3l'?'A3 paisagem':P.format==='a4p'?'A4 retrato':'Figura';
+  const pronto={blob,nome:nome+'.pdf',descricao:`PDF ${rot} · ${P.PW}×${P.PH} mm · 300 dpi`+(P.mode==='a4'?' · margens 7/7/7/25 mm':'')};
+  _loPDF={key:loPDFKey(),...pronto};
+  return pronto;
+}
 async function exportLayoutPDF(){
   await layoutExportDriveReady();
   try{
     showLoad('Gerando PDF…');
-    /* O PDF deve reproduzir exatamente a prévia aberta. `buildLayout()` já
-       resolve a fotografia congelada da prancha e, quando existe, o rascunho
-       atual vindo do mapa 2D. Reaplicar `pl.conv` aqui apagava esse rascunho
-       e fazia ícones voltarem ao tamanho antigo somente na exportação. */
-    await buildLayout();                       // garante SVG e papel atuais
-    const P=S._loPaper;
-    const cv=await rasterizeLayout(300);        // 300 dpi
-    const jpeg=b64ToBytes(cv.toDataURL('image/jpeg',0.92).split(',')[1]);
-    const blob=buildPDF(jpeg,P.PW,P.PH,cv.width,cv.height);
+    const f=await layoutPDFFile();
     hideLoad();
-    const pl=S.plates.find(p=>p.id===S.plateId);
-    const fmt=P.format||'auto';
-    const nome=(P.mode==='a4' && pl)? pl.name.replace(/[^\w\-]+/g,'_')+'_'+fmt.toUpperCase() : (P.mode==='a4'?'prancha_'+fmt.toUpperCase():'figura');
-    download(blob, nome+'.pdf');
-    const rot=P.format==='a3l'?'A3 paisagem':P.format==='a4p'?'A4 retrato':'Figura';
-    toast(`PDF ${rot} · ${P.PW}×${P.PH} mm · 300 dpi`+(P.mode==='a4'?' · margens 7/7/7/25 mm':''));
+    download(f.blob,f.nome);
+    toast(f.descricao);
   }catch(e){ hideLoad(); toast('Falha ao gerar PDF: '+e.message); }
+}
+/* COMPARTILHAR A PRANCHA (22/11/2026: "aqui deve ter um ícone de opção de
+   compartilhamento", com o print do Layout no iPad). O ícone ao lado de
+   Exportar abre a folha de compartilhar do aparelho (WhatsApp, e-mail,
+   AirDrop, Salvar em Arquivos…) com o PDF da prancha aberta.
+   O navegador só abre essa folha dentro de um toque, e gerar a prancha a 300
+   dpi demora mais do que o toque vale. Por isso:
+   - se o PDF desta prancha já está pronto (acabou de ser exportado ou
+     compartilhado e nada mudou), a folha abre no próprio toque;
+   - senão o PDF é gerado e, se o toque já venceu, uma caixa pequena avisa que
+     ele está pronto e pede o toque que abre a folha. */
+function layoutShareSupported(){
+  try{
+    if(typeof navigator.share!=='function'||typeof navigator.canShare!=='function')return false;
+    return navigator.canShare({files:[new File(['%PDF-'],'prancha.pdf',{type:'application/pdf'})]})===true;
+  }catch(_){return false;}
+}
+function loPDFKey(){
+  const P=S._loPaper||{};
+  return ['pdf-300dpi',loBlobKey(),S.plateId||'',P.format||'',P.mode||''].join('|');
+}
+function layoutShareAsk(file){
+  return new Promise(resolve=>{
+    document.getElementById('gmLayoutShareReady')?.remove();
+    const bg=document.createElement('div');bg.id='gmLayoutShareReady';bg.className='modal-bg on';
+    bg.innerHTML='<div class="modal" role="dialog" aria-modal="true" aria-labelledby="gmLayoutShareTitle" style="width:min(380px,100%)">'+
+      '<div class="modal-h"><b id="gmLayoutShareTitle">Prancha pronta para compartilhar</b></div>'+
+      '<div class="modal-b"><div class="hint" data-text style="margin-bottom:12px"></div>'+
+      '<div style="display:flex;gap:8px">'+
+      '<button type="button" class="tbtn" data-choice="cancel" style="flex:1;justify-content:center">Cancelar</button>'+
+      '<button type="button" class="tbtn" data-choice="share" style="flex:2;justify-content:center;background:var(--amber);color:#1a1206;font-weight:600">Compartilhar</button>'+
+      '</div></div></div>';
+    bg.querySelector('[data-text]').textContent=file.name+' · '+(file.size/1048576).toFixed(1).replace('.',',')+' MB';
+    let done=false;
+    const finish=value=>{if(done)return;done=true;bg.remove();resolve(value);};
+    bg.querySelector('[data-choice="cancel"]').onclick=()=>finish(false);
+    bg.addEventListener('click',e=>{if(e.target===bg)finish(false);});
+    // A folha de compartilhar é chamada dentro deste toque.
+    bg.querySelector('[data-choice="share"]').onclick=()=>{
+      const sharing=navigator.share({files:[file],title:file.name});
+      finish(true);
+      sharing.catch(e=>{if(e&&e.name!=='AbortError')toast('Não foi possível compartilhar: '+(e&&e.message||e));});
+    };
+    document.body.append(bg);
+  });
+}
+async function layoutShareOpen(file){
+  try{await navigator.share({files:[file],title:file.name});return true;}
+  catch(e){
+    if(e&&e.name==='AbortError')return false;     // a pessoa fechou a folha de compartilhar
+    if(!e||e.name!=='NotAllowedError'){toast('Não foi possível compartilhar: '+(e&&e.message||e));return false;}
+  }
+  return layoutShareAsk(file);                    // o toque venceu durante a geração: pede o toque com o PDF pronto
+}
+async function shareLayoutPDF(){
+  if(!layoutShareSupported()){toast('Este navegador não compartilha arquivos. Use Exportar.');return false;}
+  let pronto=_loPDF&&_loPDF.key===loPDFKey()&&layoutSourceCurrent()?_loPDF:null;
+  if(!pronto){
+    try{showLoad('Preparando a prancha para compartilhar…');pronto=await layoutPDFFile();}
+    catch(e){hideLoad();toast('Falha ao gerar PDF: '+(e&&e.message||e));return false;}
+    hideLoad();
+  }
+  return layoutShareOpen(new File([pronto.blob],pronto.nome,{type:'application/pdf'}));
 }
 /* PNG sem recompressão: declara 300 dpi no chunk pHYs e preserva IDAT. */
 async function layoutPNG300(cv){
@@ -2184,12 +2256,12 @@ async function writeLayoutClipboard(blob,html){
   }
   await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);
 }
-let _loBlob=null, _loBlobKey=null, _loHTML=null, _loPixels='';
+let _loBlob=null, _loBlobKey=null, _loHTML=null, _loPixels='', _loPDF=null;
 function loBlobKey(){
   const P=S._loPaper||{};
   return ['png-300dpi-physical-v3',S.projectId,S._lastSVGRevision||0,S._loRenderEpoch||0,P.PW||0,P.PH||0,S._lastOrthoDpi||0,!!S.orthoDispFull].join('|');
 }
-function loBlobInvalida(){ _loBlob=null; _loBlobKey=null; _loHTML=null; _loPixels=''; }
+function loBlobInvalida(){ _loBlob=null; _loBlobKey=null; _loHTML=null; _loPixels=''; _loPDF=null; }
 
 async function copyLayoutIMG(){
   const chave=loBlobKey();

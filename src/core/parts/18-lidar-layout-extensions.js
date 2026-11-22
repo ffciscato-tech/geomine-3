@@ -3667,6 +3667,9 @@ document.getElementById('btnPlatesPDF').onclick=exportLayoutPDF;
 document.getElementById('btnLoCopy').onclick=copyLayoutIMG;
 document.getElementById('btnLoCopyTop').onclick=copyLayoutIMG;
 document.getElementById('btnLoSVG').onclick=exportLayoutSVG;
+/* Compartilhar: só aparece onde o navegador compartilha arquivos (iPad, iPhone, Android, Chrome/Edge de mesa). */
+(function(){ const b=document.getElementById('btnLoShare'); if(!b) return;
+  b.onclick=shareLayoutPDF; if(layoutShareSupported()) b.style.display=''; })();
 
 // seções colapsáveis
 document.querySelectorAll('.sec>h3').forEach(h=>h.onclick=()=>h.parentElement.classList.toggle('collapsed'));

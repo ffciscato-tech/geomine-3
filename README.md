@@ -663,6 +663,21 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
     Android com folha de compartilhar continuam como antes. Se o Drive falhar
     (sem permissão na pasta, rede), o GeoMine avisa o motivo e a exportação
     segue pelo navegador, para não se perder.
+- **Layout: ícone Compartilhar.** Pedido de 22/11/2026 ("aqui deve ter um
+  ícone de opção de compartilhamento", com o print do Layout no iPad). O botão
+  `#btnLoShare`, ao lado de Exportar na barra do Layout, abre a folha de
+  compartilhar do aparelho (WhatsApp, e-mail, AirDrop, Salvar em Arquivos…)
+  com o PDF da prancha aberta (`shareLayoutPDF` em `17-layout-printing.js`). Só
+  aparece onde o navegador compartilha arquivos (`navigator.canShare`).
+  - O navegador só abre a folha de compartilhar dentro de um toque, e gerar a
+    prancha a 300 dpi demora mais do que o toque vale. Se o PDF desta prancha
+    já está pronto (acabou de ser exportado ou compartilhado e nada mudou), a
+    folha abre no próprio toque. Senão o PDF é gerado e, se o toque venceu, a
+    caixa "Prancha pronta para compartilhar" pede o toque que abre a folha.
+  - O PDF pronto fica guardado em `_loPDF` e é descartado junto com a imagem
+    do Copiar (`loBlobInvalida`), sempre que a prancha é redesenhada.
+  - Exportar → PDF e Compartilhar geram o mesmo arquivo (`layoutPDFFile`).
+    Compartilhar não grava no Drive nem baixa nada por conta própria.
 - **Camadas de resultado entram no desfazer.** Comandos que só criam uma
   camada nova (Mesclar, Dissolver, curvas de nível, bacias, direção de fluxo e
   os demais de `25-geoprocessing-tin.js` e `19-hydrology-and-flooding.js`)

@@ -530,7 +530,7 @@
   .layoutbar .lo-plate-action .lo-action-label{font-size:10px;font-weight:800;pointer-events:none}
   .layoutbar #btnLoRedraw{background:#167c70;color:#fff;border-color:#167c70}
   .layoutbar #btnLoRedraw.layout-dirty{background:var(--amber);color:#1a1206;border-color:var(--amber);box-shadow:0 0 0 2px color-mix(in srgb,var(--amber) 35%,transparent)}
-  .layoutbar #btnLoExport{width:34px;min-width:34px;padding:4px}
+  .layoutbar #btnLoExport,.layoutbar #btnLoShare{width:34px;min-width:34px;padding:4px}
   .lo-plate-strip{flex-basis:100%;min-width:0;height:34px;display:flex;align-items:center;gap:4px;
     padding:3px 5px;border:1px solid var(--line);border-radius:17px;background:var(--panel2);overflow:hidden}
   .lo-plate-format{flex:none;min-width:29px;padding:3px 6px;border-radius:12px;background:var(--blue,#1673b1);
