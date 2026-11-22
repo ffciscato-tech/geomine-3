@@ -618,6 +618,9 @@ async function handleFiles(fileList){
   showLoad(`Lendo ${files.length} arquivo(s)…`);
   try{
     const groups={};
+    /* Surpac: o .dtm só tem a topologia e depende do .str de mesmo nome, então
+       os arquivos da leva são reunidos e casados depois do laço. */
+    const surpac=[];let semEnquadrar=false;
     for(const f of files){
       if(control.signal.aborted)break;
       const name=f.name||'arquivo';
@@ -625,7 +628,7 @@ async function handleFiles(fileList){
       S._srcNow={file:name, path:(f.webkitRelativePath||''), size:f.size||0, at:new Date().toISOString()};
       let ext=name.includes('.')?name.split('.').pop().toLowerCase():'';
       // Drive/Android às vezes entrega sem extensão: sniff pelos bytes
-      if(!ext || !['shp','dbf','shx','prj','cpg','zip','geojson','json','kml','kmz','gpx','dxf','dwg','csv','txt','tif','tiff','asc','qgs','qgz','ccmgis','png','jpg','jpeg','webp'].includes(ext)){
+      if(!ext || !['shp','dbf','shx','prj','cpg','zip','geojson','json','kml','kmz','gpx','dxf','dwg','csv','txt','tif','tiff','asc','qgs','qgz','ccmgis','png','jpg','jpeg','webp','str','stx','dtm'].includes(ext)){
         ext = await sniffExt(f) || ext;
       }
       const base=name.replace(/\.[^.]+$/,'');
@@ -747,6 +750,10 @@ async function handleFiles(fileList){
             toast('⚠ DXF BINÁRIO não é suportado — no CAD, salve como "DXF ASCII" (R12/2000) e reabra');
           } else await importDXF(await f.text(), base, dxfLote);
         }
+        else if(ext==='str'||ext==='stx'||ext==='dtm'){
+          /* veio sem extensão e foi reconhecido pelos bytes: o casamento do par é pelo nome */
+          surpac.push(new RegExp('\\.'+ext+'$','i').test(name)?f:new File([f],name+'.'+ext,{lastModified:f.lastModified}));
+        }
         else if(ext==='dwg'){
           toast('⚠ DWG é formato proprietário da Autodesk e não pode ser lido no navegador. '+
             'Converta para DXF (no AutoCAD: SAVEAS → DXF; ou pelo conversor gratuito ODA File Converter) e abra o .dxf.');
@@ -764,6 +771,13 @@ async function handleFiles(fileList){
       }
     }
     if(control.signal.aborted)return;
+    if(surpac.length){
+      const feito=await surpacImportaLeva(surpac,{control,falhas});
+      if(control.signal.aborted)return;
+      /* só arquivos em coordenadas locais: o enquadramento geral levaria o
+         mapa para onde não há o que ver */
+      semEnquadrar=surpac.length===files.length&&feito.locais>0&&feito.locais===feito.superficies+feito.camadas;
+    }
     /* Resumo ÚNICO no fim: o usuário fica sabendo o que ficou de fora sem ser
        interrompido arquivo por arquivo. O detalhe vai para a linha de comandos,
        que é onde se procura quando algo realmente faltou. */
@@ -828,7 +842,7 @@ async function handleFiles(fileList){
     }
     // loadProject already restores its viewport (or fits a legacy file).
     // Import/drop must not replace that view with another automatic fit.
-    if(!projectLoaded&&!importedRasters.length)fitAll();
+    if(!projectLoaded&&!importedRasters.length&&!semEnquadrar)fitAll();
     if(!projectLoaded && window.matchMedia('(max-width:720px)').matches && S.layers.length)
       document.getElementById('right').classList.add('open');
   }catch(err){
@@ -896,6 +910,11 @@ async function sniffExt(f){
     if(/^AC10\d\d/.test(txt)) return 'dwg';
     if(/^\s*0\s*\r?\n\s*SECTION/.test(txt)) return 'dxf';
     if(/^<\?xml|<kml/i.test(txt)) return 'kml';
+    /* Surpac sem extensão: o cabeçalho e o registro de eixo passam de 256 bytes */
+    if(typeof surpacFareja==='function'){
+      const sp=surpacFareja(new TextDecoder('latin1').decode(new Uint8Array(await f.slice(0,1024).arrayBuffer())));
+      if(sp) return sp;
+    }
   }catch(e){}
   return '';
 }
@@ -1217,6 +1236,17 @@ async function importZip(file){
       const f=new File([buf], nome);
       await handleFiles([f]);                 // reaproveita o leitor de cada formato
     }catch(e){ console.warn('zip:',nome,e.message); }
+  }
+  /* Surpac dentro do zip: o par .dtm + .str precisa chegar junto ao leitor. */
+  const surpacZip=Object.keys(zip.files).filter(p=>!zip.files[p].dir && /\.(str|stx|dtm)$/i.test(p));
+  if(surpacZip.length && typeof surpacImportaLeva==='function'){
+    const leva=[], falhasSurpac=[];
+    for(const p of surpacZip) leva.push(new File([await zip.files[p].async('arraybuffer')], p.split('/').pop()));
+    await surpacImportaLeva(leva,{falhas:falhasSurpac});
+    if(falhasSurpac.length){
+      toast('Falha na importação: '+falhasSurpac[0]);
+      try{ cmdLog('Importação falhou em: '+falhasSurpac.join(' | '),'erro'); }catch(e){}
+    }
   }
   // projeto QGIS dentro do zip: reconstrói grupos/nomes/cores/ordem
   const qgsPath=Object.keys(zip.files).find(p=>/\.qgs$/i.test(p));

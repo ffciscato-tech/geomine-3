@@ -299,6 +299,76 @@ publicou de outro lugar e este repositório está desatualizado.
   conferência (`cava2-terrain-contact.test.cjs` tem os casos de resposta
   exata: canto, degrau, rampa em pilha e em cava, patamar, rampa sobre a
   berma).
+- **Importar lê os arquivos do Surpac: strings (`.str`) e superfícies
+  (`.dtm` + `.str`).** Pedido de 22/11/2026 ("ele deve importar nativamente tb
+  arquivos do surpac como strings e dtm"). Vale no ＋ Importar, no
+  arrastar-e-soltar e dentro de `.zip`
+  (`modules/data-sources/surpac-import.js`, chamado pelo `handleFiles`):
+  - **`.str` (ou `.stx`) sozinho vira vetores.** Cada segmento de string é uma
+    linha com a cota de cada vértice (`zg`) e os campos `STRING`, `SEGMENTO`,
+    `D1`, `D2`… (descrições do Surpac, na posição em que vieram; coluna toda
+    vazia não vira campo) e `COTA` (só quando a linha é de nível). String
+    fechada continua fechada, como linha — as ferramentas de limite aceitam
+    linha fechada. Com 2 a 12 strings a camada já entra colorida por `STRING`,
+    como no Surpac. Arquivo inteiro em Z = 0 entra sem cota. Ponto isolado e
+    nuvem de pontos gravada como uma string só vão para uma camada de pontos
+    com `COTA`.
+  - **`.dtm` com o `.str` de mesmo nome vira Superfície TIN**, triângulo por
+    triângulo, sem retriangular nem reamostrar (`malhaCriaSuperficieTIN`, o
+    mesmo destino das malhas OBJ/PLY/STL). O `.dtm` só guarda a topologia, e
+    por isso o par: o `.str` do par não vira também camada de vetores (para
+    ter as strings, importe o `.str` sozinho). Uma superfície por objeto do
+    Surpac, juntando as trisolations abertas; sólido fechado (`closed=yes`, ou
+    faces que se anulam em planta) fica de fora, com aviso — é assunto da
+    Geologia ▸ Superfícies / Sólidos Surpac. Sem o `.str` na seleção, o
+    GeoMine procura o nome citado no cabeçalho do `.dtm`, depois a pasta de
+    trabalho concedida e, por fim, pede o arquivo numa caixa compacta que abre
+    o seletor dentro do toque (exigência do iPad). Par trocado é recusado pela
+    topologia, sem criar nada.
+  - **O Surpac não grava o CRS**: as coordenadas entram no CRS de trabalho,
+    como no DXF, e a mensagem diz isso. Dois avisos, sem bloquear: nome de
+    arquivo que cita um datum diferente do projeto (os arquivos da CCM trazem
+    "sad69" no nome; entre SAD69 e SIRGAS 2000 são dezenas de metros) e
+    coordenadas locais (fora da faixa UTM), que o mapa em UTM não consegue
+    mostrar — nesse caso a vista do mapa não é levada para o polo. Projeto em
+    graus com arquivo em metros é recusado.
+  - **Um leitor só.** Os bytes são lidos pelo `GeoMineSurpacReader`
+    (`modules/geology/surpac-reader.js`), o mesmo da Geologia e das
+    sondagens; a importação geral usa a leitura compacta em vetores tipados
+    (`compactSTR`, `compactDTM`, `compactPair`), que não cria um objeto por
+    registro. Formato binário conferido em 12 conjuntos reais do Drive da CCM
+    contra um leitor independente: no `.str`, cabeçalho e registro de eixo em
+    texto, 5 zeros e registros `[nº da string u32][Y f64][X f64][Z f64]
+    [descrição NUL]` em big-endian, com um registro nulo no fim de cada
+    segmento e `END` no último; no `.dtm`, cabeçalho `nome.str,…`, uma seção
+    de strings própria e registros de objeto, trisolation e triângulo (3 nós +
+    3 vizinhos), terminando em 8 bytes `0xFF`. **O nó do triângulo é a posição
+    do registro no `.str`, contando os terminadores de segmento** — pular os
+    terminadores embaralha a malha. A seção de strings do `.dtm` quase sempre
+    traz só o `END`, mas o Surpac também grava ali pontos que os triângulos
+    não indexam (3 dos 9 pares reais): o leitor antigo recusava esses arquivos
+    com "END ausente", inclusive na Geologia. O `.dtm` em texto aceita a linha
+    `0, 0.000, 0.000, 0.000, END` depois do cabeçalho.
+  - **Linha ou nuvem** (`surpacPareceNuvem`): o arquivo não diz, e ligar uma
+    nuvem ponto a ponto dá um novelo. Só vira pontos com prova forte: viradas
+    de mais de 120° em ≥ 25% dos vértices **e** trechos que se cruzam (nuvem
+    em ordem qualquer), ou ≥ 11 pontos por célula 3D de 4 passos de lado numa
+    string espalhada por ≥ 6 células e com < 20% de viradas bruscas (nuvem em
+    fileiras: grade, varredura, malha de furos). Na dúvida fica linha, que é o
+    erro que se vê e se conserta com Extrair vértices → pontos. Nos arquivos
+    reais: curvas e limites têm 0 cruzamento, até 20% de viradas bruscas e 2 a
+    5 pontos por célula; nuvens, 40–56% de viradas e mais de 16 pontos por
+    célula. Limites conhecidos, que ficam como linha: nuvem em fileiras com
+    menos de ~100 pontos e grade regular em planta sobre parede íngreme.
+  - **Tamanho.** Leitura de até 256 MB por arquivo e 8 milhões de registros ou
+    triângulos; camada vetorial até 2 milhões de pontos (o teto das nuvens
+    LiDAR). Medido com pares sintéticos: 2 milhões de triângulos em ~7 s e
+    3,9 milhões em ~14 s (a leitura leva 0,1–0,3 s; o resto é o desenho da
+    malha, igual ao de qualquer TIN); nuvem de 1 milhão de pontos como
+    vetores em ~6 s, com ~0,5 GB de memória — para nuvem grande, o caminho
+    leve é o par, como superfície.
+  - Testes: `surpac-reader.test.cjs` e `surpac-import.test.cjs`, com arquivos
+    sintéticos. **Arquivos reais do Drive não entram no repositório.**
 - **Opacidade do preenchimento em 0% é transparente.** Pedido de 21/11/2026,
   com o print de um polígono laranja opaco e a barra "Opacidade do
   preenchimento" em 0%. O polígono sem preenchimento visível — hachura

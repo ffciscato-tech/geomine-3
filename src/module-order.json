@@ -160,6 +160,7 @@
         "modules/ui/loading-progress.js",
         "core/parts/03-file-loading-qgis.js",
         "core/parts/04-vector-format-importers.js",
+        "modules/data-sources/surpac-import.js",
         "core/parts/05-layer-model-symbology.js",
         "modules/cad/drawing-session.js",
         "modules/cad/orthogonal.js",
