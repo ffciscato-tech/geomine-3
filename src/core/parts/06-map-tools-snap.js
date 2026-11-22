@@ -527,7 +527,7 @@ const TOOL_INSTR={
   barr:'BARRAMENTO: toque para traçar o eixo da barragem; toque duplo conclui. A água não atravessa a linha.',
   lamina:'LÂMINA pela chuva: toque no ponto de saída da bacia para calcular a lâmina do evento de projeto.',
   dren:'DRENAGEM: toque para traçar a feição sobre o MDT; Ctrl+Z desfaz; Esc conclui e amostra cotas/declividade.',
-  del:'APAGAR: toque na feição que deseja remover.',
+  del:'APAGAR: toque na feição que deseja remover — ou, fora das feições, num pedaço solto de um raster gerado (MDT recortado).',
   vertex:'EDITAR VÉRTICES: toque na feição; arraste os vértices, toque no ○ do meio para inserir, duplo-toque apaga.',
   select:'SELECIONAR: toque numa feição para selecioná-la e editá-la.'
 };

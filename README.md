@@ -254,6 +254,35 @@ publicou de outro lugar e este repositório está desatualizado.
   selecionada sem a pessoa ter clicado nela — ao terminar um desenho ou ao
   reabrir o projeto. Na aba **Cava** a lixeira é outro comando ("Limpar tudo
   da cava/DCE") e não mudou.
+- **A lixeira também apaga pedaços de raster.** Pedido de 22/11/2026, print
+  IMG_0243 com os pedaços soltos do "DCE 1 — MDT recortado · 0,20" circulados:
+  "também devo poder apagar pedaços raster". Com a lixeira armada no Mapa 2D, o
+  toque num pedaço — a região conexa de células com valor em volta do ponto (8
+  vizinhos) — transforma o pedaço em NoData (`modules/raster/raster-pieces.js`,
+  chamado do ramo `del` de `onMapClick`). Regras: (1) **feição primeiro**: o
+  toque numa linha, num ponto ou num polígono com preenchimento visível continua
+  apagando a feição, e o toque que fica *junto* de uma feição sem acertá-la não
+  apaga nada — quem errou a linha por pouco não pode perder um pedaço do MDT;
+  se ali embaixo há um pedaço solto, um aviso diz para tocar longe das linhas
+  (aproximar o mapa ou ocultar a camada). Polígono sem preenchimento visível não
+  bloqueia pelo interior. (2) Vale o raster visível mais alto com célula sob o
+  ponto; a folga do dedo (22 px no toque, 10 px no mouse) só serve para pedaço
+  solto de raster apagável, para acertar uma lasca de poucos pixels. (3) **Só
+  superfícies geradas no GeoMine e guardadas inteiras no projeto** (MDT
+  recortado da cava/DCE e demais grades em memória). MDT importado continua
+  sendo lido do arquivo original na resolução nativa — apagar células só na
+  grade de trabalho deixaria tela, perfil e projeto em desacordo — e é recusado
+  com aviso, assim como o TIN. (4) Raster de um pedaço só não sai por aqui (a
+  camada é excluída na árvore); pedaço com mais da metade das células é o corpo
+  principal e pede confirmação. (5) Ctrl+Z repõe as mesmas cotas (`undoPush` com
+  `t:'rasterpiece'`, tratado em `doUndo`); acima de 2 milhões de células o
+  pedaço não cabe no desfazer e a pergunta avisa antes. (6) No MDT recortado, o
+  volume, as células e a área do corte (`r.src.volumes`, `d.cutVolume` e
+  `resultadoCorte` do desenho) acompanham o pedaço apagado e o desfazer; o
+  volume do pedaço é medido contra o MDT de origem. (7) O projeto salvo depois
+  reabre sem o pedaço. As linhas da Recortada que estiverem sobre o pedaço não
+  saem junto: são feições e saem pela seleção ou pela própria lixeira. Testes em
+  `raster-pieces.test.cjs`.
 - **O que é apagado numa cava/DCE continua apagado.** As camadas que a aba Cava
   gera ("… — Bruta" e "… — Bruta · preenchimento e rampas") são reescritas pelo
   motor a cada publicação, e o salvamento automático publica meio segundo

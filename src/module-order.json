@@ -198,6 +198,7 @@
         "modules/raster/orthophoto-first-frame.js",
         "core/parts/20-raster-dem.js",
         "modules/raster/original-sources.js",
+        "modules/raster/raster-pieces.js",
         "core/parts/21-profiles-and-3d.js",
         "core/parts/22-mine-pit-design.js",
         "modules/civil/road-curves.js",

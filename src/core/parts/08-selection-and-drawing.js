@@ -460,6 +460,18 @@ function onMapClick(e){
   if(typeof ED==='object'&&ED._pendTs&&Date.now()-ED._pendTs<450){ED._pendTs=0;return;}
   if(typeof edMapClick==='function' && edMapClick(edLL)) return;
   const L=activeLayer();
+  /* LIXEIRA NO FUNDO DO MAPA (22/11/2026 — "também devo poder apagar pedaços raster"): o toque
+     numa feição é tratado por ela mesma (pickFeature). Sem feição sob o dedo, nem perto dele,
+     o toque vale para o pedaço de raster que estiver ali. Perto de uma feição nada acontece:
+     quem errou a linha por pouco não pode perder um pedaço do MDT — e, se ali embaixo há um
+     pedaço solto que poderia ser apagado, um aviso diz por que nada aconteceu. Polígono sem
+     preenchimento visível não conta como "perto" pelo interior (feicaoSobPonto já o ignora). */
+  if(S.tool==='del'){
+    let perto=null;try{perto=feicaoSobPonto(e.latlng,S.touch?Math.round(SNAP_PX*1.6):SNAP_PX);}catch(_){}
+    if(!perto)window.GeoMineRasterPieces?.mapClick(e);
+    else window.GeoMineRasterPieces?.avisoPerto(e,perto.L&&perto.L.name);
+    return;
+  }
   if(S.tool==='select'){
     /* Cliques no fundo e nos paths usam a mesma prioridade da árvore. */
     /* Tolerância de seleção não depende mais do ímã: com o snap desligado o

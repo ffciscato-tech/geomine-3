@@ -1928,6 +1928,7 @@ function doUndo(){
   if(proxima?.t==='floodresult'&&window.GeoMineNativeFloodDestination){GeoMineNativeFloodDestination.undo(proxima);return;}
   if(proxima?.t==='channelresult'&&window.GeoMineChannelDestination){GeoMineChannelDestination.undo(proxima);return;}
   if(proxima?.t==='featsplit'&&window.GeoMinePolygonSplit){GeoMinePolygonSplit.undo(proxima);return;}
+  if(proxima?.t==='rasterpiece'&&window.GeoMineRasterPieces){GeoMineRasterPieces.undo(proxima);return;}
   if(proxima&&proxima.L&&typeof canEditLayer==='function'&&!canEditLayer(proxima.L,false)){canEditLayer(proxima.L,true);return;}
   if(proxima?.t==='dimensionstyle'&&window.GeoMineDimensions){GeoMineDimensions.undoStyle(proxima);return;}
   if(proxima?.t==='catchmentresult'&&window.GeoMinePointCatchment?.undo){GeoMinePointCatchment.undo(proxima);return;}
