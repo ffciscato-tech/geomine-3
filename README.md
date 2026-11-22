@@ -300,6 +300,18 @@ publicou de outro lugar e este repositório está desatualizado.
   ajustes são barras de arrastar com o número ao lado (`GeoMineStyleSliders`
   passou a aceitar barras com unidade: × e °). A amostra da camada na árvore
   continua indicando só que há hachura (listra fixa), sem a direção.
+- **Escolha visual da hachura compacta.** Pedido de 22/11/2026 ("esses ícones
+  podem ser menores também"). Em `alagislithologyvisualpickerstyles.css` os
+  cartões têm cerca de 30 px de altura, com amostra de 30×22 (eram 53 px e
+  50×39), e a janela tem 480 px: os 32 padrões cabem sem rolar no iPad. A
+  amostra é desenhada maior e reduzida no `::before` — à metade em tela de
+  alta densidade, a 75% nas demais, onde meio pixel some — para o padrão
+  continuar reconhecível. No script, as opções soltas (Sólido, Sem
+  preenchimento) ficam num grupo só, "Sem hachura", em vez de um título
+  repetido para cada uma; as amostras de Diagonal ╱ e ╲ deixaram de sair em
+  branco (o rótulo usa ╱ e ╲, não / e \); e a janela nunca passa da borda de
+  baixo da tela. O botão da hachura nas janelas de estilo passou de 50 para
+  38 px.
 - **Cards numerados.** Desde 18/11/2026 as ferramentas do GeoMine são
   apresentadas em cards numerados, na ordem em que a pessoa trabalha (pedido
   de 19/11/2026: o que for criado ou reorganizado segue esse padrão). Um card é

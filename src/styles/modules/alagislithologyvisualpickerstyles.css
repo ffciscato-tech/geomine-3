@@ -1,19 +1,25 @@
 
   .alagis-litho-picker{position:relative;min-width:0}
   .alagis-litho-picker>select{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;overflow:hidden!important}
-  .alagis-litho-trigger{box-sizing:border-box;width:100%;min-height:54px;padding:6px 12px 6px 7px;border:1px solid #b8cee0;border-radius:9px;background:#eef5fa;color:#13283a;display:grid;grid-template-columns:50px minmax(0,1fr) 18px;gap:10px;align-items:center;text-align:left;font:inherit;cursor:pointer}
+  /* Amostras e cartões compactos — pedido de 22/11/2026 ("esses ícones podem
+     ser menores também"). O desenho da amostra é feito maior e reduzido
+     (::before), para o padrão continuar reconhecível no quadro menor. */
+  .alagis-litho-trigger{box-sizing:border-box;width:100%;min-height:38px;padding:4px 10px 4px 5px;border:1px solid #b8cee0;border-radius:8px;background:#eef5fa;color:#13283a;display:grid;grid-template-columns:34px minmax(0,1fr) 16px;gap:8px;align-items:center;text-align:left;font:inherit;cursor:pointer}
   .alagis-litho-trigger:hover,.alagis-litho-trigger:focus-visible{border-color:#f3a10b;box-shadow:0 0 0 2px rgba(243,161,11,.16);outline:0}
   .alagis-litho-trigger-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
   .alagis-litho-trigger-arrow{font-size:12px;text-align:center;color:#516b7f}
-  .alagis-litho-swatch{display:block;width:48px;height:36px;box-sizing:border-box;border:1px solid rgba(18,40,58,.38);border-radius:5px;background-color:var(--litho-bg,#e9eef2);background-image:var(--litho-img,none);background-size:var(--litho-size,auto);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
-  .alagis-litho-popover{position:fixed;z-index:2147483000;display:none;width:min(590px,calc(100vw - 24px));max-height:min(70vh,680px);overflow:auto;padding:10px;border:1px solid #9ebbd1;border-radius:12px;background:#f7fbfe;box-shadow:0 14px 42px rgba(12,31,46,.28);color:#13283a}
+  .alagis-litho-swatch{position:relative;overflow:hidden;display:block;width:34px;height:26px;box-sizing:border-box;border:1px solid rgba(18,40,58,.38);border-radius:4px;background-color:var(--litho-bg,#e9eef2)}
+  .alagis-litho-swatch::before{content:"";position:absolute;left:0;top:0;width:133.34%;height:133.34%;background-image:var(--litho-img,none);background-size:var(--litho-size,auto);transform:scale(.75);transform-origin:0 0}
+  /* Em tela de alta densidade (iPad) meio pixel ainda é um pixel inteiro do aparelho: dá para reduzir à metade. */
+  @media (min-resolution:1.5dppx){.alagis-litho-swatch::before{width:200%;height:200%;transform:scale(.5)}}
+  .alagis-litho-popover{position:fixed;z-index:2147483000;display:none;width:min(480px,calc(100vw - 24px));max-height:min(74vh,620px);overflow:auto;padding:8px;border:1px solid #9ebbd1;border-radius:10px;background:#f7fbfe;box-shadow:0 14px 42px rgba(12,31,46,.28);color:#13283a}
   .alagis-litho-popover.is-open{display:block}
-  .alagis-litho-head{position:sticky;top:-10px;z-index:2;margin:-10px -10px 8px;padding:11px 13px 9px;background:rgba(247,251,254,.97);border-bottom:1px solid #c5d8e6;font-weight:800}
-  .alagis-litho-group-title{margin:11px 2px 6px;padding-bottom:4px;border-bottom:1px solid #d5e2eb;color:#5a7183;font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
-  .alagis-litho-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(164px,1fr));gap:7px}
-  .alagis-litho-card{min-width:0;padding:6px;border:1px solid #c5d8e6;border-radius:8px;background:#fff;color:#13283a;display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;align-items:center;text-align:left;font:inherit;cursor:pointer}
+  .alagis-litho-head{position:sticky;top:-8px;z-index:2;margin:-8px -8px 4px;padding:7px 10px 6px;background:rgba(247,251,254,.97);border-bottom:1px solid #c5d8e6;font-size:12.5px;font-weight:800}
+  .alagis-litho-group-title{margin:6px 2px 3px;padding-bottom:2px;border-bottom:1px solid #d5e2eb;color:#5a7183;font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase}
+  .alagis-litho-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:4px}
+  .alagis-litho-card{min-width:0;min-height:30px;box-sizing:border-box;padding:3px 5px 3px 3px;border:1px solid #c5d8e6;border-radius:6px;background:#fff;color:#13283a;display:grid;grid-template-columns:30px minmax(0,1fr);gap:6px;align-items:center;text-align:left;font:inherit;cursor:pointer}
   .alagis-litho-card:hover,.alagis-litho-card:focus-visible{border-color:#f3a10b;background:#fff9ec;outline:0}
   .alagis-litho-card[aria-selected="true"]{border-color:#1688d4;box-shadow:0 0 0 2px rgba(22,136,212,.16);background:#eef8ff}
-  .alagis-litho-card .alagis-litho-swatch{width:50px;height:39px}
-  .alagis-litho-card-name{overflow:hidden;font-size:13px;font-weight:700;line-height:1.18}
-  @media(max-width:620px){.alagis-litho-grid{grid-template-columns:1fr 1fr}.alagis-litho-card{grid-template-columns:42px minmax(0,1fr)}.alagis-litho-card .alagis-litho-swatch{width:40px}}
+  .alagis-litho-card .alagis-litho-swatch{width:30px;height:22px}
+  .alagis-litho-card-name{overflow:hidden;font-size:11.5px;font-weight:600;line-height:1.15}
+  @media(max-width:420px){.alagis-litho-grid{grid-template-columns:1fr 1fr}}

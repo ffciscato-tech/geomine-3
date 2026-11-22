@@ -39,7 +39,7 @@
   function keyFor(label){
     const t=N(label);
     if(t.includes('sem preench'))return'none'; if(t==='solido'||t.includes('sólido'))return'solid';
-    if(t.includes('diagonal /'))return'diag1'; if(t.includes('diagonal \\'))return'diag2'; if(t.includes('malha'))return'grid';
+    if(t.includes('diagonal /')||t.includes('diagonal ╱'))return'diag1'; if(t.includes('diagonal \\')||t.includes('diagonal ╲'))return'diag2'; if(t.includes('malha'))return'grid';
     if(t.includes('horizontal'))return'horizontal'; if(t.includes('vertical'))return'vertical'; if(t.includes('pontilh'))return'dotted';
     if(t.includes('calcario'))return'limestone'; if(t.includes('dolomito'))return'dolomite'; if(t.includes('marga'))return'marl';
     if(t.includes('arenito'))return'sandstone'; if(t.includes('siltito'))return'siltstone'; if(t.includes('argilito'))return'claystone';
@@ -62,9 +62,12 @@
     const pop=document.createElement('div');pop.className='alagis-litho-popover';pop.setAttribute('role','listbox');pop.innerHTML='<div class="alagis-litho-head">Escolha visual do preenchimento geológico</div>';document.body.appendChild(pop);
     const cards=[];
     const addGroup=(label,options)=>{const h=document.createElement('div');h.className='alagis-litho-group-title';h.textContent=label||'Padrões';pop.appendChild(h);const grid=document.createElement('div');grid.className='alagis-litho-grid';pop.appendChild(grid);options.forEach(o=>{if(o.disabled&&!o.value)return;const b=document.createElement('button');b.type='button';b.className='alagis-litho-card';b.dataset.value=o.value;b.setAttribute('role','option');b.innerHTML='<span class="alagis-litho-swatch"></span><span class="alagis-litho-card-name"></span>';b.querySelector('.alagis-litho-card-name').textContent=o.textContent.trim();paint(b.querySelector('.alagis-litho-swatch'),o.textContent.trim());b.addEventListener('click',()=>{s.value=o.value;s.dispatchEvent(new Event('input',{bubbles:true}));s.dispatchEvent(new Event('change',{bubbles:true}));sync();close();});grid.appendChild(b);cards.push(b);});};
-    [...s.children].forEach(n=>{if(n.tagName==='OPTGROUP')addGroup(n.label,[...n.children]);else if(n.tagName==='OPTION')addGroup('Padrões básicos',[n]);});
+    let loose=[];const flush=()=>{if(loose.length){addGroup('Sem hachura',loose);loose=[];}};
+    [...s.children].forEach(n=>{if(n.tagName==='OPTGROUP'){flush();addGroup(n.label,[...n.children]);}else if(n.tagName==='OPTION')loose.push(n);});flush();
     function sync(){const o=s.selectedOptions[0]||s.options[0];if(!o)return;trigger.querySelector('.alagis-litho-trigger-label').textContent=o.textContent.trim();paint(trigger.querySelector('.alagis-litho-swatch'),o.textContent.trim());cards.forEach(b=>b.setAttribute('aria-selected',b.dataset.value===s.value?'true':'false'));}
-    function place(){const r=trigger.getBoundingClientRect(),w=Math.min(590,innerWidth-24),left=Math.max(12,Math.min(r.left,innerWidth-w-12));pop.style.width=w+'px';pop.style.left=left+'px';pop.style.top=((innerHeight-r.bottom>Math.min(440,innerHeight*.6))?r.bottom+5:Math.max(12,r.top-Math.min(pop.scrollHeight,innerHeight*.7)-5))+'px';}
+    function place(){const r=trigger.getBoundingClientRect(),w=Math.min(480,innerWidth-24),left=Math.max(12,Math.min(r.left,innerWidth-w-12));pop.style.width=w+'px';pop.style.left=left+'px';const top=(innerHeight-r.bottom>Math.min(440,innerHeight*.6))?r.bottom+5:Math.max(12,r.top-Math.min(pop.scrollHeight,innerHeight*.7)-5);
+      // A janela nunca passa da borda de baixo (retrato no iPad): sobe o que faltar.
+      pop.style.top=Math.max(8,Math.min(top,innerHeight-pop.offsetHeight-8))+'px';}
     function open(){document.querySelectorAll('.alagis-litho-popover.is-open').forEach(x=>x!==pop&&x.classList.remove('is-open'));pop.classList.add('is-open');trigger.setAttribute('aria-expanded','true');place();const sel=cards.find(b=>b.getAttribute('aria-selected')==='true');if(sel)sel.scrollIntoView({block:'nearest'});}
     function close(){pop.classList.remove('is-open');trigger.setAttribute('aria-expanded','false');}
     trigger.addEventListener('click',e=>{e.stopPropagation();pop.classList.contains('is-open')?close():open();});
