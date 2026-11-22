@@ -571,6 +571,21 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
     A janela do Google reaparece quando a autorização de 55 minutos vence. No
     iPad, o usuário relatou (14/11/2026) que essa janela falhava no Safari e
     funciona bem no Chrome.
+  - **O acesso ao Drive vale para o aparelho, não só para a aba** (22/11/2026:
+    "quando vou salvar um projeto ele abre outra janela"). O acesso ficava
+    guardado só na aba (`sessionStorage`). O iPad descarta a aba do GeoMine
+    quando falta memória e essa guarda pode ir junto: o projeto voltava da
+    cópia local e o Salvar seguinte abria de novo a janela do Google, mesmo
+    minutos depois de autorizar; abrir o GeoMine em outra aba fazia o mesmo,
+    sempre.
+    Agora o acesso fica também no `localStorage` (`geomine.drive.access.v2`,
+    `driveGuardado` no portão), pelo mesmo prazo de 55 minutos, e qualquer aba
+    da mesma conta o aproveita. Sair da conta, trocar de conta ou o Google
+    recusar o acesso (HTTP 401) apaga-o em todos os lugares. Continuam abrindo
+    a janela do Google, porque o limite é dele: a primeira gravação de cada
+    aparelho (pede a permissão de gravar) e toda operação no Drive feita mais
+    de 55 minutos depois da última autorização — inclusive o primeiro Salvar
+    depois de recarregar a página com a autorização vencida.
   - **Uma autorização serve para abrir e salvar** (pedido do usuário em
     14/11/2026: "não precisa abrir uma aba do Firebase quando clico em
     salvar"). O acesso de leitura obtido ao abrir não servia para gravar, e o
@@ -602,9 +617,18 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
   - Projeto novo (que não veio de um arquivo): o primeiro Salvar pede a pasta
     do Drive e o nome; os seguintes gravam nesse arquivo.
   - Nada de perguntas no caminho: o Salvar no Drive não pede "pasta de
-    projeto" para os rasters nem repete a pergunta de resolução — até 60 MB
-    grava as superfícies como estão; acima disso pergunta uma vez por projeto
-    e guarda a resposta (`geomine.salvar.resolucao.v1:`).
+    projeto" para os rasters. **A janela "Resolução das superfícies ao salvar"
+    só aparece quando precisa** (22/11/2026; regra do usuário: superfícies
+    sempre na resolução nativa). Antes ela abria no primeiro Salvar de todo
+    projeto acima de 60 MB no tablet (180 MB no computador) e em todo Salvar
+    Como, com a nativa já marcada. Agora a nativa é gravada sem perguntar
+    enquanto couber com folga: até 250 MB no tablet e no celular, até 380 MB
+    no computador. A janela continua em dois casos: projeto acima desse peso
+    (pergunta uma vez por projeto no Drive e guarda a resposta em
+    `geomine.salvar.resolucao.v1:`; Salvar Como pergunta de novo) e projeto
+    para o qual a pessoa já escolheu uma resolução reduzida neste aparelho (o
+    Salvar segue usando a escolha; o Salvar Como pergunta, para ela poder
+    voltar à nativa).
   - Ao recarregar a página, autorização do Drive vencida não é erro: o projeto
     volta do que está guardado no aparelho, sem aviso na tela
     (`drive/authorization-needed`). Com a autorização válida e nada novo no

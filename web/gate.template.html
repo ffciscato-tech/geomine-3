@@ -152,6 +152,37 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
     return {uid:u.uid,email:(u.email||'').toLowerCase(),displayName:u.displayName||u.email||'',photoURL:u.photoURL||''};
   };
   let driveSession=null;
+  /* O ACESSO AO DRIVE VALE PARA O APARELHO, NÃO SÓ PARA A ABA (22/11/2026:
+     "quando vou salvar um projeto ele abre outra janela").
+     O acesso ficava guardado só na aba (sessionStorage). O iPad descarta a aba
+     do GeoMine quando falta memória e a guarda da aba pode ir junto (é por isso
+     que a identidade da aba também fica no endereço): o projeto voltava da
+     cópia local e o Salvar seguinte abria de novo a janela do Google, mesmo
+     minutos depois de autorizar. O mesmo acontecia, sempre, ao abrir o GeoMine
+     em outra aba. Agora o acesso fica também no armazenamento do
+     aparelho, pelo mesmo prazo de antes (55 minutos), e qualquer aba desta
+     conta o aproveita. Sair da conta, ou o Google recusar o acesso, apaga-o em
+     todos os lugares. O limite de uma hora é do Google e continua valendo. */
+  const DRIVE_KEY='geomine.drive.access.v2';
+  const driveStores=[()=>sessionStorage,()=>localStorage];
+  function driveGuardado(uid,escrita){
+    const agora=Date.now();let melhor=null;
+    const serve=q=>q&&q.owner===uid&&typeof q.token==='string'&&q.token&&q.until>agora&&(!escrita||q.write===true);
+    if(serve(driveSession))melhor=driveSession;
+    for(const store of driveStores){
+      try{
+        const q=JSON.parse(store().getItem(DRIVE_KEY)||'null');
+        // Acesso vencido, ou de outra conta, não fica guardado no aparelho.
+        if(q&&(!(q.until>agora)||q.owner!==uid))store().removeItem(DRIVE_KEY);
+        else if(serve(q)&&(!melhor||q.until>melhor.until))melhor=q;
+      }catch(_){}
+    }
+    return melhor;
+  }
+  function guardaDrive(q){
+    driveSession=q;
+    for(const store of driveStores)try{store().setItem(DRIVE_KEY,JSON.stringify(q));}catch(_){}
+  }
   /* AUTORIZAÇÃO DO DRIVE NO iPAD
      A janela do Google abre em outra guia e, enquanto ela está na frente, o
      iPad põe esta página em espera. O Firebase só fazia duas tarefas de rede
@@ -189,7 +220,7 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
     capabilities:{drive:true,projectUpdates:true},
     get user(){ return perfil(); },
     get drivePickerConfig(){return {appId:firebaseConfig.messagingSenderId,key:firebaseConfig.pickerBrowserKey};},
-    clearDriveAccess(){driveSession=null;try{sessionStorage.removeItem('geomine.drive.access.v2');}catch(_){}},
+    clearDriveAccess(){driveSession=null;for(const store of driveStores)try{store().removeItem(DRIVE_KEY);}catch(_){}},
     /* options.write: gravação no Drive (Salvar e Salvar Como do projeto).
        Por escolha do usuário (14/11/2026) usa a permissão ampla do Drive, para
        o Salvar gravar em cima do arquivo original mesmo quando o projeto foi
@@ -205,16 +236,16 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
        toda autorização do Drive (abrir, ↻): o Salvar seguinte usa o mesmo
        acesso, sem aba. Quem nunca salvou continua sendo perguntado só pela
        leitura. O Google só deixa um acesso valer por uma hora; depois disso a
-       próxima operação no Drive precisa de uma nova autorização. */
+       próxima operação no Drive precisa de uma nova autorização. Dentro dessa
+       hora o acesso serve a todas as abas do aparelho (driveGuardado). */
     async driveAccess(interactive, options){
       const escrita=!!(options&&options.write);
-      const user=usuario(),storageKey='geomine.drive.access.v2',gravaKey='geomine.drive.gravacao.v1';
+      const user=usuario(),gravaKey='geomine.drive.gravacao.v1';
       let jaGrava=false;
       try{jaGrava=localStorage.getItem(gravaKey)===user.uid;}catch(_){}
       const pedeGravacao=escrita||jaGrava;
-      let saved=driveSession;
-      try{saved=saved||JSON.parse(sessionStorage.getItem(storageKey)||'null');}catch(_){}
-      if(saved?.owner===user.uid&&saved.until>Date.now()&&saved.token&&(!escrita||saved.write===true))return saved.token;
+      const saved=driveGuardado(user.uid,escrita);
+      if(saved)return saved.token;
       if(!interactive)throw criaErro('drive/authorization-needed',escrita?'Toque em Salvar de novo para autorizar a gravação no Google Drive.':'Toque em ↻ ao lado do nome do projeto para reconectar ao Drive.');
       const provider=new GoogleAuthProvider();
       provider.addScope('https://www.googleapis.com/auth/drive.file');
@@ -247,8 +278,7 @@ function criaGeoMineCloudProvider(firebaseApp, auth){
       if(auth.currentUser?.uid!==user.uid||result.user.uid!==user.uid)throw Error('A conta do projeto mudou.');
       const token=GoogleAuthProvider.credentialFromResult(result)?.accessToken;
       if(!token)throw Error(escrita?'A conta Google não autorizou a gravação no Drive.':'A conta Google não autorizou a leitura do arquivo.');
-      driveSession={owner:user.uid,until:Date.now()+55*60000,token,write:pedeGravacao};
-      try{sessionStorage.setItem(storageKey,JSON.stringify(driveSession));}catch(_){}
+      guardaDrive({owner:user.uid,until:Date.now()+55*60000,token,write:pedeGravacao});
       if(pedeGravacao)try{localStorage.setItem(gravaKey,user.uid);}catch(_){}
       return token;
     },

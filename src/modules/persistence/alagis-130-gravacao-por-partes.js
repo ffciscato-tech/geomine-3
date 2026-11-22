@@ -250,15 +250,29 @@ window.saveProject=async function(salvarComo,opcoes){
 
   S._saveTargetCell=null;
   const semPasta = (typeof fsApiOK==='function') ? !fsApiOK() : !window.showSaveFilePicker;
-  /* Salvar no Drive: até 60 MB (o que o próprio diálogo recomenda para
-     celular e tablet) grava as superfícies como estão, sem perguntar. Acima
-     disso pergunta UMA vez por projeto e reutiliza a resposta; Salvar Como
-     pergunta de novo. */
+  /* RESOLUÇÃO DAS SUPERFÍCIES: O SALVAR SÓ PERGUNTA QUANDO PRECISA
+     Regra do usuário: as superfícies vão sempre na resolução nativa; e salvar
+     não deve abrir outra janela (22/11/2026). A janela "Resolução das
+     superfícies ao salvar" aparecia no primeiro Salvar de todo projeto acima
+     de 60 MB no tablet (180 MB no computador) e em todo Salvar Como, mesmo com
+     a resolução nativa cabendo com folga — e ela já vinha marcada.
+     Agora a resolução nativa é gravada sem perguntar enquanto o projeto couber
+     com folga: até 250 MB no tablet e no celular, até 380 MB no computador.
+     A janela continua existindo em dois casos:
+     - o projeto passa desse peso (a nativa pode não caber ou não ser segura):
+       pergunta UMA vez por projeto no Drive e reutiliza a resposta; Salvar
+       Como pergunta de novo;
+     - a pessoa já escolheu uma resolução reduzida para este projeto neste
+       aparelho: o Salvar continua usando essa escolha e o Salvar Como
+       pergunta, para ela poder voltar à nativa. */
   const limiar = semPasta ? (planoDrive ? 60 : 25) : 180;
-  const lembrada = planoDrive&&!pediuSalvarComo ? resolucaoLembrada(projectIdAtual) : null;
-  if((S.rasters||[]).length && estimaPesoMB(null) > limiar && lembrada && estimaPesoMB(lembrada.cell) <= 380){
+  const semPergunta = semPasta ? 250 : 380;
+  const pesoNativo = (S.rasters||[]).length ? estimaPesoMB(null) : 0;
+  const lembrada = planoDrive ? resolucaoLembrada(projectIdAtual) : null;
+  const reduzida = !!lembrada && lembrada.cell!=null;
+  if(pesoNativo > limiar && lembrada && !pediuSalvarComo && estimaPesoMB(lembrada.cell) <= 380){
     S._saveTargetCell=lembrada.cell;
-  }else if((S.rasters||[]).length && estimaPesoMB(null) > limiar){
+  }else if(pesoNativo > limiar && (pesoNativo > semPergunta || reduzida)){
     const alvo=await escolheResolucaoSalvar(semPasta);
     if(!mesmoProjeto()){hideLoad();toast('O projeto mudou; salvamento cancelado.');return false;}
     if(alvo===false){S._saveTargetCell=null;hideLoad();return false;}
