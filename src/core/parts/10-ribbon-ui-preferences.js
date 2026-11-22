@@ -1515,6 +1515,19 @@ const CATS=[
   /* Cava e DCE voltam a compartilhar o mesmo comando. A referência de cota,
      o sentido e o lado dos bancos definem o resultado sem duplicar a UI. */
   comando('mineracao','projecoes',btn=>window.abreProjecoes?.(btn));
+  /* GEOTECNIA: estabilidade de taludes na aba de vista GEOMEC. Barragens reaproveita os
+     mesmos comandos. Instrumentação e deformação continuam para depois. */
+  const geomec=k=>()=>{ if(window.GeoMineGeomec) window.GeoMineGeomec.comando(k); else toast('Geomecânica indisponível; atualize o aplicativo.'); };
+  comando('geotecnia','talude-geotecnia',geomec('talude'));
+  comando('geotecnia','secao-geotecnica',geomec('secao'));
+  comando('geotecnia','estabilidade-fs',geomec('estabilidade'));
+  comando('geotecnia','nivel-agua',geomec('agua'));
+  comando('geotecnia','analise-sismica',geomec('sismo'));
+  comando('geotecnia','relatorio-geotecnico',geomec('relatorio'));
+  comando('barragens','talude-geotecnia',geomec('talude'));
+  comando('barragens','secao-geotecnica',geomec('secao'));
+  comando('barragens','estabilidade-fs',geomec('estabilidade'));
+  comando('barragens','nivel-agua',geomec('agua'));
   window.cavaDefineModoPainel=function(){
     const sec=document.getElementById('secCavaMineracao'),
       titulo=document.getElementById('cavaPainelTitulo'),desc=document.getElementById('cavaPainelDescricao'),
@@ -2885,6 +2898,8 @@ function ribbonBuild(){
       if(ED && ED._ctx && c.id!=='ed_ctx'){ try{ edFechaCtx(); }catch(e){} }
       RIB_CAT_ATUAL=c.id;
       if(S._view==='cava2'&&c.id==='editor'){ribbonBuild();return;}
+      /* Na aba GEOMEC, a faixa de Geotecnia (ou Barragens) fica sobre a própria seção. */
+      if(S._view==='geomec'&&(c.id==='geotecnia'||c.id==='barragens')){ribbonBuild();return;}
       if(c.view) switchView(c.view); else ribbonBuild(); };
     cats.appendChild(t);
   });

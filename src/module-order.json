@@ -1641,6 +1641,28 @@
       "path": "modules/ui/ui-refinements.js",
       "open_tag": "<script id=\"geomine-ui-refinements\">",
       "close_tag": "</script>"
+    },
+    {
+      "order": 158,
+      "slot": "asset-160",
+      "kind": "style",
+      "path": "styles/modules/geomec.css",
+      "open_tag": "<style id=\"geomine-geomec-style\">",
+      "close_tag": "</style>"
+    },
+    {
+      "order": 159,
+      "slot": "asset-161",
+      "kind": "script",
+      "parts": [
+        "modules/geotech/slope-stability.js",
+        "modules/geotech/geomec-core.js",
+        "modules/geotech/geomec-canvas.js",
+        "modules/geotech/geomec-graficos.js",
+        "modules/geotech/geomec-workspace.js"
+      ],
+      "open_tag": "<script id=\"geomine-geomec\">",
+      "close_tag": "</script>"
     }
   ]
 }

@@ -3370,7 +3370,7 @@ function map_dblclick_hook(){ setTimeout(()=>{ if(map) map.on('dblclick',e=>{
     if(e.key==='Escape' && S.meas.buf.length) clearMeas();
     /* Enter encerra o traçado — no tablet o duplo clique costuma deslocar o
        último vértice, e num desenho longo isso obriga a refazer o final.     */
-    if(S._view!=='licenses' && e.key==='Enter' && ['line','poly'].includes(S.tool) && S.drawBuf.length){
+    if(S._view!=='licenses' && S._view!=='geomec' && e.key==='Enter' && ['line','poly'].includes(S.tool) && S.drawBuf.length){
       const tag=(e.target&&e.target.tagName)||'';
       if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
       e.preventDefault();
@@ -3618,6 +3618,10 @@ function switchView(v){
   const licenses=document.getElementById('gmLicensesWorkspace');
   document.body.classList.toggle('gm-licenses-view',v==='licenses');
   if(licenses){licenses.hidden=v!=='licenses';licenses.style.display=v==='licenses'?'flex':'none';}
+  /* GEOMEC (geomecânica): mesma regra das Licenças — a área própria cobre o mapa. */
+  const geomec=document.getElementById('gmGeomecWorkspace');
+  document.body.classList.toggle('gm-geomec-view',v==='geomec');
+  if(geomec){geomec.hidden=v!=='geomec';geomec.style.display=v==='geomec'?'flex':'none';}
   const cava2=document.getElementById('cava2Workspace');
   if(cava2)cava2.classList.toggle('on',cava2Visible);
   const visibilidadeRestaurada=false;
@@ -3684,6 +3688,7 @@ function switchView(v){
   if(cava2Visible){requestAnimationFrame(()=>{try{window.CCMGISCava2&&window.CCMGISCava2.open();}catch(e){console.warn('Cava 2',e);}});}
   if(v==='geo'){ refreshCotPanel(); refreshEstPanel(); refreshTinClip(); }
   if(v==='hidro' && typeof hTopoRefresh==='function') hTopoRefresh();
+  if(v==='geomec'){try{window.GeoMineGeomec?.mostrou();}catch(e){console.warn('GEOMEC',e);}}
   if(hasSide && !(typeof acadOn==='function' && acadOn()) &&
      window.matchMedia('(max-width:720px)').matches)
     document.getElementById('side').classList.add('open');
@@ -3710,14 +3715,14 @@ document.querySelectorAll('#tabBar .tbtn').forEach(b=>{
          bidimensional, mas é aberto pela faixa Mineração e usa as mesmas
          camadas globais; clicar em 2D sempre volta ao conjunto completo. */
       const grupo3=(v==='v3d'||v==='mina'||v==='cub')?'v3d':
-        (v==='layout'?'layout':(v==='cava2'?'cava2':(v==='licenses'?'licenses':'map')));
+        (v==='layout'?'layout':(v==='cava2'?'cava2':(v==='licenses'?'licenses':(v==='geomec'?'geomec':'map'))));
       a3.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('on',b.dataset.view===grupo3));
     }
     const vs=document.getElementById('viewSwitch');
     if(vs){
       // No Layout, a barra própria já ocupa o topo. Ocultar este seletor evita
       // que 2D / 3D / Layout fique por cima dos comandos da prancha.
-      vs.style.display = (v==='layout'||v==='cava2'||v==='licenses') ? 'none' : 'flex';
+      vs.style.display = (v==='layout'||v==='cava2'||v==='licenses'||v==='geomec') ? 'none' : 'flex';
       // 2D reúne todas as vistas que mostram o mapa; 3D cobre v3d e cubagem
       const grupo = (v==='v3d'||v==='mina'||v==='cub') ? 'v3d' : (v==='layout' ? 'layout' : 'map');
       vs.querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.vw===grupo));

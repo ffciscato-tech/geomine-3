@@ -347,7 +347,7 @@ function mselBind(){
   map.on('dblclick',()=>{ if(S.tool==='selpoly') mselFinish(); });
 }
 document.addEventListener('keydown',e=>{
-  if(S._view==='licenses')return;
+  if(S._view==='licenses'||S._view==='geomec')return;
   const tag=(document.activeElement&&document.activeElement.tagName)||'';
   if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT') return;
   /* Cascata como no CAD. Este Esc/Enter é da seleção múltipla: marca o evento
@@ -376,7 +376,7 @@ function mselAvisoMantida(tit){
    preservam o comportamento nativo da tecla. */
 document.addEventListener('keydown',e=>{
   if(e.key!=='Delete'&&e.key!=='Backspace')return;
-  if(S._view==='licenses')return;
+  if(S._view==='licenses'||S._view==='geomec')return;
   const tag=(document.activeElement&&document.activeElement.tagName)||'';
   if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||
      (document.activeElement&&document.activeElement.isContentEditable))return;
@@ -437,6 +437,9 @@ function onMapClick(e){
   }
   if(S.tool==='riverChannelAxis'){
     window.GeoMineChannelExtraction?.mapClick(e);return;
+  }
+  if(S.tool==='geomecSecao'){
+    window.GeoMineGeomec?.mapClick(e);return;
   }
   // Um único caminho para cliques livres e os encaminhados pelas feições.
   // O listener privado da seção não recebia cliques sobre polígonos/pontos,

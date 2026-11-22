@@ -2,7 +2,7 @@
 (function(){
 'use strict';
 const el=id=>document.getElementById(id),finite=Number.isFinite;
-const views=new Set(['map','layout','v3d','cava2','geo','hidro','perfis','licenses']);
+const views=new Set(['map','layout','v3d','cava2','geo','hidro','perfis','licenses','geomec']);
 const scrollIds=['side','layerList','propDockContent','attrWrap','sheetWrap'];
 const controls=['v3dVE','v3dBg','v3dBgC','v3dVec','v3dDrape','v3dWire','v3dGrid','v3dVecOff','v3dVecOffR','v3dVecFix','v3dVER'];
 let generation=0,pendingCamera=null,allowPrevious=true;

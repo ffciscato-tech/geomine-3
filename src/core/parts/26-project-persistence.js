@@ -52,6 +52,8 @@ function projectData(options){
     environmentalLicenses:window.GeoMineLicenses?.snapshot()??{version:1,licenses:[]},
     researchRequest:S.researchRequest||null,
     civil:window.GeoMineCivil?.snapshot()||null,
+    /* Seções geomecânicas (GEOMEC): geometria, materiais, condições e o resumo do último cálculo. */
+    geomec:window.GeoMineGeomec?.hasContent()?window.GeoMineGeomec.snapshot():null,
     cliLogo:window.GeoMineTitleblockLogo?.safeURL(S.cliLogo)||null,
     cliLogoName:S.cliLogoName||null,
     seloCompanyRole:window.GeoMineTitleblockLogo?.companyRole(S.seloCompanyRole)||'contratada',
@@ -347,7 +349,7 @@ async function ensureRW(h, ask=false){
 function hasContent(){ return !!(S.layers.length || S.groups.length ||
   (S.rasters&&S.rasters.length) || (S.wms&&S.wms.length) ||
   (S.plates&&S.plates.length) || (S.img&&S.img.url) || S.projectMeta ||
-  window.GeoMineLicenses?.hasContent()); }
+  window.GeoMineLicenses?.hasContent() || window.GeoMineGeomec?.hasContent()); }
 
 async function autosaveNow(silent){
   // Compatibilidade com integrações antigas: nunca dispara uma gravação.
@@ -565,6 +567,7 @@ function loadProject(d){
   const openingScope=GeoMineProjectOpening.begin();
   try{
   window.GeoMineCivil?.reset();
+  try{window.GeoMineGeomec?.reset();}catch(e){console.warn('GEOMEC',e);}
   if(typeof clearMeas==='function')clearMeas();
   // O perfil temporário não pode usar o eixo/fontes de outro arquivo com os mesmos IDs.
   if(typeof profResetProject==='function')profResetProject();
@@ -1044,6 +1047,7 @@ function loadProject(d){
   refreshUI();
   if(typeof refreshProfPanel==='function')refreshProfPanel();
   window.GeoMineCivil?.restore(d.civil||null);
+  try{window.GeoMineGeomec?.restore(d.geomec||null);}catch(e){console.warn('Restauração da Geomecânica',e);}
   if(!window.GeoMineProjectScreen?.restore(d))fitAll();
   const nR=(S.rasters||[]).length, nI=(S.img&&S.img.url)?1:0;
   toast(`Projeto carregado: ${S.layers.length} camada(s), ${S.groups.length} grupo(s), `+

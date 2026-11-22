@@ -415,7 +415,7 @@ function updateScale(){
 /* Hidrologia, Geologia e Perfis também usam o mapa 2D. A categoria da faixa
    não deve bloquear seleção ou edição enquanto esse mapa está visível. */
 function mapaVista2D(v=S._view){
-  return !['layout','v3d','mina','cub','cava2','licenses'].includes(v);
+  return !['layout','v3d','mina','cub','cava2','licenses','geomec'].includes(v);
 }
 /* Pan do mapa pela regra de setTool. Quem desliga o arraste durante um gesto
    (vértice, aresta) volta por aqui: ligá-lo direto deixava o botão esquerdo
@@ -433,6 +433,7 @@ function setTool(t){
   window.GeoMinePolygonEdgeDrag?.clear();
   if(S.tool==='riverChannelAxis'&&t!=='riverChannelAxis')window.GeoMineChannelExtraction?.endDrawing();
   if(S.tool==='thalwegRegion'&&t!=='thalwegRegion')window.GeoMineThalweg?.endDrawing();
+  if(S.tool==='geomecSecao'&&t!=='geomecSecao')window.GeoMineGeomec?.fimDesenho();
   // A ferramenta de repouso é sempre SELEÇÃO. Chamadas antigas que voltavam
   // ao "pan" agora retornam para seleção; mover o mapa é feito segurando a
   // roda/botão central, sem trocar de ferramenta.
@@ -478,7 +479,7 @@ function setTool(t){
   if(mb){ mb.classList.toggle('on', t==='measure'); if(t==='measure') refreshMeasPanel(); }
   // ferramentas que desenham/clicam NO MAPA: feições ficam transparentes ao ponteiro
   map.getContainer().classList.toggle('drawing',
-    ['point','line','poly','profile','geoSection','riverChannelAxis','thalwegRegion','basin','measure','info','selpoly','inund','barr','lamina','dren','forma','bacia','baciaRampa','baciaExt','contBusca'].includes(t));
+    ['point','line','poly','profile','geoSection','geomecSecao','riverChannelAxis','thalwegRegion','basin','measure','info','selpoly','inund','barr','lamina','dren','forma','bacia','baciaRampa','baciaExt','contBusca'].includes(t));
   // No desktop, o botão esquerdo pertence à ferramenta ativa; o mapa só se
   // move com a roda pressionada (bindMiddlePan). Em telas de toque preserva-se
   // o arraste nativo, exceto na seleção múltipla, que usa o gesto para a caixa.

@@ -369,6 +369,33 @@ publicou de outro lugar e este repositório está desatualizado.
     leve é o par, como superfície.
   - Testes: `surpac-reader.test.cjs` e `surpac-import.test.cjs`, com arquivos
     sintéticos. **Arquivos reais do Drive não entram no repositório.**
+- **GEOTECNIA calcula estabilidade de taludes, e os resultados das seções
+  aparecem na aba de vista GEOMEC.** Pedido de 22/11/2026 ("vamos deixar essa
+  aba funcional com a maior precisão possível para análise da estabilidade de
+  taludes, siga como exemplo o geoslope… crie uma aba para a geomecânica… pode
+  chamar a aba de GEOMEC onde a gente consiga ver os resultados gráficos das
+  seções"). Na faixa, Talude, Seção Geotécnica, Estabilidade (FS), NA, Análise
+  Sísmica e Relatório Geotécnico funcionam; Dreno, a instrumentação e
+  Deformação continuam "em breve". A aba GEOMEC fica ao lado de 2D, Cava,
+  Visão 3D e Layout, em cards numerados. O que não pode regredir (detalhes e
+  conferências na seção **GEOMEC**, mais abaixo):
+  - **A seção sai do MDT na resolução nativa**, pelo mesmo caminho do Perfil
+    (`gridBruto` + `GeoMineLongitudinalComparison.sample`): passo igual à
+    menor célula das superfícies usadas (mínimo de 0,25 m), TIN pelo triângulo.
+  - **O fator de segurança não depende de onde caem os pontos da busca nem do
+    sentido em que a linha foi traçada.** A busca tem a malha geral de entrada
+    e saída **e** janelas em cada par crista–pé do terreno; sem as janelas, a
+    ruptura de bancada era achada num alinhamento e pulada no outro (1,05 ×
+    0,96 na mesma seção de três bancadas). Não tirar as janelas nem afrouxar o
+    teste "talude em bancadas…" de `slope-stability.test.cjs`.
+  - **A ruptura crítica é a menor entre todos os portes** (local,
+    intermediária, global): os refinos das candidatas concorrem na classe em
+    que caíram.
+  - **O cálculo roda em segundo plano** (Web Worker montado com o próprio texto
+    do motor): a tela não trava e uma alteração no meio do cálculo o
+    interrompe. Sem Worker, calcula na própria página.
+  - **O projeto guarda as seções e só o resumo do cálculo** (chave `geomec`);
+    os resultados pesados são refeitos ao abrir a aba.
 - **Opacidade do preenchimento em 0% é transparente.** Pedido de 21/11/2026,
   com o print de um polígono laranja opaco e a barra "Opacidade do
   preenchimento" em 0%. O polígono sem preenchimento visível — hachura
@@ -977,6 +1004,105 @@ formulário, oculto, para os projetos gravados).
 Testes: `node src/modules/civil/road-geometry.test.cjs` (raio por curva e os
 elementos das duas tabelas, conferidos contra as rotinas que traçam o eixo e o
 greide).
+
+## GEOMEC (estabilidade de taludes)
+
+A faixa **GEOTECNIA** abre a aba de vista **GEOMEC** (`data-view="geomec"`,
+`#gmGeomecWorkspace`), que ocupa a área do mapa como as Licenças. Enquanto ela
+está aberta, o painel de Propriedades da camada sai de cena para a seção ganhar
+largura; em área com menos de 700 px os cards viram uma gaveta (botão ☰).
+
+| Arquivo (`src/modules/geotech/`) | Papel |
+|---|---|
+| `slope-stability.js` | Motor de equilíbrio-limite (`GeoMineSlope`), sem DOM |
+| `geomec-core.js` | Seções, montagem do modelo, cálculo, estudos, projeto e a thread de cálculo (`GeoMineGeomecInterno`) |
+| `geomec-canvas.js` | Desenho da seção em escala 1:1 e o que há debaixo do ponteiro |
+| `geomec-graficos.js` | Gráficos dos resultados e o corpo livre da fatia |
+| `geomec-workspace.js` | A tela: cards, interações, mapa, saídas (`GeoMineGeomec`) |
+| `styles/modules/geomec.css` | Estilo da aba |
+
+**Cards.** 1 Seção (nome, sentido, FS admissível, base do modelo, recalcular a
+cada alteração) · 2 Camadas e materiais · 3 Água · 4 Cargas, sismo e trinca ·
+5 Superfície de ruptura · 6 Estudos · 7 Saída. Cada um tem o ⓘ com a
+explicação.
+
+**De onde vem a seção.** *Seção Geotécnica* arma a ferramenta `geomecSecao`:
+dois toques no mapa (com ímã), acima da crista e além do pé. Com uma superfície
+no projeto a seção nasce direto; com mais de uma, a aba mostra a prévia de
+todas ao longo da linha e pede o **terreno** (sugere a que fica por cima) e os
+**contatos**, que viram topos de camada — o terreno original sob uma pilha, o
+topo da rocha. Onde o terreno não tem cota vale o contato mais alto; contato
+que não passa abaixo do terreno é ignorado, com aviso. As linhas são
+simplificadas com tolerância de 2 cm (ou 1/2500 do desnível). *Talude* cria um
+talude paramétrico (bancadas, altura, ângulo da face, berma). Cada seção
+cortada no mapa aparece na camada **Seções geomecânicas**, com o trecho entre a
+entrada e a saída da ruptura crítica colorido pela classe do fator de
+segurança; a camada nasce com a primeira seção e depois só é atualizada (se for
+apagada, não volta sozinha).
+
+**Motor.** Método das fatias na formulação geral (GLE, Fredlund e Krahn, 1977),
+a mesma família do SLOPE/W: para cada λ há um fator de segurança que fecha os
+momentos (Fm) e outro que fecha as forças (Ff). Bishop simplificado é Fm com
+λ = 0; Janbu simplificado, Ff com λ = 0 (o corrigido multiplica por f0);
+Spencer e Morgenstern–Price são Fm = Ff com função entre fatias constante e
+meia-senoide; Ordinário só em superfície circular. Resistência por
+Mohr–Coulomb, não drenada (Su, com ganho em profundidade), Hoek–Brown
+generalizado (2002), enrocamento (atrito que cai com o logaritmo da tensão),
+envoltória por pontos e rocha impenetrável (a superfície escorrega por cima
+dela). Linha freática com lâmina d'água sobre o terreno, ru por material,
+sobrecargas, sismo pseudo-estático (kh, kv) e trinca de tração com água.
+Os vértices do terreno, dos contatos, da água e das cargas sempre viram divisa
+de fatia, e também os cruzamentos da base com os contatos e com a água.
+
+**Busca.** Círculos por entrada e saída: malha geral de 22 × 22 pares e 10
+flechas (36 × 36 × 14 na varredura fina) **mais** janelas em cada par crista–pé
+(`quebras` e `janelas` do motor). Triagem por Bishop, refino dos seis melhores
+por Nelder–Mead com o método escolhido, e a melhor superfície de cada porte:
+local (desnível até 1/3 do da seção), intermediária e global. A otimização não
+circular parte do círculo crítico e dos de cada porte, troca cada um por uma
+poligonal e move os vértices enquanto o fator de segurança cai (sem curvatura
+reversa acima de 5° e com a base entre −50° e 88°); não se aplica a Bishop nem
+ao Ordinário. A superfície também pode ser testada à mão, arrastando a
+entrada, a saída e o fundo, com o fator de segurança ao vivo.
+
+**Resultados.** Resumo (todos os métodos, λ, f0, geometria da superfície, FS
+por porte, avisos de tração) · FS × λ · tensões na base · forças entre fatias ·
+corpo livre e polígono de forças de cada fatia (toque na fatia) · FS × porte
+com todas as superfícies tentadas · sensibilidade (±20%) · probabilidade (Monte
+Carlo de 2.000 sorteios, com semente fixa) · sismo (FS × kh e aceleração de
+escoamento ky) · retroanálise (pares c′–φ′ com FS = 1) · tabela e gráfico de
+todas as seções. Saída em PNG, CSV das fatias e relatório em PDF (A4, 300 dpi,
+pelo `buildPDFmulti` do Layout).
+
+**Conferências do motor** (todas em `slope-stability.test.cjs`):
+
+| Caso | Referência | GeoMine |
+|---|---|---|
+| ACADS 1(a), talude homogêneo | FS 1,00 (árbitros do estudo) | Bishop 0,985 · Spencer 0,984 · Morgenstern–Price 0,984 · Janbu corrigido 0,986 · Janbu 0,935 · Ordinário 0,942 |
+| φ = 0 num círculo dado | c·R·arco ÷ momento do peso | igual até a 5ª casa (1,47489 × 1,47490) |
+| Talude infinito | fórmulas fechadas, com coesão, sismo e ru | iguais |
+| Ruptura plana (Hoek e Bray) | 1,27097, e 1,09403 com sismo | iguais por Janbu, Spencer e Morgenstern–Price |
+| Talude submerso | peso submerso | igual |
+| Ábaco de Taylor, φ = 0 | Ns 0,261 / 0,219 / 0,191 / 0,181 (90°, 75°, 60°, 45°) | dentro de ±0,002 |
+| Seção espelhada | mesmo fator de segurança | idêntico |
+| Equilíbrio de cada fatia | resultante nula | resíduo abaixo de 10⁻¹² kN/m |
+| Bishop e Spencer | fórmulas clássicas escritas à parte | coincidem |
+| Hoek–Brown (σci 50, mi 10, GSI 45, D 0,7) | mb 0,4870 · s 3,453·10⁻⁴ · a 0,5081 | iguais |
+| Bancadas, 5 comprimentos de crista × 2 sentidos, 9 taludes | mesmo FS crítico | diferença máxima de 0,01% |
+
+`geomec-core.test.cjs` cobre a montagem da seção (terreno incompleto, contatos,
+vírgula decimal), os estudos, o projeto e a thread de cálculo.
+
+**Tempo** (medido no Chromium deste ambiente): talude de três bancadas, 0,2 a
+0,4 s; seção de MDT com três camadas e água, 0,3 a 0,8 s; com a otimização não
+circular, 1 a 2 s.
+
+**Limites conhecidos.** A seção é reta (dois pontos). A água é uma linha
+freática: não há rede de fluxo. O sismo é pseudo-estático. A probabilidade e a
+sensibilidade usam a superfície em análise, fixa. O contato vem de superfícies
+do projeto ou de uma cota; desenhar um contato livre na seção ainda não existe.
+Parâmetros de resistência são os informados: a biblioteca de materiais traz
+valores típicos, que não substituem ensaio.
 
 ## Janelas de propriedades
 
