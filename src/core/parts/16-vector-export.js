@@ -91,6 +91,36 @@ async function download(blob,name,options){
       toast('Salvo: '+h.name); return result('written',{name:h.name,handle:h,verified:true});
     }
   }catch(e){ if(e && e.name==='AbortError') return result('canceled'); }
+  /* 1b) iPad/iPhone com o projeto no Google Drive: a exportação é gravada
+     direto na pasta do projeto (drive-project-save.js → saveExport). Sem isto
+     o arquivo virava download e o Chrome do iPad abria a barra "Salvar…" e a
+     caixa "Salvar em…" (pedido do usuário em 22/11/2026: "quando vou salvar um
+     projeto ele abre outra janela"). Não vale para a cópia do projeto pedida
+     por "Baixar cópia do projeto" (skipPicker/reportResult), que é download
+     de propósito. Se o Drive falhar, avisa o motivo e segue pelo navegador,
+     para a exportação não se perder. */
+  if(!options.skipPicker&&!report&&ext!=='ccmgis'&&window.GeoMineDriveSave?.exportAvailable?.()){
+    let enviando=false;
+    try{
+      const feito=await GeoMineDriveSave.saveExport(blob,name,{projectId:S.projectId||null,
+        onProgress:(a,b)=>{enviando=true;showLoad('Gravando “'+name+'” no Google Drive… '+Math.round(100*a/Math.max(1,b))+'%');}});
+      if(enviando)hideLoad();
+      if(feito){
+        const aviso=(feito.replaced?'Atualizado no Google Drive: ':'Salvo no Google Drive: ')+feito.name+
+          (feito.folder&&feito.folder.name?' · pasta “'+feito.folder.name+'”':' · pasta do projeto');
+        toast(aviso);              // o toast também fica registrado na caixa de comandos
+        return result('drive',{name:feito.name,handle:null,verified:true});
+      }
+    }catch(e){
+      if(enviando)hideLoad();
+      if(e&&e.name==='AbortError'){toast('Exportação cancelada');return result('canceled');}
+      if(!e||e.name!=='GeoMineBrowserDownload'){
+        const motivo=String(e&&e.message||e).replace(/\s+$/,'');
+        console.warn('exportação no Google Drive:',e);
+        toast('Não foi possível gravar “'+name+'” no Google Drive: '+motivo+(/[.!?]$/.test(motivo)?'':'.')+' Usando o download do navegador.');
+      }
+    }
+  }
   // 2) Android: folha de compartilhamento (Files, Drive, etc.) — NUNCA para o
   // projeto .ccmgis: destinos como o Drive regravam com nome/tipo genérico
   // (.bin) quando o MIME é desconhecido. Projeto vai por download direto,

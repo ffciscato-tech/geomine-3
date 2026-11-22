@@ -1935,7 +1935,16 @@ async function ensureLayoutForExport(dpi=300){
     toast('A ortofoto desta saída usa a prévia disponível; religue o original para obter mais detalhe.');
   return S._lastSVG;
 }
+/* No iPad as exportações do Layout vão direto para a pasta do projeto no
+   Google Drive (download → saveExport). Gerar a prancha a 300 dpi demora mais
+   do que o toque vale para o navegador; por isso a autorização do Drive, se
+   estiver vencida, é pedida aqui, logo no toque e antes de gerar. Falha ou
+   recusa não impede a exportação: download() resolve depois. */
+async function layoutExportDriveReady(){
+  try{await window.GeoMineDriveSave?.prepareExport?.(S.projectId||null);}catch(_){}
+}
 async function exportLayoutSVG(){
+  await layoutExportDriveReady();
   try{const svg=await ensureLayoutForExport(300);return await download(new Blob([svg],{type:'image/svg+xml'}),'layout.svg');}
   catch(e){toast('Falha ao exportar: '+(e.message||e));return false;}
 }
@@ -2013,6 +2022,7 @@ function buildPDFmulti(pages){
 /* Exporta TODAS as pranchas num único PDF, uma página por prancha */
 async function exportAllPlatesPDF(){
   if(S.loMode!=='a4'){ toast('Disponível no modo Prancha · selo'); return; }
+  await layoutExportDriveReady();
   platesInit(); plateCapture();
   const volta=S.plateId;
   const pages=[];
@@ -2070,6 +2080,7 @@ function buildPDF(jpegBytes, PWmm, PHmm, pxW, pxH){
   return new Blob(parts,{type:'application/pdf'});
 }
 async function exportLayoutPDF(){
+  await layoutExportDriveReady();
   try{
     showLoad('Gerando PDF…');
     /* O PDF deve reproduzir exatamente a prévia aberta. `buildLayout()` já
@@ -2115,6 +2126,7 @@ async function layoutPNG300(cv){
   return new Blob(parts,{type:'image/png'});
 }
 async function exportLayoutPNG(){
+  await layoutExportDriveReady();
   try{ const cv=await rasterizeLayout(300); await download(await layoutPNG300(cv),'layout.png'); }
   catch(e){ toast(e.message+' — use SVG'); }
 }

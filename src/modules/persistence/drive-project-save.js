@@ -12,7 +12,26 @@
    O arquivo original é achado pelo vínculo da aba (projeto aberto pelo Drive)
    ou, para projeto aberto pelo seletor do aparelho, pelo nome e pelo projectId
    gravado no começo do arquivo. O Drive guarda as versões anteriores de cada
-   arquivo regravado (Gerenciar versões). */
+   arquivo regravado (Gerenciar versões).
+
+   EXPORTAÇÕES (22/11/2026: "quando vou salvar um projeto ele abre outra
+   janela", com o print da prancha em PDF no iPad). Sem seletor de arquivos
+   para escrita, toda exportação virava download e o Chrome do iPad abria a
+   barra "Salvar…" e a caixa "Salvar em…" (Arquivos / Drive), para o arquivo
+   ainda cair fora da pasta do projeto. saveExport() grava o arquivo exportado
+   direto na pasta do projeto no Drive, sem janela do navegador:
+   - a pasta é a do arquivo do projeto vinculado ao Drive (aberto pelo Drive ou
+     já salvo nele). Projeto ainda sem vínculo com o Drive segue pelo caminho
+     do navegador, como antes, e não pede autorização do Google à toa;
+   - exportar de novo com o mesmo nome regrava o arquivo que o próprio GeoMine
+     criou para ESTE projeto (marcas appProperties.geomineExport e
+     geomineProject; o Drive guarda as versões). Um arquivo de mesmo nome que
+     veio de outro lugar, ou de outro projeto, nunca é trocado: o novo sai com
+     " (2)", " (3)"…;
+   - a autorização é a mesma do Salvar. Se ela venceu e o toque já passou (a
+     geração do PDF demora mais que o toque vale), o navegador bloquearia a
+     janela do Google: uma caixa pede um toque para renovar. prepareExport()
+     deixa quem exporta pedir a autorização antes, ainda dentro do toque. */
 (function(root){
 'use strict';if(root.GeoMineDriveSave)return;
 const FILES='https://www.googleapis.com/drive/v3/files',UPLOAD='https://www.googleapis.com/upload/drive/v3/files',
@@ -39,7 +58,8 @@ function headers(token,file,extra){
 }
 const normal=f=>({kind:'drive',id:f.id,resourceKey:f.resourceKey||'',name:f.name,version:String(f.version||''),
   lastModified:Date.parse(f.modifiedTime)||0,size:Number(f.size)||0,parent:f.parents?.[0]||'',
-  editable:f.capabilities?.canModifyContent!==false&&f.capabilities?.canEdit!==false});
+  editable:f.capabilities?.canModifyContent!==false&&f.capabilities?.canEdit!==false,
+  exported:f.appProperties?.geomineExport==='1',exportedProject:String(f.appProperties?.geomineProject||'')});
 async function metadata(token,file,signal){
   const url=new URL(FILES+'/'+encodeURIComponent(file.id));url.search=new URLSearchParams({fields:FIELDS,supportsAllDrives:'true'});
   const r=await fetch(url,{headers:headers(token,file),signal,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
@@ -47,8 +67,8 @@ async function metadata(token,file,signal){
   if(!r.ok)throw await failure(r,'neste arquivo');
   const f=await r.json();return f.trashed?null:normal(f);
 }
-async function list(token,q,signal,size=25){
-  const url=new URL(FILES);url.search=new URLSearchParams({q,orderBy:'modifiedTime desc',pageSize:String(size),fields:'files('+FIELDS+')',
+async function list(token,q,signal,size=25,fields=FIELDS){
+  const url=new URL(FILES);url.search=new URLSearchParams({q,orderBy:'modifiedTime desc',pageSize:String(size),fields:'files('+fields+')',
     corpora:'allDrives',supportsAllDrives:'true',includeItemsFromAllDrives:'true'});
   const r=await fetch(url,{headers:headers(token),signal,cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
   if(!r.ok)throw await failure(r,'nesta pasta');
@@ -160,9 +180,10 @@ async function prepare(options){
 async function openSession(token,plan,blob,signal){
   const query='uploadType=resumable&supportsAllDrives=true&fields='+encodeURIComponent(FIELDS),update=plan.mode==='update';
   const url=update?UPLOAD+'/'+encodeURIComponent(plan.target.id)+'?'+query:UPLOAD+'?'+query;
-  const body=update?{}:{name:plan.name,parents:[plan.folder.id],mimeType:'application/octet-stream'};
+  const type=plan.mimeType||'application/octet-stream';
+  const body=update?{}:{name:plan.name,parents:[plan.folder.id],mimeType:type,...(plan.appProperties?{appProperties:plan.appProperties}:{})};
   const r=await fetch(url,{method:update?'PATCH':'POST',signal,credentials:'omit',referrerPolicy:'no-referrer',
-    headers:headers(token,update?plan.target:null,{'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':'application/octet-stream','X-Upload-Content-Length':String(blob.size)}),
+    headers:headers(token,update?plan.target:null,{'Content-Type':'application/json; charset=UTF-8','X-Upload-Content-Type':type,'X-Upload-Content-Length':String(blob.size)}),
     body:JSON.stringify(body)});
   if(!r.ok)throw await failure(r,update?'neste arquivo':'nesta pasta');
   const location=r.headers.get('Location'),uploadId=r.headers.get('X-GUploader-UploadID');
@@ -177,9 +198,8 @@ async function received(session,total,signal){
   if(r.status!==308)throw await failure(r,'neste arquivo');
   const m=/-(\d+)$/.exec(r.headers.get('Range')||'');return {offset:m?Number(m[1])+1:0};
 }
-async function commit(plan,blob,onProgress,signal){
-  const p=provider(),token=await p.driveAccess(false,{write:true});
-  if(!(blob instanceof Blob)||!blob.size)throw Error('O projeto ficou vazio; nada foi gravado.');
+// Envio retomável em partes; devolve o arquivo como o Drive o confirmou.
+async function send(token,plan,blob,onProgress,signal,again){
   const session=await openSession(token,plan,blob,signal);
   let offset=0,file=null,failures=0;
   onProgress?.(0,blob.size);
@@ -201,10 +221,108 @@ async function commit(plan,blob,onProgress,signal){
       if(state?.done)file=state.done;else if(state)offset=state.offset;
     }
   }
-  if(!ID.test(file.id||'')||Number(file.size)!==blob.size)throw Error('O Google Drive não confirmou o arquivo inteiro. Salve de novo.');
-  const saved=normal(file);
+  if(!ID.test(file.id||'')||Number(file.size)!==blob.size)throw Error('O Google Drive não confirmou o arquivo inteiro. '+again);
+  return normal(file);
+}
+async function commit(plan,blob,onProgress,signal){
+  const p=provider(),token=await p.driveAccess(false,{write:true});
+  if(!(blob instanceof Blob)||!blob.size)throw Error('O projeto ficou vazio; nada foi gravado.');
+  const saved=await send(token,plan,blob,onProgress,signal,'Salve de novo.');
   try{root.GeoMineDriveProject.rememberFolder?.(saved.parent);}catch(_){}
   return {kind:'drive',id:saved.id,resourceKey:saved.resourceKey,name:saved.name,version:saved.version,lastModified:saved.lastModified,size:saved.size};
 }
-root.GeoMineDriveSave={available,prepare,commit};
+/* ---- Exportações direto na pasta do projeto (ver o cabeçalho) ---- */
+const EXPORT_TYPES={pdf:'application/pdf',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',svg:'image/svg+xml',zip:'application/zip',
+  csv:'text/csv',txt:'text/plain',json:'application/json',geojson:'application/geo+json',kml:'application/vnd.google-earth.kml+xml',
+  kmz:'application/vnd.google-earth.kmz',dxf:'application/dxf',html:'text/html',xml:'application/xml',gpx:'application/gpx+xml',
+  tif:'image/tiff',tiff:'image/tiff',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'};
+let exportFolder=null;
+// Só onde exportar vira download com janela do navegador: aparelho móvel sem seletor de arquivos para escrita (iPad, iPhone).
+function exportAvailable(){
+  return available()&&typeof root.showSaveFilePicker!=='function'&&typeof root.fsApiOK==='function'&&!root.fsApiOK()&&!!root.GeoMineProjectTabSession;
+}
+// O arquivo do projeto no Drive, quando a aba está vinculada a ele; senão, null.
+function linkedProject(projectId){
+  const record=binding(projectId);
+  return record&&root.GeoMineDriveProject.isSource(record.source)?record.source:null;
+}
+async function projectFolder(token,source,signal){
+  if(exportFolder?.key===source.id)return exportFolder.folder;
+  const parent=(await metadata(token,source,signal))?.parent||'';
+  if(!ID.test(parent))return null;
+  const folder={id:parent,name:await folderName(token,parent,signal)};
+  exportFolder={key:source.id,folder};
+  return folder;
+}
+// A autorização venceu e o toque já passou: um toque aqui devolve ao navegador o direito de abrir a janela do Google.
+function askExportAccess(name){
+  return new Promise((resolve,reject)=>{
+    const bg=document.createElement('div');bg.id='gmDriveExportAccess';bg.className='modal-bg on';
+    bg.innerHTML='<div class="modal" role="dialog" aria-modal="true" aria-labelledby="gmDriveExportTitle" style="width:min(400px,100%)">'+
+      '<div class="modal-h"><b id="gmDriveExportTitle">Gravar no Google Drive</b></div>'+
+      '<div class="modal-b"><div class="hint" data-text style="margin-bottom:12px"></div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+      '<button type="button" class="tbtn" data-choice="cancel" style="flex:1;justify-content:center">Cancelar</button>'+
+      '<button type="button" class="tbtn" data-choice="browser" style="flex:1;justify-content:center">Baixar pelo navegador</button>'+
+      '<button type="button" class="tbtn" data-choice="drive" style="flex:1 1 100%;justify-content:center;background:var(--amber);color:#1a1206;font-weight:600">Autorizar e gravar no Drive</button>'+
+      '</div></div></div>';
+    bg.querySelector('[data-text]').textContent='A autorização do Google Drive venceu (o Google a limita a uma hora). Toque para renová-la e gravar “'+name+'” na pasta do projeto.';
+    let done=false;
+    const finish=choice=>{
+      if(done)return;done=true;bg.remove();
+      if(choice==='drive')resolve();
+      else if(choice==='browser')reject(Object.assign(Error('download pelo navegador'),{name:'GeoMineBrowserDownload'}));
+      else reject(new DOMException('Exportação cancelada','AbortError'));
+    };
+    bg.querySelectorAll('[data-choice]').forEach(b=>b.onclick=()=>finish(b.dataset.choice));
+    bg.addEventListener('click',e=>{if(e.target===bg)finish('cancel');});
+    document.body.append(bg);
+  });
+}
+async function exportAccess(name){
+  const p=provider();
+  try{return await p.driveAccess(false,{write:true});}
+  catch(error){if(error?.code!=='drive/authorization-needed')throw error;}
+  if(root.navigator.userActivation&&!root.navigator.userActivation.isActive)await askExportAccess(name);
+  return p.driveAccess(true,{write:true});
+}
+// Chamado no começo de uma exportação demorada, ainda dentro do toque: se a autorização venceu, a janela do Google abre agora.
+async function prepareExport(projectId){
+  if(!exportAvailable()||!linkedProject(projectId||null))return false;
+  // Fora do toque o navegador bloquearia a janela; saveExport pede o toque depois, se precisar.
+  if(root.navigator.userActivation&&!root.navigator.userActivation.isActive)return false;
+  await provider().driveAccess(true,{write:true});
+  return true;
+}
+/* Onde gravar: o primeiro nome — o pedido, depois " (2)", " (3)"… — que esteja
+   livre na pasta ou que já seja uma exportação deste projeto (essa é regravada). */
+async function exportPlan(token,folder,name,project,mimeType,signal){
+  const dot=name.lastIndexOf('.'),base=dot>0?name.slice(0,dot):name,ext=dot>0?name.slice(dot):'';
+  const fresh=candidate=>({mode:'create',folder,name:candidate,mimeType,appProperties:{geomineExport:'1',geomineProject:project}});
+  for(let n=1;n<=40;n++){
+    const candidate=n===1?name:base+' ('+n+')'+ext;
+    const same=await list(token,"name = '"+quote(candidate)+"' and '"+folder.id+"' in parents and trashed = false",signal,10,FIELDS+',appProperties');
+    const own=same.find(f=>f.exported&&f.exportedProject===project&&f.editable);
+    if(own)return {mode:'update',target:own,name:candidate};
+    if(!same.length)return fresh(candidate);
+  }
+  return fresh(base+' '+Date.now()+ext);
+}
+/* Devolve null quando a exportação não é para o Drive (navegador com seletor,
+   projeto sem vínculo com o Drive): quem chama segue pelo caminho de sempre. */
+async function saveExport(blob,name,options={}){
+  const signal=options.signal,source=exportAvailable()?linkedProject(options.projectId||null):null;
+  if(!source)return null;
+  if(!(blob instanceof Blob)||!blob.size)throw Error('O arquivo exportado ficou vazio; nada foi gravado.');
+  name=String(name||'').replace(/[\\/\u0000-\u001f]/g,'_').trim()||'exportado';
+  const token=await exportAccess(name);
+  const folder=await projectFolder(token,source,signal);
+  if(!folder)return null;
+  const ext=(name.split('.').pop()||'').toLowerCase();
+  const mimeType=blob.type&&blob.type!=='application/octet-stream'?blob.type.split(';')[0]:EXPORT_TYPES[ext]||'application/octet-stream';
+  const plan=await exportPlan(token,folder,name,String(options.projectId||'').slice(0,100),mimeType,signal);
+  const saved=await send(token,plan,blob,options.onProgress,signal,'Exporte de novo.');
+  return {id:saved.id,name:saved.name,folder,replaced:plan.mode==='update',size:saved.size};
+}
+root.GeoMineDriveSave={available,prepare,commit,exportAvailable,prepareExport,saveExport};
 })(window);

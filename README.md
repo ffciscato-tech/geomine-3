@@ -635,6 +635,34 @@ mapa, sobre uma linha de fluxo ou em qualquer ponto do MDT.
     Drive, também não baixa o projeto de novo.
   - Em navegador de mesa com seletor de arquivos o Salvar continua gravando no
     arquivo local, como antes.
+- **No iPad, exportar grava direto na pasta do projeto no Google Drive.**
+  Pedido de 22/11/2026 ("quando vou salvar um projeto ele abre outra janela",
+  com o print da prancha em PDF no Layout). Sem seletor de arquivos para
+  escrita, toda exportação virava download e o Chrome do iPad abria a barra
+  "Salvar…" e a caixa "Salvar em…" (Arquivos / Drive), para o arquivo ainda
+  cair fora da pasta do projeto. Agora `download()` (`16-vector-export.js`)
+  entrega o arquivo a `GeoMineDriveSave.saveExport` (`drive-project-save.js`)
+  quando o aparelho é móvel, o navegador não tem `showSaveFilePicker` e a aba
+  está vinculada a um projeto do Drive (aberto pelo Drive ou já salvo nele).
+  - Vale para toda exportação que passa por `download()`: PDF, PNG e SVG da
+    prancha, shapefile, CSV, relatórios. Não vale para **Baixar cópia do
+    projeto**, que é download de propósito.
+  - A pasta é a do arquivo do projeto. Exportar de novo com o mesmo nome
+    regrava o arquivo que o GeoMine criou para este projeto (marcas
+    `appProperties.geomineExport` e `geomineProject`; o Drive guarda as
+    versões). Arquivo de mesmo nome vindo de outro lugar ou de outro projeto
+    nunca é trocado: a exportação sai como "nome (2)", e é esse que passa a
+    ser regravado.
+  - A autorização é a do Salvar. Nas exportações do Layout ela é pedida logo
+    no toque (`layoutExportDriveReady`), antes de gerar a prancha a 300 dpi,
+    porque a geração demora mais do que o toque vale para o navegador. Se a
+    autorização venceu e o toque já passou, uma caixa do GeoMine pede um toque
+    (Autorizar e gravar no Drive / Baixar pelo navegador / Cancelar) em vez de
+    deixar o navegador bloquear a janela do Google.
+  - Projeto sem vínculo com o Drive, computador com seletor de arquivos e
+    Android com folha de compartilhar continuam como antes. Se o Drive falhar
+    (sem permissão na pasta, rede), o GeoMine avisa o motivo e a exportação
+    segue pelo navegador, para não se perder.
 - **Camadas de resultado entram no desfazer.** Comandos que só criam uma
   camada nova (Mesclar, Dissolver, curvas de nível, bacias, direção de fluxo e
   os demais de `25-geoprocessing-tin.js` e `19-hydrology-and-flooding.js`)
