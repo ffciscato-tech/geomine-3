@@ -455,6 +455,16 @@ publicou de outro lugar e este repositório está desatualizado.
     topográfico, buscar em bancos de dados os fatores de angulo de atrito e de
     coesão para diferentes litologias"). Na faixa: Seção Geotécnica,
     Estabilidade (FS), NA, Talude, Dreno.
+  - **Em cada card da seção nova escolhe-se primeiro o tipo: imagem ou
+    vetorial.** Pedido de 22/11/2026, com o print dos três cards: "a topografia
+    tenho que poder escolher se será imagem ou vetorial, se for imagem aparecer
+    as opções e vetorial tb, o mesmo vale para a superfície de análise e
+    superfícies de contato". Os cards são 1 Topografia, 2 Superfície de análise
+    (Nenhuma · Imagem · Vetorial) e 3 Superfícies de contato, iguais e lado a
+    lado; as opções só aparecem depois do tipo e só entra o que cruza a linha.
+    Ficam de fora camadas 2D gravadas com z = 0 e as camadas de apoio do DCE
+    (prévia da interseção, preenchimentos). Os botões Criar e Cancelar ficam ao
+    lado do título, para a caixa de comandos não os cobrir.
   - **A seção nova pede 1 Topografia, 2 Projeto e 3 Contatos.** Topografia é
     um MDT/TIN **ou** curvas de nível (qualquer camada de linhas com cota no
     vértice ou em campo COTA/Z/ELEV). Projeto é o desenho do DCE/cava (as
@@ -1105,13 +1115,19 @@ explicação.
 
 **De onde vem a seção.** *Seção Geotécnica* arma a ferramenta `geomecSecao`:
 dois toques no mapa (com ímã), acima da crista e além do pé. Com uma única
-fonte de cota no projeto a seção nasce direto; senão a aba mostra a prévia de
-todas ao longo da linha e três cards: **1 Topografia** (MDT/TIN na resolução
+fonte de cota cruzando a linha a seção nasce direto; senão a aba mostra a
+prévia de todas ao longo da linha e três cards iguais. Em cada um escolhe-se
+primeiro o **tipo** — *Imagem* (MDT, TIN, superfície raster) ou *Vetorial*
+(linhas com cota) — e só então aparecem as opções daquele tipo
+(`candidatos(papel, tipo)`; `sugere` dá a melhor de cada tipo: na topografia
+por imagem, a superfície que fica por cima na maior parte da linha, nunca o
+MDT recortado se houver outra). Os cards: **1 Topografia** (MDT/TIN na resolução
 nativa ou curvas de nível — camada de linhas com Z nos vértices, `zg`, ou num
-campo COTA/Z/ELEV/ELEVACAO…; entre duas curvas a cota é linear), **2 Projeto**
-(nenhum, o desenho do DCE/cava — camada com `DESIGN_ID` e `PROJETO`, de
+campo COTA/Z/ELEV/ELEVACAO…; entre duas curvas a cota é linear), **2 Superfície
+de análise** (nenhuma, o desenho do DCE/cava — camada com `DESIGN_ID` e `PROJETO`, de
 preferência a "— Bruta" —, um PDE importado com cota ou um MDT do projeto;
-pilha ou cava) e **3 Contatos** (topo da rocha, camada fraca). A sugestão é a
+pilha ou cava) e **3 Superfícies de contato** (topo da rocha, camada fraca;
+o que foi marcado num tipo continua marcado ao trocar para o outro). A sugestão é a
 topografia de trabalho (nunca o MDT recortado, se houver outro) e, como
 projeto, o desenho que a linha cruza. Pilha: superfície = maior entre projeto
 e topografia, e a topografia sob o projeto vira o primeiro contato (camadas

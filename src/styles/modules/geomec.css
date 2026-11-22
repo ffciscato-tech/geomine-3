@@ -86,7 +86,7 @@ body.gm-touch-ui.gm-geomec-view .gm-touch-actions{display:none!important}
 .gmg-boas p{color:var(--ink-dim);line-height:1.5;margin:0 0 12px}
 .gmg-boas .gmg-bts{justify-content:center}
 .gmg-boas-ic{margin:auto;width:52px;height:52px;border-radius:14px;background:color-mix(in srgb,var(--amber) 18%,transparent);color:var(--amber);font-size:30px;display:grid;place-items:center}
-.gmg-pend{max-width:640px;text-align:left}
+.gmg-pend{max-width:920px;width:100%;text-align:left;margin:0 auto auto}
 .gmg-pend h2{margin-top:0}
 .gmg-pend .gmg-bts{justify-content:flex-start;margin-top:12px}
 .gmg-pend .gmg-tab input{width:18px;height:18px}
@@ -145,7 +145,22 @@ body.gm-touch-ui.gm-geomec-view .gm-touch-actions{display:none!important}
 #gmGeomecWorkspace.gmg-estreito .gmg-chips{max-width:calc(100% - 60px)}
 @media(max-height:560px){.gmg-res{flex-basis:44%}}
 /* seção nova: topografia, projeto e contatos em cards numerados (22/11/2026) */
-.gmg-pend-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;text-align:left}
+.gmg-pend-topo{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.gmg-pend-topo h2{margin:0;flex:1 1 auto}
+.gmg-pend .gmg-pend-topo .gmg-bts{margin:0;flex:none}
+/* três cards iguais lado a lado; em área estreita, um embaixo do outro */
+.gmg-pend-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;text-align:left;align-items:stretch}
+#gmGeomecWorkspace.gmg-estreito .gmg-pend-cards{grid-template-columns:1fr}
+/* tipo da superfície: imagem ou vetorial (as opções aparecem depois da escolha) */
+.gmg-tipo{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;margin:2px 0 6px}
+.gmg-tipo label{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;text-align:center;min-height:30px;padding:2px 6px;font-size:11px;font-weight:600;line-height:1.15;cursor:pointer;color:var(--ink-dim);background:var(--panel2);border-left:1px solid var(--line)}
+.gmg-tipo label:first-child{border-left:0}
+/* a mesma cor do número dos cards: vale no tema claro e no escuro */
+#gmGeomecWorkspace .gmg-tipo label.on{background:#2177a8;color:#fff}
+.gmg-tipo input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.gmg-tipo label:focus-within{outline:2px solid var(--amber);outline-offset:-2px}
+.gmg-pend-lista{max-height:132px;overflow:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:7px;padding:2px 6px}
+.gmg-pend-cards .gmg-nota{margin:4px 0 0}
 .gmg-pend-cards .gm-work-card{padding:8px;margin:0}
 .gmg-pend-cards select{width:100%}
 .gmg-pend-cards .gmg-check{min-height:28px}

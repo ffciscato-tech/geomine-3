@@ -581,10 +581,14 @@
   function naMudanca(e){
     const t=e.target;
     if(pendente){
-      if(t.dataset.pend==='topo'){ pendente.topo=t.value; pendente.contatos.delete(t.value); if(pendente.proj===t.value) pendente.proj=''; renderTudo(); }
+      const p=pendente, ajustaProj=()=>{ if(p.proj&&(p.proj===p.topo||!candidatos('proj',p.tipoProj).some(f=>f.id===p.proj))){ p.proj=p.tipoProj?sugere('proj',p.tipoProj):''; } const f=fonteDe(p.proj); if(f&&f.projeto) p.tipo=f.projeto.tipo; p.contatos.delete(p.topo); p.contatos.delete(p.proj); };
+      if(t.name==='gmgTipoTopo'){ p.tipoTopo=t.value==='vet'?'vet':'img'; p.topo=sugere('topo',p.tipoTopo); ajustaProj(); renderTudo(); }
+      else if(t.name==='gmgTipoProj'){ p.tipoProj=t.value==='vet'?'vet':t.value==='img'?'img':''; p.proj=p.tipoProj?sugere('proj',p.tipoProj):''; ajustaProj(); renderTudo(); }
+      else if(t.name==='gmgTipoCont'){ p.tipoCont=t.value==='vet'?'vet':'img'; renderTudo(); }
+      else if(t.dataset.pend==='topo'){ pendente.topo=t.value; ajustaProj(); renderTudo(); }
       else if(t.dataset.pend==='proj'){ pendente.proj=t.value; pendente.contatos.delete(t.value); const f=fonteDe(t.value); if(f&&f.projeto) pendente.tipo=f.projeto.tipo; renderTudo(); }
       else if(t.name==='gmgPTipo'){ pendente.tipo=t.value==='cava'?'cava':'pilha'; }
-      else if(t.dataset.cont){ if(t.checked) pendente.contatos.add(t.dataset.cont); else pendente.contatos.delete(t.dataset.cont); desenhaPrevia(); }
+      else if(t.dataset.cont){ if(t.checked) pendente.contatos.add(t.dataset.cont); else pendente.contatos.delete(t.dataset.cont); renderTudo(); }
       return;
     }
     const s=sec(); if(!s) return;
@@ -707,11 +711,16 @@
     });
     return out;
   }
+  /* Cota de verdade: camada 2D gravada como 3D (z = 0 em tudo, comum em KML e polígonos de
+     processo) não é superfície. */
   function temCota(L){
     const F=L.features||[];
-    for(let i=0;i<F.length&&i<400;i++){ for(const pt of partesDaFeicao(L,F[i],false)) if(pt.pts.some(q=>Number.isFinite(q[2]))) return true; }
+    for(let i=0;i<F.length&&i<400;i++){ for(const pt of partesDaFeicao(L,F[i],false)) if(pt.pts.some(q=>Number.isFinite(q[2])&&Math.abs(q[2])>1e-9)) return true; }
     return false;
   }
+  /* Camadas de apoio do editor de DCE/cava (prévia da interseção, preenchimentos): repetem o
+     desenho e só poluem a escolha. */
+  const apoioDoDesenho=L=>!!(L._cava2CutOf||L._cava2CutFillOf||L._cava2Role==='fill'||L._cava2Role==='cut-fill'||(L._cava2DesignId&&L.gtype==='polygon')||L._geomecSecao);
   /* Camada gerada pelo editor de DCE/cava (o desenho bruto ou o recortado): é projeto. */
   function papelProjeto(L){
     const f=(L.features||[]).find(x=>x&&x.props&&x.props.DESIGN_ID!=null&&x.props.PROJETO);
@@ -723,11 +732,36 @@
   function fontesSecao(){
     const R=superficies().map(r=>({id:'r:'+r.id, nome:r.name, tipo:'raster', r, tin:!!(r.d&&r.d.tin)}));
     let V=[];
-    try{ V=(S.layers||[]).filter(L=>L&&(L.gtype==='line'||L.gtype==='polygon')&&L.name!==NOME_CAMADA&&!L._blasting&&temCota(L))
+    try{ V=(S.layers||[]).filter(L=>L&&(L.gtype==='line'||L.gtype==='polygon')&&L.name!==NOME_CAMADA&&!L._blasting&&!apoioDoDesenho(L)&&temCota(L))
       .map(L=>({id:'v:'+L.id, nome:L.name, tipo:'vetor', L, projeto:papelProjeto(L)})); }catch(e){ console.warn('GEOMEC: camadas com cota',e); }
     return R.concat(V);
   }
   const fonteDe=id=>pendente&&pendente.fontes.find(f=>f.id===id)||null;
+  /* Pedido de 22/11/2026 (print dos três cards): em cada card escolhe-se primeiro o TIPO —
+     imagem (MDT, TIN, superfície raster) ou vetorial (linhas com cota) — e só então aparecem
+     as opções daquele tipo. Só entra o que cruza a linha da seção. */
+  const TIPOS={img:'Imagem', vet:'Vetorial'};
+  const cruzaLinha=f=>f.tipo==='raster'?f.cobre>0:f.cruza>1;
+  function candidatos(papel,tipo){
+    const p=pendente, t=tipo==='vet'?'vetor':'raster';
+    const L=p.fontes.filter(f=>f.tipo===t&&cruzaLinha(f)&&(papel==='topo'?!f.projeto:papel==='proj'?f.id!==p.topo:f.id!==p.topo&&f.id!==p.proj));
+    if(papel==='proj') L.sort((a,b)=>(b.projeto?1:0)-(a.projeto?1:0)||((b.projeto&&b.projeto.bruta)?1:0)-((a.projeto&&a.projeto.bruta)?1:0)||(/recortad/i.test(b.nome)?1:0)-(/recortad/i.test(a.nome)?1:0));
+    return L;
+  }
+  /* a melhor sugestão de cada papel dentro do tipo escolhido */
+  function sugere(papel,tipo){
+    const C=candidatos(papel,tipo); if(!C.length) return '';
+    if(papel==='topo'){
+      if(tipo==='img'){
+        /* o terreno é a superfície que fica por cima na maior parte da linha (o topo da rocha e
+           outros contatos passam por baixo); o MDT recortado é superfície de análise, não topografia */
+        const semRec=C.filter(f=>!/recortad/i.test(f.nome)), B=semRec.length?semRec:C, P=pendente.previa, v=B.map(()=>0);
+        if(P&&B.length>1) for(let i=0;i<P.dist.length;i++){ let k=-1, z=-Infinity; B.forEach((f,j)=>{ const q=(P.series.get(f.id)||[])[i]; if(Number.isFinite(q)&&q>z){ z=q; k=j; } }); if(k>=0) v[k]++; }
+        return B[v.indexOf(Math.max(...v))].id; }
+      return (C.find(f=>/curva|contour|topo|n[ií]vel|altim/i.test(f.nome))||C.slice().sort((a,b)=>b.cruza-a.cruza)[0]).id;
+    }
+    return C[0].id;
+  }
   function partesDe(F){
     const c=pendente&&pendente.cache; if(c&&c.has(F.id)) return c.get(F.id);
     const P=[]; for(const f of F.L.features||[]) P.push(...partesDaFeicao(F.L,f,true));
@@ -778,41 +812,48 @@
     for(const f of F){ const z=series.get(f.id)||[]; f.cobre=z.filter(Number.isFinite).length; }
     pendente.previa={dist, series};
     /* topografia: o MDT de trabalho (nunca o recortado, se houver outro), senão as curvas */
-    let base=null;
-    try{ const sr=S.selRaster, tr=String(S.topoRasterId);
-      base=R.find(f=>f.r===sr&&!/recortad/i.test(f.nome))||R.find(f=>String(f.r.id)===tr)||R.find(f=>f.r.visible!==false&&!/recortad/i.test(f.nome)&&f.cobre)||R.find(f=>f.cobre)||null; }catch(e){}
-    if(!base){ const V=F.filter(f=>f.tipo==='vetor'&&!f.projeto&&f.cruza>1); base=V.find(f=>/curva|contour|topo|n[ií]vel|altim/i.test(f.nome))||V.sort((a,b)=>b.cruza-a.cruza)[0]||R[0]||null; }
-    pendente.topo=base?base.id:'';
-    /* projeto: o desenho bruto do DCE/cava que a linha cruza; senão um MDT recortado */
-    const P=F.filter(f=>f.tipo==='vetor'&&f.projeto&&f.cruza>1).sort((a,b)=>(b.projeto.bruta-a.projeto.bruta)||(b.cruza-a.cruza));
-    const pr=P[0]||R.find(f=>/recortad/i.test(f.nome)&&f.cobre&&f.id!==pendente.topo)||null;
-    if(pr){ pendente.proj=pr.id; pendente.tipo=pr.projeto?pr.projeto.tipo:'pilha'; }
+    const p=pendente;
+    p.tipoTopo=candidatos('topo','img').length?'img':'vet'; p.topo=sugere('topo',p.tipoTopo);
+    /* superfície de análise: o desenho bruto do DCE/cava que a linha cruza; senão um MDT recortado */
+    const des=candidatos('proj','vet').find(f=>f.projeto), rec=candidatos('proj','img').find(f=>/recortad/i.test(f.nome));
+    if(des){ p.tipoProj='vet'; p.proj=des.id; p.tipo=des.projeto.tipo; }
+    else if(rec){ p.tipoProj='img'; p.proj=rec.id; }
+    else { p.tipoProj=''; p.proj=''; }
+    p.tipoCont=candidatos('cont','img').length||!candidatos('cont','vet').length?'img':'vet';
     open();
-    if(F.length===1&&!pendente.proj) criaPendente();
+    if(F.filter(cruzaLinha).length===1&&p.topo&&!p.proj) criaPendente();
   }
   function htmlPendente(){
-    const F=pendente.fontes, L=Math.hypot(pendente.linha[1][0]-pendente.linha[0][0],pendente.linha[1][1]-pendente.linha[0][1]);
-    const rot=f=>h(f.nome)+(f.tipo==='vetor'?(f.projeto?' — desenho de '+(f.projeto.tipo==='pilha'?'DCE/pilha':'cava'):' — linhas com cota'):f.tin?' — TIN':' — MDT')+(f.cobre?'':' (não cruza a linha)');
-    const opcoes=(sel,filtro)=>F.filter(filtro).map(f=>`<option value="${h(f.id)}"${f.id===sel?' selected':''}>${rot(f)}</option>`).join('');
-    const outros=F.filter(f=>f.id!==pendente.topo&&f.id!==pendente.proj);
-    return `<div class="gmg-boas gmg-pend"><h2>Nova seção — ${fmt(L,1)} m</h2>
-      <canvas id="gmgPrevia" aria-label="Topografia e projeto ao longo da linha"></canvas>
+    const p=pendente, L=Math.hypot(p.linha[1][0]-p.linha[0][0],p.linha[1][1]-p.linha[0][1]);
+    const rot=f=>h(f.nome)+(f.projeto?' — desenho de '+(f.projeto.tipo==='pilha'?'DCE/pilha':'cava'):f.tin?' — TIN':'');
+    const DICA={'':'Só a topografia: talude natural', img:'MDT, TIN ou outra superfície raster', vet:'Linhas com cota: curvas de nível, desenho do DCE/cava, PDE importado'};
+    const tipos=(nome,atual,comNenhuma)=>`<div class="gmg-tipo" role="radiogroup" aria-label="Tipo da superfície: imagem ou vetorial">${(comNenhuma?[['','Nenhuma']]:[]).concat(Object.entries(TIPOS)).map(([v,t])=>`<label class="${v===atual?'on':''}" title="${h(DICA[v])}"><input type="radio" name="${nome}" value="${v}"${v===atual?' checked':''}>${h(t)}</label>`).join('')}</div>`;
+    const vazio=tipo=>`<p class="gmg-nota">${tipo==='vet'?'Nenhuma camada vetorial com cota (curvas de nível, linhas 3D) cruza a linha.':'Nenhuma imagem (MDT, TIN ou superfície) cruza a linha.'}</p>`;
+    const lista=(papel,tipo,sel,attr)=>{ const C=candidatos(papel,tipo); return C.length?`<select data-pend="${attr}" aria-label="${attr==='topo'?'Topografia':'Superfície de análise'}">${C.map(f=>`<option value="${h(f.id)}"${f.id===sel?' selected':''}>${rot(f)}</option>`).join('')}</select>`:vazio(tipo); };
+    const C3=candidatos('cont',p.tipoCont), marcados=[...p.contatos].map(fonteDe).filter(Boolean), fora=p.fontes.filter(f=>!cruzaLinha(f)).length;
+    /* os botões ficam no alto, ao lado do título: a caixa de comandos não os cobre */
+    return `<div class="gmg-boas gmg-pend"><div class="gmg-pend-topo"><h2>Nova seção — ${fmt(L,1)} m</h2>
+        <div class="gmg-bts"><button type="button" class="tbtn gmg-calc" data-a="cria-pendente"${p.ocupado||!p.topo?' disabled':''}>${p.ocupado?'Cortando na resolução nativa…':'Criar a seção'}</button><button type="button" class="tbtn" data-a="cancela-pendente">Cancelar</button></div></div>
+      <canvas id="gmgPrevia" aria-label="Superfícies ao longo da linha"></canvas>
       <div class="gmg-pend-cards">
-        <section class="gm-work-card"><div class="gm-card-heading"><span class="gm-card-step">1</span><b>Topografia</b>${info('Sobre a topografia','O terreno natural: um MDT ou TIN (cortado na resolução nativa) ou curvas de nível — qualquer camada de linhas com cota no vértice ou num campo COTA/Z/ELEV. Entre duas curvas a cota é interpolada em linha reta.')}</div>
-          <select data-pend="topo" aria-label="Topografia">${opcoes(pendente.topo,f=>!f.projeto)}</select></section>
-        <section class="gm-work-card"><div class="gm-card-heading"><span class="gm-card-step">2</span><b>Projeto (PDE, pilha ou cava)</b>${info('Sobre o projeto','O perfil do projeto: o desenho do DCE/cava (cristas, pés, rampas e limite), um PDE importado com cota ou um MDT do projeto. Pilha: a superfície é o maior entre o projeto e a topografia, e a topografia vira o contato pilha/fundação. Cava: o menor dos dois. Para um talude fora do projeto, deixe só a topografia.')}</div>
-          <select data-pend="proj" aria-label="Projeto"><option value="">nenhum — só a topografia (talude natural)</option>${opcoes(pendente.proj,f=>f.id!==pendente.topo)}</select>
-          ${pendente.proj?`<div class="gmg-seg" role="radiogroup" aria-label="Tipo do projeto"><label><input type="radio" name="gmgPTipo" value="pilha"${pendente.tipo!=='cava'?' checked':''}> pilha / DCE (aterro sobre o terreno)</label><label><input type="radio" name="gmgPTipo" value="cava"${pendente.tipo==='cava'?' checked':''}> cava (escavação)</label></div>`:''}</section>
-        ${outros.length?`<section class="gm-work-card"><div class="gm-card-heading"><span class="gm-card-step">3</span><b>Contatos abaixo do terreno</b>${info('Sobre os contatos','Superfícies que separam materiais abaixo do terreno — o topo da rocha, uma camada fraca. Cada uma vira o topo de uma camada; o que passar acima do terreno é cortado por ele.')}</div>
-          ${outros.map(f=>`<label class="gmg-check"><input type="checkbox" data-cont="${h(f.id)}"${pendente.contatos.has(f.id)?' checked':''}> ${rot(f)}</label>`).join('')}</section>`:''}
+        <section class="gm-work-card"><div class="gm-card-heading"><span class="gm-card-step">1</span><b>Topografia</b>${info('Sobre a topografia','O terreno natural. Imagem: um MDT ou TIN, cortado na resolução nativa. Vetorial: curvas de nível ou qualquer camada de linhas com cota no vértice ou num campo COTA/Z/ELEV; entre duas curvas a cota é interpolada em linha reta.')}</div>
+          ${tipos('gmgTipoTopo',p.tipoTopo,false)}${lista('topo',p.tipoTopo,p.topo,'topo')}</section>
+        <section class="gm-work-card"><div class="gm-card-heading"><span class="gm-card-step">2</span><b>Superfície de análise</b>${info('Sobre a superfície de análise','O talude que será analisado quando ele não é o próprio terreno: o PDE, a pilha ou a cava. Imagem: um MDT do projeto (o MDT recortado, por exemplo). Vetorial: o desenho do DCE/cava (cristas, pés, rampas) ou um PDE importado com cota. Pilha: a superfície é o maior entre ela e a topografia, e a topografia vira o contato pilha/fundação. Cava: o menor dos dois. Nenhuma: a seção é só a topografia (talude natural).')}</div>
+          ${tipos('gmgTipoProj',p.tipoProj,true)}
+          ${p.tipoProj?lista('proj',p.tipoProj,p.proj,'proj'):'<p class="gmg-nota">Só a topografia: talude natural.</p>'}
+          ${p.proj?`<div class="gmg-seg" role="radiogroup" aria-label="Pilha ou cava"><label><input type="radio" name="gmgPTipo" value="pilha"${p.tipo!=='cava'?' checked':''}> pilha / DCE (aterro)</label><label><input type="radio" name="gmgPTipo" value="cava"${p.tipo==='cava'?' checked':''}> cava (escavação)</label></div>`:''}</section>
+        <section class="gm-work-card"><div class="gm-card-heading"><span class="gm-card-step">3</span><b>Superfícies de contato</b>${info('Sobre os contatos','Superfícies que separam materiais abaixo do terreno — o topo da rocha, uma camada fraca. Cada uma vira o topo de uma camada; o que passar acima do terreno é cortado por ele. Podem ser imagem (MDT) ou vetoriais (linhas com cota): troque o tipo para ver as opções de cada um; o que foi marcado continua marcado.')}</div>
+          ${tipos('gmgTipoCont',p.tipoCont,false)}
+          ${C3.length?`<div class="gmg-pend-lista">${C3.map(f=>`<label class="gmg-check"><input type="checkbox" data-cont="${h(f.id)}"${p.contatos.has(f.id)?' checked':''}> ${rot(f)}</label>`).join('')}</div>`:vazio(p.tipoCont)}
+          ${marcados.length?`<p class="gmg-nota">Marcadas: ${marcados.map(f=>h(f.nome)).join(' · ')}</p>`:''}</section>
       </div>
-      <div class="gmg-bts"><button type="button" class="tbtn gmg-calc" data-a="cria-pendente"${pendente.ocupado||!pendente.topo?' disabled':''}>${pendente.ocupado?'Cortando na resolução nativa…':'Criar a seção'}</button><button type="button" class="tbtn" data-a="cancela-pendente">Cancelar</button></div></div>`;
+      ${fora?`<p class="gmg-nota">${fora} camada(s) com cota não cruzam esta linha e ficaram de fora das listas.</p>`:''}</div>`;
   }
   function desenhaPrevia(){
     const c=$('gmgPrevia'), p=pendente&&pendente.previa; if(!c||!p) return;
     const a=ajusta(c); if(!a) return;
     const usados=[pendente.topo,pendente.proj,...pendente.contatos];
-    const series=pendente.fontes.filter(f=>p.series.has(f.id)&&f.cobre).map((f,k)=>({nome:f.nome+(f.id===pendente.topo?' (topografia)':f.id===pendente.proj?' (projeto)':''), x:p.dist, y:p.series.get(f.id),
+    const series=pendente.fontes.filter(f=>p.series.has(f.id)&&cruzaLinha(f)).map((f,k)=>({nome:f.nome+(f.id===pendente.topo?' (topografia)':f.id===pendente.proj?' (análise)':pendente.contatos.has(f.id)?' (contato)':''), x:p.dist, y:p.series.get(f.id),
       cor:f.id===pendente.topo?'#7c4a1e':f.id===pendente.proj?'#7c3aed':GM.PALETA[k%GM.PALETA.length], largura:usados.includes(f.id)?3:1.2}));
     GM.grafico(a.ctx,a.w,a.h,{titulo:'Ao longo da linha (prévia)', x:{rotulo:'distância (m)'}, y:{rotulo:'cota (m)'}, series},claro());
   }
@@ -1073,7 +1114,7 @@
   const api={open, mostrou, comando, mapClick, fimDesenho, snapshot:()=>GM.snapshot(), restore, reset:()=>restore(null), hasContent:()=>GM.temConteudo(),
     visivel:()=>montado&&!$('gmGeomecWorkspace').hidden,
     __teste:{GM, sec, res, calcula, exportaRelatorio, paginasRelatorio, exportaCSV, figura, sincronizaMapa, preparaNova, estudos,
-      estado:()=>({aba, modo, sel, vista, vistaManual, pendente:pendente?{topo:pendente.topo, proj:pendente.proj, tipo:pendente.tipo, contatos:[...pendente.contatos], ocupado:pendente.ocupado, fontes:pendente.fontes.map(f=>({id:f.id, nome:f.nome, tipo:f.tipo, cruza:f.cruza, cobre:f.cobre, projeto:f.projeto}))}:null, ocupado:GM.ocupado(), emEstudo, rodada})}};
+      estado:()=>({aba, modo, sel, vista, vistaManual, pendente:pendente?{topo:pendente.topo, proj:pendente.proj, tipo:pendente.tipo, tipoTopo:pendente.tipoTopo, tipoProj:pendente.tipoProj, tipoCont:pendente.tipoCont, contatos:[...pendente.contatos], ocupado:pendente.ocupado, fontes:pendente.fontes.map(f=>({id:f.id, nome:f.nome, tipo:f.tipo, cruza:f.cruza, cobre:f.cobre, projeto:f.projeto}))}:null, ocupado:GM.ocupado(), emEstudo, rodada})}};
   root.GeoMineGeomec=api;
   const liga=()=>{ try{ mount(); }catch(e){ console.warn('GEOMEC',e); } };
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(liga,0)); else setTimeout(liga,0);
