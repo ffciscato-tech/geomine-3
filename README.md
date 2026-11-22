@@ -364,45 +364,53 @@ publicou de outro lugar e este repositório está desatualizado.
   desenho" e um limite novo zeram o registro. Sem nada apagado o corte é
   idêntico ao anterior (conferido com a CSN: mesmo volume, mesmas células e
   feições). Testes em `cava2-terrain-contact.test.cjs`.
-- **Na aba Cava, a linha selecionada tem um ❄ de cada lado: congela-se um lado
-  e só o outro se move, com tudo o que estiver daquele lado. O ângulo do talude
-  nunca varia: a única coisa que muda é o tamanho da berma.** Print IMG_0247
-  (22/11/2026): "no momento que eu selecionei uma linha, vão aparecer dois
-  botõezinhos, um de cada lado, para escolher qual lado eu quero congelar … eu
-  seleciono, congelo um lado, e o outro lado, quando eu movimentar, tudo que
-  estiver daquele lado vai ser movimentado". Correção do mesmo dia, 19h50: "a
+- **Na aba Cava, a linha selecionada tem um ❄ de cada lado: o lado congelado
+  fica totalmente congelado e o outro, totalmente livre. O ângulo do talude
+  nunca varia: a única coisa que muda é o tamanho da berma.** Três pedidos de
+  22/11/2026. Print IMG_0247: "no momento que eu selecionei uma linha, vão
+  aparecer dois botõezinhos, um de cada lado, para escolher qual lado eu quero
+  congelar … tudo que estiver daquele lado vai ser movimentado". Às 19h50: "a
   gente tem que partir do princípio sempre que o ângulo de talude não pode
   variar … a única coisa que varia é o tamanho da berma … tem que aparecer a
-  opção de congelar os dois lados" — a primeira versão apagava o ❄ do lado do
-  talude, e na crista de uma pilha só sobrava o de dentro. Vale para qualquer
-  crista ou pé, da cava e do DCE. Regras, em `cava-pilha-v106.html`
-  (`bermaDaLinha`, `planoDoLado`, `botoesDeLado`, `fixaAnel`,
-  `invasaoDasFixadas`): (1) toda linha é borda de uma **berma** — a dela, ou,
-  na linha do topo, a que fica depois do talude — e os **dois ❄ valem sempre**;
-  o resultado depende só do lado congelado, não de qual das duas linhas da
-  berma foi clicada; (2) **❄ de fora**: a borda de dentro da berma e tudo o que
-  está por dentro andam para dentro, e o lado de fora — a linha desenhada
-  inclusive — não se mexe; a largura é iterada até a linha parar onde foi
-  solta, medida na perpendicular; (3) **❄ de dentro**: a borda de dentro é
-  **fixada** (ela e tudo o que está por dentro passam a nascer do esqueleto
-  gravado em `bermas._travas`, a única forma exata — a compensação pela berma
-  deixava o lado "parado" ceder 2 m num arrasto de 5 m) e quem anda é a borda
-  de fora, com tudo o que está por fora e a linha desenhada; (4) a linha que
-  fica aparece em azul e a que anda em **laranja**, com os vértices de
-  arrastar; no dedo, pega-se por um vértice dela, pelo vértice correspondente
-  da linha selecionada ou pela própria linha (vale o vértice mais próximo); (5)
-  o sentido contrário só volta até a berma nominal, e arrastar para o lado
-  congelado avisa na barra; (6) a linha fixada aparece em azul com "❄ fixada",
-  vai com o projeto, com o desfazer e com a cadeia de blocos, e é solta no
-  **↺** de qualquer das duas linhas da berma (ou R/Delete), que também devolve
-  a berma ao nominal; (7) linha fixada não é editada por engano nem atropelada:
-  arrasto livre nela ou por dentro dela é recusado com o motivo, ❄ de dentro
-  com uma fixada do lado que anda também, e um arrasto que faria a linha de
-  fora entrar na fixada é desfeito com aviso; (8) várias fixadas convivem (uma
-  por linha) e com a trava da tecla F. Limites conhecidos: o alargamento é no
-  vértice arrastado e cai a zero nos vizinhos; com uma fixada mais para fora, o
-  ❄ de dentro numa berma mais interna é recusado — a ordem que funciona é de
-  dentro para fora, ou o ❄ de fora. Testes em `cava2/cava-lado.test.cjs`.
+  opção de congelar os dois lados". Às 20h40: "quando eu apagar um vértice da
+  linha que eu selecionei, as linhas congeladas não podem mudar … alguns
+  pontos só se movem em uma direção; eles têm que estar livres. A parte que eu
+  selecionei para movimentar tem que estar totalmente livre; a parte que ficou
+  congelada, totalmente congelada". Vale para qualquer crista ou pé, da cava e
+  do DCE. Regras, em `cava-pilha-v106.html` (`bermaDaLinha`, `planoDoLado`,
+  `editaPorSementes`, `fixaAnel`, `alcasDoAnel`): (1) toda linha é borda de
+  uma **berma** — a dela, ou, na linha do topo, a que fica depois do talude — e
+  os **dois ❄ valem sempre**; o resultado depende só do lado congelado, não de
+  qual das duas linhas da berma foi clicada; (2) **❄ de fora**: anda a borda de
+  dentro da berma, com tudo o que está por dentro; **❄ de dentro**: anda a
+  borda de fora, com tudo o que está por fora e a linha desenhada; (3) a berma
+  editada vira uma **junta**: a borda de dentro dela ganha contorno próprio
+  (`bermas._travas`, com `S` = `Sin`), e dali para dentro o desenho nasce desse
+  contorno, não da linha desenhada. O projeto fica em blocos separados sempre
+  por uma berma, nunca por um talude; (4) **mover, apagar (duplo toque) e
+  inserir (+) vértice** são feitos na semente do bloco da linha que anda, em
+  **qualquer direção**; o lado congelado não é tocado (0,00 m nos testes); (5)
+  os outros blocos do lado que anda acompanham por transporte (`campoEntre`),
+  e o que o transporte não fechar vai para a largura de uma berma; (6) a linha
+  que fica aparece em azul e a que anda em **laranja**, com os vértices e os
+  "+" dela; no dedo, pega-se por um vértice ou pela própria linha (vale o
+  vértice mais próximo); (7) uma edição que faria a linha passar por cima da
+  vizinha da berma, ou as linhas se cruzarem, é recusada com o motivo; (8) a
+  junta aparece em azul fino com "berma ✎", vai com o projeto, com o desfazer e
+  com a cadeia de blocos, e o **↺** de qualquer das duas linhas da berma (ou
+  R/Delete) devolve a berma ao nominal; (9) sem ❄, num desenho que já tem
+  juntas, o arrasto mexe só no bloco daquela linha. A tecla F (trava antiga)
+  continua como era. Limites conhecidos: a âncora da rampa de um bloco não
+  acompanha o contorno dele; um "+" dentro do entalhe da rampa muda o entalhe.
+  Testes em `cava2/cava-lado.test.cjs`.
+- **Na aba Cava há um ✓ e uma mãozinha sobre o desenho, como no modo 2D.**
+  Pedido de 22/11/2026, 20h40. O **✓** é o "terminado": fecha o desenho em
+  curso (limite ou polígono de seleção) ou encerra a edição da linha (solta a
+  seleção e o lado congelado); sem nada em curso, volta para Mover. A
+  **mãozinha** move a vista **sem trocar de ferramenta**: a linha selecionada
+  e o lado congelado continuam (a ferramenta Mover da barra desmarca tudo).
+  No 2D a mãozinha é o desenho à mão livre; na aba Cava ela é o mover a vista,
+  que é o que a mão já significa na barra de lá.
 - **Na aba Cava, a régua traça a Seção A–A′, e a figura tem de fazer sentido.**
   Print IMG_0245 (22/11/2026), com a régua da barra de baixo circulada e o
   painel "Seção A–A′ · L = 19 m · z: 315 a 405 m · EV 0,04×": "esta seção

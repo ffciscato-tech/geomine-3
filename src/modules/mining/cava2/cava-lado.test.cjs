@@ -5,10 +5,10 @@ const fonte=fs.readFileSync(path.join(__dirname,'cava-pilha-v106.html'),'utf8');
 const trecho=(a,b)=>{const i=fonte.indexOf(a),f=fonte.indexOf(b,i);assert(i>0&&f>i,'trecho do motor: '+a);return fonte.slice(i,f);};
 const ctx={};vm.createContext(ctx);
 vm.runInContext('const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)); let objs={}, travaSk=null, congelada=null;'
-  +trecho('function dentroDe(','function distAoAnel(')+trecho('function distAoAnel(','\n}\n')+'\n}\n'
+  +trecho('function cumulativo(','function distAoAnel(')+trecho('function distAoAnel(','\n}\n')+'\n}\n'
   +trecho('function travasFixas(','// grava/limpa o esqueleto da string congelada')
   +trecho('function parDeBermaDoLado(','function botoesDeLado(')
-  +';this.api={travasFixas,travaDe,fixaAnel,soltaAnel,invasaoDasFixadas,parDeBermaDoLado,bermaDaLinha,planoDoLado,set:(o,t)=>{objs=o;travaSk=t||null;},objs:()=>objs};',ctx);
+  +';this.api={travasFixas,travaDe,fixaAnel,soltaAnel,invasaoDasFixadas,parDeBermaDoLado,bermaDaLinha,planoDoLado,familiaDoAnel,alcasDoAnel,campoEntre,cruzamentosDoDesign,repinaJuntas,soltaPinos,set:(o,t)=>{objs=o;travaSk=t||null;},objs:()=>objs};',ctx);
 const A=ctx.api;
 const quad=(m,z,tp)=>({z,tp,P:[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i})),Sk:[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i}))});
 // pilha de 2 bancos: de dentro para fora — crista@20, pé@10 | crista@10, pé@0 (a linha desenhada)
@@ -73,4 +73,36 @@ test('linha fixada não é atropelada: mede quanto a vizinha de fora entrou nela
   // o desenho de antes do arrasto entra na conta pelo parâmetro (a prévia já mexeu no anel)
   assert.equal(A.invasaoDasFixadas('pilha',{idx:2,P:quad(48,10,'crista').P}),0);
   an[2]=quad(30,10,'crista');assert(A.invasaoDasFixadas('pilha')>=10,'a vizinha inteira por dentro da fixada');
+});
+
+test('lado livre × lado congelado: cada junta semeia o seu bloco, e os vértices de arrastar são os do contorno dele',()=>{
+  const o=pilha();A.set(o);
+  assert.equal(A.familiaDoAnel('pilha',0),null,'sem junta, tudo nasce da linha desenhada');
+  const t=A.fixaAnel('pilha',1);                       // junta na borda de dentro da berma (geração 2)
+  assert.equal(A.familiaDoAnel('pilha',1),null,'a borda de fora da berma continua da linha desenhada');
+  assert.equal(A.familiaDoAnel('pilha',2),t);assert.equal(A.familiaDoAnel('pilha',3),t,'dali para dentro, o contorno da junta');
+  assert.equal(A.alcasDoAnel('pilha',0).length,4);
+  // apagar um vértice no contorno da junta: o gerador repõe o ponto da linha desenhada na linha,
+  // mas ele deixa de ser vértice de arrastar do bloco de dentro — e o bloco de fora nem sabe
+  for(const L of [t.S,t.Sin])L.splice(L.findIndex(q=>q.si===2),1);
+  assert.deepEqual([...A.alcasDoAnel('pilha',1)].map(q=>q.si),[0,1,3]);assert.deepEqual([...A.alcasDoAnel('pilha',0)].map(q=>q.si),[0,1,3]);
+  assert.equal(A.alcasDoAnel('pilha',2).length,4,'a linha de fora da berma tem os quatro');
+  // o desenho final da junta é regravado depois de mexer no contorno
+  A.soltaPinos(t);assert.equal(t.P,null);A.repinaJuntas('pilha');assert.equal(t.P.length,4);assert.notEqual(t.P,o.pilha.design.aneis[1].P);
+});
+test('transporte: o campo de deslocamento de uma linha (antes → depois) leva junto quem está ao lado',()=>{
+  const q=(m)=>[[-m,-m],[m,-m],[m,m],[-m,m]].map(p=>({x:p[0],y:p[1]}));
+  const R0=q(40),R1=q(40);R1[1]={x:46,y:-43};         // um canto puxado 6 m para leste e 3 m para sul
+  const F=A.campoEntre(R0,R1);
+  const perto=(v,x,y)=>assert(Math.abs(v.x-x)<1e-6&&Math.abs(v.y-y)<1e-6,JSON.stringify(v));
+  perto(F({x:40,y:-40}),6,-3);perto(F({x:-40,y:-40}),0,0);perto(F({x:-40,y:40}),0,0);
+  perto(F({x:0,y:-48}),3,-1.5);                        // meio da aresta, 8 m para fora (a outra borda da berma): metade
+  perto(F({x:48,y:0}),3,-1.5);
+  // vértice apagado (formas com contagens diferentes): cada ponto vai para o mais próximo da forma nova
+  const tri=[R0[0],R0[1],R0[3]],G=A.campoEntre(R0,tri);
+  perto(G({x:-40,y:-40}),0,0);perto(G({x:40,y:40}),-40,-40);
+});
+test('cruzamentos entre linhas vizinhas: o que não pode aumentar depois de uma edição',()=>{
+  const d=pilha().pilha.design;assert.equal(A.cruzamentosDoDesign(d),0);
+  d.aneis[1].P[0]={x:-60,y:-60,si:0};assert(A.cruzamentosDoDesign(d)>=2,'o canto do pé passou por cima da crista de fora');
 });
