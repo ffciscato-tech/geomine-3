@@ -2970,14 +2970,23 @@ function desenhaImagemContexto(item,im){
 function desenhaContexto(frente){
   const primeiroPlano=!!frente;
   ctx.save();
-  for(const item of contexto){
-    if(!!item.foreground!==primeiroPlano)continue;
-    const b=item.bounds,im=item._img;
-    if(!im||!im.complete||!Array.isArray(b)||b.length!==4)continue;
-    ctx.globalAlpha=Math.max(0,Math.min(1,Number.isFinite(+item.opacity)?+item.opacity:.8));
-    try{desenhaImagemContexto(item,im);}catch(e){}
-  }
+  /* Ordem do Mapa 2D (22/11/2026 — o MDT ligado na árvore "não aparecia aqui"): o fundo
+     escolhido (satélite ou ortofoto) fica POR BAIXO das superfícies do projeto. Antes ele
+     era pintado depois delas e as cobria. Só as imagens marcadas belowBasemap — as que a
+     árvore põe abaixo da ortofoto usada como fundo — são pintadas antes dele. */
+  const imagens=abaixo=>{
+    for(const item of contexto){
+      if(!!item.foreground!==primeiroPlano||!!item.belowBasemap!==abaixo)continue;
+      const b=item.bounds,im=item._img;
+      if(!im||!im.complete||!Array.isArray(b)||b.length!==4)continue;
+      ctx.globalAlpha=Math.max(0,Math.min(1,Number.isFinite(+item.opacity)?+item.opacity:.8));
+      try{desenhaImagemContexto(item,im);}catch(e){}
+    }
+    ctx.globalAlpha=1;
+  };
+  imagens(true);
   if(!primeiroPlano&&window.GeoMineCavaBasemap?.draw()){grade();}
+  imagens(false);
   ctx.globalAlpha=1;
   for(const item of contexto){
     if(!!item.foreground!==primeiroPlano)continue;

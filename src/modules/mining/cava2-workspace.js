@@ -340,7 +340,8 @@ function georreferenciaDoOverlay(ov){
 }
 function limitesDoOverlay(ov){const g=georreferenciaDoOverlay(ov);return g&&g.bounds;}
 /* Same providers as the 2D map. Only provider identity is persisted; tiles
-   remain a bounded display cache in the iframe, under all project layers. */
+   remain a bounded display cache in the iframe, under all project layers
+   (vectors and, since 22/11/2026, the visible surfaces/MDT as well). */
 const FUNDOS_CAVA=['Satélite (Google)','Híbrido (Google)','Satélite (Esri)','Ruas (OSM)','Topográfico (OpenTopo)','Sem fundo'];
 const ZOOM_FUNDO_CAVA={'Satélite (Google)':22,'Híbrido (Google)':22,'Satélite (Esri)':19,'Ruas (OSM)':19,'Topográfico (OpenTopo)':17};
 let fundoCavaTimer=0,fundoCavaKey='',fundoCavaOrtoState=[];
@@ -434,6 +435,20 @@ function feicaoIntersecaoEmPrimeiroPlano(L,f){
     String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase());
   return labels.some(v=>v==='intersecao'||v.startsWith('intersecao ')||v==='daylight'||v==='rb31-inter');
 }
+/* MDT marcado como visível mas ainda sem desenho: o projeto abre adiando o
+   desenho das camadas ocultas (o MDT de origem fica oculto enquanto a variante
+   Recortada está ativa) e a troca de variante religava só a marca "visível".
+   Resultado: olho ligado na árvore e nada no Mapa 2D nem na aba Cava. */
+function cava2GaranteDesenhoDoRaster(r){
+  if(!r||r.visible===false)return false;
+  try{
+    if(r._projectDrawDeferred&&typeof renderRaster==='function'){renderRaster(r);return true;}
+    if(r.overlay&&typeof map!=='undefined'&&map&&!map.hasLayer(r.overlay)&&!(typeof demTilesAtivo==='function'&&demTilesAtivo(r))){
+      r.overlay.addTo(map);if(typeof zApply==='function')zApply();return true;
+    }
+  }catch(e){console.warn('Cava2: MDT visível sem desenho',e);}
+  return false;
+}
 function contextoDasCamadas(){
   const atual=desenhoAtual(),temDesign=!!designRuntime(atual),out=[],candidatos=[];
   const limite=240000,camadas=[...(S.layers||[])].sort((a,b)=>(b._cava2Managed?1:0)-(a._cava2Managed?1:0));
@@ -482,10 +497,18 @@ function contextoDasCamadas(){
   /* As superfícies e a ortofoto pertencem à mesma árvore visual do 2D.
      Reaproveitar o PNG já renderizado evita recalcular MDTs grandes e mantém
      exatamente a simbologia e a opacidade escolhidas no projeto. */
+  /* A árvore manda também na ordem (22/11/2026 — print com o DEM ligado e a
+     nota "não aparece aqui"): as imagens seguem de baixo para cima da pilha e
+     ficam SOBRE o fundo de satélite, como no Mapa 2D. Quando o fundo é a
+     ortofoto principal do projeto, o que a árvore põe abaixo dela continua
+     por baixo (belowBasemap). */
+  const pilha=S.stack||[],posicao=k=>pilha.indexOf(k),imagens=[];
   for(const r of (S.rasters||[])){
-    const geo=r.visible!==false&&r._url?georreferenciaDoOverlay(r.overlay):null;
-    if(geo)out.push({imageUrl:r._url,bounds:geo.bounds,mesh:geo.mesh,
-      opacity:n(r.style?.opacity,.8),name:r.name||'Raster'});
+    if(r.visible===false)continue;
+    cava2GaranteDesenhoDoRaster(r);
+    const geo=r._url?georreferenciaDoOverlay(r.overlay):null;
+    if(geo)imagens.push({pos:posicao('R:'+r.id),item:{imageUrl:r._url,bounds:geo.bounds,mesh:geo.mesh,
+      opacity:n(r.style?.opacity,.8),name:r.name||'Raster'}});
   }
   const I=S.img;
   if(!estado.fundoMapa&&I?.visible!==false&&I?.url){
@@ -495,7 +518,17 @@ function contextoDasCamadas(){
        esticava a ortofoto inteira para dentro dessa janela. */
     const geo=I._warpWM&&I._llbounds?georreferenciaMercatorDaImagem(I._llbounds,8):
       (Array.isArray(I.b)&&I.b.length===4?{bounds:I.b.slice(),mesh:null}:georreferenciaDoOverlay(I.overlay));
-    if(geo)out.push({imageUrl:I.url,bounds:geo.bounds,mesh:geo.mesh,opacity:op,name:I.name||'Ortofoto'});
+    if(geo)imagens.push({pos:posicao('I:0'),orto:true,item:{imageUrl:I.url,bounds:geo.bounds,mesh:geo.mesh,opacity:op,name:I.name||'Ortofoto'}});
+  }
+  {
+    const fundo=fundoCava(),ortoFundo=fundo.startsWith(ORTO_FUNDO_CAVA)?fontesOrtoCava().find(q=>ORTO_FUNDO_CAVA+q.id===fundo)?.o:null,
+      posOrto=ortoFundo&&ortoFundo===I?posicao('I:0'):-1;
+    imagens.sort((a,b)=>b.pos-a.pos);                      // índice 0 é o topo da árvore: o maior vai primeiro (por baixo)
+    for(const q of imagens){
+      /* a cópia da ortofoto que já é o fundo fica onde sempre esteve, por baixo dele */
+      if(ortoFundo&&ortoFundo===I&&(q.orto||(posOrto>=0&&q.pos>posOrto)))q.item.belowBasemap=true;
+      out.push(q.item);
+    }
   }
   // A new/empty Cava must fit the selected ortho too. Background images are
   // not vector geometry, so provide only their extent to the editor's fit.
@@ -2220,8 +2253,9 @@ function aplicaVarianteCava(d){
       if(show!==undefined&&L.visible!==show){L.visible=show;if(typeof drawLayer==='function')drawLayer(L);}
     }
     const surface=S.rasters.find(r=>r.id===d.resultadoCorte?.surfaceId),source=rasterDoDesenho(d);
-    if(surface){surface.visible=cut;if(surface.overlay)surface.overlay.setOpacity(cut?(surface.style?.opacity??1):0);}
+    if(surface){surface.visible=cut;cava2GaranteDesenhoDoRaster(surface);if(surface.overlay)surface.overlay.setOpacity(cut?(surface.style?.opacity??1):0);}
     if(source&&source!==surface&&d.resultadoCorte){source.visible=cut?false:d.resultadoCorte.sourceVisible!==false;
+      cava2GaranteDesenhoDoRaster(source);
       if(source.overlay)source.overlay.setOpacity(source.visible?(source.style?.opacity??1):0);}
     if(cut){A.sel=null;A.setTool('mover');S.activeId=camadasResultadoCava(d).line?.id??S.activeId;}
   }

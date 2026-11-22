@@ -269,6 +269,23 @@ publicou de outro lugar e este repositório está desatualizado.
   desenho" e um limite novo zeram a lista. O motor da aba Cava, os volumes e a
   camada Recortada continuam usando o desenho paramétrico inteiro (a Recortada
   só é refeita quando o desenho ou o MDT mudam).
+- **Na aba Cava, o MDT ligado na árvore aparece sobre o fundo, e a barra dos
+  desenhos é baixa.** Pedido de 22/11/2026 (print IMG_0239: "DIMINUIR" sobre a
+  barra "＋ Nova · abas · fundo" e a camada DEM, com o olho ligado, apontada com
+  "não aparece aqui"). Eram dois defeitos. (1) O quadro da aba Cava pintava as
+  imagens do projeto e **depois** o fundo de satélite, que as cobria: o MDT só
+  aparecia com "Sem fundo". Agora o fundo é pintado primeiro
+  (`desenhaContexto`, em `cava-pilha-v106.html`) e as superfícies vêm por cima,
+  de baixo para cima da árvore, com a opacidade da camada, como no Mapa 2D.
+  Quando o fundo é a ortofoto principal do projeto, o que a árvore põe abaixo
+  dela continua por baixo (`belowBasemap`, em `contextoDasCamadas`). (2) O
+  projeto adia o desenho das camadas ocultas ao abrir, e o MDT de origem fica
+  oculto enquanto a variante Recortada está ativa; ao voltar para a Bruta (ou
+  excluir a Recortada) só a marca "visível" era religada — olho ligado e nada
+  no Mapa 2D nem na aba Cava. `cava2GaranteDesenhoDoRaster` faz o desenho
+  adiado e devolve o overlay ao mapa. A barra dos desenhos passou de 45 para
+  32 px no toque (34 → 30 px com mouse), a altura da barra de ferramentas logo
+  abaixo. Não voltar a pintar o fundo depois das imagens.
 - **Interseção apagada: o desenho bruto fica inteiro naquele trecho.** Pedido
   de 22/11/2026, print IMG_0237 com um laço pequeno de interseção circulado
   junto à rampa: "essas pequenas intersecções se eu apagá-las o desenho bruto
