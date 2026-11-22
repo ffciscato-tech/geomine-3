@@ -364,6 +364,36 @@ publicou de outro lugar e este repositório está desatualizado.
   desenho" e um limite novo zeram o registro. Sem nada apagado o corte é
   idêntico ao anterior (conferido com a CSN: mesmo volume, mesmas células e
   feições). Testes em `cava2-terrain-contact.test.cjs`.
+- **Raspão: onde o contato deu a superfície como mantida, a linha e o MDT
+  recortado ficam.** Print IMG_0244 (22/11/2026, 17h40), com dois trechos
+  circulados na chegada da rampa à berma: "ainda não aparece a linha, ela
+  continua sendo apagada". Causa: três medidas diferentes do mesmo contato. A
+  linha de interseção sai de uma malha de ¾ de célula do MDT (9 m num MDT de
+  12,5 m); as cristas, pés e rampas eram cortados ponto a ponto a cada 0,75 m;
+  o MDT recortado, a cada 0,20 m. Onde o terreno só raspa por cima do pé de uma
+  bancada, o contato não via nada — ou via uma lente de 1 m no meio do trecho —
+  e mesmo assim a linha sumia por vários metros e a grade abria um furo, sem
+  nenhuma interseção que a pessoa pudesse apagar. Reproduzido com uma faixa de
+  terreno de 1 m de largura, 40 cm acima do pé, por 30 m: 28,5 m de pé
+  apagados sem interseção por perto; depois da correção, nenhum, e o volume do
+  corte não muda. Regras, em `cava2RecortaSuperficieNoMdt` e em
+  `cava2-terrain-contact.js`: (1) **o contato manda**: no ponto coberto por uma
+  face mantida (`GeoMineCavaTerrain.cover`), a linha fica enquanto o terreno a
+  cobrir por até `cava2Raspao(g)` — 10% da célula do MDT, entre 0,30 e 1,25 m —,
+  e a célula do MDT recortado também (`rasterize` com `graze`); essa célula não
+  soma volume. Bolsão mais fundo continua cortando como antes. (2) **Laço
+  pequeno apagado vale pelo próprio polígono** (`heal`): uma lente de 1 ou 2 m
+  de largura não cabe na grade de regiões de 1 m, ficava "sem dois lados
+  claros" e nada mudava; agora, dentro de um laço fechado pequeno (até 10% do
+  mantido, a mesma fração que define uma ilha) vale o projeto. (3) **Arco
+  aberto** — o contato de uma lasca costuma sair assim, com as duas pontas
+  sobre o pé da bancada — é fechado pela corda entre as pontas. (4) Laço que
+  cerca um pedaço **mantido** (ilha) continua sem mexer em nada. (5) Os pedaços
+  menores do mesmo bolsão, vizinhos da mesma linha apagada, acompanham o
+  principal. Sem nada apagado e sem raspão o corte é o mesmo de antes (CSN,
+  cota 350: mesmas feições, mesmo volume, 237 células de 0,20 m a mais na
+  borda). Não voltar a cortar linha ou célula por comparação direta com o
+  terreno onde a face é mantida. Testes em `cava2-terrain-contact.test.cjs`.
 - **Interseção da cava/DCE com o MDT: faixa exata entre os anéis e rampa dentro
   do cálculo.** Pedido de 22/11/2026, com o print da pilha da CSN (Cantagalo):
   "veja se as interseções com a rampa estão bem feitas". Não estavam, por dois

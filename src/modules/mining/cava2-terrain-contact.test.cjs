@@ -285,9 +285,81 @@ test('duas linhas apagadas na mesma vizinhança: ilha mantida dentro do furo cur
  assert(lines.every(l=>!cura.separates(l.geom)));
  // a ordem em que as linhas chegam não muda o resultado: nenhuma região mantida vira cortada
  const inverso=T.heal(F,lines.map(l=>l.geom).reverse());
- assert.deepEqual(puro(inverso.flips.map(f=>[f.id,f.to])),[[anel,1]]);assert.equal(inverso.mask.at(24,0),0);assert.equal(inverso.mask.at(24,1.8),1);
+ assert.deepEqual(puro(inverso.flips.map(f=>[f.id,f.to])),[[anel,1]]);assert.equal(inverso.mask.at(24,1.8),1);
+ // o miolo fica dentro do laço de fora, que é pequeno e foi apagado: ali vale o projeto — o que ele já era
+ assert.equal(inverso.mask.at(24,0),1);assert.equal(inverso.mask.at(0,0),0);
  for(const c of [cura,inverso])assert(c.flips.every(f=>f.to===1),'só há mudança de cortado para mantido');
  // apagando só a linha de dentro, o miolo (ilha pequena) fica como está e a de fora continua valendo
  const dentro=lines.find(l=>l.geom.every(p=>Math.hypot(p[0]-24,p[1])<1.8)),fora=lines.find(l=>l!==dentro),so=T.heal(F,[dentro.geom]);
  assert.deepEqual(puro(so.flips),[]);assert.equal(so.mask,null);assert.deepEqual(puro(so.islands),[0]);assert.equal(so.separates(fora.geom),true);
+});
+
+test('lasca estreita apagada: o laço vale pelo próprio polígono, mesmo sem caber na grade de regiões',()=>{
+ // crista de terreno de 15 cm de largura no meio da face leste (x = 25, cota 5), 35 cm acima da face, de y = −6 a 6
+ const lasca=(x,y)=>-3+8.35*Math.exp(-((x-25)**2)/(2*.25*.25))*Math.exp(-Math.pow(y/6,8));
+ const g={cs:.25,sample:lasca},kept=[],lines=T.intersect(DCE,g,{keepAbove:true,onPolygon:p=>kept.push(p)}),F=T.faces(kept,DCE,g,{cellSize:1});
+ const longa=lines.slice().sort((a,b)=>b.geom.length-a.geom.length)[0];assert(closed(longa),'a lasca é um laço fechado');
+ const xs=longa.geom.map(p=>p[0]),ys=longa.geom.map(p=>p[1]);
+ assert(Math.max(...xs)-Math.min(...xs)<.4,'mais estreita que a célula da grade de regiões');assert(Math.max(...ys)-Math.min(...ys)>6,'comprida');
+ assert.equal(F.state.filter(e=>e===2).length,0,'a grade de 1 m não tem nenhuma célula cortada: a regra das regiões não enxerga a lasca');
+ const cura=T.heal(F,[longa.geom]);
+ assert.deepEqual(puro(cura.flips),[]);assert.deepEqual(puro(cura.unresolved),[],'não fica "sem dois lados claros"');assert.deepEqual(puro(cura.loops),[0]);
+ assert.equal(cura.mask.at(25,0),1);assert.equal(cura.mask.at(25,3),1);assert.equal(cura.mask.at(25,-4),1);
+ assert.equal(cura.mask.at(26,0),0,'a 1 m do laço nada muda');assert.equal(cura.mask.at(25,9),0);assert.equal(cura.mask.at(0,0),0);
+ // sem apagar nada, nada muda
+ assert.equal(T.heal(F,[]).mask,null);
+});
+test('arco aberto apagado: fechado pela corda, o bolsão entre o arco e a corda volta a seguir o projeto',()=>{
+ // meia lente: arco que sai do pé de uma bancada e volta a ele, 40 cm para dentro da face —
+ // estreita demais para a grade de regiões de 1 m, que ali só tem lado mantido
+ const arco=[[25,-4],[25.2,-3],[25.35,-1.5],[25.4,0],[25.35,1.5],[25.2,3],[25,4]];
+ const kept=[],g={cs:.5,sample:()=>-3};T.intersect(DCE,g,{keepAbove:true,onPolygon:p=>kept.push(p)});
+ const F=T.faces(kept,DCE,g,{cellSize:1}),cura=T.heal(F,[arco]);
+ assert.deepEqual(puro(cura.loops),[0]);assert.deepEqual(puro(cura.unresolved),[]);assert.deepEqual(puro(cura.flips),[]);
+ assert.equal(cura.mask.at(25.2,0),1,'entre o arco e a corda');assert.equal(cura.mask.at(25,0),1,'sobre a corda (o pé da bancada)');
+ assert.equal(cura.mask.at(26.2,0),0);assert.equal(cura.mask.at(24.4,0),0);assert.equal(cura.mask.at(25.2,6),0);
+});
+test('ilha pequena não vira bolsão: o laço que cerca um pedaço mantido continua sem mexer em nada',()=>{
+ const pequena=(x,y)=>x-10-16*Math.exp(-((x-26)**2+y*y)/8),{lines,F}=corta(pequena),laco=lines.find(closed);
+ const cura=T.heal(F,[laco.geom]);
+ assert.equal(cura.mask,null);assert.deepEqual(puro(cura.loops),[]);assert.deepEqual(puro(cura.islands),[0]);
+});
+test('pedaços do mesmo bolsão: os vizinhos menores da linha apagada acompanham o pedaço principal',()=>{
+ // grade de regiões feita à mão: mantido em volta, bolsão partido em dois (4-conexo) por uma célula mantida na diagonal
+ const nc=12,nr=8,st=new Uint8Array(nc*nr).fill(1);
+ for(const [c,j] of [[3,3],[4,3],[5,3],[3,4],[4,4],[5,4],[6,2],[7,2],[6,1],[7,1]])st[j*nc+c]=2;   // dois blocos que só se tocam pelo canto
+ const lab=new Int32Array(nc*nr),area=[0],state=[0];
+ for(let s=0;s<nc*nr;s++){if(lab[s])continue;const id=area.length,e=st[s],pilha=[s];lab[s]=id;let n=0;
+  while(pilha.length){const i=pilha.pop(),c=i%nc;n++;for(const k of [c>0?i-1:-1,c<nc-1?i+1:-1,i-nc,i+nc])if(k>=0&&k<nc*nr&&st[k]===e&&!lab[k]){lab[k]=id;pilha.push(k);}}
+  area.push(n);state.push(e);}
+ const F={h:1,nc,nr,ox:0,oy:0,st,lab,area,state,total:nc*nr,at:(x,y)=>{const c=Math.floor(x),j=Math.floor(y);return c<0||j<0||c>=nc||j>=nr?0:lab[j*nc+c];}};
+ const grande=F.at(4.5,3.5),menor=F.at(6.5,1.5);assert.notEqual(grande,menor);assert.equal(state[grande],2);assert.equal(state[menor],2);assert(area[menor]<area[grande]);
+ // contorno dos dois blocos (um laço só), densificado para os pontos de prova caírem ao longo dele todo
+ const C=[[3,3],[6,3],[6,1],[8,1],[8,3],[6,3],[6,5],[3,5],[3,3]],laco=[];
+ for(let i=0;i<C.length-1;i++)for(let k=0;k<4;k++)laco.push([C[i][0]+(C[i+1][0]-C[i][0])*k/4,C[i][1]+(C[i+1][1]-C[i][1])*k/4]);laco.push(C[0].slice());
+ const cura=T.heal(F,[laco],{islandShare:0});                       // sem a regra do polígono: só as regiões
+ assert.deepEqual(puro(cura.flips.map(f=>f.id).sort()),[grande,menor].sort(),'os dois pedaços passam a mantidos');
+ assert.equal(cura.mask.at(4.5,3.5),1);assert.equal(cura.mask.at(6.5,1.5),1);
+});
+test('cota da face mantida num ponto: dentro, sobre a aresta (com folga) e fora',()=>{
+ const faces=[[[0,0,10],[10,0,10],[10,10,20],[0,10,20]],[[10,0,10],[20,0,5],[20,10,5]]],cob=T.cover(faces);
+ assert.equal(cob.size,3);
+ assert(Math.abs(cob.at(5,5)-15)<1e-9);assert(Math.abs(cob.at(2,9)-19)<1e-9);assert(Math.abs(cob.at(18,2)-6)<1e-9);
+ assert(Math.abs(cob.at(0,5)-15)<1e-9,'sobre a aresta de fora');assert(Math.abs(cob.at(-.015,5)-15)<.05,'1,5 cm fora ainda conta: cristas e pés correm sobre as arestas');
+ assert(Number.isNaN(cob.at(-.2,5)));assert(Number.isNaN(cob.at(15,9)),'fora do triângulo');assert(Number.isNaN(cob.at(50,50)));
+ assert.equal(T.cover([]).size,0);assert(Number.isNaN(T.cover([]).at(0,0)));
+ assert.equal(T.cover([[[0,0,1],[1,0,1],[2,0,1]]]).size,0,'face degenerada é ignorada');
+});
+test('raspão no MDT recortado: a face mantida fica onde o terreno a cobre por pouco; bolsão fundo continua furo; volume não soma',async()=>{
+ // berma plana na cota 5; terreno 0,3 m acima numa faixa (raspão), 2 m acima noutra (bolsão de verdade), abaixo no resto
+ const parts={surface:[[[0,0,5],[10,0,5],[10,10,5],[0,10,5]]]},terreno={sample:(x,y)=>x<2?5.3:x>8?7:3};
+ const seco=await T.rasterize(parts,{cellSize:.5,keepAbove:true,terrain:terreno}),
+  com=await T.rasterize(parts,{cellSize:.5,keepAbove:true,terrain:terreno,graze:.5});
+ const val=(g,x,y)=>g.z[Math.floor((g.yll+g.nr*g.cs-y)/g.cs)*g.nc+Math.floor((x-g.xll)/g.cs)];
+ assert(Number.isNaN(val(seco,1,5)),'antes: furo no raspão');assert.equal(val(com,1,5),5,'agora a célula fica, na cota do projeto');
+ assert(Number.isNaN(val(com,9,5)),'2 m acima continua cortando');assert.equal(val(com,5,5),5);
+ assert.equal(com.cutVolume.volume,seco.cutVolume.volume,'o raspão não soma volume');assert(com.cutVolume.validCells>seco.cutVolume.validCells);
+ // na cava é o contrário: o terreno fica abaixo do projeto
+ const cava=await T.rasterize(parts,{cellSize:.5,keepAbove:false,terrain:{sample:x=>x<2?4.7:x>8?3:7},graze:.5});
+ assert.equal(val(cava,1,5),5);assert(Number.isNaN(val(cava,9,5)));assert.equal(val(cava,5,5),5);
 });

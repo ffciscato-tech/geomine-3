@@ -1312,7 +1312,7 @@ async function executaCorteMdtAtual(forcar){
   const project=S.projectId,engine=d.engine,
     current=()=>S.projectId===project&&desenhoAtual()===d&&d.engine===engine;
   const grid=await GeoMineCavaTerrain.rasterize(C._cava2CutSurface,{cellSize:.2,crs:d.crs||S.workCRS,
-    terrain:R.d,keepAbove:d.tipo==='pilha',isCurrent:current,
+    terrain:R.d,keepAbove:d.tipo==='pilha',isCurrent:current,graze:cava2Raspao(R.d),
     onProgress:percent=>showLoad(`MDT recortado · 0,20 m · ${percent}%`)});
   if(!current())throw Object.assign(new Error('O projeto mudou durante o recorte.'),{name:'AbortError'});
   const superficie=cava2PublicaMdtRecortado(d,R,grid);
@@ -1331,7 +1331,7 @@ async function executaCorteMdtAtual(forcar){
   try{if(typeof layoutSeVisivel==='function')layoutSeVisivel();}catch(e){}
   const ni=congelado.line.features.filter(f=>f.props?.ELEMENTO==='Interseção').length;
   status(`${d.nome}: Bruta preservada · Recortada aberta · ${ni} interseção(ões)`+
-    (cura?.curados?` · ${cura.curados} trecho(s) seguem o desenho bruto (interseção apagada)`:'')+
+    (Math.max(cura?.curados||0,cura?.lacos||0)?` · ${Math.max(cura?.curados||0,cura?.lacos||0)} trecho(s) seguem o desenho bruto (interseção apagada)`:'')+
     (cura?.ilhas?` · ${cura.ilhas} interseção(ões) apagada(s) em volta de trecho pequeno que já seguia o desenho bruto: nada foi retirado`:'')+
     (cura?.naoResolvidas?` · ${cura.naoResolvidas} interseção(ões) apagada(s) sem dois lados claros: o corte ficou como antes ali`:'')+'.');
   window.GeoMineWorkspaceResume?.request();
@@ -2117,6 +2117,19 @@ function cava2RampasParaIntersecao(design,baseZ){
 
 /* Publica somente o contato calculado entre a superfície de projeto e o
    MDT. Componentes abertas permanecem abertas, inclusive junto a NoData. */
+/* RASPÃO (22/11/2026, print IMG_0244: "ainda não aparece a linha, ela continua sendo apagada").
+   O contato do projeto com o MDT é medido numa malha de ¾ de célula do MDT (9 m num MDT de
+   12,5 m); as cristas, pés e rampas eram cortados ponto a ponto, a cada 0,75 m, e o MDT recortado,
+   a cada 0,20 m. Onde o terreno só raspa por cima do pé de uma bancada, o contato não via nada
+   (ou via uma lente de 1 m no meio do trecho) e mesmo assim a linha sumia por vários metros e a
+   grade abria um furo — sem nenhuma linha de interseção que explicasse, e portanto sem nada que
+   a pessoa pudesse apagar para o desenho bruto voltar. Agora o contato manda: onde ele deu a
+   superfície como mantida, a linha e a célula ficam enquanto o terreno as cobrir por até esta
+   altura. Bolsão mais fundo que isso continua cortando como antes. */
+function cava2Raspao(g){
+  const cel=Math.max(1e-3,Math.min(Math.abs(n(g?.cs,1))||1,Math.abs(n(g?.csy,g?.cs))||1));
+  return Math.min(1.25,Math.max(.3,.1*cel));
+}
 function cava2RecortaSuperficieNoMdt(src,g,modoUp,passo,guardarAreas,rampas,apagados,pistas){
   const linhas=[],desenho=[];
   for(const f of src||[]){
@@ -2137,22 +2150,22 @@ function cava2RecortaSuperficieNoMdt(src,g,modoUp,passo,guardarAreas,rampas,apag
       TOPOLOGIA:Math.hypot(f.geom[0][0]-f.geom.at(-1)[0],f.geom[0][1]-f.geom.at(-1)[1])<1e-6?'fechada':'aberta'}}));
   // linhas de contato que a pessoa apagou: não voltam a ser desenhadas; no corte, a
   // região cortada vizinha passa a seguir o desenho bruto (nunca se retira desenho)
-  const casados=cava2CasaContatos(inter,apagados,g);let mask=null,curados=0,removidas=0,naoResolvidas=0,ilhas=0;
+  const casados=cava2CasaContatos(inter,apagados,g);let mask=null,curados=0,removidas=0,naoResolvidas=0,ilhas=0,lacos=0;
+  // a pista também é projeto, inclusive o trecho que sai do anel de fora (o início da rampa)
+  const fill=(pistas||[]).filter(P=>P?.length>=3);let pistasMantidas=null;
+  const mantidasDaPista=()=>pistasMantidas||(pistasMantidas=fill.flatMap(P=>GeoMineCavaTerrain.clipPolygon(P,g,{keepAbove:modoUp})));
   if(casados.size){
     const antes=inter.length,geoms=[...casados.keys()].map(f=>f.geom);
     inter=inter.filter(f=>!casados.has(f));
     if(guardarAreas){
       let cura=null;
       try{
-        /* a pista também é projeto, inclusive o trecho que sai do anel de fora (o início da
-           rampa): sem ela nas regiões, esse trecho ficava sem cura */
-        const fill=(pistas||[]).filter(P=>P?.length>=3),
-          mantidas=fill.flatMap(P=>GeoMineCavaTerrain.clipPolygon(P,g,{keepAbove:modoUp})),
-          F=GeoMineCavaTerrain.faces(poligonos.surface.concat(poligonos.floor,mantidas),
+        /* sem a pista nas regiões, o trecho da rampa que sai do anel de fora ficava sem cura */
+        const F=GeoMineCavaTerrain.faces(poligonos.surface.concat(poligonos.floor,mantidasDaPista()),
             linhas.concat(fill.map(P=>({ring:P.map(q=>[q[0],q[1]])}))),g);
         cura=F?GeoMineCavaTerrain.heal(F,geoms):null;
       }catch(e){console.warn('Cava2: interseção apagada não pôde ser resolvida',e);}
-      naoResolvidas=cura?cura.unresolved.length:geoms.length;ilhas=cura?.islands?.length||0;
+      naoResolvidas=cura?cura.unresolved.length:geoms.length;ilhas=cura?.islands?.length||0;lacos=cura?.loops?.length||0;
       if(cura?.mask){
         mask=cura.mask;curados=cura.flips.length;
         const lado=p=>{let x=0,y=0;for(const q of p){x+=q[0];y+=q[1];}return mask.at(x/p.length,y/p.length);};
@@ -2163,12 +2176,27 @@ function cava2RecortaSuperficieNoMdt(src,g,modoUp,passo,guardarAreas,rampas,apag
     }
     removidas=antes-inter.length;
   }
-  // cristas, pés e rampas cortados pelo MDT; onde a máscara manda, vale o projeto
-  const feats=[],orig=typeof window!=='undefined'?window.sampleZbil:null,usaMascara=!!(mask&&typeof orig==='function');
-  if(usaMascara)window.sampleZbil=(gg,x,y)=>mask.at(x,y)>0?(modoUp?-1e9:1e9):orig(gg,x,y);
+  // cristas, pés e rampas cortados pelo MDT; onde a máscara manda, vale o projeto, e onde o
+  // contato deu a superfície como mantida o terreno que só raspa por cima não corta a linha
+  const feats=[],orig=typeof window!=='undefined'?window.sampleZbil:null,raspa=cava2Raspao(g),folga=.05;
+  let cobertura=null;
+  if(guardarAreas&&typeof GeoMineCavaTerrain.cover==='function'){
+    try{cobertura=GeoMineCavaTerrain.cover(poligonos.surface.concat(poligonos.floor,mantidasDaPista()));}
+    catch(e){console.warn('Cava2: cobertura das faces mantidas indisponível',e);}
+  }
+  const usaMascara=!!((mask||cobertura?.size)&&typeof orig==='function');
+  if(usaMascara)window.sampleZbil=(gg,x,y)=>{
+    if(gg!==g)return orig(gg,x,y);
+    if(mask&&mask.at(x,y)>0)return modoUp?-1e9:1e9;
+    const t=orig(gg,x,y);
+    if(cobertura?.size&&Number.isFinite(t)){
+      const zs=cobertura.at(x,y);
+      if(Number.isFinite(zs)&&(modoUp?t>zs-folga&&t-zs<=raspa:t<zs+folga&&zs-t<=raspa))return modoUp?zs-folga:zs+folga;
+    }
+    return t;};
   try{for(const f of desenho)feats.push(...(cavaRecortaFeicaoNoMdt(f,g,modoUp,passo)||[]));}
   finally{if(usaMascara)window.sampleZbil=orig;}
-  return {feats:feats.concat(inter),stats,poligonos,mask,cura:{casados:casados.size,curados,removidas,naoResolvidas,ilhas}};
+  return {feats:feats.concat(inter),stats,poligonos,mask,raspa,cura:{casados:casados.size,curados,removidas,naoResolvidas,ilhas,lacos}};
 }
 function cava2RecortaLimitesNoMdt(design,d,R,g,modoUp,passo){
   if(typeof cavaRecortaFeicaoNoMdt!=='function')return [];

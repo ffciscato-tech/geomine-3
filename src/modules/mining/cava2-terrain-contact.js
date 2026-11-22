@@ -582,7 +582,13 @@ async function rasterize(parts,options={}){
   // lado correto do MDT. Não fecha pequenas ilhas NoData por interpolação.
   // Onde a pessoa apagou a linha de contato (máscara de heal), vale o projeto:
   // a célula fica mesmo do lado "errado" do MDT, sem somar volume negativo.
-  let volume=0,validCells=0;const mask=options.mask||parts?.mask||null;
+  /* RASPÃO (22/11/2026, print IMG_0244: "ainda não aparece a linha, ela continua sendo
+     apagada"). As faces que chegam aqui são as que o contato deu como mantidas. O contato é
+     medido numa malha de ¾ de célula do MDT; esta grade, a cada 0,20 m. Onde o terreno só
+     raspa por cima do projeto entre dois nós da malha, o contato não vê nada e a grade abria
+     um furo sem linha de interseção nenhuma em volta. Com options.graze a célula de uma face
+     mantida fica quando o terreno a cobre por até essa altura; o volume não soma nada ali. */
+  let volume=0,validCells=0;const mask=options.mask||parts?.mask||null,graze=Math.max(0,+options.graze||0);
   if(options.terrain){
     const sample=options.sample||root.sampleZbil;
     for(let row=0;row<nr;row++){
@@ -590,7 +596,7 @@ async function rasterize(parts,options={}){
         const i=row*nc+col;if(!Number.isFinite(z[i]))continue;
         const x=xll+(col+.5)*cs,y=north-(row+.5)*cs,t=sample(options.terrain,x,y),eps=Math.max(1e-4,Math.abs(t)*1e-7),
           m=mask&&Number.isFinite(t)?mask.at(x,y):0;
-        if(!Number.isFinite(t)||m<0||(!m&&(options.keepAbove?z[i]<t-eps:z[i]>t+eps)))z[i]=NaN;
+        if(!Number.isFinite(t)||m<0||(!m&&(options.keepAbove?z[i]<t-eps-graze:z[i]>t+eps+graze)))z[i]=NaN;
         else{validCells++;volume+=Math.max(0,options.keepAbove?z[i]-t:t-z[i])*cs*cs;}
       }
       if(Date.now()-tick>24){await new Promise(r=>setTimeout(r,0));check();tick=Date.now();}
@@ -600,6 +606,40 @@ async function rasterize(parts,options={}){
   return {nc,nr,cs,csy:cs,xll,yll,z,crs:options.crs,srcCRS:options.crs,native:true,resampled:1,srcDims:[nc,nr],
     cutVolume:options.terrain?{volume,validCells,area:validCells*cs*cs,cellSize:cs,sourceCellSize:options.terrain.cs,
       method:'diferença projeto × MDT nos centros das células',kind:options.keepAbove?'pilha':'cava'}:null};
+}
+/* Cota da superfície mantida num ponto: as faces que o contato entregou (triângulos
+   recortados, convexos), indexadas numa grade. at(x, y) devolve a cota da face que cobre o
+   ponto — com uma folga de borda, porque cristas e pés correm exatamente sobre as arestas — ou
+   NaN onde nenhuma face mantida passa. */
+function cover(polygons,options={}){
+  const tol=options.tolerance??.02,T=[];let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,soma=0;
+  for(const p of polygons||[])for(let i=1;i<p.length-1;i++){
+    const a=p[0],b=p[i],c=p[i+1],det=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+    if(!(Math.abs(det)>1e-12)||![a,b,c].every(q=>Number.isFinite(q[0])&&Number.isFinite(q[1])&&Number.isFinite(q[2])))continue;
+    const bx0=Math.min(a[0],b[0],c[0]),bx1=Math.max(a[0],b[0],c[0]),by0=Math.min(a[1],b[1],c[1]),by1=Math.max(a[1],b[1],c[1]);
+    T.push([a,b,c,det,bx0,by0,bx1,by1]);soma+=Math.max(bx1-bx0,by1-by0);
+    if(bx0<x0)x0=bx0;if(bx1>x1)x1=bx1;if(by0<y0)y0=by0;if(by1>y1)y1=by1;
+  }
+  if(!T.length)return {size:0,at:()=>NaN};
+  x0-=tol;y0-=tol;x1+=tol;y1+=tol;                          // a folga de borda vale também na borda de fora
+  const h=Math.max(.5,Math.min(25,2*soma/T.length)),nc=Math.max(1,Math.ceil((x1-x0)/h)),nr=Math.max(1,Math.ceil((y1-y0)/h)),bins=new Map();
+  T.forEach((t,k)=>{
+    for(let j=Math.max(0,Math.floor((t[5]-tol-y0)/h)),je=Math.min(nr-1,Math.floor((t[7]+tol-y0)/h));j<=je;j++)
+      for(let i=Math.max(0,Math.floor((t[4]-tol-x0)/h)),ie=Math.min(nc-1,Math.floor((t[6]+tol-x0)/h));i<=ie;i++){
+        const key=j*nc+i;let L=bins.get(key);if(!L)bins.set(key,L=[]);L.push(k);}
+  });
+  const fora=(p,q,x,y,s)=>{const ex=q[0]-p[0],ey=q[1]-p[1],l=Math.hypot(ex,ey);return l>0?s*((x-p[0])*ey-(y-p[1])*ex)/l:0;};
+  return {size:T.length,at:(x,y)=>{
+    const i=Math.floor((x-x0)/h),j=Math.floor((y-y0)/h);if(i<0||j<0||i>=nc||j>=nr)return NaN;
+    const L=bins.get(j*nc+i);if(!L)return NaN;
+    for(const k of L){const [a,b,c,det]=T[k],s=det>0?1:-1;
+      if(x<T[k][4]-tol||x>T[k][6]+tol||y<T[k][5]-tol||y>T[k][7]+tol)continue;
+      // distância para fora de cada aresta (positiva = fora): dentro, ou a menos de tol da borda
+      if(fora(a,b,x,y,s)>tol||fora(b,c,x,y,s)>tol||fora(c,a,x,y,s)>tol)continue;
+      const dx=x-a[0],dy=y-a[1],u=(dx*(c[1]-a[1])-dy*(c[0]-a[0]))/det,v=((b[0]-a[0])*dy-(b[1]-a[1])*dx)/det;
+      return a[2]+u*(b[2]-a[2])+v*(c[2]-a[2]);
+    }
+    return NaN;}};
 }
 /* LINHA DE CONTATO APAGADA PELA PESSOA (22/11/2026 — "essas pequenas
    interseções, se eu apagá-las, o desenho bruto deve ser mantido"). Uma linha
@@ -694,10 +734,11 @@ function sides(F,geom,fn){
      islands        linhas em volta de ilha pequena (nada mudou)
      unresolved     linhas sem dois lados claros */
 function heal(F,lines,options={}){
-  const none={mask:null,flips:[],unresolved:[],islands:[],separates:()=>true};
+  const none={mask:null,flips:[],unresolved:[],islands:[],loops:[],separates:()=>true};
   if(!F||!lines?.length)return none;
-  const {h,nc,nr,ox,oy,st,lab,area,state}=F,final=state.slice(),pairs=[],unresolved=[],island=options.islandShare??.1,
+  const {h,nc,nr,ox,oy,st,lab,area,state}=F,final=state.slice(),pairs=[],extras=[],island=options.islandShare??.1,
     mantido=area.reduce((s,a,i)=>s+(state[i]===1?a:0),0);
+  let unresolved=[];
   lines.forEach((geom,li)=>{
     const votes=new Map(),probes=sides(F,geom,(p,q)=>{
       if(state[p]===state[q])return;
@@ -705,6 +746,8 @@ function heal(F,lines,options={}){
     let best=null,bn=0;for(const [key,n] of votes)if(n>bn){bn=n;best=key;}
     if(!best||bn<Math.max(1,.25*probes)){unresolved.push(li);return;}
     const [k,c]=best.split('|').map(Number);pairs.push({li,k,c});
+    // o mesmo bolsão pode aparecer na grade partido em pedaços: os outros vizinhos da linha
+    for(const key of votes.keys())if(key!==best){const [k2,c2]=key.split('|').map(Number);extras.push({li,c:c2,de:c});}
   });
   // Só há mudança de cortado para mantido: a ordem das linhas não altera o resultado.
   const ilha=q=>area[q.k]<area[q.c]&&area[q.k]<island*mantido;
@@ -715,16 +758,64 @@ function heal(F,lines,options={}){
       final[q.c]=1;changed=true;
     }
   }
+  // pedaços menores do mesmo bolsão, vizinhos da mesma linha apagada, acompanham o principal
+  for(const q of extras)if(final[q.de]===1&&state[q.de]!==1&&final[q.c]!==1&&area[q.c]<=area[q.de])final[q.c]=1;
   const islands=pairs.filter(q=>final[q.c]!==1).map(q=>q.li);
+  /* LAÇO PEQUENO PELO PRÓPRIO POLÍGONO (print IMG_0244). Um bolsão estreito — o terreno
+     raspando o pé de uma bancada vira uma lente de 1 ou 2 m de largura — não cabe na grade
+     de regiões: os pontos de prova caem dos dois lados no mesmo lado mantido, a linha ficava
+     "sem dois lados claros" e nada mudava. Para um laço fechado pequeno (até a mesma fração
+     do mantido que define uma ilha) a resposta não depende da grade: dentro dele vale o
+     projeto. Laço grande continua pela regra das regiões, porque pode ter dentro outros
+     bolsões, com as suas próprias linhas, que a pessoa não apagou. */
+  /* Arco aberto: o contato de uma lasca costuma sair assim — só a faixa de um lado do pé da
+     bancada a enxergou, e a linha termina, nas duas pontas, sobre o próprio pé. O arco é
+     fechado pela corda entre as pontas; o que fica entre o arco e a corda é o bolsão (ou já é
+     projeto mantido, e nada muda). */
+  const tolL=options.loopTolerance??.3,loops=[];
+  lines.forEach((linha,li)=>{
+    if(!(linha?.length>=3))return;
+    const aberto=Math.hypot(linha[0][0]-linha.at(-1)[0],linha[0][1]-linha.at(-1)[1])>1e-6,
+      geom=aberto?linha.concat([linha[0]]):linha,n=geom.length;if(n<4)return;
+    let a2=0,x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+    for(let i=0;i<n-1;i++){const p=geom[i],q=geom[i+1];a2+=p[0]*q[1]-q[0]*p[1];
+      if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1];}
+    const A=Math.abs(a2)/2;if(!(mantido>0)||A>island*mantido)return;
+    // ilha (o laço cerca um pedaço mantido): ali o projeto já vale, nada a acrescentar. A conta
+    // é pelas células da grade dentro do laço; laço fino demais para ter célula é bolsão.
+    let dentroMantido=0,dentroCortado=0;
+    for(let j=Math.max(0,Math.floor((y0-oy)/h)),je=Math.min(nr-1,Math.floor((y1-oy)/h));j<=je;j++){
+      const y=oy+(j+.5)*h;
+      for(let c=Math.max(0,Math.floor((x0-ox)/h)),ce=Math.min(nc-1,Math.floor((x1-ox)/h));c<=ce;c++){
+        const e=st[j*nc+c];if(!e)continue;
+        const x=ox+(c+.5)*h;let par=false;
+        for(let i=0;i<n-1;i++){const p=geom[i],q=geom[i+1];if((p[1]>y)!==(q[1]>y)&&x<(q[0]-p[0])*(y-p[1])/(q[1]-p[1])+p[0])par=!par;}
+        if(par){if(e===1)dentroMantido++;else dentroCortado++;}
+      }
+    }
+    if(dentroMantido>dentroCortado)return;
+    loops.push({li,geom,x0:x0-tolL,y0:y0-tolL,x1:x1+tolL,y1:y1+tolL,area:A});
+  });
+  if(loops.length){const dentro=new Set(loops.map(l=>l.li));unresolved=unresolved.filter(li=>!dentro.has(li));}
+  const noLaco=(x,y)=>{
+    for(const l of loops){
+      if(x<l.x0||x>l.x1||y<l.y0||y>l.y1)continue;
+      const g=l.geom;let par=false,perto=false;
+      for(let i=0;i<g.length-1;i++){const a=g[i],b=g[i+1];
+        if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])par=!par;
+        if(!perto){const dx=b[0]-a[0],dy=b[1]-a[1],d2=dx*dx+dy*dy,t=d2?Math.max(0,Math.min(1,((x-a[0])*dx+(y-a[1])*dy)/d2)):0;
+          if(Math.hypot(a[0]+t*dx-x,a[1]+t*dy-y)<=tolL)perto=true;}}
+      if(par||perto)return true;
+    }
+    return false;};
   const fl=new Int8Array(nc*nr),flips=[];let any=false;
   for(let id=1;id<final.length;id++)if(final[id]!==state[id])flips.push({id,to:1,area:area[id]});
-  if(!flips.length)return {...none,unresolved,islands};
-  for(let i=0;i<nc*nr;i++){const id=lab[i];if(id&&final[id]!==state[id]){fl[i]=1;any=true;}}
-  if(!any)return {...none,unresolved,islands};
+  if(flips.length)for(let i=0;i<nc*nr;i++){const id=lab[i];if(id&&final[id]!==state[id]){fl[i]=1;any=true;}}
+  if(!any&&!loops.length)return {...none,unresolved,islands};
   /* A borda da região na grade pode ficar até uma célula aquém do contato de
      verdade: a máscara avança duas células, só sobre o que já está mantido
      (ou fora do projeto) — nunca sobre outra região cortada. */
-  for(let pass=0;pass<2;pass++){
+  if(any)for(let pass=0;pass<2;pass++){
     const src=fl.slice();
     for(let j=0;j<nr;j++)for(let c=0;c<nc;c++){
       const i=j*nc+c;if(src[i])continue;
@@ -734,11 +825,26 @@ function heal(F,lines,options={}){
       if(v&&(st[i]===0||st[i]===1))fl[i]=v;
     }
   }
-  const stateAt=id=>id?final[id]:0;
-  return {flips,unresolved,islands,
-    mask:{h,at:(x,y)=>{const c=Math.floor((x-ox)/h),j=Math.floor((y-oy)/h);return c<0||j<0||c>=nc||j>=nr?0:fl[j*nc+c];}},
+  // células cortadas dentro de um laço pequeno apagado também passam a mantidas (para as outras
+  // linhas de contato saberem que já não separam nada ali)
+  const curada=i=>fl[i]>0||(loops.length&&st[i]===2&&noLaco(ox+(i%nc+.5)*h,oy+(Math.floor(i/nc)+.5)*h));
+  const stateAt=(id,i)=>id?(final[id]===1||(i>=0&&curada(i))?1:final[id]):0;
+  const idx=(x,y)=>{const c=Math.floor((x-ox)/h),j=Math.floor((y-oy)/h);return c<0||j<0||c>=nc||j>=nr?-1:j*nc+c;};
+  return {flips,unresolved,islands,loops:loops.map(l=>l.li),
+    mask:{h,at:(x,y)=>{const i=idx(x,y);return (i>=0&&fl[i])||noLaco(x,y)?1:0;}},
     // em dúvida (um só lado visível, borda do projeto, vazio do MDT) a linha fica
-    separates:geom=>{let dif=0,same=0;sides(F,geom,(p,q)=>{if(stateAt(p)!==stateAt(q))dif++;else same++;});return dif>=same;}};
+    separates:geom=>{
+      let dif=0,same=0;const m=geom.length-1,skip=Math.max(1,Math.floor(m/60));
+      for(let i=0;i<m;i+=skip){
+        const a=geom[i],b=geom[i+1],ex=b[0]-a[0],ey=b[1]-a[1],l=Math.hypot(ex,ey);if(!(l>1e-9))continue;
+        const px=(a[0]+b[0])/2,py=(a[1]+b[1])/2,nx=-ey/l,ny=ex/l;
+        for(const d of [1.5*h,2.5*h,4*h]){
+          const i1=idx(px+nx*d,py+ny*d),i2=idx(px-nx*d,py-ny*d),p=i1>=0?lab[i1]:0,q=i2>=0?lab[i2]:0;
+          if(!p||!q||p===q)continue;
+          if(stateAt(p,i1)!==stateAt(q,i2))dif++;else same++;break;
+        }
+      }
+      return dif>=same;}};
 }
-root.GeoMineCavaTerrain={intersect,clipPolygon,mergePolygons,rasterize,faces,heal};
+root.GeoMineCavaTerrain={intersect,clipPolygon,mergePolygons,rasterize,faces,heal,cover};
 })(typeof window==='object'?window:globalThis);
