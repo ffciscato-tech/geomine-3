@@ -420,6 +420,9 @@ publicou de outro lugar e este repositório está desatualizado.
     interrompe. Sem Worker, calcula na própria página.
   - **O projeto guarda as seções e só o resumo do cálculo** (chave `geomec`);
     os resultados pesados são refeitos ao abrir a aba.
+  - **Cada seção cortada no mapa tem a sua camada** na aba Camadas ("Seção
+    geotécnica S-01", grupo "Seções geotécnicas"), atualizada a cada cálculo e
+    removida com a seção; apagada pela pessoa, não volta sozinha.
   - **Seção primeiro, depois a estabilidade e o NA** (pedido de 22/11/2026, à
     tarde, com o print da faixa: "A seção geotécnica deve vir em primeiro,
     depois estabilidade e o nível de água eu devo poder escolher o pior caso
@@ -1094,11 +1097,18 @@ dos dois. Os cruzamentos das linhas com cota (`GM.perfilVetorial`) entram como
 estações, além das do MDT. Onde a topografia não tem cota vale o contato mais
 alto; contato que não passa abaixo do terreno é ignorado, com aviso. As linhas são
 simplificadas com tolerância de 2 cm (ou 1/2500 do desnível). *Talude* cria um
-talude paramétrico (bancadas, altura, ângulo da face, berma). Cada seção
-cortada no mapa aparece na camada **Seções geomecânicas**, com o trecho entre a
-entrada e a saída da ruptura crítica colorido pela classe do fator de
-segurança; a camada nasce com a primeira seção e depois só é atualizada (se for
-apagada, não volta sozinha).
+talude paramétrico (bancadas, altura, ângulo da face, berma). **Cada seção
+cortada no mapa tem a sua camada** ("Seção geotécnica S-01", no grupo **Seções
+geotécnicas**; pedido de 22/11/2026: "cada seção geotécnica deve gerar uma
+camada para ficar exposta na aba camadas"): a linha da seção, com rótulo do
+nome e do FS, e o trecho entre a entrada e a saída da ruptura crítica colorido
+pela classe do fator de segurança (campos GEOMEC, SECAO, TIPO, FS, CONDICAO,
+CLASSE). A camada nasce com a seção (também ao duplicar e no "Ver no mapa"), é
+atualizada a cada cálculo e ao renomear a seção, e sai quando a seção é
+excluída; se a pessoa apagar a camada, ela não volta sozinha (só pelo "Ver no
+mapa"). A marca `_geomecSecao` vai para o projeto; em projeto antigo a camada é
+achada pelas feições (todas com o mesmo GEOMEC). A camada única de antes,
+"Seções geomecânicas", vira uma camada por seção no primeiro cálculo.
 
 **Água (card 3).** A linha desenhada (horizontal por cota, editada no desenho
 ou "no contato pilha/fundação") e a **condição do cálculo**: NA desenhado

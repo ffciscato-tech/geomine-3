@@ -114,6 +114,7 @@ function projectData(options){
       _cava2Role:L._cava2Role||null,_cava2CutFillOf:L._cava2CutFillOf||null,
       _cava2CutFinalized:!!L._cava2CutFinalized,_cava2IntersectionPreview:!!L._cava2IntersectionPreview,
       _cava2Managed:!!L._cava2Managed,
+      _geomecSecao:L._geomecSecao||null,
       /* Cortes `_c` são fotografias vetoriais independentes. Estes metadados
          registram origem e nível sem recolocá-los no ciclo de atualização da
          cava paramétrica. */
@@ -694,6 +695,7 @@ function loadProject(d){
       _cava2Role:o._cava2Role||null,_cava2CutFillOf:o._cava2CutFillOf||null,
       _cava2CutFinalized:!!o._cava2CutFinalized,_cava2IntersectionPreview:!!o._cava2IntersectionPreview,
       _cava2Managed:!!o._cava2Managed,
+      _geomecSecao:o._geomecSecao||null,
       _cava2CutSnapshotId:o._cava2CutSnapshotId||null,
       _cava2CutZ:o._cava2CutZ!=null&&Number.isFinite(+o._cava2CutZ)?+o._cava2CutZ:null,
       _cava2SnapshotRole:o._cava2SnapshotRole||null,

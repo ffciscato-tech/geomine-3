@@ -559,7 +559,7 @@
     if(t.type==='checkbox'||t.type==='radio'||t.tagName==='SELECT') return;
     if(t.dataset.c){
       poe(s,t.dataset.c,t.value);
-      if(t.dataset.c==='nome'){ renderSeletor(); sujoProjeto(); return; }
+      if(t.dataset.c==='nome'){ renderSeletor(); sujoProjeto(); if(s.linha) sincronizaMapa(); return; }
       if(t.dataset.c==='fsAdm'||t.dataset.c.startsWith('agua.adm.')){ pintaTopo(); desenha(); pintaAba(); sincronizaMapa(); sujoProjeto(); if(t.dataset.c!=='fsAdm') renderCards(); return; }
       mudou(); return;
     }
@@ -613,7 +613,7 @@
   function noClique(e){
     const b=e.target.closest('[data-a]'); if(!b||b.disabled) return;
     const a=b.dataset.a, s=sec();
-    if(a==='nova'){ ribMiniMenu(b,'Nova seção',[{nome:'Traçar no mapa (MDT e superfícies)',run:iniciaTraco},{nome:'Talude paramétrico',run:novaTalude},{nome:'Exemplo: pilha sobre camada fraca',run:exemplo}].concat(s?[{sep:1},{nome:'Duplicar “'+s.nome+'”',run:()=>{ GM.duplica(s); sujoProjeto(); trocaSecao(); }}]:[])); return; }
+    if(a==='nova'){ ribMiniMenu(b,'Nova seção',[{nome:'Traçar no mapa (MDT e superfícies)',run:iniciaTraco},{nome:'Talude paramétrico',run:novaTalude},{nome:'Exemplo: pilha sobre camada fraca',run:exemplo}].concat(s?[{sep:1},{nome:'Duplicar “'+s.nome+'”',run:()=>{ const c=GM.duplica(s); sujoProjeto(); trocaSecao(); if(c.linha) sincronizaMapa({criar:c.id}); }}]:[])); return; }
     if(a==='tracar'){ iniciaTraco(); return; }
     if(a==='talude'){ novaTalude(); return; }
     if(a==='exemplo'){ exemplo(); return; }
@@ -652,9 +652,9 @@
     if(a==='png'){ exportaPNG(); return; }
     if(a==='relatorio'){ exportaRelatorio(); return; }
     if(a==='csv'){ exportaCSV(); return; }
-    if(a==='no-mapa'){ sincronizaMapa({criar:true, zoom:true}); return; }
-    if(a==='duplicar'){ GM.duplica(s); sujoProjeto(); trocaSecao(); return; }
-    if(a==='excluir'){ if(confirm('Excluir a seção “'+s.nome+'”?')){ rodada++; GM.cancela(); GM.exclui(s); sujoProjeto(); sincronizaMapa(); trocaSecao(); } return; }
+    if(a==='no-mapa'){ sincronizaMapa({criar:s.id, zoom:s.id}); return; }
+    if(a==='duplicar'){ const c=GM.duplica(s); sujoProjeto(); trocaSecao(); if(c.linha) sincronizaMapa({criar:c.id}); return; }
+    if(a==='excluir'){ if(confirm('Excluir a seção “'+s.nome+'”?')){ rodada++; GM.cancela(); removeCamadaDaSecao(s); GM.exclui(s); sujoProjeto(); sincronizaMapa(); trocaSecao(); } return; }
   }
 
   /* ------------------------------ novas seções ------------------------------ */
@@ -856,41 +856,76 @@
       else if(s.avisoProjeto) aviso(s.avisoProjeto);
       else if(s.ignorados&&s.ignorados.length) aviso('Sem efeito nesta seção (não passam abaixo do terreno): '+s.ignorados.join(', '));
       try{ cmdLog('GEOMEC: seção '+s.nome+' cortada com passo de '+fmt(s.passo,2)+' m — topografia “'+topo.nome+'”'+(proj?', projeto “'+proj.nome+'” ('+p.tipo+')':'')+(s.camadas.length>1?', '+(s.camadas.length)+' camadas':'')+'.','info'); }catch(e){}
-      trocaSecao(); sincronizaMapa({criar:true});
+      trocaSecao(); sincronizaMapa({criar:s.id});
     }catch(err){ if(pendente===p){ p.ocupado=false; renderTudo(); } aviso('Não foi possível cortar a seção: '+(err&&err.message||err)); console.error('GEOMEC',err); }
   }
 
-  /* ------------------------------ mapa 2D: linhas das seções ------------------------------ */
-  /* Camada com a linha de cada seção e, por cima, o trecho entre a entrada e a saída da
-     ruptura crítica, na cor da classe do fator de segurança. Nasce quando uma seção é cortada
-     no mapa (ou pelo botão “Ver no mapa”); depois só é atualizada — se for apagada, não volta. */
-  const NOME_CAMADA='Seções geomecânicas';
+  /* ------------------------------ mapa 2D: uma camada por seção ------------------------------ */
+  /* Pedido de 22/11/2026: "cada seção geotécnica deve gerar uma camada para ficar exposta na
+     aba camadas". Cada seção cortada no mapa tem a sua camada ("Seção geotécnica S-01"), no
+     grupo "Seções geotécnicas": a linha da seção (rótulo com o nome e o FS) e, por cima, o
+     trecho entre a entrada e a saída da ruptura crítica, na cor da classe do fator de
+     segurança. A camada nasce com a seção (ou pelo "Ver no mapa") e depois só é atualizada:
+     se a pessoa a apagar, não volta sozinha. Excluir a seção leva a camada junto. A camada
+     única de antes ("Seções geomecânicas") vira uma camada por seção ao primeiro cálculo. */
+  const NOME_CAMADA='Seções geomecânicas', NOME_GRUPO='Seções geotécnicas';
+  const nomeCamadaSecao=s=>'Seção geotécnica '+s.nome;
+  const CAMPOS=[{name:'GEOMEC',type:'C',length:40},{name:'SECAO',type:'C',length:60},{name:'TIPO',type:'C',length:20},{name:'FS',type:'N',length:8,decimal:3},{name:'CONDICAO',type:'C',length:30},{name:'CLASSE',type:'C',length:12},{name:'ROTULO',type:'C',length:80}];
   function pontoNaLinha(s,d){ const [a,b]=s.linha, L=Math.hypot(b[0]-a[0],b[1]-a[1])||1, t=(d+(s.recuo||0))/L; return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t]; }
+  const temGEOMEC=L=>(L.fields||[]).some(f=>(f&&f.name||f)==='GEOMEC');
+  /* a camada da seção: pela marca (gravada no projeto) ou, em projeto antigo, pelas feições */
+  function camadaDaSecao(s){
+    return (S.layers||[]).find(L=>L&&L._geomecSecao===s.id)||
+      (S.layers||[]).find(L=>L&&L.gtype==='line'&&L.name!==NOME_CAMADA&&temGEOMEC(L)&&(L.features||[]).length&&L.features.every(f=>f.props&&f.props.GEOMEC===s.id))||null;
+  }
+  function grupoSecoes(){
+    let g=(S.groups||[]).find(x=>String(x.name||'')===NOME_GRUPO);
+    if(!g){ g={id:gid++, name:NOME_GRUPO, parentId:null, collapsed:false}; S.groups.push(g); S.stack=S.stack||[]; if(!S.stack.includes('G:'+g.id)) S.stack.unshift('G:'+g.id); }
+    return g;
+  }
+  function removeCamada(L){
+    if(!L) return;
+    try{ if(L.llayer) map.removeLayer(L.llayer); }catch(e){}
+    const i=(S.layers||[]).indexOf(L); if(i>=0) S.layers.splice(i,1);
+    try{ S.stack=(S.stack||[]).filter(k=>k!=='L:'+L.id); }catch(e){}
+    if(S.activeId===L.id) S.activeId=null;
+  }
+  function feicoesDaSecao(s){
+    const r=s.resumo, adm=GM.admEfetivo(s), x1=s.terreno.at(-1)[0], cond=r&&r.condicao?(r.pior?'pior caso: ':'')+GM.CONDICOES[r.condicao]:'';
+    const feats=[{geom:[pontoNaLinha(s,s.terreno[0][0]),pontoNaLinha(s,x1)], multi:false, props:{GEOMEC:s.id, SECAO:s.nome, TIPO:'seção', FS:r?+r.FS.toFixed(3):null, CONDICAO:cond, CLASSE:'seção', ROTULO:s.nome+(r?' · FS '+fmt(r.FS,2):'')}}];
+    if(r&&r.sup&&Number.isFinite(r.sup.entrada)&&Number.isFinite(r.sup.saida)) feats.push({geom:[pontoNaLinha(s,r.sup.entrada),pontoNaLinha(s,r.sup.saida)], multi:false, props:{GEOMEC:s.id, SECAO:s.nome, TIPO:'ruptura crítica', FS:+r.FS.toFixed(3), CONDICAO:cond, CLASSE:GM.classe(r.FS,adm), ROTULO:''}});
+    return feats;
+  }
+  /* op.criar: id da seção cuja camada deve nascer (true = todas); op.zoom: id da seção a enquadrar */
   function sincronizaMapa(op){
     op=op||{};
     try{
-      const lista=GM.secoes().filter(s=>s.linha&&s.linha.length===2);
-      let L=(S.layers||[]).find(l=>l.name===NOME_CAMADA&&l.gtype==='line'&&(l.fields||[]).some(f=>(f&&f.name||f)==='GEOMEC'));
-      if(!L&&(!op.criar||!lista.length)) return;
-      const feats=[];
+      const lista=GM.secoes().filter(s=>s.linha&&s.linha.length===2), ativa=S.activeId;
+      let migrar=null, alvo=null, mexeu=false;
+      const antiga=(S.layers||[]).find(L=>L&&L.name===NOME_CAMADA&&L.gtype==='line'&&temGEOMEC(L)&&!L._geomecSecao);
+      if(antiga){ migrar=new Set((antiga.features||[]).map(f=>f.props&&f.props.GEOMEC)); removeCamada(antiga); mexeu=true; }
       for(const s of lista){
-        const r=s.resumo, adm=GM.admEfetivo(s), x1=s.terreno.at(-1)[0];
-        feats.push({geom:[pontoNaLinha(s,s.terreno[0][0]),pontoNaLinha(s,x1)], multi:false, props:{GEOMEC:s.id, SECAO:s.nome, TIPO:'seção', FS:r?+r.FS.toFixed(3):null, CLASSE:'seção', ROTULO:s.nome+(r?' · FS '+fmt(r.FS,2):'')}});
-        if(r&&r.sup&&Number.isFinite(r.sup.entrada)&&Number.isFinite(r.sup.saida)) feats.push({geom:[pontoNaLinha(s,r.sup.entrada),pontoNaLinha(s,r.sup.saida)], multi:false, props:{GEOMEC:s.id, SECAO:s.nome, TIPO:'ruptura crítica', FS:+r.FS.toFixed(3), CLASSE:GM.classe(r.FS,adm), ROTULO:''}});
+        let L=camadaDaSecao(s);
+        if(!L&&!(op.criar===true||op.criar===s.id||(migrar&&migrar.has(s.id)))) continue;
+        const feats=feicoesDaSecao(s);
+        if(!L){
+          L=addLayer({name:nomeCamadaSecao(s), gtype:'line', crs:s.crs||S.workCRS, features:feats, fields:CAMPOS, color:'#7c3aed', labelField:'ROTULO'});
+          L.groupId=grupoSecoes().id;
+          S.activeId=ativa;                               /* a camada de apoio não rouba a camada ativa do desenho */
+        } else { L.features=feats; L.fields=CAMPOS; L.name=nomeCamadaSecao(s); }
+        L._geomecSecao=s.id; mexeu=true;
+        const cat=(value,color,weight)=>({value, color, stroke:color, weight, count:feats.filter(f=>f.props.CLASSE===value).length});
+        L.sym=Object.assign({},L.sym,{mode:'cat', field:'CLASSE', weight:2, cats:[cat('seção','#7c3aed',2),cat('ruptura',GM.corClasse.ruptura,6),cat('baixo',GM.corClasse.baixo,6),cat('atencao',GM.corClasse.atencao,6),cat('ok',GM.corClasse.ok,6)]});
+        drawLayer(L);
+        if(op.zoom===s.id||(op.zoom===true&&s===sec())) alvo=L;
       }
-      const campos=[{name:'GEOMEC',type:'C',length:40},{name:'SECAO',type:'C',length:60},{name:'TIPO',type:'C',length:20},{name:'FS',type:'N',length:8,decimal:3},{name:'CLASSE',type:'C',length:12},{name:'ROTULO',type:'C',length:80}];
-      if(!L){
-        const ativa=S.activeId;
-        L=addLayer({name:NOME_CAMADA, gtype:'line', crs:lista[0].crs||S.workCRS, features:feats, fields:campos, color:'#7c3aed', labelField:'ROTULO'});
-        S.activeId=ativa;                                   /* a camada de apoio não rouba a camada ativa do desenho */
-      } else { L.features=feats; L.fields=campos; }
-      const cat=(value,color,weight)=>({value, color, stroke:color, weight, count:feats.filter(f=>f.props.CLASSE===value).length});
-      L.sym=Object.assign({},L.sym,{mode:'cat', field:'CLASSE', weight:2, cats:[cat('seção','#7c3aed',2),cat('ruptura',GM.corClasse.ruptura,6),cat('baixo',GM.corClasse.baixo,6),cat('atencao',GM.corClasse.atencao,6),cat('ok',GM.corClasse.ok,6)]});
-      drawLayer(L); try{ refreshUI(); }catch(e){}
+      if(mexeu) try{ refreshUI(); }catch(e){}
       /* o mapa estava escondido: só enquadra depois de ele retomar o tamanho */
-      if(op.zoom){ vaiAoMapa(); setTimeout(()=>{ try{ map.invalidateSize({pan:false}); fitLayer(L); }catch(e){} },180); }
-    }catch(e){ console.warn('GEOMEC: camada das seções',e); }
+      if(alvo){ vaiAoMapa(); setTimeout(()=>{ try{ map.invalidateSize({pan:false}); fitLayer(alvo); }catch(e){} },180); }
+    }catch(e){ console.warn('GEOMEC: camadas das seções',e); }
   }
+  /* seção excluída: a camada dela sai junto */
+  function removeCamadaDaSecao(s){ const L=camadaDaSecao(s); if(L){ removeCamada(L); try{ refreshUI(); }catch(e){} } }
 
   /* ------------------------------ saída ------------------------------ */
   const nomeArq=s=>String(s.nome).normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\w\-]+/g,'_').replace(/^_+|_+$/g,'')||'secao';
