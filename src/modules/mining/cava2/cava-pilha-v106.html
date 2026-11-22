@@ -547,7 +547,7 @@ function invasaoDasFixadas(k, troca, d){
   }
   return pior;
 }
-/* LADO LIVRE, LADO CONGELADO (22/11/2026, 20h40: "a parte que eu selecionei para movimentar tem
+/* LADO LIVRE, LADO CONGELADO (22/11/2026, terceiro pedido do dia: "a parte que eu selecionei para movimentar tem
    que estar totalmente livre; a parte que ficou congelada, totalmente congelada … quando eu
    apagar um vértice da linha que eu selecionei, as linhas congeladas não podem mudar").
    Cada linha fixada é uma JUNTA na borda de dentro de uma berma: dali para dentro o desenho nasce
@@ -734,7 +734,7 @@ function parDeBermaDoLado(an, idx, lado){
   const j = lado==="fora" ? idx+1 : idx-1;
   return (an && an[idx] && an[j] && Math.abs(an[j].z-an[idx].z)<1e-9) ? j : -1;
 }
-/* O TALUDE NUNCA MUDA (22/11/2026, 19h50: "a gente tem que partir do princípio sempre que o
+/* O TALUDE NUNCA MUDA (22/11/2026, segundo pedido do dia: "a gente tem que partir do princípio sempre que o
    ângulo de talude não pode variar … a única coisa que varia é o tamanho da berma … tem que
    aparecer a opção de congelar os dois lados"). Toda linha é borda de uma berma — a dela, ou,
    na linha do topo, a que fica do outro lado do talude. Os DOIS ❄ valem sempre, e o que muda é
@@ -4217,7 +4217,7 @@ const DICAS={
   secao:"clique no ponto A e depois no ponto A' para cortar a seção",
   selpoly:"clique os vértices do polígono de seleção · feche no primeiro ponto, com Enter ou duplo clique · Esc cancela",
 };
-/* ✓ e MÃOZINHA sobre o desenho, como no modo 2D (22/11/2026, 20h40). A mãozinha move a vista
+/* ✓ e MÃOZINHA sobre o desenho, como no modo 2D (22/11/2026). A mãozinha move a vista
    SEM trocar de ferramenta: a linha selecionada e o lado congelado continuam. O ✓ é o
    "terminado": fecha o desenho em curso, ou encerra a edição da linha. */
 let maoTemp=false;

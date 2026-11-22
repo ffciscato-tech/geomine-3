@@ -369,10 +369,10 @@ publicou de outro lugar e este repositório está desatualizado.
   nunca varia: a única coisa que muda é o tamanho da berma.** Três pedidos de
   22/11/2026. Print IMG_0247: "no momento que eu selecionei uma linha, vão
   aparecer dois botõezinhos, um de cada lado, para escolher qual lado eu quero
-  congelar … tudo que estiver daquele lado vai ser movimentado". Às 19h50: "a
+  congelar … tudo que estiver daquele lado vai ser movimentado". Depois da primeira versão: "a
   gente tem que partir do princípio sempre que o ângulo de talude não pode
   variar … a única coisa que varia é o tamanho da berma … tem que aparecer a
-  opção de congelar os dois lados". Às 20h40: "quando eu apagar um vértice da
+  opção de congelar os dois lados". Depois da segunda: "quando eu apagar um vértice da
   linha que eu selecionei, as linhas congeladas não podem mudar … alguns
   pontos só se movem em uma direção; eles têm que estar livres. A parte que eu
   selecionei para movimentar tem que estar totalmente livre; a parte que ficou
@@ -404,7 +404,7 @@ publicou de outro lugar e este repositório está desatualizado.
   acompanha o contorno dele; um "+" dentro do entalhe da rampa muda o entalhe.
   Testes em `cava2/cava-lado.test.cjs`.
 - **Na aba Cava há um ✓ e uma mãozinha sobre o desenho, como no modo 2D.**
-  Pedido de 22/11/2026, 20h40. O **✓** é o "terminado": fecha o desenho em
+  Pedido de 22/11/2026. O **✓** é o "terminado": fecha o desenho em
   curso (limite ou polígono de seleção) ou encerra a edição da linha (solta a
   seleção e o lado congelado); sem nada em curso, volta para Mover. A
   **mãozinha** move a vista **sem trocar de ferramenta**: a linha selecionada
