@@ -580,14 +580,17 @@ async function rasterize(parts,options={}){
   }
   // A célula do produto só existe onde há terreno e o projeto permanece do
   // lado correto do MDT. Não fecha pequenas ilhas NoData por interpolação.
-  let volume=0,validCells=0;
+  // Onde a pessoa apagou a linha de contato (máscara de heal), vale o projeto:
+  // a célula fica mesmo do lado "errado" do MDT, sem somar volume negativo.
+  let volume=0,validCells=0;const mask=options.mask||parts?.mask||null;
   if(options.terrain){
     const sample=options.sample||root.sampleZbil;
     for(let row=0;row<nr;row++){
       for(let col=0;col<nc;col++){
         const i=row*nc+col;if(!Number.isFinite(z[i]))continue;
-        const t=sample(options.terrain,xll+(col+.5)*cs,north-(row+.5)*cs),eps=Math.max(1e-4,Math.abs(t)*1e-7);
-        if(!Number.isFinite(t)||(options.keepAbove?z[i]<t-eps:z[i]>t+eps))z[i]=NaN;
+        const x=xll+(col+.5)*cs,y=north-(row+.5)*cs,t=sample(options.terrain,x,y),eps=Math.max(1e-4,Math.abs(t)*1e-7),
+          m=mask&&Number.isFinite(t)?mask.at(x,y):0;
+        if(!Number.isFinite(t)||m<0||(!m&&(options.keepAbove?z[i]<t-eps:z[i]>t+eps)))z[i]=NaN;
         else{validCells++;volume+=Math.max(0,options.keepAbove?z[i]-t:t-z[i])*cs*cs;}
       }
       if(Date.now()-tick>24){await new Promise(r=>setTimeout(r,0));check();tick=Date.now();}
@@ -598,5 +601,135 @@ async function rasterize(parts,options={}){
     cutVolume:options.terrain?{volume,validCells,area:validCells*cs*cs,cellSize:cs,sourceCellSize:options.terrain.cs,
       method:'diferença projeto × MDT nos centros das células',kind:options.keepAbove?'pilha':'cava'}:null};
 }
-root.GeoMineCavaTerrain={intersect,clipPolygon,mergePolygons,rasterize};
+/* LINHA DE CONTATO APAGADA PELA PESSOA (22/11/2026 — "essas pequenas
+   interseções, se eu apagá-las, o desenho bruto deve ser mantido"). Uma linha
+   de contato separa uma região em que o projeto fica (lado mantido) de outra
+   em que o MDT o corta. Apagar a linha desfaz essa separação: a região cortada
+   volta a seguir o projeto. Para saber que região é essa — a linha pode ser um
+   laço fechado ou um arco que termina na borda do projeto ou num vazio do MDT —
+   o projeto é rasterizado numa grade fina e cada região conexa ganha um rótulo.
+
+   faces(): 0 = fora do projeto ou sem terreno, 1 = mantido, 2 = cortado.
+   "kept" são os polígonos que intersect() entrega em onPolygon; "rings", os
+   anéis do projeto (a união deles é a área projetada). */
+function faces(kept,rings,g,options={}){
+  const sample=options.sample||root.sampleZbil,
+    R=(rings||[]).map(r=>(r.ring||r).map(p=>[+p[0],+p[1]])).filter(r=>r.length>=3);
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+  for(const r of R)for(const p of r){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1];}
+  if(!(x1>x0)||!(y1>y0)||typeof sample!=='function')return null;
+  const cell=Math.max(.001,Math.min(Math.abs(g.cs)||1,Math.abs(g.csy||g.cs)||1)),lim=options.maxCells||2e6;
+  let h=options.cellSize||Math.min(1,Math.max(.25,cell/4));
+  if((x1-x0)*(y1-y0)/(h*h)>lim)h=Math.sqrt((x1-x0)*(y1-y0)/lim);
+  const ox=x0-3*h,oy=y0-3*h,nc=Math.ceil((x1-x0)/h)+6,nr=Math.ceil((y1-y0)/h)+6,st=new Uint8Array(nc*nr),xs=[];
+  // área projetada: união dos anéis, por varredura (linha j fica em y = oy + (j + ½)·h)
+  for(const r of R){
+    let a0=Infinity,a1=-Infinity;for(const p of r){if(p[1]<a0)a0=p[1];if(p[1]>a1)a1=p[1];}
+    for(let j=Math.max(0,Math.ceil((a0-oy)/h-.5)),je=Math.min(nr-1,Math.floor((a1-oy)/h-.5));j<=je;j++){
+      const y=oy+(j+.5)*h;xs.length=0;
+      for(let i=0,k=r.length-1;i<r.length;k=i++){const a=r[i],b=r[k];
+        if((a[1]>y)!==(b[1]>y))xs.push(a[0]+(b[0]-a[0])*(y-a[1])/(b[1]-a[1]));}
+      xs.sort((a,b)=>a-b);
+      for(let q=0;q+1<xs.length;q+=2)
+        for(let c=Math.max(0,Math.ceil((xs[q]-ox)/h-.5)),ce=Math.min(nc-1,Math.floor((xs[q+1]-ox)/h-.5));c<=ce;c++)st[j*nc+c]=2;
+    }
+  }
+  // lado mantido: os polígonos do contato são convexos (triângulos recortados)
+  for(const p of kept||[])for(let i=1;i<p.length-1;i++){
+    const a=p[0],b=p[i],c=p[i+1],bx=b[0]-a[0],by=b[1]-a[1],cx=c[0]-a[0],cy=c[1]-a[1],det=bx*cy-by*cx;
+    if(Math.abs(det)<1e-12)continue;
+    const c0=Math.max(0,Math.ceil((Math.min(a[0],b[0],c[0])-ox)/h-.5-1e-7)),c1=Math.min(nc-1,Math.floor((Math.max(a[0],b[0],c[0])-ox)/h-.5+1e-7)),
+      r0=Math.max(0,Math.ceil((Math.min(a[1],b[1],c[1])-oy)/h-.5-1e-7)),r1=Math.min(nr-1,Math.floor((Math.max(a[1],b[1],c[1])-oy)/h-.5+1e-7));
+    for(let j=r0;j<=r1;j++){const dy=oy+(j+.5)*h-a[1];
+      for(let k=c0;k<=c1;k++){const dx=ox+(k+.5)*h-a[0],u=(dx*cy-dy*cx)/det,v=(bx*dy-by*dx)/det;
+        if(u>=-1e-7&&v>=-1e-7&&u+v<=1+1e-7)st[j*nc+k]=1;}}
+  }
+  // sem terreno não há lado: fica de fora
+  for(let j=0;j<nr;j++)for(let c=0;c<nc;c++){const i=j*nc+c;
+    if(st[i]===2&&!Number.isFinite(sample(g,ox+(c+.5)*h,oy+(j+.5)*h)))st[i]=0;}
+  // rótulos das regiões conexas (4 vizinhos), sem recursão
+  const lab=new Int32Array(nc*nr),area=[0],state=[0],stack=new Int32Array(nc*nr),last=nc*(nr-1);
+  for(let s=0;s<nc*nr;s++){
+    if(!st[s]||lab[s])continue;
+    const id=area.length,e=st[s];let n=0,top=0;stack[top++]=s;lab[s]=id;
+    while(top){const i=stack[--top],c=i%nc;n++;
+      if(c>0&&st[i-1]===e&&!lab[i-1]){lab[i-1]=id;stack[top++]=i-1;}
+      if(c<nc-1&&st[i+1]===e&&!lab[i+1]){lab[i+1]=id;stack[top++]=i+1;}
+      if(i>=nc&&st[i-nc]===e&&!lab[i-nc]){lab[i-nc]=id;stack[top++]=i-nc;}
+      if(i<last&&st[i+nc]===e&&!lab[i+nc]){lab[i+nc]=id;stack[top++]=i+nc;}
+    }
+    area.push(n*h*h);state.push(e);
+  }
+  return {h,nc,nr,ox,oy,st,lab,area,state,total:area.reduce((a,b)=>a+b,0),
+    at:(x,y)=>{const c=Math.floor((x-ox)/h),j=Math.floor((y-oy)/h);return c<0||j<0||c>=nc||j>=nr?0:lab[j*nc+c];}};
+}
+/* As duas regiões vizinhas de uma linha, em pontos de prova ao longo dela (até
+   ~60), dos dois lados e a três distâncias. Chama fn(a, b) com os rótulos. */
+function sides(F,geom,fn){
+  const m=geom.length-1,skip=Math.max(1,Math.floor(m/60));let probes=0;
+  for(let i=0;i<m;i+=skip){
+    const a=geom[i],b=geom[i+1],ex=b[0]-a[0],ey=b[1]-a[1],l=Math.hypot(ex,ey);if(!(l>1e-9))continue;
+    const px=(a[0]+b[0])/2,py=(a[1]+b[1])/2,nx=-ey/l,ny=ex/l;probes++;
+    for(const d of [1.5*F.h,2.5*F.h,4*F.h]){
+      const p=F.at(px+nx*d,py+ny*d),q=F.at(px-nx*d,py-ny*d);
+      if(!p||!q||p===q)continue;
+      fn(p,q);break;
+    }
+  }
+  return probes;
+}
+/* Decide o que muda com as linhas apagadas ("lines": geometria de cada uma).
+   A região cortada vizinha passa a mantida — o desenho bruto continua inteiro
+   ali —, salvo quando a mantida é uma ilha pequena (menor que a vizinha e que
+   10% do projeto): aí é a ilha que sai. Devolve:
+     mask.at(x, y)  +1 = vale o projeto, −1 = fica cortado, 0 = não mexe
+     separates(geom) a linha ainda separa dois lados diferentes?
+     flips          regiões que mudaram; unresolved, linhas sem dois lados claros */
+function heal(F,lines,options={}){
+  const none={mask:null,flips:[],unresolved:[],separates:()=>true};
+  if(!F||!lines?.length)return none;
+  const {h,nc,nr,ox,oy,st,lab,area,state}=F,final=state.slice(),pairs=[],unresolved=[],island=options.islandShare??.1;
+  lines.forEach((geom,li)=>{
+    const votes=new Map(),probes=sides(F,geom,(p,q)=>{
+      if(state[p]===state[q])return;
+      const key=state[p]===1?p+'|'+q:q+'|'+p;votes.set(key,(votes.get(key)||0)+1);});
+    let best=null,bn=0;for(const [key,n] of votes)if(n>bn){bn=n;best=key;}
+    if(!best||bn<Math.max(1,.25*probes)){unresolved.push(li);return;}
+    pairs.push(best.split('|').map(Number));
+  });
+  // Várias linhas podem tocar a mesma região: repete até nenhuma separar mais nada.
+  for(let pass=0,changed=true;changed&&pass<8;pass++){
+    changed=false;
+    for(const [p,q] of pairs){
+      if(final[p]===final[q])continue;
+      const k=final[p]===1?p:q,c=k===p?q:p;
+      if(area[k]<area[c]&&area[k]<island*F.total)final[k]=2;else final[c]=1;
+      changed=true;
+    }
+  }
+  const fl=new Int8Array(nc*nr),flips=[];let any=false;
+  for(let id=1;id<final.length;id++)if(final[id]!==state[id])flips.push({id,to:final[id]===1?1:-1,area:area[id]});
+  if(!flips.length)return {...none,unresolved};
+  for(let i=0;i<nc*nr;i++){const id=lab[i];if(id&&final[id]!==state[id]){fl[i]=final[id]===1?1:-1;any=true;}}
+  if(!any)return {...none,unresolved};
+  /* A borda da região na grade pode ficar até uma célula aquém do contato de
+     verdade: a máscara avança duas células, só sobre o que já está do lado de
+     destino (ou fora do projeto) — nunca sobre outra região a mudar. */
+  for(let pass=0;pass<2;pass++){
+    const src=fl.slice();
+    for(let j=0;j<nr;j++)for(let c=0;c<nc;c++){
+      const i=j*nc+c;if(src[i])continue;
+      let v=0;
+      for(let dj=-1;dj<=1&&!v;dj++){const jj=j+dj;if(jj<0||jj>=nr)continue;
+        for(let dc=-1;dc<=1;dc++){const cc=c+dc;if(cc<0||cc>=nc)continue;const w=src[jj*nc+cc];if(w){v=w;break;}}}
+      if(v&&(st[i]===0||st[i]===(v>0?1:2)))fl[i]=v;
+    }
+  }
+  const stateAt=id=>id?final[id]:0;
+  return {flips,unresolved,
+    mask:{h,at:(x,y)=>{const c=Math.floor((x-ox)/h),j=Math.floor((y-oy)/h);return c<0||j<0||c>=nc||j>=nr?0:fl[j*nc+c];}},
+    // em dúvida (um só lado visível, borda do projeto, vazio do MDT) a linha fica
+    separates:geom=>{let dif=0,same=0;sides(F,geom,(p,q)=>{if(stateAt(p)!==stateAt(q))dif++;else same++;});return dif>=same;}};
+}
+root.GeoMineCavaTerrain={intersect,clipPolygon,mergePolygons,rasterize,faces,heal};
 })(typeof window==='object'?window:globalThis);

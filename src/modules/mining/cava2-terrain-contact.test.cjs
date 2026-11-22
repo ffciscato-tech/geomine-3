@@ -212,3 +212,68 @@ test('sem THREE continua valendo a faixa por comprimento de arco',()=>{
  assert.equal(stats.strips,1);assert.equal(out.length,1);assert(closed(out[0]));
  for(const [x,y] of points(out))assert(Math.abs(Math.max(Math.abs(x),Math.abs(y))-7.5)<1e-5);
 });
+
+/* Linha de contato apagada pela pessoa (22/11/2026): a região cortada vizinha volta a seguir o projeto. */
+const T=context.GeoMineCavaTerrain,quad=r=>[[-r,-r],[r,-r],[r,r],[-r,r]],puro=v=>JSON.parse(JSON.stringify(v));
+const DCE=[{ring:quad(30),z:0},{ring:quad(20),z:10}];            // pilha: pé em 0 (raio 30), crista e topo em 10 (raio 20)
+const corta=(sample,keepAbove=true)=>{const kept=[],g={cs:.5,sample};
+  const lines=T.intersect(DCE,g,{keepAbove,onPolygon:p=>kept.push(p)});return {g,kept,lines,F:T.faces(kept,DCE,g)};};
+const areaDe=ps=>ps.reduce((s,p)=>{let a=0;for(let i=1;i<p.length-1;i++)a+=(p[i][0]-p[0][0])*(p[i+1][1]-p[0][1])-(p[i][1]-p[0][1])*(p[i+1][0]-p[0][0]);return s+Math.abs(a)/2;},0);
+const centro=p=>[p.reduce((s,q)=>s+q[0],0)/p.length,p.reduce((s,q)=>s+q[1],0)/p.length];
+
+test('interseção pequena apagada: a ilha cortada no talude volta a seguir o projeto',async()=>{
+ // terreno abaixo da pilha, com um morrote que fura a face leste em (25; 0)
+ const morro=(x,y)=>-3+14*Math.exp(-((x-25)**2+y*y)/8),{g,kept,lines,F}=corta(morro);
+ assert.equal(lines.length,1);assert(closed(lines[0]));
+ const estados=puro(F.state.slice(1).sort());assert.deepEqual(estados,[1,2]);           // um lado mantido, um cortado
+ const furo=F.at(25,0),corpo=F.at(0,0);assert.equal(F.state[furo],2);assert.equal(F.state[corpo],1);
+ assert(F.area[furo]>4&&F.area[furo]<40,'furo de '+F.area[furo]+' m²');
+ assert(Math.abs(F.total-3600)<0.02*3600);
+ const cura=T.heal(F,[lines[0].geom]);
+ assert.deepEqual(puro(cura.flips.map(f=>[f.id,f.to])),[[furo,1]]);assert.deepEqual(puro(cura.unresolved),[]);
+ assert.equal(cura.mask.at(25,0),1);assert.equal(cura.mask.at(0,0),0);assert.equal(cura.mask.at(-25,0),0);assert.equal(cura.mask.at(60,60),0);
+ assert.equal(cura.separates(lines[0].geom),false,'a linha apagada deixa de separar');
+ // o outro lado do contato, só dentro da máscara, fecha exatamente o furo — com a cota do projeto
+ const outro=[];T.intersect(DCE,g,{keepAbove:false,onPolygon:p=>{const c=centro(p);if(cura.mask.at(c[0],c[1])>0)outro.push(p);}});
+ assert(Math.abs(areaDe(kept)+areaDe(outro)-3600)<0.5,'mantido + curado = '+(areaDe(kept)+areaDe(outro)));
+ for(const p of outro)for(const q of p)assert(Math.abs(q[2]-(30-q[0]))<1e-6,'cota da face leste');
+ // o MDT recortado conserva o projeto dentro do furo; sem a máscara a célula some
+ const parts={surface:[[[23,-2,7],[27,-2,3],[27,2,3],[23,2,7]]]},com=await T.rasterize({...parts,mask:cura.mask},{cellSize:.2,keepAbove:true,terrain:g}),
+  sem=await T.rasterize(parts,{cellSize:.2,keepAbove:true,terrain:g});
+ const em=(r,x,y)=>r.z[Math.floor((r.yll+r.nr*r.cs-y)/r.cs)*r.nc+Math.floor((x-r.xll)/r.cs)];
+ assert(Number.isNaN(em(sem,25.1,.1)));assert(Math.abs(em(com,25.1,.1)-4.9)<1e-5);
+ assert(com.cutVolume.validCells>sem.cutVolume.validCells);assert(Math.abs(com.cutVolume.volume-sem.cutVolume.volume)<1e-9,'o furo não soma volume');
+});
+test('ilha pequena do lado mantido: apagada a linha, é a ilha que sai',()=>{
+ // pilha toda enterrada, menos numa cova do terreno em (25; 0)
+ const cova=(x,y)=>20-25*Math.exp(-((x-25)**2+y*y)/8),{lines,F}=corta(cova);
+ assert.equal(lines.length,1);assert(closed(lines[0]));
+ const ilha=F.at(25,0);assert.equal(F.state[ilha],1);assert(F.area[ilha]<.1*F.total);
+ const cura=T.heal(F,[lines[0].geom]);
+ assert.deepEqual(puro(cura.flips.map(f=>[f.id,f.to])),[[ilha,-1]]);
+ assert.equal(cura.mask.at(25,0),-1);assert.equal(cura.mask.at(0,0),0);assert.equal(cura.separates(lines[0].geom),false);
+});
+test('linha principal apagada: o lado cortado inteiro volta a ser o desenho bruto; linha alheia não muda nada',()=>{
+ // terreno sobe para leste e enterra a face leste: o contato é um arco aberto, de borda a borda
+ const rampa=x=>x-10,{lines,F}=corta(rampa);
+ assert.equal(lines.length,1);assert(!closed(lines[0]),'arco aberto, com as pontas na borda do projeto');
+ const leste=F.at(27,0),corpo=F.at(0,0);assert.equal(F.state[leste],2);assert.equal(F.state[corpo],1);assert(F.area[corpo]>F.area[leste]);
+ const cura=T.heal(F,[lines[0].geom]);
+ assert.deepEqual(puro(cura.flips.map(f=>[f.id,f.to])),[[leste,1]]);assert.equal(cura.mask.at(27,0),1);assert.equal(cura.separates(lines[0].geom),false);
+ // linha que não é contato (no meio do topo) e lista vazia: nada a curar
+ const nada=T.heal(F,[[[-5,-5],[5,-5],[5,5]]]);assert.equal(nada.mask,null);assert.deepEqual(puro(nada.unresolved),[0]);assert.equal(nada.separates(lines[0].geom),true);
+ assert.equal(T.heal(F,[]).mask,null);assert.equal(T.heal(null,[lines[0].geom]).mask,null);
+});
+test('duas linhas apagadas na mesma vizinhança: ilha mantida dentro do furo curado continua mantida',()=>{
+ // morrote que fura a face e, no cume dele, uma cova onde a pilha reaparece
+ const terreno=(x,y)=>{const d2=(x-24)**2+y*y;return -3+17*Math.exp(-d2/14)-18*Math.exp(-d2/1.2);},{lines,F}=corta(terreno);
+ assert.equal(lines.length,2);assert(lines.every(closed));
+ const anel=F.at(24,1.8),miolo=F.at(24,0),corpo=F.at(0,0);
+ assert.equal(F.state[anel],2);assert.equal(F.state[miolo],1);assert.notEqual(miolo,corpo);
+ const cura=T.heal(F,lines.map(l=>l.geom));
+ assert.deepEqual(puro(cura.flips.map(f=>[f.id,f.to])),[[anel,1]],'só o anel cortado muda; o miolo já era mantido');
+ assert(lines.every(l=>!cura.separates(l.geom)));
+ // apagando só a linha de dentro, o miolo (ilha pequena) é que sai e a de fora continua valendo
+ const dentro=lines.find(l=>l.geom.every(p=>Math.hypot(p[0]-24,p[1])<1.8)),fora=lines.find(l=>l!==dentro),so=T.heal(F,[dentro.geom]);
+ assert.deepEqual(puro(so.flips.map(f=>[f.id,f.to])),[[miolo,-1]]);assert.equal(so.separates(dentro.geom),false);assert.equal(so.separates(fora.geom),true);
+});
