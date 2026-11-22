@@ -392,6 +392,7 @@ publicou de outro lugar e este repositório está desatualizado.
 | `firestore.rules`, `firestore.indexes.json`, `storage.rules` | Regras da colaboração em nuvem |
 | `docs/` | Notas técnicas por funcionalidade |
 | `reference/HASHES.sha256` | Hashes de proveniência da versão-base histórica |
+| `compasso/` | Cópia de referência do Compasso, o controle de horas da CCM (ver `compasso/README.md`) |
 
 ## Projeto sempre na versão mais recente
 

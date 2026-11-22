@@ -9,6 +9,8 @@ permanentes.
   `GeoMine/atual` do Google Drive ficou desatualizada em 12/11/2026 e não deve
   ser usada para publicar.
 - **Editar:** só arquivos dentro de `src/` (e `web/` para o portão de login).
+  A pasta `compasso/` é outro aplicativo (controle de horas, ver
+  `compasso/README.md`) e só muda quando o usuário pedir algo do Compasso.
   `dist/` e `public/index.html` são gerados.
 - **Montar:** `python3 -I -X utf8 tools/build.py` e
   `python3 -I -X utf8 tools/preparar_hosting.py`.

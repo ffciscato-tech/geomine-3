@@ -1,0 +1,67 @@
+{
+  "schema": "compasso",
+  "version": 1,
+  "projects": [
+    {
+      "id": "restauracao-morro-verde-38-26",
+      "client": "Morro Verde",
+      "code": "38_26",
+      "name": "Consolidação da drenagem",
+      "ccmId": "mubd2lo4h4xec"
+    }
+  ],
+  "entries": [
+    {
+      "id": "restauracao-mv-drenagem-01",
+      "projectId": "restauracao-morro-verde-38-26",
+      "date": "2026-11-10",
+      "activity": "Consolidação da drenagem (recuperação de horas apagadas)",
+      "ms": 25200000,
+      "rate": 90,
+      "transferred": false,
+      "created": 1763800000000
+    },
+    {
+      "id": "restauracao-mv-drenagem-02",
+      "projectId": "restauracao-morro-verde-38-26",
+      "date": "2026-11-11",
+      "activity": "Consolidação da drenagem (recuperação de horas apagadas)",
+      "ms": 25200000,
+      "rate": 90,
+      "transferred": false,
+      "created": 1763800000001
+    },
+    {
+      "id": "restauracao-mv-drenagem-03",
+      "projectId": "restauracao-morro-verde-38-26",
+      "date": "2026-11-12",
+      "activity": "Consolidação da drenagem (recuperação de horas apagadas)",
+      "ms": 25200000,
+      "rate": 90,
+      "transferred": false,
+      "created": 1763800000002
+    },
+    {
+      "id": "restauracao-mv-drenagem-04",
+      "projectId": "restauracao-morro-verde-38-26",
+      "date": "2026-11-13",
+      "activity": "Consolidação da drenagem (recuperação de horas apagadas)",
+      "ms": 25200000,
+      "rate": 90,
+      "transferred": false,
+      "created": 1763800000003
+    },
+    {
+      "id": "restauracao-mv-drenagem-05",
+      "projectId": "restauracao-morro-verde-38-26",
+      "date": "2026-11-14",
+      "activity": "Consolidação da drenagem (recuperação de horas apagadas)",
+      "ms": 25200000,
+      "rate": 90,
+      "transferred": false,
+      "created": 1763800000004
+    }
+  ],
+  "active": null,
+  "updated": 1763800000000
+}
