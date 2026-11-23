@@ -206,50 +206,38 @@
      topografia, e a topografia vira o contato pilha/fundação; cava — o menor dos dois. Sem
      projeto a seção é só a topografia (talude natural). Contatos viram topos de camada, de
      cima para baixo pela cota média. */
-  /* O PÉ DO TALUDE É ONDE O PROJETO ENCONTRA O TERRENO (print IMG_0268, 23/11/2026, com o primeiro
-     talude da pilha circulado: "essa parte do perfil está saindo mais inclinada"). A superfície da
-     seção era o maior (pilha) ou o menor (cava) entre projeto e terreno, medido só nas estações
-     — as do MDT, a cada célula (12,5 m naquele projeto), e os cruzamentos das linhas do desenho:
-     1) onde o pé do desenho fica ACIMA do terreno (o desenho bruto para na cota da base, e ali
-        o terreno é mais baixo), a seção ligava a última estação do terreno ao pé do desenho por
-        uma reta qualquer — 67° e 81° medidos num projeto com talude de 34°. Agora a face é
-        prolongada na inclinação DELA até encontrar o terreno;
-     2) onde o pé fica enterrado, o encontro da face com o terreno não era estação e o primeiro
-        trecho saía com a inclinação errada. Agora o encontro entra como estação, exato.
-     Na cava vale o mesmo com os sinais trocados (a crista abaixo do terreno sobe até ele).
-     Devolve as estações e os perfis refeitos, e a altura que foi prolongada em cada ponta. */
-  GM.encaixaProjetoNoTerreno=(dist,perfis,pilha)=>{
+  /* A SEÇÃO PEGA EXATAMENTE O QUE OS PERFIS MOSTRAM (print IMG_0268, 23/11/2026, com o primeiro
+     talude da pilha circulado: "essa parte do perfil está saindo mais inclinada"; e, depois de
+     uma primeira correção que prolongava a face até o terreno: "tem que pegar exatamente o que os
+     perfis mostram, não esticar nem estimar nada").
+     A superfície da seção é o maior (pilha) ou o menor (cava) entre o perfil do projeto e o do
+     terreno. Ela era medida só nas estações — as do MDT, a cada célula (12,5 m naquele projeto),
+     e os cruzamentos das linhas do desenho — e ligada por retas entre uma estação e a outra.
+     Onde os dois perfis trocam de lugar ENTRE duas estações, essa reta não era nenhum dos dois:
+     1) onde o projeto cruza o terreno (o pé enterrado), o cruzamento agora é uma estação;
+     2) onde o perfil do projeto COMEÇA ou ACABA fora do terreno (o pé do desenho bruto acima do
+        terreno; na cava, a crista abaixo dele), a seção ligava a estação vizinha do terreno ao
+        pé do desenho por uma reta inclinada (67° e 81° medidos numa pilha de 34°). Agora o
+        terreno vai até ali como ele é, e o projeto começa ali como ele é: fica o DEGRAU que os
+        dois perfis mostram. Nada é prolongado nem suposto.
+     3) onde a LINHA DA SEÇÃO acaba dentro do projeto, o perfil dele termina no último traço
+        cruzado e dali em diante não há dado da superfície (o terreno que aparece está por baixo
+        do aterro). A seção vai só até esse traço. Quem chama diz se cada ponta da linha está
+        dentro do desenho (pontasDentro = [início, fim], pelo contorno das linhas dele).
+     Devolve as estações e os perfis com as estações novas, os degraus e onde a seção acaba. */
+  GM.dentroDoAnel=(pts,x,y)=>{                       /* ponto dentro do polígono (o anel é fechado pelo último → primeiro) */
+    let d=false; const n=pts.length;
+    for(let i=0,j=n-1;i<n;j=i++){ const a=pts[i], b=pts[j]; if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0]) d=!d; }
+    return d;
+  };
+  GM.encaixaProjetoNoTerreno=(dist,perfis,pilha,pontasDentro)=>{
     const D=dist.slice(), PF=perfis.map(p=>Object.assign({},p,{z:p.z.slice()}));
-    const ter=PF.find(p=>p.papel==='terreno'), proj=PF.find(p=>p.papel==='projeto'), out={dist:D, perfis:PF, prolongado:[]};
+    const ter=PF.find(p=>p.papel==='terreno'), proj=PF.find(p=>p.papel==='projeto'), out={dist:D, perfis:PF, degraus:[], cortes:{}};
     if(!ter||!proj) return out;
-    const fin=Number.isFinite, sg=pilha?1:-1;
-    /* nova estação entre i e i+1: cada perfil recebe a cota interpolada (os dois são retas entre estações) */
+    const fin=Number.isFinite, sg=pilha?1:-1, EPS=0.01;
+    /* nova estação entre i e i+1: cada perfil recebe a cota que ele mesmo tem ali (são retas entre estações) */
     const insere=(i,d)=>{ const t=(d-D[i])/(D[i+1]-D[i]); for(const p of PF){ const a=p.z[i], b=p.z[i+1]; p.z.splice(i+1,0,fin(a)&&fin(b)?a+(b-a)*t:NaN); } D.splice(i+1,0,d); return i+1; };
-    /* 1) pontas do projeto fora do terreno: prolonga a face até ele */
-    for(const lado of [-1,1]){
-      let e=-1; if(lado<0){ for(let i=0;i<D.length;i++) if(fin(proj.z[i])){ e=i; break; } } else { for(let i=D.length-1;i>=0;i--) if(fin(proj.z[i])){ e=i; break; } }
-      if(e<0||!fin(ter.z[e])) continue;
-      const ze=proj.z[e], folga=sg*(ze-ter.z[e]); if(!(folga>0.3)) continue;        /* pilha: pé acima do terreno; cava: crista abaixo */
-      let m=NaN;                                                                   /* inclinação da face vizinha (para dentro do projeto) */
-      for(let j=e-lado;j>=0&&j<D.length;j-=lado){ if(!fin(proj.z[j])) break; const dz=sg*(proj.z[j]-ze), dx=Math.abs(D[j]-D[e]); if(dz>=0.2&&dx>1e-6){ m=dz/dx; break; } if(dz<-0.2) break; }
-      if(!(m>0.05)) continue;
-      const linha=d=>ze-sg*m*Math.abs(d-D[e]);
-      let k=e, achou=false, fim=e;
-      while(true){
-        const kk=k+lado; if(kk<0||kk>=D.length||!fin(ter.z[kk])) break;
-        const f0=sg*(linha(D[k])-ter.z[k]), f1=sg*(linha(D[kk])-ter.z[kk]);
-        if(f1<=0){                                                                 /* a face prolongada encontra o terreno neste trecho */
-          const t=f0/(f0-f1), d=D[k]+(D[kk]-D[k])*t, lo=Math.min(k,kk);
-          if(Math.abs(d-D[kk])<1e-6){ proj.z[kk]=ter.z[kk]; fim=kk; }
-          else if(Math.abs(d-D[k])<1e-6){ fim=k; }
-          else { const ni=insere(lo,d); proj.z[ni]=ter.z[ni]; if(lado>0){ fim=ni; } else { e++; k++; fim=ni; } }
-          achou=true; break;
-        }
-        proj.z[kk]=linha(D[kk]); k=kk; fim=kk;
-      }
-      out.prolongado.push({lado:lado<0?'início':'fim', altura:+folga.toFixed(2), ate:achou?+D[fim].toFixed(2):null, inclinacao:+(Math.atan(m)*180/Math.PI).toFixed(1)});
-    }
-    /* 2) onde o projeto cruza o terreno entre duas estações, o cruzamento vira estação */
+    /* 1) onde o projeto cruza o terreno entre duas estações, o cruzamento vira estação */
     for(let i=D.length-2;i>=0;i--){
       const a=proj.z[i]-ter.z[i], b=proj.z[i+1]-ter.z[i+1];
       if(!fin(a)||!fin(b)||!(a*b<0)) continue;
@@ -257,14 +245,27 @@
       if(d-D[i]<1e-4||D[i+1]-d<1e-4) continue;
       const ni=insere(i,d); proj.z[ni]=ter.z[ni];
     }
+    /* 2) pontas do perfil do projeto fora do terreno: o terreno vai até a ponta (uma estação a
+          1 cm dela, só com a cota do terreno) e ali começa o projeto — o degrau, sem reta inclinada */
+    for(const lado of [-1,1]){
+      let e=-1; if(lado<0){ for(let i=0;i<D.length;i++) if(fin(proj.z[i])){ e=i; break; } } else { for(let i=D.length-1;i>=0;i--) if(fin(proj.z[i])){ e=i; break; } }
+      const k=e+lado; if(e<0||k<0||k>=D.length||!fin(ter.z[e])||!fin(ter.z[k])) continue;
+      const altura=sg*(proj.z[e]-ter.z[e]); if(!(altura>0.05)) continue;          /* pilha: ponta acima do terreno; cava: abaixo */
+      if(pontasDentro&&pontasDentro[lado<0?0:1]){                                 /* a linha acabou dentro do projeto: a seção para no último traço */
+        out.cortes[lado<0?'inicio':'fim']=D[e]; continue;
+      }
+      const vao=Math.abs(D[k]-D[e]); if(vao<=2*EPS) continue;                     /* já há uma estação colada: o degrau já está lá */
+      const lo=Math.min(e,k), ni=insere(lo,D[e]+lado*EPS); proj.z[ni]=NaN;
+      out.degraus.push({lado:lado<0?'início':'fim', altura:+altura.toFixed(2), em:+D[lado<0?ni+1:ni-1].toFixed(2)});
+    }
     return out;
   };
   GM.novaSecaoMapa=(linha,crs,dist,perfis,op)=>{
     op=op||{};
     if(!perfis.find(p=>p.papel==='terreno')) throw new Error('Escolha a topografia (a superfície do terreno).');
-    let prolongado=[];
+    let degraus=[], cortes={};
     { const pj=perfis.find(p=>p.papel==='projeto');
-      if(pj&&op.encaixe!==false){ const r=GM.encaixaProjetoNoTerreno(dist,perfis,(op.tipoProjeto||pj.tipo)!=='cava'); dist=r.dist; perfis=r.perfis; prolongado=r.prolongado; } }
+      if(pj&&op.encaixe!==false){ const r=GM.encaixaProjetoNoTerreno(dist,perfis,(op.tipoProjeto||pj.tipo)!=='cava',op.pontasDentro); dist=r.dist; perfis=r.perfis; degraus=r.degraus; cortes=r.cortes; } }
     const ter=perfis.find(p=>p.papel==='terreno'), proj=perfis.find(p=>p.papel==='projeto'), cont=perfis.filter(p=>p.papel==='contato');
     const n=dist.length, zt=new Array(n).fill(NaN), zn=new Array(n).fill(NaN), pilha=!!proj&&(op.tipoProjeto||proj.tipo)!=='cava';
     for(let i=0;i<n;i++){
@@ -279,6 +280,9 @@
     let a=0, b=n-1;
     while(a<n&&!Number.isFinite(zt[a])) a++;
     while(b>a&&!Number.isFinite(zt[b])) b--;
+    /* a linha acabou dentro do projeto: a seção vai só até o último traço dele (ver encaixaProjetoNoTerreno) */
+    if(cortes.inicio!=null) while(a<b&&dist[a]<cortes.inicio-1e-9) a++;
+    if(cortes.fim!=null) while(b>a&&dist[b]>cortes.fim+1e-9) b--;
     if(b-a<2) throw new Error('A linha não encontra cotas válidas na superfície do terreno.');
     for(let i=a;i<=b;i++) if(!Number.isFinite(zt[i])) throw new Error('A superfície do terreno tem um vazio no meio da linha (perto de '+dist[i].toFixed(1)+' m).');
     let lo=Infinity, hi=-Infinity;
@@ -313,11 +317,13 @@
     if(proj&&!pilha){ let ok=true; for(let i=a;i<=b;i++) if(!Number.isFinite(zn[i])){ ok=false; break; } if(ok) s.natural=linhaDe(zn); }
     s.ignorados=cont.filter(c=>!usados.includes(c)&&!c.natural).map(c=>c.nome);
     if(proj&&!usados.some(c=>c.natural)&&pilha) s.avisoProjeto='O projeto não passa acima da topografia nesta linha: a seção ficou só com o terreno natural.';
-    /* a face prolongada até o terreno fica registrada na seção e é avisada: é uma hipótese sobre o desenho */
-    if(prolongado.length){
-      s.prolongado=prolongado;
-      const q=prolongado.reduce((a,b)=>b.altura>a.altura?b:a), num=v=>String(v).replace('.',',');
-      const txt=(pilha?'O pé do desenho fica ':'A crista do desenho fica ')+num(q.altura)+' m '+(pilha?'acima':'abaixo')+' do terreno nesta linha: a face foi prolongada na inclinação do talude ('+num(q.inclinacao)+'°) até o terreno'+(q.ate==null?' — sem encontrá-lo dentro da linha; estenda a seção.':'.');
+    if(cortes.inicio!=null||cortes.fim!=null) s.encurtada={inicio:cortes.inicio!=null?+(cortes.inicio-dist[0]).toFixed(2):null, fim:cortes.fim!=null?+(dist[n-1]-cortes.fim).toFixed(2):null};
+    /* degrau entre a ponta do desenho e o terreno: fica registrado e é avisado — é o que os perfis
+       mostram, e explica um FS baixo junto dele */
+    if(degraus.length){
+      const d0=dist[a]; s.degraus=degraus.map(q=>({lado:q.lado, altura:q.altura, em:+(q.em-d0).toFixed(2)}));
+      const q=s.degraus.reduce((x,y)=>y.altura>x.altura?y:x), virg=v=>String(v).replace('.',',');
+      const txt=(pilha?'O pé do desenho fica ':'A crista do desenho fica ')+virg(q.altura)+' m '+(pilha?'acima':'abaixo')+' do terreno nesta linha (em '+virg(q.em)+' m): a seção mostra o degrau como os perfis mostram, sem prolongar nada.';
       if(!s.avisoProjeto) s.avisoProjeto=txt;
     }
     estado.secoes.push(s); estado.ativa=s.id;
@@ -392,7 +398,9 @@
     for(let i=0;i<xs.length;i++){
       if(i&&ref.ar){                        /* cruzamento com o terreno entre duas estações */
         const x0=xs[i-1], x1=xs[i], d0=cotaEm(P,x0)-h-cotaEm(T,x0), d1=cotaEm(P,x1)-h-cotaEm(T,x1);
-        if(d0*d1<0){ const x=x0+(x1-x0)*d0/(d0-d1); out.push([+x.toFixed(3),+f(x).toFixed(3)]); }
+        /* a cota é lida na distância JÁ arredondada: num degrau do terreno (ponta do desenho fora
+           dele) um milímetro de distância muda a cota em dezenas de centímetros */
+        if(d0*d1<0){ const x=+(x0+(x1-x0)*d0/(d0-d1)).toFixed(3); if(x>x0&&x<x1) out.push([x,Math.floor(f(x)*1000)/1000]); }
       }
       out.push([+xs[i].toFixed(3),+f(xs[i]).toFixed(3)]);
     }

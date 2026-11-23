@@ -392,45 +392,75 @@ test('a prévia mostra só o que está escolhido nos cards: topografia, análise
   assert.deepEqual(puro(GM.seriesDaPrevia(null)), []);
 });
 
-/* Pé do talude (print IMG_0268, 23/11/2026: "essa parte do perfil está saindo mais inclinada").
+/* Pé do talude (print IMG_0268, 23/11/2026: "essa parte do perfil está saindo mais inclinada"; e
+   depois: "tem que pegar exatamente o que os perfis mostram, não esticar nem estimar nada").
    Perfis inventados: terreno em reta, pilha com face de 0,6 (≈31°). */
-test('pé do desenho acima do terreno: a face é prolongada na inclinação dela até o terreno', () => {
+test('ponta do desenho acima do terreno: fica o degrau que os perfis mostram — nada é prolongado nem ligado por reta inclinada', () => {
   const { GM } = carrega();
   const dist = [0, 10, 20, 30, 40, 50, 60], N = NaN;
   const perfis = [{ id: 't', papel: 'terreno', z: dist.map(() => 100) }, { id: 'p', papel: 'projeto', z: [N, N, N, 105, 111, 111, 117] }];
   const r = GM.encaixaProjetoNoTerreno(dist, perfis, true), pj = r.perfis.find(q => q.papel === 'projeto'), tr = r.perfis.find(q => q.papel === 'terreno');
-  const i = r.dist.findIndex(d => Math.abs(d - (30 - 5 / .6)) < 1e-9);
-  assert.ok(i > 0, 'o encontro com o terreno vira estação: ' + puro(r.dist));
-  assert.ok(Math.abs(pj.z[i] - 100) < 1e-9 && Math.abs(tr.z[i] - 100) < 1e-9, 'ali projeto = terreno');
-  assert.ok(!Number.isFinite(pj.z[i - 1]), 'antes do pé novo não há projeto');
-  assert.deepEqual(puro(r.prolongado), [{ lado: 'início', altura: 5, ate: 21.67, inclinacao: 31 }]);
+  assert.deepEqual(puro(r.dist), [0, 10, 20, 29.99, 30, 40, 50, 60], 'uma estação a 1 cm da ponta do projeto, e só ela');
+  assert.deepEqual(puro(pj.z), [null, null, null, null, 105, 111, 111, 117], 'o perfil do projeto fica como é: começa em 30 m, na cota 105');
+  assert.deepEqual(puro(tr.z), [100, 100, 100, 100, 100, 100, 100, 100], 'o do terreno também');
+  assert.deepEqual(puro(r.degraus), [{ lado: 'início', altura: 5, em: 30 }]);
   assert.deepEqual(puro(perfis[1].z.slice(0, 4)), [null, null, null, 105], 'os perfis de quem chamou não são alterados');
-  /* na seção: nenhum trecho mais inclinado que a face, e o aviso diz o que foi feito */
+  /* na seção: o terreno vai até a ponta, sobe o degrau, e daí em diante é o projeto, ponto por ponto */
   const s = GM.novaSecaoMapa([[0, 0], [60, 0]], null, dist, perfis, {});
-  const incl = s.terreno.slice(1).map((q, k) => (q[1] - s.terreno[k][1]) / (q[0] - s.terreno[k][0]));
-  assert.ok(Math.max(...incl) < .6 + 1e-3, 'inclinações: ' + incl.map(v => v.toFixed(4)));     // o terreno da seção é gravado com 3 casas
-  assert.ok(s.terreno.some(q => Math.abs(q[0] - 21.667) < .002 && Math.abs(q[1] - 100) < .002), 'o pé novo está no terreno da seção');
-  assert.match(s.avisoProjeto, /pé do desenho fica 5 m acima do terreno.*prolongada na inclinação do talude \(31°\) até o terreno\./);
-  /* sem encontrar o terreno dentro da linha: prolonga até o fim e avisa para estender */
-  const curto = GM.novaSecaoMapa([[0, 0], [30, 0]], null, [0, 10, 20, 30], [{ id: 't', papel: 'terreno', z: [100, 100, 100, 100] }, { id: 'p', papel: 'projeto', z: [N, 130, 136, 142] }], {});
-  assert.match(curto.avisoProjeto, /sem encontrá-lo dentro da linha; estenda a seção/);
-  assert.equal(curto.prolongado[0].ate, null);
+  assert.deepEqual(puro(s.terreno), [[0, 100], [29.99, 100], [30, 105], [40, 111], [50, 111], [60, 117]]);
+  assert.match(s.avisoProjeto, /pé do desenho fica 5 m acima do terreno nesta linha \(em 30 m\): a seção mostra o degrau como os perfis mostram, sem prolongar nada\./);
+  assert.deepEqual(puro(s.degraus), [{ lado: 'início', altura: 5, em: 30 }]);
+  assert.equal(s.prolongado, undefined);
+  /* antes: a estação do terreno em 20 m era ligada ao pé em 30 m por uma reta que não é nenhum dos dois perfis */
+  const antes = GM.novaSecaoMapa([[0, 0], [60, 0]], null, dist, perfis, { encaixe: false });
+  assert.ok(Math.abs(GM.lerp(antes.terreno, 25) - 102.5) < 1e-6 && Math.abs(GM.lerp(s.terreno, 25) - 100) < 1e-6, 'em 25 m o terreno está na cota 100, não em 102,5');
+  /* ponta no fim da linha, e seção que acaba na ponta do desenho (não há terreno além dela): nada a fazer */
+  const fim = GM.encaixaProjetoNoTerreno(dist, [{ papel: 'terreno', z: dist.map(() => 100) }, { papel: 'projeto', z: [117, 111, 111, 105, N, N, N] }], true);
+  assert.deepEqual(puro(fim.dist), [0, 10, 20, 30, 30.01, 40, 50, 60]); assert.deepEqual(puro(fim.degraus), [{ lado: 'fim', altura: 5, em: 30 }]);
+  const borda = GM.encaixaProjetoNoTerreno([0, 10, 20], [{ papel: 'terreno', z: [100, 100, 100] }, { papel: 'projeto', z: [105, 111, 117] }], true);
+  assert.deepEqual(puro(borda.dist), [0, 10, 20]); assert.deepEqual(puro(borda.degraus), []);
 });
-test('pé enterrado: o encontro da face com o terreno entra como estação; na cava a crista sobe até o terreno', () => {
+test('pé enterrado: o encontro da face com o terreno entra como estação; na cava a crista abaixo do terreno também fica em degrau', () => {
   const { GM } = carrega();
   const dist = [0, 10, 20, 30, 40], N = NaN;
   const r = GM.encaixaProjetoNoTerreno(dist, [{ papel: 'terreno', z: dist.map(d => 100 + .2 * d) }, { papel: 'projeto', z: [N, 100, 106, 112, 112] }], true);
   assert.deepEqual(puro(r.dist), [0, 10, 15, 20, 30, 40], 'o cruzamento em 15 m (onde a face sai do terreno) vira estação');
-  assert.deepEqual(puro(r.prolongado), [], 'nada foi prolongado: o pé está abaixo do terreno');
+  assert.deepEqual(puro(r.degraus), [], 'o pé está abaixo do terreno: não há degrau');
   const pj = r.perfis.find(q => q.papel === 'projeto'), tr = r.perfis.find(q => q.papel === 'terreno'); assert.ok(Math.abs(pj.z[2] - 103) < 1e-9 && Math.abs(tr.z[2] - 103) < 1e-9);
-  /* cava: a crista do desenho 3 m abaixo do terreno; a parede (1:1) sobe até ele */
+  const s = GM.novaSecaoMapa([[0, 0], [40, 0]], null, dist, [{ id: 't', papel: 'terreno', z: dist.map(d => 100 + .2 * d) }, { id: 'p', papel: 'projeto', z: [N, 100, 106, 112, 112] }], {});
+  assert.deepEqual(puro(s.terreno), [[0, 100], [15, 103], [30, 112], [40, 112]], 'terreno até o encontro, depois a face e a berma do projeto');
+  /* cava: a crista do desenho 3 m abaixo do terreno */
   const c = GM.encaixaProjetoNoTerreno(dist, [{ papel: 'terreno', z: dist.map(() => 100) }, { papel: 'projeto', z: [N, N, 97, 87, 87] }], false);
-  assert.deepEqual(puro(c.prolongado), [{ lado: 'início', altura: 3, ate: 17, inclinacao: 45 }]);
-  assert.ok(c.dist.includes(17));
+  assert.deepEqual(puro(c.degraus), [{ lado: 'início', altura: 3, em: 20 }]);
+  assert.deepEqual(puro(c.dist), [0, 10, 19.99, 20, 30, 40]);
   /* projeto e terreno iguais nas pontas, ou sem projeto: nada muda */
-  const igual = GM.encaixaProjetoNoTerreno(dist, [{ papel: 'terreno', z: [100, 100, 100, 100, 100] }, { papel: 'projeto', z: [N, 100, 106, 106, N] }], true);
-  assert.deepEqual(puro(igual.dist), dist); assert.deepEqual(puro(igual.prolongado), []);
+  const igual = GM.encaixaProjetoNoTerreno(dist, [{ papel: 'terreno', z: [100, 100, 100, 100, 100] }, { papel: 'projeto', z: [N, 100, 106, 100, N] }], true);
+  assert.deepEqual(puro(igual.dist), dist); assert.deepEqual(puro(igual.degraus), []);
   assert.deepEqual(puro(GM.encaixaProjetoNoTerreno(dist, [{ papel: 'terreno', z: [1, 2, 3, 4, 5] }], true).dist), dist);
+});
+
+test('linha que acaba dentro do projeto: a seção vai só até o último traço dele — depois não há dado da superfície', () => {
+  const { GM } = carrega();
+  const dist = [0, 10, 20, 30, 40, 50, 60], N = NaN, ter = dist.map(() => 100);
+  /* pé em 10 m; cristas e pés até 40 m; a linha segue até 60 m, ainda dentro da pilha, sem cruzar mais nada */
+  const perfis = () => [{ id: 't', papel: 'terreno', z: ter.slice() }, { id: 'p', papel: 'projeto', z: [N, 100, 106, 106, 112, N, N] }];
+  const r = GM.encaixaProjetoNoTerreno(dist, perfis(), true, [false, true]);
+  assert.deepEqual(puro(r.cortes), { fim: 40 }, 'o fim da linha está dentro da pilha: a seção para no último traço (40 m)');
+  assert.deepEqual(puro(r.degraus), [], 'e ali não se desenha degrau até o terreno');
+  const s = GM.novaSecaoMapa([[0, 0], [60, 0]], null, dist, perfis(), { pontasDentro: [false, true] });
+  assert.deepEqual(puro(s.terreno), [[0, 100], [10, 100], [20, 106], [30, 106], [40, 112]]);
+  assert.equal(s.comprimento, 40); assert.deepEqual(puro(s.encurtada), { inicio: null, fim: 20 });
+  /* fim da linha FORA do desenho (ou projeto em imagem, sem contorno): vale o que os perfis mostram — o degrau */
+  for (const pd of [[false, false], undefined]) {
+    const f = GM.encaixaProjetoNoTerreno(dist, perfis(), true, pd);
+    assert.deepEqual(puro(f.cortes), {}); assert.deepEqual(puro(f.degraus), [{ lado: 'fim', altura: 12, em: 40 }]);
+  }
+  /* começo da linha dentro da pilha */
+  const ini = GM.novaSecaoMapa([[0, 0], [60, 0]], null, dist, [{ id: 't', papel: 'terreno', z: ter.slice() }, { id: 'p', papel: 'projeto', z: [N, N, 112, 106, 106, 100, N] }], { pontasDentro: [true, false] });
+  assert.deepEqual(puro(ini.encurtada), { inicio: 20, fim: null }); assert.equal(ini.recuo, 20); assert.deepEqual(puro(ini.terreno), [[0, 112], [10, 106], [20, 106], [30, 100], [40, 100]]);
+  /* ponto dentro de um contorno (fechado pelo último → primeiro) */
+  const anel = [[0, 0], [10, 0], [10, 10], [0, 10]];
+  assert.equal(GM.dentroDoAnel(anel, 5, 5), true); assert.equal(GM.dentroDoAnel(anel, 15, 5), false); assert.equal(GM.dentroDoAnel(anel, 5, -1), false);
 });
 
 /* Sobrecarga de arrastar na figura (print IMG_0269, 23/11/2026: "essa carga aqui eu devo poder

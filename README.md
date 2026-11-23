@@ -717,22 +717,29 @@ publicou de outro lugar e este repositório está desatualizado.
     inteiras de 0 a 255 e nome sem MDT/MDE/DEM/cota. Um MDT de cotas inteiras
     com nome de MDT continua valendo. O que ficou de fora é listado numa nota
     ("Sem dado de cota, fora das listas: …").
-  - **O pé do talude na seção é onde o projeto encontra o terreno.** Print
-    IMG_0268 (23/11/2026), com o primeiro talude da pilha circulado: "essa
-    parte do perfil está saindo mais inclinada". A superfície da seção era o
-    maior (pilha) ou o menor (cava) entre projeto e terreno medido só nas
-    estações — as do MDT (12,5 m naquele projeto) e os cruzamentos das linhas
-    do desenho. Onde o pé do desenho bruto fica **acima** do terreno, a seção
-    ligava a última estação do terreno ao pé por uma reta qualquer (67° e 81°
-    medidos numa pilha de 34°); onde fica enterrado, o encontro da face com o
-    terreno não era estação. Agora (`GM.encaixaProjetoNoTerreno`, em
-    `geomec-core.js`): (1) a face da ponta do projeto é **prolongada na
-    inclinação dela** até o terreno; (2) todo cruzamento projeto × terreno
-    entra como estação, exato. Na cava vale o mesmo com os sinais trocados (a
-    crista abaixo do terreno sobe até ele). A prolongação é uma hipótese sobre
-    o desenho: fica gravada na seção (`s.prolongado`), é avisada ao cortar e
-    aparece no card 1; se a face não alcança o terreno dentro da linha, o
-    aviso pede para estender a seção.
+  - **A seção pega exatamente o que os perfis mostram: nada é prolongado nem
+    estimado.** Print IMG_0268 (23/11/2026), com o primeiro talude da pilha
+    circulado: "essa parte do perfil está saindo mais inclinada". Uma primeira
+    correção (10h31) prolongava a face do talude até o terreno; o usuário
+    recusou: "tem que pegar exatamente o que os perfis mostram, não esticar nem
+    estimar nada". A superfície da seção é o maior (pilha) ou o menor (cava)
+    entre o perfil do projeto e o do terreno; ela era medida só nas estações —
+    as do MDT (12,5 m naquele projeto) e os cruzamentos das linhas do desenho —
+    e ligada por retas, e onde os perfis trocam de lugar entre duas estações
+    essa reta não era nenhum dos dois. Regras, em `GM.encaixaProjetoNoTerreno`
+    (`geomec-core.js`): (1) onde o projeto cruza o terreno, o cruzamento é uma
+    estação; (2) onde o perfil do projeto começa ou acaba fora do terreno (o
+    pé do desenho bruto acima do terreno; na cava, a crista abaixo dele), o
+    terreno vai até ali como ele é e o projeto começa ali como ele é — fica o
+    **degrau** que os dois perfis mostram (antes saía uma reta de 67° ou 81°
+    numa pilha de 34°); (3) onde a **linha da seção acaba dentro do desenho**
+    (ponta dentro do contorno de alguma linha dele), o perfil do projeto
+    termina no último traço cruzado e depois não há dado da superfície: a
+    seção vai só até esse traço (antes caía para o terreno que está por baixo
+    do aterro, e o FS saía absurdo — 0,05 num teste). O degrau e o
+    encurtamento ficam gravados na seção (`s.degraus`, `s.encurtada`), são
+    avisados ao cortar e aparecem no card 1. Não prolongar faces, não supor
+    superfície onde o perfil não tem dado.
   - **A sobrecarga é de arrastar na figura da seção.** Print IMG_0269
     (23/11/2026), com a carga de 50 kPa circulada: "essa carga aqui eu devo
     poder arrastar com o mouse, com caneta, para definir o local". O corpo (a
