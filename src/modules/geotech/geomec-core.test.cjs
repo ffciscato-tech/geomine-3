@@ -358,3 +358,37 @@ test('contato por distância: linha paralela à topografia, referências por tip
   /* o projeto guarda e devolve a origem do contato */
   const volta=JSON.parse(JSON.stringify(so)); assert.equal(volta.camadas[2].fonte.tipo,'profundidade'); assert.equal(volta.camadas[2].fonte.h,7.5);
 });
+
+/* Prévia da seção nova (print IMG_0267, 23/11/2026): "só aparecer as imagens e arquivos selecionados
+   nos cards; ortofoto não tem dado de elevação; somente as linhas que a gente tem interesse". */
+test('raster sem cota não é fonte de seção: ortofoto pelo nome, ou imagem de 0 a 255 em inteiros', () => {
+  const { GM } = carrega();
+  const grade = f => ({ z: Float32Array.from({ length: 5000 }, (_, i) => f(i)) });
+  assert.equal(GM.rasterSemCota({ name: 'Ortofoto_Area_Mapper_19nov26', d: grade(i => 20 + i % 150) }), true, 'o nome diz');
+  assert.equal(GM.rasterSemCota({ name: 'ortomosaico drone', d: grade(i => 300 + i * .01) }), true);
+  assert.equal(GM.rasterSemCota({ name: 'Banda_1', d: grade(i => i % 256) }), true, 'tons de cinza: inteiros de 0 a 255');
+  assert.equal(GM.rasterSemCota({ name: 'Banda_1', d: grade(i => (i % 256) + .25) }), false, 'com casas decimais é medida, não tom de cinza');
+  assert.equal(GM.rasterSemCota({ name: 'superficie', d: grade(i => 300 + i % 90) }), false, 'acima de 255 m');
+  assert.equal(GM.rasterSemCota({ name: 'MDT_cotas_inteiras', d: grade(i => 100 + i % 40) }), false, 'MDT de cotas inteiras em terreno baixo continua valendo');
+  assert.equal(GM.rasterSemCota({ name: 'MDT_ortometrico', d: grade(i => 400 + i * .01) }), false);
+  assert.equal(GM.rasterSemCota({ name: 'Ortofoto', d: { tin: {}, z: null } }), false, 'TIN é sempre superfície');
+  assert.equal(GM.rasterSemCota({ name: 'x' }), true, 'sem grade não há o que cortar');
+});
+test('a prévia mostra só o que está escolhido nos cards: topografia, análise, contatos marcados e a linha na distância', () => {
+  const { GM } = carrega();
+  const dist = [0, 10, 20], series = new Map([['r:1', [400, 405, 410]], ['r:2', [30, 90, 60]], ['v:3', [402, 408, 415]], ['r:4', [380, 382, NaN]]]);
+  const fontes = [{ id: 'r:1', nome: 'MDT' }, { id: 'r:2', nome: 'Outro raster' }, { id: 'v:3', nome: 'DCE 1 — Bruta' }, { id: 'r:4', nome: 'Topo da rocha' }];
+  const p = { previa: { dist, series }, fontes, topo: 'r:1', proj: '', contatos: new Set(), distContato: '' };
+  const nomes = q => puro(GM.seriesDaPrevia(q, ['#111', '#222']).map(s => s.nome));     // puro(): a lista vem de outro contexto
+  assert.deepEqual(nomes(p), ['MDT (topografia)'], 'superfície de análise "Nenhuma": o desenho que cruza a linha não aparece');
+  assert.deepEqual(nomes({ ...p, proj: 'v:3' }), ['MDT (topografia)', 'DCE 1 — Bruta (análise)']);
+  assert.deepEqual(nomes({ ...p, contatos: new Set(['r:4']) }), ['MDT (topografia)', 'Topo da rocha (contato)']);
+  const d = GM.seriesDaPrevia({ ...p, distContato: '5' }, []);
+  assert.deepEqual(puro(d.map(s => s.nome)), ['MDT (topografia)', 'contato a 5 m da topografia']);
+  assert.deepEqual(puro(d[1].y), [395, 400, 405], 'paralela à topografia, 5 m abaixo');
+  assert.deepEqual(nomes({ ...p, distContato: '2,5' }).at(-1), 'contato a 2,5 m da topografia');
+  assert.deepEqual(nomes({ ...p, proj: 'r:1' }), ['MDT (topografia)'], 'a mesma fonte não entra duas vezes');
+  assert.deepEqual(nomes({ ...p, topo: '' }), [], 'sem topografia escolhida não há o que mostrar');
+  assert.deepEqual(puro(GM.seriesDaPrevia(null)), []);
+});
+

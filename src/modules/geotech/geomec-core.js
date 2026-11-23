@@ -125,6 +125,36 @@
   /* Curvas de nível ou linhas de projeto (crista, pé, rampa, limite) cortadas pela linha da
      seção. partes = [{pts:[[x,y,z],…], fechada}] no sistema da seção. Cada cruzamento dá
      (distância desde o primeiro ponto da linha, cota), ordenados pela distância. */
+  /* SÓ ENTRA O QUE TEM COTA, E A PRÉVIA SÓ MOSTRA O QUE FOI ESCOLHIDO (print IMG_0267, 23/11/2026:
+     "aqui só aparecer as imagens e arquivos selecionados nos cards; ortofoto não tem dado de
+     elevação; somente aparecer nos perfis as linhas que a gente tem interesse").
+     Raster que NÃO é superfície de cota: uma imagem lida como raster de uma banda (ortofoto,
+     mosaico). O nome diz; ou, sem nome de MDT, todas as células amostradas são inteiros de 0 a
+     255 — tom de cinza, não cota. Um MDT de verdade tem casas decimais ou passa de 255 m. */
+  GM.rasterSemCota=r=>{
+    if(!r||!r.d) return true;
+    if(r.d.tin) return false;
+    const nome=String(r.name||''), deCota=/mdt|mde|mds|dem|dtm|dsm|srtm|lidar|cota|elev|altim|topo|terreno|superf/i.test(nome);
+    if(/orto[\s_-]*(?:foto|mosaico|imagem|retificad)|ortho[\s_-]*(?:photo|mosaic|image)|mosaico|mosaic/i.test(nome)&&!/mdt|mde|mds|\bdem\b|dtm|dsm/i.test(nome)) return true;
+    const z=r.d.z; if(deCota||!z||!z.length) return false;
+    const passo=Math.max(1,Math.floor(z.length/4000)); let n=0;
+    for(let i=0;i<z.length;i+=passo){ const v=z[i]; if(!Number.isFinite(v)) continue; if(v<0||v>255||v!==Math.round(v)) return false; n++; }
+    return n>=200;
+  };
+  /* As séries da prévia "Ao longo da linha": a topografia, a superfície de análise e os
+     contatos ESCOLHIDOS nos cards (e a linha na distância informada) — nada além disso. */
+  GM.seriesDaPrevia=(p,paleta)=>{
+    if(!p||!p.previa) return [];
+    const P=p.previa, fonte=id=>(p.fontes||[]).find(f=>f.id===id), out=[], ja=new Set();
+    const poe=(id,papel,cor)=>{ const f=id&&fonte(id), y=f&&P.series.get(f.id); if(!f||!y||ja.has(id)) return; ja.add(id);
+      out.push({nome:f.nome+' ('+papel+')', x:P.dist, y, cor, largura:2.6}); };
+    poe(p.topo,'topografia','#7c4a1e');
+    poe(p.proj,'análise','#7c3aed');
+    let k=0; for(const id of (p.contatos||[])) poe(id,'contato',(paleta||[])[k++%Math.max(1,(paleta||[]).length)]||'#0891b2');
+    const hd=Number(String(p.distContato==null?'':p.distContato).replace(',','.')), zt=P.series.get(p.topo);
+    if(hd>0&&zt) out.push({nome:'contato a '+String(+hd.toFixed(2)).replace('.',',')+' m da topografia', x:P.dist, y:zt.map(z=>Number.isFinite(z)?z-hd:NaN), cor:'#b45309', largura:2.6});
+    return out;
+  };
   GM.perfilVetorial=(linha,partes)=>{
     const a=linha[0], b=linha[linha.length-1], dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy), out=[];
     if(!(L>0)) return out;

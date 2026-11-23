@@ -701,6 +701,22 @@ publicou de outro lugar e este repositório está desatualizado.
     Ficam de fora camadas 2D gravadas com z = 0 e as camadas de apoio do DCE
     (prévia da interseção, preenchimentos). Os botões Criar e Cancelar ficam ao
     lado do título, para a caixa de comandos não os cobrir.
+  - **A prévia da seção nova só mostra o que está escolhido nos cards, e
+    raster sem cota não é opção.** Print IMG_0267 (23/11/2026), com a prévia
+    mostrando o MDT, uma ortofoto lida como cota (0 a 170 "m") e a DCE com a
+    superfície de análise em "Nenhuma": "aqui só aparecer as imagens e
+    arquivos selecionados nos cards; ortofoto não tem dado de elevação;
+    somente aparecer nos perfis as linhas que a gente tem interesse". A prévia
+    desenhava tudo o que cruzava a linha. Agora (`GM.seriesDaPrevia`,
+    `geomec-core.js`) entram só a topografia, a superfície de análise e os
+    contatos marcados, mais a linha na distância informada; com isso a faixa
+    de cotas é a do perfil, e a legenda vai para o canto em que cobre menos
+    pontos. E um raster que não mede cota não entra nas listas
+    (`GM.rasterSemCota`, além do `GeoMineChannelDEM.isElevation`): ortofoto ou
+    mosaico pelo nome, ou imagem de uma banda — todas as células amostradas
+    inteiras de 0 a 255 e nome sem MDT/MDE/DEM/cota. Um MDT de cotas inteiras
+    com nome de MDT continua valendo. O que ficou de fora é listado numa nota
+    ("Sem dado de cota, fora das listas: …").
   - **A seção nova pede 1 Topografia, 2 Projeto e 3 Contatos.** Topografia é
     um MDT/TIN **ou** curvas de nível (qualquer camada de linhas com cota no
     vértice ou em campo COTA/Z/ELEV). Projeto é o desenho do DCE/cava (as
@@ -1352,7 +1368,7 @@ explicação.
 **De onde vem a seção.** *Seção Geotécnica* arma a ferramenta `geomecSecao`:
 dois toques no mapa (com ímã), acima da crista e além do pé. Com uma única
 fonte de cota cruzando a linha a seção nasce direto; senão a aba mostra a
-prévia de todas ao longo da linha e três cards iguais. Em cada um escolhe-se
+prévia das escolhidas ao longo da linha e três cards iguais. Em cada um escolhe-se
 primeiro o **tipo** — *Imagem* (MDT, TIN, superfície raster) ou *Vetorial*
 (linhas com cota) — e só então aparecem as opções daquele tipo
 (`candidatos(papel, tipo)`; `sugere` dá a melhor de cada tipo: na topografia

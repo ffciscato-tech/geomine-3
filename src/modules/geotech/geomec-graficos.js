@@ -74,6 +74,15 @@
     if(leg.length&&cfg.legenda!==false){
       let lx=m.e+8, ly=m.c+13;
       const larg=Math.max(...leg.map(s=>ctx.measureText(s.nome).width))+26;
+      if(cfg.legenda==='livre'){
+        /* a legenda vai para o canto em que cobre menos pontos das linhas (na prévia da seção o
+           terreno costuma começar alto, justamente no canto de cima à esquerda) */
+        const alt=leg.length*14+4, cantos=[[m.e+8,m.c+13],[w-m.d-larg-8,m.c+13],[m.e+8,h-m.b-alt+7],[w-m.d-larg-8,h-m.b-alt+7]];
+        let melhor=Infinity;
+        for(const [cx,cy] of cantos){ let n=0;
+          for(const s of cfg.series) for(let i=0;i<s.x.length;i++){ const px=X(s.x[i]), py=Y(s.y[i]); if(px>=cx-6&&px<=cx+larg+2&&py>=cy-13&&py<=cy-11+alt+2) n++; }
+          if(n<melhor){ melhor=n; lx=cx; ly=cy; } }
+      }
       ctx.fillStyle=T.painel; ctx.fillRect(lx-4,ly-11,larg+4,leg.length*14+4);
       leg.forEach((s,k)=>{ ctx.strokeStyle=ctx.fillStyle=s.cor||PALETA[cfg.series.indexOf(s)%PALETA.length]; ctx.lineWidth=2.5; ctx.setLineDash(s.tracejado?[5,3]:[]); ctx.beginPath(); ctx.moveTo(lx,ly-4+k*14); ctx.lineTo(lx+16,ly-4+k*14); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle=T.tinta; ctx.fillText(s.nome,lx+21,ly+k*14); });
     }

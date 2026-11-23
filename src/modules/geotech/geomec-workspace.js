@@ -738,8 +738,11 @@
     return {tipo:String(f.props.PROJETO)==='DCE'||/pilha|dce|pde/i.test(String(f.props.PROJETO))?'pilha':'cava', bruta:/— Bruta$/.test(L.name)};
   }
   /* Todas as fontes possíveis da seção: superfícies (MDT, TIN) e camadas vetoriais com cota. */
+  /* Raster que não mede cota não é fonte de seção: temático conhecido (declividade, CN…) ou
+     imagem lida como raster (ortofoto de uma banda). Ver GM.rasterSemCota. */
+  const semCota=r=>{ try{ const D=root.GeoMineChannelDEM; if(D&&D.isElevation&&!D.isElevation(r)) return true; }catch(e){} return GM.rasterSemCota(r); };
   function fontesSecao(){
-    const R=superficies().map(r=>({id:'r:'+r.id, nome:r.name, tipo:'raster', r, tin:!!(r.d&&r.d.tin)}));
+    const R=superficies().filter(r=>!semCota(r)).map(r=>({id:'r:'+r.id, nome:r.name, tipo:'raster', r, tin:!!(r.d&&r.d.tin)}));
     let V=[];
     try{ V=(S.layers||[]).filter(L=>L&&(L.gtype==='line'||L.gtype==='polygon')&&L.name!==NOME_CAMADA&&!L._blasting&&!apoioDoDesenho(L)&&temCota(L))
       .map(L=>({id:'v:'+L.id, nome:L.name, tipo:'vetor', L, projeto:papelProjeto(L)})); }catch(e){ console.warn('GEOMEC: camadas com cota',e); }
@@ -810,7 +813,8 @@
      MDT de trabalho ou as curvas de nível) e, se a linha cruza um desenho de DCE/cava, o projeto. */
   function preparaNova(linha){
     const F=fontesSecao(), L=Math.hypot(linha[1][0]-linha[0][0],linha[1][1]-linha[0][1]);
-    pendente={linha, fontes:F, topo:'', proj:'', tipo:'pilha', contatos:new Set(), ocupado:false, previa:null, cache:new Map()};
+    pendente={linha, fontes:F, topo:'', proj:'', tipo:'pilha', contatos:new Set(), ocupado:false, previa:null, cache:new Map(),
+      semCota:superficies().filter(semCota).map(r=>r.name)};
     const passo=Math.max(L/240,.25), R=F.filter(f=>f.tipo==='raster');
     const series=new Map(); let dist=null;
     try{
@@ -859,17 +863,15 @@
             :C3.length?`<div class="gmg-pend-lista">${C3.map(f=>`<label class="gmg-check"><input type="checkbox" data-cont="${h(f.id)}"${p.contatos.has(f.id)?' checked':''}> ${rot(f)}</label>`).join('')}</div>`:vazio(p.tipoCont)}
           ${marcados.length||(temDist&&p.tipoCont!=='dist')?`<p class="gmg-nota">Marcadas: ${marcados.map(f=>h(f.nome)).concat(temDist?['linha a '+String(+hd.toFixed(2)).replace('.',',')+' m da topografia']:[]).join(' · ')}</p>`:''}</section>
       </div>
-      ${fora?`<p class="gmg-nota">${fora} camada(s) com cota não cruzam esta linha e ficaram de fora das listas.</p>`:''}</div>`;
+      ${fora?`<p class="gmg-nota">${fora} camada(s) com cota não cruzam esta linha e ficaram de fora das listas.</p>`:''}
+      ${p.semCota&&p.semCota.length?`<p class="gmg-nota">Sem dado de cota, fora das listas: ${p.semCota.map(h).join(' · ')}.</p>`:''}</div>`;
   }
   function desenhaPrevia(){
     const c=$('gmgPrevia'), p=pendente&&pendente.previa; if(!c||!p) return;
     const a=ajusta(c); if(!a) return;
-    const usados=[pendente.topo,pendente.proj,...pendente.contatos];
-    const series=pendente.fontes.filter(f=>p.series.has(f.id)&&cruzaLinha(f)).map((f,k)=>({nome:f.nome+(f.id===pendente.topo?' (topografia)':f.id===pendente.proj?' (análise)':pendente.contatos.has(f.id)?' (contato)':''), x:p.dist, y:p.series.get(f.id),
-      cor:f.id===pendente.topo?'#7c4a1e':f.id===pendente.proj?'#7c3aed':GM.PALETA[k%GM.PALETA.length], largura:usados.includes(f.id)?3:1.2}));
-    const hd=num(pendente.distContato,NaN), zt=p.series.get(pendente.topo);
-    if(hd>0&&zt) series.push({nome:'contato a '+String(+hd.toFixed(2)).replace('.',',')+' m da topografia', x:p.dist, y:zt.map(z=>Number.isFinite(z)?z-hd:NaN), cor:'#b45309', largura:3});
-    GM.grafico(a.ctx,a.w,a.h,{titulo:'Ao longo da linha (prévia)', x:{rotulo:'distância (m)'}, y:{rotulo:'cota (m)'}, series},claro());
+    /* só o que está escolhido nos cards (antes entrava tudo o que cruzava a linha) */
+    const series=GM.seriesDaPrevia(pendente,GM.PALETA.filter(c=>c!=='#7c3aed'&&c!=='#b45309'));
+    GM.grafico(a.ctx,a.w,a.h,{titulo:'Ao longo da linha (prévia)', x:{rotulo:'distância (m)'}, y:{rotulo:'cota (m)'}, series, legenda:'livre', vazio:'Escolha a topografia no card 1 para ver o perfil.'},claro());
   }
   async function criaPendente(){
     const p=pendente; if(!p||p.ocupado) return;
