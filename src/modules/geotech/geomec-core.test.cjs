@@ -392,3 +392,44 @@ test('a prévia mostra só o que está escolhido nos cards: topografia, análise
   assert.deepEqual(puro(GM.seriesDaPrevia(null)), []);
 });
 
+/* Pé do talude (print IMG_0268, 23/11/2026: "essa parte do perfil está saindo mais inclinada").
+   Perfis inventados: terreno em reta, pilha com face de 0,6 (≈31°). */
+test('pé do desenho acima do terreno: a face é prolongada na inclinação dela até o terreno', () => {
+  const { GM } = carrega();
+  const dist = [0, 10, 20, 30, 40, 50, 60], N = NaN;
+  const perfis = [{ id: 't', papel: 'terreno', z: dist.map(() => 100) }, { id: 'p', papel: 'projeto', z: [N, N, N, 105, 111, 111, 117] }];
+  const r = GM.encaixaProjetoNoTerreno(dist, perfis, true), pj = r.perfis.find(q => q.papel === 'projeto'), tr = r.perfis.find(q => q.papel === 'terreno');
+  const i = r.dist.findIndex(d => Math.abs(d - (30 - 5 / .6)) < 1e-9);
+  assert.ok(i > 0, 'o encontro com o terreno vira estação: ' + puro(r.dist));
+  assert.ok(Math.abs(pj.z[i] - 100) < 1e-9 && Math.abs(tr.z[i] - 100) < 1e-9, 'ali projeto = terreno');
+  assert.ok(!Number.isFinite(pj.z[i - 1]), 'antes do pé novo não há projeto');
+  assert.deepEqual(puro(r.prolongado), [{ lado: 'início', altura: 5, ate: 21.67, inclinacao: 31 }]);
+  assert.deepEqual(puro(perfis[1].z.slice(0, 4)), [null, null, null, 105], 'os perfis de quem chamou não são alterados');
+  /* na seção: nenhum trecho mais inclinado que a face, e o aviso diz o que foi feito */
+  const s = GM.novaSecaoMapa([[0, 0], [60, 0]], null, dist, perfis, {});
+  const incl = s.terreno.slice(1).map((q, k) => (q[1] - s.terreno[k][1]) / (q[0] - s.terreno[k][0]));
+  assert.ok(Math.max(...incl) < .6 + 1e-3, 'inclinações: ' + incl.map(v => v.toFixed(4)));     // o terreno da seção é gravado com 3 casas
+  assert.ok(s.terreno.some(q => Math.abs(q[0] - 21.667) < .002 && Math.abs(q[1] - 100) < .002), 'o pé novo está no terreno da seção');
+  assert.match(s.avisoProjeto, /pé do desenho fica 5 m acima do terreno.*prolongada na inclinação do talude \(31°\) até o terreno\./);
+  /* sem encontrar o terreno dentro da linha: prolonga até o fim e avisa para estender */
+  const curto = GM.novaSecaoMapa([[0, 0], [30, 0]], null, [0, 10, 20, 30], [{ id: 't', papel: 'terreno', z: [100, 100, 100, 100] }, { id: 'p', papel: 'projeto', z: [N, 130, 136, 142] }], {});
+  assert.match(curto.avisoProjeto, /sem encontrá-lo dentro da linha; estenda a seção/);
+  assert.equal(curto.prolongado[0].ate, null);
+});
+test('pé enterrado: o encontro da face com o terreno entra como estação; na cava a crista sobe até o terreno', () => {
+  const { GM } = carrega();
+  const dist = [0, 10, 20, 30, 40], N = NaN;
+  const r = GM.encaixaProjetoNoTerreno(dist, [{ papel: 'terreno', z: dist.map(d => 100 + .2 * d) }, { papel: 'projeto', z: [N, 100, 106, 112, 112] }], true);
+  assert.deepEqual(puro(r.dist), [0, 10, 15, 20, 30, 40], 'o cruzamento em 15 m (onde a face sai do terreno) vira estação');
+  assert.deepEqual(puro(r.prolongado), [], 'nada foi prolongado: o pé está abaixo do terreno');
+  const pj = r.perfis.find(q => q.papel === 'projeto'), tr = r.perfis.find(q => q.papel === 'terreno'); assert.ok(Math.abs(pj.z[2] - 103) < 1e-9 && Math.abs(tr.z[2] - 103) < 1e-9);
+  /* cava: a crista do desenho 3 m abaixo do terreno; a parede (1:1) sobe até ele */
+  const c = GM.encaixaProjetoNoTerreno(dist, [{ papel: 'terreno', z: dist.map(() => 100) }, { papel: 'projeto', z: [N, N, 97, 87, 87] }], false);
+  assert.deepEqual(puro(c.prolongado), [{ lado: 'início', altura: 3, ate: 17, inclinacao: 45 }]);
+  assert.ok(c.dist.includes(17));
+  /* projeto e terreno iguais nas pontas, ou sem projeto: nada muda */
+  const igual = GM.encaixaProjetoNoTerreno(dist, [{ papel: 'terreno', z: [100, 100, 100, 100, 100] }, { papel: 'projeto', z: [N, 100, 106, 106, N] }], true);
+  assert.deepEqual(puro(igual.dist), dist); assert.deepEqual(puro(igual.prolongado), []);
+  assert.deepEqual(puro(GM.encaixaProjetoNoTerreno(dist, [{ papel: 'terreno', z: [1, 2, 3, 4, 5] }], true).dist), dist);
+});
+

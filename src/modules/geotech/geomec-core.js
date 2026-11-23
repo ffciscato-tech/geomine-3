@@ -196,10 +196,66 @@
      topografia, e a topografia vira o contato pilha/fundação; cava — o menor dos dois. Sem
      projeto a seção é só a topografia (talude natural). Contatos viram topos de camada, de
      cima para baixo pela cota média. */
+  /* O PÉ DO TALUDE É ONDE O PROJETO ENCONTRA O TERRENO (print IMG_0268, 23/11/2026, com o primeiro
+     talude da pilha circulado: "essa parte do perfil está saindo mais inclinada"). A superfície da
+     seção era o maior (pilha) ou o menor (cava) entre projeto e terreno, medido só nas estações
+     — as do MDT, a cada célula (12,5 m naquele projeto), e os cruzamentos das linhas do desenho:
+     1) onde o pé do desenho fica ACIMA do terreno (o desenho bruto para na cota da base, e ali
+        o terreno é mais baixo), a seção ligava a última estação do terreno ao pé do desenho por
+        uma reta qualquer — 67° e 81° medidos num projeto com talude de 34°. Agora a face é
+        prolongada na inclinação DELA até encontrar o terreno;
+     2) onde o pé fica enterrado, o encontro da face com o terreno não era estação e o primeiro
+        trecho saía com a inclinação errada. Agora o encontro entra como estação, exato.
+     Na cava vale o mesmo com os sinais trocados (a crista abaixo do terreno sobe até ele).
+     Devolve as estações e os perfis refeitos, e a altura que foi prolongada em cada ponta. */
+  GM.encaixaProjetoNoTerreno=(dist,perfis,pilha)=>{
+    const D=dist.slice(), PF=perfis.map(p=>Object.assign({},p,{z:p.z.slice()}));
+    const ter=PF.find(p=>p.papel==='terreno'), proj=PF.find(p=>p.papel==='projeto'), out={dist:D, perfis:PF, prolongado:[]};
+    if(!ter||!proj) return out;
+    const fin=Number.isFinite, sg=pilha?1:-1;
+    /* nova estação entre i e i+1: cada perfil recebe a cota interpolada (os dois são retas entre estações) */
+    const insere=(i,d)=>{ const t=(d-D[i])/(D[i+1]-D[i]); for(const p of PF){ const a=p.z[i], b=p.z[i+1]; p.z.splice(i+1,0,fin(a)&&fin(b)?a+(b-a)*t:NaN); } D.splice(i+1,0,d); return i+1; };
+    /* 1) pontas do projeto fora do terreno: prolonga a face até ele */
+    for(const lado of [-1,1]){
+      let e=-1; if(lado<0){ for(let i=0;i<D.length;i++) if(fin(proj.z[i])){ e=i; break; } } else { for(let i=D.length-1;i>=0;i--) if(fin(proj.z[i])){ e=i; break; } }
+      if(e<0||!fin(ter.z[e])) continue;
+      const ze=proj.z[e], folga=sg*(ze-ter.z[e]); if(!(folga>0.3)) continue;        /* pilha: pé acima do terreno; cava: crista abaixo */
+      let m=NaN;                                                                   /* inclinação da face vizinha (para dentro do projeto) */
+      for(let j=e-lado;j>=0&&j<D.length;j-=lado){ if(!fin(proj.z[j])) break; const dz=sg*(proj.z[j]-ze), dx=Math.abs(D[j]-D[e]); if(dz>=0.2&&dx>1e-6){ m=dz/dx; break; } if(dz<-0.2) break; }
+      if(!(m>0.05)) continue;
+      const linha=d=>ze-sg*m*Math.abs(d-D[e]);
+      let k=e, achou=false, fim=e;
+      while(true){
+        const kk=k+lado; if(kk<0||kk>=D.length||!fin(ter.z[kk])) break;
+        const f0=sg*(linha(D[k])-ter.z[k]), f1=sg*(linha(D[kk])-ter.z[kk]);
+        if(f1<=0){                                                                 /* a face prolongada encontra o terreno neste trecho */
+          const t=f0/(f0-f1), d=D[k]+(D[kk]-D[k])*t, lo=Math.min(k,kk);
+          if(Math.abs(d-D[kk])<1e-6){ proj.z[kk]=ter.z[kk]; fim=kk; }
+          else if(Math.abs(d-D[k])<1e-6){ fim=k; }
+          else { const ni=insere(lo,d); proj.z[ni]=ter.z[ni]; if(lado>0){ fim=ni; } else { e++; k++; fim=ni; } }
+          achou=true; break;
+        }
+        proj.z[kk]=linha(D[kk]); k=kk; fim=kk;
+      }
+      out.prolongado.push({lado:lado<0?'início':'fim', altura:+folga.toFixed(2), ate:achou?+D[fim].toFixed(2):null, inclinacao:+(Math.atan(m)*180/Math.PI).toFixed(1)});
+    }
+    /* 2) onde o projeto cruza o terreno entre duas estações, o cruzamento vira estação */
+    for(let i=D.length-2;i>=0;i--){
+      const a=proj.z[i]-ter.z[i], b=proj.z[i+1]-ter.z[i+1];
+      if(!fin(a)||!fin(b)||!(a*b<0)) continue;
+      const d=D[i]+(D[i+1]-D[i])*(a/(a-b));
+      if(d-D[i]<1e-4||D[i+1]-d<1e-4) continue;
+      const ni=insere(i,d); proj.z[ni]=ter.z[ni];
+    }
+    return out;
+  };
   GM.novaSecaoMapa=(linha,crs,dist,perfis,op)=>{
     op=op||{};
+    if(!perfis.find(p=>p.papel==='terreno')) throw new Error('Escolha a topografia (a superfície do terreno).');
+    let prolongado=[];
+    { const pj=perfis.find(p=>p.papel==='projeto');
+      if(pj&&op.encaixe!==false){ const r=GM.encaixaProjetoNoTerreno(dist,perfis,(op.tipoProjeto||pj.tipo)!=='cava'); dist=r.dist; perfis=r.perfis; prolongado=r.prolongado; } }
     const ter=perfis.find(p=>p.papel==='terreno'), proj=perfis.find(p=>p.papel==='projeto'), cont=perfis.filter(p=>p.papel==='contato');
-    if(!ter) throw new Error('Escolha a topografia (a superfície do terreno).');
     const n=dist.length, zt=new Array(n).fill(NaN), zn=new Array(n).fill(NaN), pilha=!!proj&&(op.tipoProjeto||proj.tipo)!=='cava';
     for(let i=0;i<n;i++){
       let z=ter.z[i];
@@ -247,6 +303,13 @@
     if(proj&&!pilha){ let ok=true; for(let i=a;i<=b;i++) if(!Number.isFinite(zn[i])){ ok=false; break; } if(ok) s.natural=linhaDe(zn); }
     s.ignorados=cont.filter(c=>!usados.includes(c)&&!c.natural).map(c=>c.nome);
     if(proj&&!usados.some(c=>c.natural)&&pilha) s.avisoProjeto='O projeto não passa acima da topografia nesta linha: a seção ficou só com o terreno natural.';
+    /* a face prolongada até o terreno fica registrada na seção e é avisada: é uma hipótese sobre o desenho */
+    if(prolongado.length){
+      s.prolongado=prolongado;
+      const q=prolongado.reduce((a,b)=>b.altura>a.altura?b:a), num=v=>String(v).replace('.',',');
+      const txt=(pilha?'O pé do desenho fica ':'A crista do desenho fica ')+num(q.altura)+' m '+(pilha?'acima':'abaixo')+' do terreno nesta linha: a face foi prolongada na inclinação do talude ('+num(q.inclinacao)+'°) até o terreno'+(q.ate==null?' — sem encontrá-lo dentro da linha; estenda a seção.':'.');
+      if(!s.avisoProjeto) s.avisoProjeto=txt;
+    }
     estado.secoes.push(s); estado.ativa=s.id;
     return s;
   };

@@ -717,6 +717,22 @@ publicou de outro lugar e este repositório está desatualizado.
     inteiras de 0 a 255 e nome sem MDT/MDE/DEM/cota. Um MDT de cotas inteiras
     com nome de MDT continua valendo. O que ficou de fora é listado numa nota
     ("Sem dado de cota, fora das listas: …").
+  - **O pé do talude na seção é onde o projeto encontra o terreno.** Print
+    IMG_0268 (23/11/2026), com o primeiro talude da pilha circulado: "essa
+    parte do perfil está saindo mais inclinada". A superfície da seção era o
+    maior (pilha) ou o menor (cava) entre projeto e terreno medido só nas
+    estações — as do MDT (12,5 m naquele projeto) e os cruzamentos das linhas
+    do desenho. Onde o pé do desenho bruto fica **acima** do terreno, a seção
+    ligava a última estação do terreno ao pé por uma reta qualquer (67° e 81°
+    medidos numa pilha de 34°); onde fica enterrado, o encontro da face com o
+    terreno não era estação. Agora (`GM.encaixaProjetoNoTerreno`, em
+    `geomec-core.js`): (1) a face da ponta do projeto é **prolongada na
+    inclinação dela** até o terreno; (2) todo cruzamento projeto × terreno
+    entra como estação, exato. Na cava vale o mesmo com os sinais trocados (a
+    crista abaixo do terreno sobe até ele). A prolongação é uma hipótese sobre
+    o desenho: fica gravada na seção (`s.prolongado`), é avisada ao cortar e
+    aparece no card 1; se a face não alcança o terreno dentro da linha, o
+    aviso pede para estender a seção.
   - **A seção nova pede 1 Topografia, 2 Projeto e 3 Contatos.** Topografia é
     um MDT/TIN **ou** curvas de nível (qualquer camada de linhas com cota no
     vértice ou em campo COTA/Z/ELEV). Projeto é o desenho do DCE/cava (as
