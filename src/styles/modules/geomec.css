@@ -66,6 +66,9 @@ body.gm-touch-ui.gm-geomec-view .gm-touch-actions{display:none!important}
 .gmg-side .gm-work-card>.mini{width:100%;margin-top:6px}
 .gmg-carga{display:grid;grid-template-columns:1fr 1fr 1fr 32px;gap:5px;margin-bottom:5px}
 .gmg-carga .mini{padding:4px 0}
+/* rótulos das colunas da sobrecarga: sem eles os números eram lidos como inclinações (print de 23/11/2026) */
+.gmg-carga-rot{margin-bottom:1px}
+.gmg-carga-rot .field{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* materiais */
 .gmg-mat{border:1px solid var(--line);border-radius:7px;margin-bottom:6px;background:var(--bg);overflow:hidden}
 .gmg-mat.aberta{border-color:var(--amber)}

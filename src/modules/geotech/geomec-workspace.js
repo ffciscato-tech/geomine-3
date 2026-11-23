@@ -107,6 +107,7 @@
   function mostrou(){
     mount();
     largura(); renderTudo(); scheduleFit();
+    sincronizaMapa();                                   /* cada seção com a sua camada na aba Camadas */
     const s=sec();
     if(s&&!res()&&!pendente&&s.auto!==false&&!GM.ocupado()) calcula();
   }
@@ -265,8 +266,9 @@
   }
   function cardCargas(s){
     return `<section class="gm-work-card" data-card="cargas"><div class="gm-card-heading"><span class="gm-card-step">4</span><b>Cargas, sismo e trinca</b>${info('Sobre cargas e sismo','Sobrecarga vertical distribuída entre duas distâncias da seção. Na figura, arraste a carga para mudar o lugar e as bolinhas das pontas para mudar o início e o fim (mouse, caneta ou dedo); os campos acompanham. O sismo é pseudo-estático: kh empurra no sentido do deslizamento e kv positivo aumenta o peso. A trinca de tração corta a superfície junto à crista na profundidade dada e pode estar cheia de água.')}</div>
+      ${(s.cargas||[]).length?'<div class="gmg-carga gmg-carga-rot" aria-hidden="true"><label class="field">de (m)</label><label class="field">até (m)</label><label class="field">carga (kPa)</label><span></span></div>':''}
       <div id="gmgCargas">${(s.cargas||[]).map((q,i)=>`<div class="gmg-carga"><input data-q="${i}" data-k="x1" value="${h(q.x1)}" inputmode="decimal" aria-label="de (m)" placeholder="de" autocomplete="off"><input data-q="${i}" data-k="x2" value="${h(q.x2)}" inputmode="decimal" aria-label="até (m)" placeholder="até" autocomplete="off"><input data-q="${i}" data-k="q" value="${h(q.q)}" inputmode="decimal" aria-label="kPa" placeholder="kPa" autocomplete="off"><button type="button" class="mini" data-a="remove-carga" data-i="${i}" aria-label="Remover a sobrecarga">✕</button></div>`).join('')}</div>
-      <button type="button" class="mini" data-a="nova-carga">＋ sobrecarga (de · até · kPa)</button>
+      <button type="button" class="mini" data-a="nova-carga">＋ sobrecarga (posição em m · carga em kPa)</button>
       <div class="gmg-g2">${campo('kh (g)','data-c="sismo.kh"',s.sismo.kh)}${campo('kv (g)','data-c="sismo.kv"',s.sismo.kv)}${campo('Trinca (m)','data-c="trinca.prof"',s.trinca.prof)}${campo('Água na trinca (%)','data-c="trinca.agua"',s.trinca.agua)}</div>
     </section>`;
   }
@@ -941,9 +943,9 @@
      aba camadas". Cada seção cortada no mapa tem a sua camada ("Seção geotécnica S-01"), no
      grupo "Seções geotécnicas": a linha da seção (rótulo com o nome e o FS) e, por cima, o
      trecho entre a entrada e a saída da ruptura crítica, na cor da classe do fator de
-     segurança. A camada nasce com a seção (ou pelo "Ver no mapa") e depois só é atualizada:
-     se a pessoa a apagar, não volta sozinha. Excluir a seção leva a camada junto. A camada
-     única de antes ("Seções geomecânicas") vira uma camada por seção ao primeiro cálculo. */
+     segurança. Desde 23/11/2026 toda seção cortada no mapa tem sempre a sua camada (ver
+     sincronizaMapa): a que falta é criada de novo. Excluir a seção leva a camada junto. A camada
+     única de antes ("Seções geomecânicas") dá lugar a uma camada por seção. */
   const NOME_CAMADA='Seções geomecânicas', NOME_GRUPO='Seções geotécnicas';
   const nomeCamadaSecao=s=>'Seção geotécnica '+s.nome;
   const CAMPOS=[{name:'GEOMEC',type:'C',length:40},{name:'SECAO',type:'C',length:60},{name:'TIPO',type:'C',length:20},{name:'FS',type:'N',length:8,decimal:3},{name:'CONDICAO',type:'C',length:30},{name:'CLASSE',type:'C',length:12},{name:'ROTULO',type:'C',length:80}];
@@ -972,17 +974,23 @@
     if(r&&r.sup&&Number.isFinite(r.sup.entrada)&&Number.isFinite(r.sup.saida)) feats.push({geom:[pontoNaLinha(s,r.sup.entrada),pontoNaLinha(s,r.sup.saida)], multi:false, props:{GEOMEC:s.id, SECAO:s.nome, TIPO:'ruptura crítica', FS:+r.FS.toFixed(3), CONDICAO:cond, CLASSE:GM.classe(r.FS,adm), ROTULO:''}});
     return feats;
   }
-  /* op.criar: id da seção cuja camada deve nascer (true = todas); op.zoom: id da seção a enquadrar */
+  /* TODA SEÇÃO CORTADA NO MAPA TEM A SUA CAMADA (pedido de 23/11/2026: "as seções geomecânicas
+     devem ficar todas como camadas na aba camadas"). Antes a camada só nascia com a seção nova ou
+     pelo "Ver no mapa": seções de projetos anteriores, ou cuja camada tinha sido apagada, ficavam
+     de fora. Agora a que falta é criada sempre que as camadas são conferidas — ao abrir o
+     projeto, ao abrir a aba GEOMEC e a cada cálculo. Para tirar uma seção da lista, exclui-se a
+     seção (a camada sai junto); para só escondê-la, o olho da camada. Seção paramétrica (talude
+     sem linha no mapa) não tem onde ser desenhada e não ganha camada.
+     op.zoom: id da seção a enquadrar. */
   function sincronizaMapa(op){
     op=op||{};
     try{
       const lista=GM.secoes().filter(s=>s.linha&&s.linha.length===2), ativa=S.activeId;
-      let migrar=null, alvo=null, mexeu=false;
+      let alvo=null, mexeu=false;
       const antiga=(S.layers||[]).find(L=>L&&L.name===NOME_CAMADA&&L.gtype==='line'&&temGEOMEC(L)&&!L._geomecSecao);
-      if(antiga){ migrar=new Set((antiga.features||[]).map(f=>f.props&&f.props.GEOMEC)); removeCamada(antiga); mexeu=true; }
+      if(antiga){ removeCamada(antiga); mexeu=true; }     /* a camada única de antes dá lugar a uma por seção */
       for(const s of lista){
         let L=camadaDaSecao(s);
-        if(!L&&!(op.criar===true||op.criar===s.id||(migrar&&migrar.has(s.id)))) continue;
         const feats=feicoesDaSecao(s);
         if(!L){
           L=addLayer({name:nomeCamadaSecao(s), gtype:'line', crs:s.crs||S.workCRS, features:feats, fields:CAMPOS, color:'#7c3aed', labelField:'ROTULO'});
@@ -1145,6 +1153,9 @@
     rodada++; GM.cancela(); clearTimeout(timer);
     GM.restaura(d); estudos.clear(); abertos.clear(); vista=null; vistaManual=false; sel=null; pendente=null; emEstudo=false; saiDoModo(); fimDesenho();
     if(montado){ estado('',''); if(!$('gmGeomecWorkspace').hidden) mostrou(); }
+    /* projeto aberto: cada seção cortada no mapa aparece na aba Camadas, mesmo que o projeto
+       tenha sido gravado sem a camada dela (as camadas do projeto já estão carregadas aqui) */
+    try{ if(GM.secoes().some(q=>q.linha&&q.linha.length===2)) sincronizaMapa(); }catch(e){ console.warn('GEOMEC: camadas das seções',e); }
   }
   const api={open, mostrou, comando, mapClick, fimDesenho, snapshot:()=>GM.snapshot(), restore, reset:()=>restore(null), hasContent:()=>GM.temConteudo(),
     visivel:()=>montado&&!$('gmGeomecWorkspace').hidden,

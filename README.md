@@ -679,9 +679,15 @@ publicou de outro lugar e este repositório está desatualizado.
     interrompe. Sem Worker, calcula na própria página.
   - **O projeto guarda as seções e só o resumo do cálculo** (chave `geomec`);
     os resultados pesados são refeitos ao abrir a aba.
-  - **Cada seção cortada no mapa tem a sua camada** na aba Camadas ("Seção
-    geotécnica S-01", grupo "Seções geotécnicas"), atualizada a cada cálculo e
-    removida com a seção; apagada pela pessoa, não volta sozinha.
+  - **Toda seção cortada no mapa tem sempre a sua camada** na aba Camadas
+    ("Seção geotécnica S-01", grupo "Seções geotécnicas"; pedido de 23/11/2026:
+    "as seções geomecânicas devem ficar todas como camadas na aba camadas"). A
+    camada que falta é criada ao abrir o projeto, ao abrir a aba GEOMEC e a cada
+    cálculo; é atualizada a cada cálculo e sai com a seção. Para tirar da lista,
+    exclui-se a seção; para só esconder, o olho da camada. Seção paramétrica
+    (sem linha no mapa) não tem camada.
+  - **Campos da sobrecarga têm rótulo** ("de (m)", "até (m)", "carga (kPa)"):
+    sem eles as posições foram lidas como inclinações (print de 23/11/2026).
   - **Seção primeiro, depois a estabilidade e o NA** (pedido de 22/11/2026, à
     tarde, com o print da faixa: "A seção geotécnica deve vir em primeiro,
     depois estabilidade e o nível de água eu devo poder escolher o pior caso
@@ -1431,10 +1437,14 @@ nome e do FS, e o trecho entre a entrada e a saída da ruptura crítica colorido
 pela classe do fator de segurança (campos GEOMEC, SECAO, TIPO, FS, CONDICAO,
 CLASSE). A camada nasce com a seção (também ao duplicar e no "Ver no mapa"), é
 atualizada a cada cálculo e ao renomear a seção, e sai quando a seção é
-excluída; se a pessoa apagar a camada, ela não volta sozinha (só pelo "Ver no
-mapa"). A marca `_geomecSecao` vai para o projeto; em projeto antigo a camada é
+excluída. Desde 23/11/2026 ("as seções geomecânicas devem ficar todas como
+camadas na aba camadas") **toda** seção cortada no mapa tem sempre a sua
+camada: a que falta — seção de projeto anterior, ou camada apagada — é criada
+de novo ao abrir o projeto, ao abrir a aba GEOMEC e a cada cálculo
+(`sincronizaMapa`). Seção paramétrica não tem linha no mapa e fica sem camada.
+A marca `_geomecSecao` vai para o projeto; em projeto antigo a camada é
 achada pelas feições (todas com o mesmo GEOMEC). A camada única de antes,
-"Seções geomecânicas", vira uma camada por seção no primeiro cálculo.
+"Seções geomecânicas", dá lugar a uma camada por seção.
 
 **Contato por distância.** Pedido de 22/11/2026: "no caso de não haver uma
 superfície de contato embaixo da topografia, eu devo poder dizer que distância
