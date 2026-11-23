@@ -715,24 +715,73 @@ function transportaParaDentro(k, gDe, D0){
   for(const t of travasFixas(k).filter(q=>q.g>gDe).sort((a,b)=>a.g-b.g)){
     let D1; try{ D1=geraDoBloco(k); }catch(e){ return false; }
     const r0=anelDaGeracao(D0,t.g-1), r1=anelDaGeracao(D1,t.g-1); if(!r0 || !r1) return false;
-    const F=campoEntre(r0.Sk||r0.P, r1.Sk||r1.P);
+    const R0=r0.Sk||r0.P, R1=r1.Sk||r1.P, F=campoEntre(R0, R1);
+    // mesma proporção também para dentro: onde a junta não tem vértice em frente a um que andou,
+    // ganha um (na projeção), com o mesmo deslocamento
+    const novos=[], L0=t.S, cumL=cumulativo(L0), perL=cumL[L0.length];
+    for(const v of R1){
+      if(v.si==null) continue; const p0=R0.find(q=>q.si===v.si); if(!p0) continue;
+      const dx=v.x-p0.x, dy=v.y-p0.y; if(Math.hypot(dx,dy)<=0.05) continue;
+      const a=arcoMaisProximo(L0,cumL,p0), sa=((a.s%perL)+perL)%perL, q=pontoNoArco(L0,cumL,sa), jx=(q.i+1)%L0.length;
+      const tol=Math.max(1.5, 0.12*Math.hypot(q.x-p0.x,q.y-p0.y));
+      if(Math.hypot(q.x-L0[q.i].x,q.y-L0[q.i].y)<tol || Math.hypot(q.x-L0[jx].x,q.y-L0[jx].y)<tol) continue;
+      if(novos.some(e=>Math.hypot(e.x0-q.x,e.y0-q.y)<tol)) continue;
+      novos.push({i:q.i, s:sa, x0:q.x, y0:q.y, x:q.x+dx, y:q.y+dy});
+    }
     for(const L of [t.S,t.Sin]) for(const q of L){ const f=F(q); q.x+=f.x; q.y+=f.y; }
+    if(novos.length){
+      novos.sort((a,b)=>(b.i-a.i) || (b.s-a.s));
+      let rot=Math.max(999999,...t.S.map(v=>Number.isFinite(v.si)?v.si:0));
+      for(const e of novos){ const si=++rot; for(const L of [t.S,t.Sin]) L.splice(e.i+1,0,{x:+e.x.toFixed(3),y:+e.y.toFixed(3),si}); }
+    }
     soltaPinos(t);
   }
   return true;
 }
-// as sementes de fora acompanham a junta T que andou (❄ de dentro): a borda de fora da berma de T
-// recebe o campo de T, vértice a vértice, na semente que a gera — até chegar à linha desenhada
+/* AS LINHAS DE FORA SEGUEM NA MESMA PROPORÇÃO (print IMG_0259, 22/11/2026: "quando estou arrastando
+   para fora … todas as linhas que estão para fora devem seguir na mesma proporção"). As sementes
+   de fora acompanham a junta T que andou (❄ de dentro), até a linha desenhada. Antes só se mexia
+   nos vértices que elas JÁ tinham: onde a linha de fora não tinha vértice em frente ao que foi
+   puxado, ficava parada e a berma seguinte era espremida. Agora, para cada vértice do contorno
+   que andou, a semente de fora ganha o vértice correspondente (na projeção dele) com o MESMO
+   deslocamento; os que ela já tinha seguem pelo campo, como antes. */
 function transportaParaFora(k, T, S0, D0){
   const o=objs[k]; let t=T, s0=S0;
   while(t){
     const F=campoEntre(s0, t.S), r=anelDaGeracao(D0, t.g-1); if(!r) return false;
-    const fam=familiaDoAnel(k, t.g-1), s0prox=fam ? fam.S.map(q=>({x:q.x,y:q.y,si:q.si})) : null, vistos=new Set();
+    const fam=familiaDoAnel(k, t.g-1), s0prox=fam ? fam.S.map(q=>({x:q.x,y:q.y,si:q.si})) : null;
+    const listas=fam ? [fam.S,fam.Sin] : [o.base];
+    // 1) os vértices do contorno que andaram, com o deslocamento de cada um
+    const c0=cumulativo(s0), per0=c0[s0.length], movidos=[];
+    for(const v of t.S){
+      let p0=s0.find(q=>q.si===v.si);
+      if(!p0){ const a=arcoMaisProximo(s0,c0,v); p0=pontoNoArco(s0,c0,((a.s%per0)+per0)%per0); }
+      const dx=v.x-p0.x, dy=v.y-p0.y;
+      if(Math.hypot(dx,dy)>0.05) movidos.push({x:p0.x, y:p0.y, dx, dy});
+    }
+    // 2) onde a semente de fora NÃO tem vértice em frente a um deles, planeja um (sobre a lista como está)
+    const L0=listas[0], cumL=cumulativo(L0), perL=cumL[L0.length], novos=[];
+    for(const m of movidos){
+      const a=arcoMaisProximo(L0,cumL,m), sa=((a.s%perL)+perL)%perL, q=pontoNoArco(L0,cumL,sa), jx=(q.i+1)%L0.length;
+      const tol=Math.max(1.5, 0.12*Math.hypot(q.x-m.x,q.y-m.y));
+      if(Math.hypot(q.x-L0[q.i].x,q.y-L0[q.i].y)<tol || Math.hypot(q.x-L0[jx].x,q.y-L0[jx].y)<tol) continue;
+      if(novos.some(e=>Math.hypot(e.x0-q.x,e.y0-q.y)<tol)) continue;
+      novos.push({i:q.i, s:sa, x0:q.x, y0:q.y, x:q.x+m.dx, y:q.y+m.dy});
+    }
+    // 3) os vértices que ela já tem: pelo campo, avaliado na borda de fora da berma de T (como antes)
+    const vistos=new Set();
     for(const u of (r.Sk||r.P)){
       if(u.si==null || vistos.has(u.si)) continue; vistos.add(u.si);
       const f=F(u);
-      if(fam){ for(const L of [fam.S,fam.Sin]){ const q=L.find(v=>v.si===u.si); if(q){ q.x+=f.x; q.y+=f.y; } } }
+      if(fam){ for(const L of listas){ const q=L.find(v=>v.si===u.si); if(q){ q.x+=f.x; q.y+=f.y; } } }
       else if(o.base[u.si]) o.base[u.si]={...o.base[u.si], x:+(o.base[u.si].x+f.x).toFixed(3), y:+(o.base[u.si].y+f.y).toFixed(3)};
+    }
+    // 4) entram os vértices novos, já deslocados (de trás para a frente, para os índices valerem)
+    if(novos.length){
+      novos.sort((a,b)=>(b.i-a.i) || (b.s-a.s));
+      let rot=fam ? Math.max(999999,...fam.S.map(v=>Number.isFinite(v.si)?v.si:0)) : 0;
+      for(const e of novos){ const si=fam ? ++rot : null;
+        for(const L of listas) L.splice(e.i+1,0, fam ? {x:+e.x.toFixed(3),y:+e.y.toFixed(3),si} : {x:+e.x.toFixed(3),y:+e.y.toFixed(3)}); }
     }
     if(fam) soltaPinos(fam);
     t=fam; s0=s0prox;

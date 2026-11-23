@@ -427,7 +427,16 @@ publicou de outro lugar e este repositório está desatualizado.
   recusado inteiro, e a barra diz quanto andou e por quê parou. Com o ❄ de
   dentro, o "+" entra também nas linhas de fora, para elas acompanharem por
   inteiro. Fazer as linhas de fora acompanharem a cada tentativa do cálculo
-  (em vez de por etapas) foi testado e descartado. **Vértice não some** (print
+  (em vez de por etapas) foi testado e descartado. **As outras linhas do lado
+  livre seguem na mesma proporção** (print IMG_0259: "quando estou arrastando
+  para fora … todas as linhas que estão para fora devem seguir na mesma
+  proporção"): o transporte só mexia nos vértices que as outras sementes já
+  tinham, e onde não havia vértice em frente ao que foi puxado a linha ficava
+  parada e a berma seguinte era espremida. Agora, para cada vértice que andou,
+  a semente vizinha ganha o vértice correspondente (na projeção dele) com o
+  mesmo deslocamento (`transportaParaFora`, `transportaParaDentro`); no teste,
+  num arrasto de 14 m todas as linhas de fora andaram os 14 m e as larguras
+  entre elas não mudaram. **Vértice não some** (print
   IMG_0255: "dependendo do movimento os vértices somem"): o gerador conserta
   sozinho uma linha que se dobra sobre si mesma ou passa da vizinha (corta o
   laço, tira o bico, empurra para dentro), e os vértices do trecho cortado
