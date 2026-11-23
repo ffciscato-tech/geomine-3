@@ -402,7 +402,16 @@ publicou de outro lugar e este repositório está desatualizado.
   do lado, para todos aparecerem antes do primeiro arrasto; enquanto nada for
   editado ela não muda o desenho, não aparece marcada e some ao soltar o lado.
   Com o ❄ de dentro a linha livre é gerada por afastamento e os cantos assim
-  criados continuam sem vértice — limite conhecido; (7) uma edição que faria a linha passar por cima da
+  criados continuam sem vértice — limite conhecido. **Vértice não some** (print
+  IMG_0255: "dependendo do movimento os vértices somem"): o gerador conserta
+  sozinho uma linha que se dobra sobre si mesma ou passa da vizinha (corta o
+  laço, tira o bico, empurra para dentro), e os vértices do trecho cortado
+  sumiam, com o contorno gravado ainda dobrado por baixo. Agora o vértice que
+  encosta na linha congelada fica gravado onde o desenho o deixou (berma
+  mínima de 0,3 m); a edição que ainda assim faria a linha se dobrar ou perder
+  vértices é recusada com o motivo; e um contorno que já esteja dobrado é
+  saneado ao abrir — o laço sai e o cruzamento vira vértice (`saneiaJunta`);
+  (7) uma edição que faria a linha passar por cima da
   vizinha da berma, ou as linhas se cruzarem, é recusada com o motivo; (8) a
   junta aparece em azul fino com "berma ✎", vai com o projeto, com o desfazer e
   com a cadeia de blocos, e o **↺** de qualquer das duas linhas da berma (ou

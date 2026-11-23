@@ -5,10 +5,10 @@ const fonte=fs.readFileSync(path.join(__dirname,'cava-pilha-v106.html'),'utf8');
 const trecho=(a,b)=>{const i=fonte.indexOf(a),f=fonte.indexOf(b,i);assert(i>0&&f>i,'trecho do motor: '+a);return fonte.slice(i,f);};
 const ctx={};vm.createContext(ctx);
 vm.runInContext('const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)); let objs={}, travaSk=null, congelada=null;'
-  +trecho('function cumulativo(','function distAoAnel(')+trecho('function distAoAnel(','\n}\n')+'\n}\n'
+  +trecho('function areaAssinada(','function garanteCCW(')+trecho('function cumulativo(','function distAoAnel(')+trecho('function distAoAnel(','\n}\n')+'\n}\n'
   +trecho('function travasFixas(','// grava/limpa o esqueleto da string congelada')
   +trecho('function parDeBermaDoLado(','function botoesDeLado(')
-  +';this.api={travasFixas,travaDe,fixaAnel,soltaAnel,invasaoDasFixadas,parDeBermaDoLado,bermaDaLinha,planoDoLado,familiaDoAnel,alcasDoAnel,campoEntre,cruzamentosDoDesign,repinaJuntas,soltaPinos,rotulaJunta,set:(o,t)=>{objs=o;travaSk=t||null;},objs:()=>objs};',ctx);
+  +';this.api={travasFixas,travaDe,fixaAnel,soltaAnel,invasaoDasFixadas,parDeBermaDoLado,bermaDaLinha,planoDoLado,familiaDoAnel,alcasDoAnel,campoEntre,cruzamentosDoDesign,repinaJuntas,soltaPinos,rotulaJunta,contornoSeCruza,saneiaJunta,rotulosNoDesenho,set:(o,t)=>{objs=o;travaSk=t||null;},objs:()=>objs};',ctx);
 const A=ctx.api;
 const quad=(m,z,tp)=>({z,tp,P:[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i})),Sk:[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i}))});
 // pilha de 2 bancos: de dentro para fora — crista@20, pé@10 | crista@10, pé@0 (a linha desenhada)
@@ -123,4 +123,24 @@ test('todo canto do contorno da junta é vértice de arrastar: os que o afastame
   // rotular de novo não muda nada; um canto novo sem rótulo continua a contagem
   const antes=JSON.stringify(t.S);A.rotulaJunta(t);assert.equal(JSON.stringify(t.S),antes);
   t.S.push({x:0,y:41});t.Sin.push({x:0,y:41});A.rotulaJunta(t);assert.equal(t.S.at(-1).si,novo+1);assert.equal(t.Sin.at(-1).si,novo+1);
+});
+
+test('vértice não some: contorno dobrado sobre si mesmo é detectado, e o que já está gravado assim é saneado',()=>{
+  // octógono; depois o vértice 1 é levado para além da aresta 4–5 (a linha passa por cima dela mesma)
+  const oct=[[30,0],[21,21],[0,30],[-21,21],[-30,0],[-21,-21],[0,-30],[21,-21]].map((p,i)=>({x:p[0],y:p[1],si:i}));
+  assert.equal(A.contornoSeCruza(oct),false);
+  const dobrado=oct.map(q=>({...q}));dobrado[1]={x:-40,y:-14,si:1};
+  assert.equal(A.contornoSeCruza(dobrado),true);
+  const t={g:2,S:dobrado.map(q=>({...q})),Sin:dobrado.map(q=>({...q})),P:[{x:0,y:0}],projecaoEntrada:{}};
+  assert.equal(A.saneiaJunta(t),true);
+  assert.equal(A.contornoSeCruza(t.S),false,'o laço saiu do contorno');
+  assert(t.S.length<dobrado.length+2&&t.S.length>=4);
+  assert(t.S.some(q=>q.si==null),'os cruzamentos entram como cantos novos (ganham rótulo em seguida)');
+  assert.equal(JSON.stringify(t.Sin),JSON.stringify(t.S),'a semente do bloco de dentro acompanha');assert.equal(t.P,null);
+  A.rotulaJunta(t);assert(t.S.every(q=>q.si!=null));
+  assert.equal(A.saneiaJunta(t),false,'contorno são não é mexido');
+  // quais vértices do contorno o desenho mostra: é o que não pode diminuir depois de uma edição
+  const r0=t.S[0].si,r1=t.S[1].si;
+  const d={aneis:[{P:[]},{P:[{x:0,y:0,si:r0},{x:1,y:0,si:-7},{x:2,y:0},{x:3,y:0,si:r1}]},{P:[]},{P:[]}]};
+  assert.deepEqual([...A.rotulosNoDesenho(d,t)].sort(),[r0,r1].sort(),'só os rótulos que valem no contorno; ponto sem rótulo ou de outra família não conta');
 });

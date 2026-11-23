@@ -532,6 +532,35 @@ function fixaAnel(alvo, idx){
    cantos que não vêm de nenhum vértice da linha desenhada (duas arestas que passam a se encontrar
    quando a do meio some); eles ficavam sem rótulo e por isso sem quadradinho. No contorno de uma
    junta cada canto ganha rótulo próprio, fora da faixa dos índices da linha desenhada. */
+/* VÉRTICE NÃO SOME (print IMG_0255, 22/11/2026: "dependendo do movimento os vértices somem").
+   O gerador conserta sozinho uma linha que se dobra sobre si mesma ou passa da vizinha: corta o
+   laço (removeLacos), tira o bico (despika), empurra para dentro (garanteDentro). O desenho saía
+   "certo", mas os vértices do trecho cortado sumiam e ficava um canto sem quadradinho — com o
+   contorno gravado ainda dobrado por baixo. Agora: (1) a edição que faria isso é recusada com o
+   motivo; (2) o vértice que encosta na linha congelada fica gravado onde o desenho o deixou; (3)
+   um contorno que já esteja dobrado é saneado — o laço sai do contorno e o cruzamento vira vértice. */
+function contornoSeCruza(L){
+  const n=L.length;
+  for(let i=0;i<n;i++) for(let j=i+2;j<n;j++){
+    if(i===0 && j===n-1) continue;
+    if(segInt(L[i],L[(i+1)%n],L[j],L[(j+1)%n])) return true;
+  }
+  return false;
+}
+function saneiaJunta(t){
+  if(!t || !t.S || t.S.length<8 || !contornoSeCruza(t.S)) return false;
+  const R=removeLacos(t.S.map(q=>({x:q.x,y:q.y,si:q.si})));
+  if(!R || R.length<4 || R.length===t.S.length) return false;
+  t.S=R.map(q=>({x:q.x,y:q.y,si:q.si})); t.Sin=t.S.map(q=>({x:q.x,y:q.y,si:q.si}));
+  t.P=null; t.projecaoEntrada=null;
+  return true;
+}
+// rótulos (dos que valem no contorno) presentes no desenho da junta
+function rotulosNoDesenho(d, t){
+  const a=anelDaGeracao(d,t.g), tem=new Set(t.S.map(q=>q.si)), out=new Set();
+  if(a) for(const q of a.P) if(q.si!=null && tem.has(q.si)) out.add(q.si);
+  return out;
+}
 function rotulaJunta(t){
   if(!t || !t.S) return t;
   const par=!!(t.Sin && t.Sin.length===t.S.length);
@@ -681,6 +710,8 @@ function editaPorSementes(k, idxAnel, lado, op){
     if(!travasFixas(k).some(t=>t.g===gB) && !fixaAnel(k,iIn)) return volta("não consegui separar os dois lados nesta berma");
   }
   const inv0=invasaoDasFixadas(k,null,D0), cruz0=cruzamentosDoDesign(D0);
+  // vértices que cada junta mostrava antes: nenhum deles pode sumir com esta edição
+  const antesTinha=new Map(travasFixas(k).map(t=>[t.g, rotulosNoDesenho(D0,t)]));
   const T=familiaDoAnel(k,gEd), listas=T ? [T.S,T.Sin] : [o.base];
   const acha=(L,rot)=>T ? L.findIndex(q=>q.si===rot) : (Number.isInteger(rot) && L[rot] ? rot : -1);
   const S0=T ? T.S.map(q=>({x:q.x,y:q.y,si:q.si})) : null;
@@ -718,7 +749,15 @@ function editaPorSementes(k, idxAnel, lado, op){
     }
     if(!mel) return volta("a linha não comporta esse movimento");
     poe(mel.x,mel.y); erro=melE; andou=Math.hypot(op.para.x-op.de.x, op.para.y-op.de.y);
+    // a linha livre é a própria junta e o vértice não chegou (encostou na congelada): o contorno
+    // fica gravado onde o desenho deixou o vértice, não onde o dedo soltou
+    if(T && T.g===gEd && melE>0.05){
+      let d=null; try{ d=geraDoBloco(k); }catch(e){ d=null; }
+      const a=anelDaGeracao(d,gEd), pt=a && a.P.find(q=>q.si===op.rot);
+      if(pt) for(const L of listas){ const j=acha(L,op.rot); if(j>=0) L[j]={...L[j], x:+pt.x.toFixed(3), y:+pt.y.toFixed(3)}; }
+    }
   }
+  if(T && contornoSeCruza(T.S)) return volta("a linha se dobraria sobre ela mesma, e os vértices daquele trecho sumiriam");
   // o resto do lado que anda acompanha; o congelado não é tocado
   if(lado==="fora") transportaParaDentro(k, gEd, D0);
   else if(lado==="dentro" && T) transportaParaFora(k, T, S0, D0);
@@ -726,6 +765,12 @@ function editaPorSementes(k, idxAnel, lado, op){
   if(!dV || !dV.aneis || !dV.aneis.length) return volta("a linha não comporta esse movimento");
   if(cruzamentosDoDesign(dV)>cruz0+6) return volta("as linhas se cruzariam");
   if(invasaoDasFixadas(k,null,dV)>inv0+0.3) return volta("a linha passaria por cima da vizinha, do outro lado da berma");
+  for(const t of travasFixas(k)){
+    const antes=antesTinha.get(t.g); if(!antes) continue;
+    const agora=rotulosNoDesenho(dV,t), noContorno=new Set(t.S.map(q=>q.si));
+    for(const r of antes) if(noContorno.has(r) && !agora.has(r))
+      return volta("vértices da linha sumiriam: ela passaria por cima da linha vizinha ou faria um bico que não cabe");
+  }
   for(const t of travasFixas(k)) delete t.nova;
   return {ok:true, erro, andou};
 }
@@ -2957,7 +3002,7 @@ function regen(){
     const o=objs[k];
     o.erro=null;
     o.bermas = o.bermas || {};
-    for(const t of travasFixas(k)) rotulaJunta(t);
+    for(const t of travasFixas(k)){ saneiaJunta(t); rotulaJunta(t); }
     // Só a ESTRUTURA DE BANCOS invalida uma berma editada, porque a chave dela é
     // o índice do banco. Mexer na linha desenhada NÃO invalida: hoje a edição é
     // uma janela paramétrica (largura + âncora de arco), reancorada no esqueleto
