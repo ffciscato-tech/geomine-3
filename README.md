@@ -334,6 +334,17 @@ publicou de outro lugar e este repositório está desatualizado.
   adiado e devolve o overlay ao mapa. A barra dos desenhos passou de 45 para
   32 px no toque (34 → 30 px com mouse), a altura da barra de ferramentas logo
   abaixo. Não voltar a pintar o fundo depois das imagens.
+- **No desenho recortado, toda ponta de trecho de rampa tem a sua aresta.**
+  Print IMG_0276 (23/11/2026), DCE 1 — Recortada na aba Cava: "ainda saindo sem
+  essa aresta", apontando o começo de um trecho de rampa no patamar. A ponta em
+  que o trecho chega numa berma coincide com a crista (ou o pé) daquele nível e
+  o anel fechado já a desenha; a ponta em que ele sai da berma não é borda de
+  anel nenhum, e a rampa parecia começar no meio da berma, sem linha. O corte
+  agora recebe também essas arestas transversais (`cava2ArestasDeRampa`, em
+  `feicoesFechadasParaIntersecao`): uma linha "Rampa" de borda a borda, só nas
+  pontas que nenhum anel cobre (sem linha dobrada), cortada pelo MDT como as
+  outras. Retorno em gancho não tem quebra de inclinação e fica de fora. Vale
+  para pilha e cava; o desenho já recortado só ganha a aresta ao cortar de novo.
 - **Interseção apagada: o desenho bruto fica inteiro naquele trecho.** Pedido
   de 22/11/2026, print IMG_0237 com um laço pequeno de interseção circulado
   junto à rampa: "essas pequenas intersecções se eu apagá-las o desenho bruto

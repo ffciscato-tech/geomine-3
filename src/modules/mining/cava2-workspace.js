@@ -1636,6 +1636,43 @@ function feicoesFechadasParaIntersecao(design,baseZ,meta){
         CLASSE:cm.classe,ORIGEM:`Área 2D · Cava2 · ${papel}`})}});
     });
   });
+  for(const t of cava2ArestasDeRampa(design)){
+    const zg=t.P.map(p=>n(baseZ)+n(p.z));
+    out.push({geom:t.P.map(p=>[p.x,p.y]),multi:false,zg,props:{FID:fid++,...cava2Props(meta,{ELEMENTO:'Rampa',
+      COTA:zg[0],ORDEM:50000+t.trecho*2+(t.ponta==='fim'?1:0),BANCO:t.banco,TIPO:`Rampa banco ${t.banco}`,
+      CLASSE:'rb31-rampa',ORIGEM:`Área 2D · Cava2 · ${t.ponta==='fim'?'Fim':'Início'} do trecho`})}});
+  }
+  return out;
+}
+
+/* Arestas transversais da rampa (print de 23/11/2026, desenho recortado: "ainda saindo sem
+   essa aresta"). Cada trecho de rampa é uma faixa inclinada entre duas bermas; nas duas pontas
+   há uma quebra de inclinação. A ponta em que o trecho CHEGA numa berma coincide com a crista
+   (ou o pé) daquele nível, e o anel fechado já a desenha no corte. A ponta em que o trecho SAI
+   da berma — o patamar entre um trecho e o seguinte — não é borda de anel nenhum e o desenho
+   recortado saía sem ela: a rampa parecia começar no meio da berma, sem aresta.
+   Devolve só as pontas que nenhum anel cobre: [{P:[b1,b2], trecho, banco, ponta}].
+   O gancho (retorno plano) não tem quebra de inclinação e fica de fora. */
+function cava2ArestasDeRampa(design){
+  const out=[],corredores=design?.corredores||[],aneis=(design?.aneis||[]).filter(a=>(a.P||[]).length>=3);
+  const distSeg=(q,a,b)=>{const vx=b.x-a.x,vy=b.y-a.y,L2=vx*vx+vy*vy,
+    t=L2>0?Math.max(0,Math.min(1,((q.x-a.x)*vx+(q.y-a.y)*vy)/L2)):0;return Math.hypot(q.x-a.x-vx*t,q.y-a.y-vy*t);};
+  const noAnel=(q,z)=>aneis.some(a=>{
+    if(Math.abs(n(a.z)-z)>.05)return false;
+    for(let k=0,m=a.P.length;k<m;k++)if(distSeg(q,a.P[k],a.P[(k+1)%m])<=.3)return true;
+    return false;});
+  corredores.forEach((c,i)=>{
+    if(c?.gancho)return;
+    const b1=c.borda1||[],b2=c.borda2||[];if(b1.length<2||b2.length<2)return;
+    const banco=cava2MetaCorredor(c,corredores,i).banco;
+    for(const [ponta,a,b] of [['inicio',b1[0],b2[0]],['fim',b1.at(-1),b2.at(-1)]]){
+      if(![a,b].every(q=>q&&Number.isFinite(+q.x)&&Number.isFinite(+q.y)))continue;
+      if(Math.hypot(b.x-a.x,b.y-a.y)<.5)continue;                       /* trecho que afina até fechar */
+      const z=(n(a.z)+n(b.z))/2,em=t=>({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t});
+      if([.15,.5,.85].every(t=>noAnel(em(t),z)))continue;              /* a crista ou o pé já passa aqui */
+      out.push({P:[{x:+a.x,y:+a.y,z:n(a.z)},{x:+b.x,y:+b.y,z:n(b.z)}],trecho:i,banco,ponta});
+    }
+  });
   return out;
 }
 
