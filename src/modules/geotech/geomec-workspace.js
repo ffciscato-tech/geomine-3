@@ -60,6 +60,11 @@
     if($('cmdBox')) new MutationObserver(scheduleFit).observe($('cmdBox'),{attributes:true,attributeFilter:['style']});
     root.addEventListener('resize',scheduleFit);
     w.addEventListener('click',noClique);
+    w.addEventListener('pointerdown',apertaSeta);
+    for(const ev of ['pointerup','pointercancel']) w.addEventListener(ev,soltaSeta);
+    w.addEventListener('pointerout',e=>{ if(e.target.closest&&e.target.closest('[data-a="passo-carga"]')) soltaSeta(); });   /* saiu de cima da seta: para */
+    w.addEventListener('contextmenu',e=>{ if(e.target.closest&&e.target.closest('[data-a="passo-carga"]')) e.preventDefault(); });
+    root.addEventListener('blur',soltaSeta);
     w.addEventListener('input',naEntrada);
     w.addEventListener('change',naMudanca);
     ligaCanvas($('gmgCanvas'));
@@ -265,10 +270,12 @@
     </section>`;
   }
   function cardCargas(s){
-    return `<section class="gm-work-card" data-card="cargas"><div class="gm-card-heading"><span class="gm-card-step">4</span><b>Cargas, sismo e trinca</b>${info('Sobre cargas e sismo','Sobrecarga vertical distribuída entre duas distâncias da seção. Na figura, arraste a carga para mudar o lugar e as bolinhas das pontas para mudar o início e o fim (mouse, caneta ou dedo); os campos acompanham. O sismo é pseudo-estático: kh empurra no sentido do deslizamento e kv positivo aumenta o peso. A trinca de tração corta a superfície junto à crista na profundidade dada e pode estar cheia de água.')}</div>
-      ${(s.cargas||[]).length?'<div class="gmg-carga gmg-carga-rot" aria-hidden="true"><label class="field">de (m)</label><label class="field">até (m)</label><label class="field">carga (kPa)</label><span></span></div>':''}
-      <div id="gmgCargas">${(s.cargas||[]).map((q,i)=>`<div class="gmg-carga"><input data-q="${i}" data-k="x1" value="${h(q.x1)}" inputmode="decimal" aria-label="de (m)" placeholder="de" autocomplete="off"><input data-q="${i}" data-k="x2" value="${h(q.x2)}" inputmode="decimal" aria-label="até (m)" placeholder="até" autocomplete="off"><input data-q="${i}" data-k="q" value="${h(q.q)}" inputmode="decimal" aria-label="kPa" placeholder="kPa" autocomplete="off"><button type="button" class="mini" data-a="remove-carga" data-i="${i}" aria-label="Remover a sobrecarga">✕</button></div>`).join('')}</div>
-      <button type="button" class="mini" data-a="nova-carga">＋ sobrecarga (posição em m · carga em kPa)</button>
+    return `<section class="gm-work-card" data-card="cargas"><div class="gm-card-heading"><span class="gm-card-step">4</span><b>Cargas, sismo e trinca</b>${info('Sobre cargas e sismo','Sobrecarga vertical distribuída num trecho da seção: início, comprimento e carga. As setas ▼ ▲ embaixo de cada campo andam um passo por toque (1 m na posição e no comprimento, 5 kPa na carga) e repetem enquanto ficam apertadas: a primeira dupla leva a carga inteira ao longo do perfil, a segunda estica ou encolhe, a terceira aumenta ou diminui a carga. Na figura, arraste a carga para mudar o lugar e as bolinhas das pontas para mudar o início e o fim (mouse, caneta ou dedo); os campos acompanham. O sismo é pseudo-estático: kh empurra no sentido do deslizamento e kv positivo aumenta o peso. A trinca de tração corta a superfície junto à crista na profundidade dada e pode estar cheia de água.')}</div>
+      ${(s.cargas||[]).length?'<div class="gmg-carga gmg-carga-rot" aria-hidden="true"><label class="field">início (m)</label><label class="field">compr. (m)</label><label class="field">carga (kPa)</label><span></span></div>':''}
+      <div id="gmgCargas">${(s.cargas||[]).map((q,i)=>{ const v=GM.vistaCarga(q), seta=(k,nome)=>`<span class="gmg-setas"><button type="button" class="mini" data-a="passo-carga" data-i="${i}" data-k="${k}" data-d="-1" aria-label="${nome}: diminuir" title="${nome}: diminuir">▼</button><button type="button" class="mini" data-a="passo-carga" data-i="${i}" data-k="${k}" data-d="1" aria-label="${nome}: aumentar" title="${nome}: aumentar">▲</button></span>`;
+        return `<div class="gmg-carga"><input data-q="${i}" data-k="ini" value="${h(v.ini)}" inputmode="decimal" aria-label="início da carga (m)" placeholder="início" autocomplete="off"><input data-q="${i}" data-k="comp" value="${h(v.comp)}" inputmode="decimal" aria-label="comprimento da carga (m)" placeholder="compr." autocomplete="off"><input data-q="${i}" data-k="q" value="${h(q.q)}" inputmode="decimal" aria-label="carga (kPa)" placeholder="kPa" autocomplete="off"><button type="button" class="mini" data-a="remove-carga" data-i="${i}" aria-label="Remover a sobrecarga">✕</button></div>
+        <div class="gmg-carga gmg-carga-setas">${seta('ini','Posição')}${seta('comp','Comprimento')}${seta('q','Carga')}<span></span></div>`; }).join('')}</div>
+      <button type="button" class="mini" data-a="nova-carga">＋ sobrecarga</button>
       <div class="gmg-g2">${campo('kh (g)','data-c="sismo.kh"',s.sismo.kh)}${campo('kv (g)','data-c="sismo.kv"',s.sismo.kv)}${campo('Trinca (m)','data-c="trinca.prof"',s.trinca.prof)}${campo('Água na trinca (%)','data-c="trinca.agua"',s.trinca.agua)}</div>
     </section>`;
   }
@@ -419,10 +426,28 @@
       vista={esc, x0:mw[0]-p[0]/esc, z1:mw[1]+p[1]/esc}; vistaManual=true; desenha();
     },{passive:false});
   }
-  /* os campos "de" e "até" da sobrecarga i, no card 4, mostram o que foi arrastado na figura */
-  function camposDaCarga(i){
+  /* os campos da sobrecarga i, no card 4, mostram o que foi arrastado na figura ou andado pelas setas */
+  function camposDaCarga(i,todos){
     const s=sec(), q=s&&s.cargas[i]; if(!q) return;
-    for(const k of ['x1','x2']){ const el=document.querySelector('#gmgCargas [data-q="'+i+'"][data-k="'+k+'"]'); if(el&&document.activeElement!==el) el.value=String(q[k]); }
+    const v=GM.vistaCarga(q);
+    for(const k of ['ini','comp','q']){ const el=document.querySelector('#gmgCargas [data-q="'+i+'"][data-k="'+k+'"]'); if(el&&(todos||document.activeElement!==el)) el.value=String(k==='q'?q.q:v[k]); }
+  }
+  /* Setas ▼ ▲ da sobrecarga (pedido de 23/11/2026): um passo por toque; apertada, a seta repete.
+     A figura e os campos acompanham na hora e o recálculo espera a seta parar (mudou()). */
+  const seta={t:0, r:0, pulaClique:false};
+  function passoDaCarga(i,campo,sinal){
+    const s=sec(), q=s&&s.cargas[i]; if(!q) return false;
+    const n=GM.passoCarga(q,campo,sinal,GM.limites(s));
+    if(n.x1===num(q.x1,NaN)&&n.x2===num(q.x2,NaN)&&n.q===num(q.q,NaN)){ camposDaCarga(i,true); return false; }     /* no limite: nada a fazer */
+    q.x1=n.x1; q.x2=n.x2; q.q=n.q; camposDaCarga(i,true); mudou(); return true;
+  }
+  function soltaSeta(){ clearTimeout(seta.t); clearInterval(seta.r); seta.t=seta.r=0; }
+  function apertaSeta(e){
+    const b=e.target.closest&&e.target.closest('[data-a="passo-carga"]'); if(!b||b.disabled||pendente) return;
+    soltaSeta(); seta.pulaClique=false;
+    const i=+b.dataset.i, k=b.dataset.k, d=+b.dataset.d;
+    seta.t=setTimeout(()=>{ seta.pulaClique=true;           /* a repetição já andou: o clique do soltar não soma outro passo */
+      passoDaCarga(i,k,d); seta.r=setInterval(()=>{ if(!b.isConnected||!passoDaCarga(i,k,d)) soltaSeta(); },120); },450);
   }
   /* superfície à mão: círculo por entrada, saída e flecha */
   function atualizaManual(rapido){
@@ -594,7 +619,13 @@
       if(t.dataset.k==='nome'||t.dataset.k==='cor'){ desenha(); sujoProjeto(); return; }
       mudou(); return;
     }
-    if(t.dataset.q!=null&&t.dataset.k){ const q=s.cargas[+t.dataset.q]; if(q){ q[t.dataset.k]=t.value; mudou(); } return; }
+    if(t.dataset.q!=null&&t.dataset.k){
+      /* início digitado leva a carga inteira; comprimento digitado parte do início; valor incompleto espera */
+      const i=+t.dataset.q, q=s.cargas[i], k=t.dataset.k; if(!q) return;
+      if(k==='q') q.q=t.value;
+      else { const v=num(t.value,NaN); if(!Number.isFinite(v)) return; const a=GM.vistaCarga(q); a[k]=v; Object.assign(q,GM.defineCarga(a,GM.limites(s))); camposDaCarga(i); }
+      mudou(); return;
+    }
     if(t.dataset.p&&s.parametros){
       s.parametros[t.dataset.p]=t.value; GM.regeraTalude(s);
       const n=$('gmgTaludeNota'), tt=GM.terrenoTalude(s.parametros); if(n) n.textContent='altura total '+fmt(tt.altura,1)+' m · ângulo geral '+fmt(tt.geral,1)+'°';
@@ -603,6 +634,7 @@
   }
   function naMudanca(e){
     const t=e.target;
+    if(t.dataset&&t.dataset.q!=null&&t.dataset.k&&!pendente){ camposDaCarga(+t.dataset.q,true); return; }
     if(pendente){
       const p=pendente, ajustaProj=()=>{ if(p.proj&&(p.proj===p.topo||!candidatos('proj',p.tipoProj).some(f=>f.id===p.proj))){ p.proj=p.tipoProj?sugere('proj',p.tipoProj):''; } const f=fonteDe(p.proj); if(f&&f.projeto) p.tipo=f.projeto.tipo; p.contatos.delete(p.topo); p.contatos.delete(p.proj); };
       if(t.name==='gmgTipoTopo'){ p.tipoTopo=t.value==='vet'?'vet':'img'; p.topo=sugere('topo',p.tipoTopo); ajustaProj(); renderTudo(); }
@@ -675,6 +707,7 @@
       s.cargas.push({x1:lim(Math.min(x1,x2)), x2:lim(Math.max(x1,x2)), q:20}); mudou(true); return;
     }
     if(a==='remove-carga'){ s.cargas.splice(+b.dataset.i,1); mudou(true); return; }
+    if(a==='passo-carga'){ if(seta.pulaClique){ seta.pulaClique=false; return; } passoDaCarga(+b.dataset.i,b.dataset.k,+b.dataset.d); return; }
     if(a==='manual'){ if(modo==='manual') saiDoModo(); else { saiDoModo(); modo='manual'; atualizaManual(false); } estudos.delete(s.id); renderCards(); pintaTopo(); desenha(); pintaAba(); return; }
     if(a==='estudo'){ rodaEstudo(b.dataset.e); return; }
     if(a==='fatia'){ const an=analiseAtual(); if(an&&an.ok){ sel=Math.max(0,Math.min(an.fatias.length-1,(sel||0)+(+b.dataset.d))); desenha(); pintaAba(); } return; }

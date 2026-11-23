@@ -692,8 +692,18 @@ publicou de outro lugar e este repositório está desatualizado.
     cálculo; é atualizada a cada cálculo e sai com a seção. Para tirar da lista,
     exclui-se a seção; para só esconder, o olho da camada. Seção paramétrica
     (sem linha no mapa) não tem camada.
-  - **Campos da sobrecarga têm rótulo** ("de (m)", "até (m)", "carga (kPa)"):
-    sem eles as posições foram lidas como inclinações (print de 23/11/2026).
+  - **Sobrecarga com setas ▼ ▲** (pedido de 23/11/2026, com o print dos campos
+    circulados: "colocar setas para baixo e para cima para ir movimentando a
+    carga no perfil e ir aumentando também, bem como aumentando seu
+    comprimento"). No card 4 a carga é **início (m) · compr. (m) · carga
+    (kPa)**, com rótulo, e embaixo de cada campo há uma dupla ▼ ▲: a primeira
+    leva a carga inteira ao longo do perfil (o comprimento não muda e ela para
+    nas pontas da seção), a segunda estica ou encolhe pelo fim (encostada no
+    fim, cresce pelo início; mínimo de 0,5 m), a terceira soma ou tira carga
+    (nunca abaixo de zero). Passo de 1 m (0,5 m em seção com menos de 40 m) e
+    de 5 kPa; a seta apertada repete e o recálculo espera ela parar. Início
+    digitado também leva a carga inteira. O projeto continua guardando
+    `x1`, `x2` e `q` (`GM.passoCarga`, `GM.defineCarga`, `GM.vistaCarga`).
   - **Seção primeiro, depois a estabilidade e o NA** (pedido de 22/11/2026, à
     tarde, com o print da faixa: "A seção geotécnica deve vir em primeiro,
     depois estabilidade e o nível de água eu devo poder escolher o pior caso
