@@ -497,34 +497,16 @@ test('o que o ponteiro pega numa sobrecarga: as pontas, o corpo, e só na figura
 });
 
 
-test('setas da sobrecarga: mover leva a carga inteira, o comprimento cresce pelo fim e a carga não fica negativa',()=>{
+test('sobrecarga no card: início + comprimento + carga, sempre dentro da seção',()=>{
   const {GM}=carrega();
-  const lim={x0:0,x1:100}, c={x1:'23.7',x2:'28.8',q:'20'};          /* como digitado: texto */
-  assert.deepEqual(puro(GM.vistaCarga(c)),{ini:23.7,comp:5.1,q:20});
-  assert.equal(GM.passoDistancia(lim),1); assert.equal(GM.passoDistancia({x0:0,x1:30}),0.5,'seção curta: passo de 0,5 m');
-  /* mover: os dois lados andam juntos */
-  assert.deepEqual(puro(GM.passoCarga(c,'ini',1,lim)),{x1:24.7,x2:29.8,q:20});
-  assert.deepEqual(puro(GM.passoCarga(c,'ini',-1,lim)),{x1:22.7,x2:27.8,q:20});
-  /* nas pontas da seção a carga para inteira, sem encolher */
-  assert.deepEqual(puro(GM.passoCarga({x1:0.4,x2:5.5,q:20},'ini',-1,lim)),{x1:0,x2:5.1,q:20});
-  assert.deepEqual(puro(GM.passoCarga({x1:94.6,x2:99.7,q:20},'ini',1,lim)),{x1:94.9,x2:100,q:20});
-  /* comprimento: cresce e encolhe pelo fim; o início fica */
-  assert.deepEqual(puro(GM.passoCarga(c,'comp',1,lim)),{x1:23.7,x2:29.8,q:20});
-  assert.deepEqual(puro(GM.passoCarga(c,'comp',-1,lim)),{x1:23.7,x2:27.8,q:20});
-  assert.deepEqual(puro(GM.passoCarga({x1:10,x2:10.8,q:20},'comp',-1,lim)),{x1:10,x2:10.5,q:20},'não encolhe abaixo de 0,5 m');
-  /* encostada no fim da seção, continua crescendo — pelo início */
-  assert.deepEqual(puro(GM.passoCarga({x1:95,x2:100,q:20},'comp',1,lim)),{x1:94,x2:100,q:20});
-  let d={x1:40,x2:60,q:20}; for(let i=0;i<200;i++) d=GM.passoCarga(d,'comp',1,lim);
-  assert.deepEqual(puro(d),{x1:0,x2:100,q:20},'no máximo, a seção inteira');
-  /* carga: de 5 em 5 kPa, sem passar de zero para baixo */
-  assert.equal(GM.passoCarga(c,'q',1,lim).q,25); assert.equal(GM.passoCarga(c,'q',-1,lim).q,15);
-  assert.equal(GM.passoCarga({x1:1,x2:2,q:3},'q',-1,lim).q,0);
-  assert.deepEqual(puro(GM.passoCarga(c,'q',1,lim)),{x1:23.7,x2:28.8,q:25},'mudar a carga não mexe na posição');
-  /* pontas invertidas (x1 > x2) são lidas na ordem certa */
-  assert.deepEqual(puro(GM.passoCarga({x1:28.8,x2:23.7,q:20},'ini',1,lim)),{x1:24.7,x2:29.8,q:20});
-  /* valores digitados: início leva a carga inteira; comprimento parte do início */
+  const lim={x0:0,x1:100};
+  assert.deepEqual(puro(GM.vistaCarga({x1:'23.7',x2:'28.8',q:'20'})),{ini:23.7,comp:5.1,q:20});      /* como digitado: texto */
+  assert.deepEqual(puro(GM.vistaCarga({x1:28.8,x2:23.7,q:20})),{ini:23.7,comp:5.1,q:20},'pontas invertidas são lidas na ordem certa');
+  /* início digitado leva a carga inteira; comprimento digitado parte do início */
   assert.deepEqual(puro(GM.defineCarga({ini:50,comp:5.1},lim)),{x1:50,x2:55.1});
   assert.deepEqual(puro(GM.defineCarga({ini:400,comp:5.1},lim)),{x1:94.9,x2:100},'início além da seção: encosta no fim');
+  assert.deepEqual(puro(GM.defineCarga({ini:-8,comp:5.1},lim)),{x1:0,x2:5.1},'início antes da seção: encosta no começo');
   assert.deepEqual(puro(GM.defineCarga({ini:23.7,comp:500},lim)),{x1:0,x2:100},'comprimento maior que a seção: a seção inteira');
   assert.deepEqual(puro(GM.defineCarga({ini:23.7,comp:-3},lim)),{x1:23.7,x2:23.7});
+  assert.equal(typeof GM.passoCarga,'undefined','as setas de passo foram retiradas a pedido');
 });

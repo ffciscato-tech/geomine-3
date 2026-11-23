@@ -165,29 +165,15 @@
     else { const lo=Math.min(x1,x2), hi=Math.max(x1,x2), d=Math.max(lim.x0-lo,Math.min(lim.x1-hi,dx)); x1+=d; x2+=d; }
     return {x1:r(x1), x2:r(x2)};
   };
-  /* Setas do card 4 (pedido de 23/11/2026, com o print dos campos circulados: "colocar setas para
-     baixo e para cima para ir movimentando a carga no perfil e ir aumentando também, bem como
-     aumentando seu comprimento"). No card a sobrecarga é início + comprimento + carga:
-       'ini'   leva a carga inteira — o comprimento não muda — e para nas pontas da seção;
-       'comp'  estica ou encolhe pelo fim; encostada no fim da seção, passa a crescer pelo início;
-       'q'     soma ou tira carga, nunca abaixo de zero.
-     O projeto continua guardando x1, x2 e q. */
-  GM.PASSO_CARGA={q:5, compMin:0.5};
-  GM.passoDistancia=lim=>(lim.x1-lim.x0)<40?0.5:1;                       /* m por toque na seta */
+  /* No card 4 a sobrecarga é início + comprimento + carga (o projeto continua guardando x1, x2 e
+     q). As setas ▼ ▲ que andavam um passo por toque foram pedidas e retiradas no mesmo dia
+     (23/11/2026: "pode tirar as setas de rolagem, ficaram ruins"); ficaram os três campos. */
   GM.vistaCarga=c=>{ const a=num(c.x1,0), b=num(c.x2,0); return {ini:+Math.min(a,b).toFixed(2), comp:+Math.abs(b-a).toFixed(2), q:num(c.q,0)}; };
   /* início + comprimento → x1 e x2 dentro da seção: o comprimento manda e o início cede */
   GM.defineCarga=(v,lim)=>{
     const r=x=>+x.toFixed(2), W=Math.max(0,lim.x1-lim.x0), comp=Math.max(0,Math.min(W,num(v.comp,0)));
     const ini=Math.max(lim.x0,Math.min(lim.x1-comp,num(v.ini,lim.x0)));
     return {x1:r(ini), x2:r(ini+comp)};
-  };
-  GM.passoCarga=(c,campo,sinal,lim)=>{
-    const v=GM.vistaCarga(c), sg=sinal<0?-1:1, dx=GM.passoDistancia(lim)*sg, W=Math.max(0,lim.x1-lim.x0);
-    let q=v.q;
-    if(campo==='ini') v.ini+=dx;
-    else if(campo==='comp') v.comp=Math.max(Math.min(GM.PASSO_CARGA.compMin,W),v.comp+dx);
-    else if(campo==='q') q=Math.max(0,+(q+GM.PASSO_CARGA.q*sg).toFixed(2));
-    return Object.assign(GM.defineCarga(v,lim),{q});
   };
   GM.perfilVetorial=(linha,partes)=>{
     const a=linha[0], b=linha[linha.length-1], dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy), out=[];
