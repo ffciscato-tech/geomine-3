@@ -760,7 +760,10 @@ publicou de outro lugar e este repositório está desatualizado.
     seção vai só até esse traço (antes caía para o terreno que está por baixo
     do aterro, e o FS saía absurdo — 0,05 num teste). O degrau e o
     encurtamento ficam gravados na seção (`s.degraus`, `s.encurtada`), são
-    avisados ao cortar e aparecem no card 1. Não prolongar faces, não supor
+    avisados ao cortar e ficam no ⓘ do card 1 ("Esta seção"), não no corpo
+    do card: o texto de origem da seção — comprimento, pontos, passo, fontes,
+    degrau — saiu de lá a pedido (23/11/2026, texto circulado: "esse texto não
+    precisa"). Não prolongar faces, não supor
     superfície onde o perfil não tem dado.
   - **A sobrecarga é de arrastar na figura da seção.** Print IMG_0269
     (23/11/2026), com a carga de 50 kPa circulada: "essa carga aqui eu devo
