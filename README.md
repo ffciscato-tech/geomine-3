@@ -674,6 +674,12 @@ publicou de outro lugar e este repositório está desatualizado.
   - **A ruptura crítica é a menor entre todos os portes** (local,
     intermediária, global): os refinos das candidatas concorrem na classe em
     que caíram.
+  - **Nenhuma classe de porte some da tabela** quando há superfície válida
+    nela (auditoria de 23/11/2026, pilha com c′ = 0: o refino achatava o arco
+    até raspar os pés dos bancos, a superfície deixava de valer na análise
+    final e o FS global não aparecia). O motor recua do ponto refinado em
+    direção à melhor da triagem. Não afrouxar o teste "pilha sem coesão em
+    bancadas…" de `slope-stability.test.cjs`.
   - **O cálculo roda em segundo plano** (Web Worker montado com o próprio texto
     do motor): a tela não trava e uma alteração no meio do cálculo o
     interrompe. Sem Worker, calcula na própria página.

@@ -241,3 +241,26 @@ test('talude em bancadas: a ruptura crítica não depende de onde caem os pontos
   const Q=I.quebras(G.modelo({terreno:ruido,camadas:[{mat:'s'}],materiais:{s:{gama:19,c:10,phi:30}}}));
   assert.equal(Q.filter(q=>q.tipo==='crista').length,3); assert.equal(Q.filter(q=>q.tipo==='pe').length,3);
 });
+
+test('pilha sem coesão em bancadas: nenhuma classe de porte some da tabela e os valores conferem com o talude infinito',()=>{
+  /* Auditoria de 23/11/2026 (pilha de estéril com c′ = 0): o refino de uma classe achatava o arco
+     até ele raspar os pés dos bancos; com as fatias da análise final a superfície deixava de valer
+     e a classe inteira sumia da tabela — o FS global não aparecia. Coordenadas neutras. */
+  const pilha=(n,h,ang,berma)=>{ const T=[[0,100],[40,100]], dx=h/Math.tan(ang*RAD); let x=40, z=100;
+    for(let i=0;i<n;i++){ x+=dx; z+=h; T.push([+x.toFixed(3),z]); if(i<n-1){ x+=berma; T.push([+x.toFixed(3),z]); } }
+    T.push([+(x+60).toFixed(3),z]); return {T, geral:Math.atan2(n*h,n*dx+(n-1)*berma)}; };
+  for(const [n,ang,berma,phi] of [[5,35,4,31],[8,33,5,29]]){
+    const {T,geral}=pilha(n,10,ang,berma);
+    const b=G.busca(G.modelo({terreno:T,camadas:[{mat:'p'}],materiais:{p:{gama:18,c:0,phi}},base:60}),{metodo:'mp',ne:22,nx:22,nr:10,candidatas:6});
+    assert(b.ok);
+    assert.equal(b.porte.map(p=>p.classe).join(','),'local,intermediaria,global',n+' bancos: as três classes aparecem');
+    const P=Object.fromEntries(b.porte.map(p=>[p.classe,p.FS]));
+    /* na face, a casca rasa: tan φ / tan β (o arco finito fica um pouco acima) */
+    const face=Math.tan(phi*RAD)/Math.tan(ang*RAD);
+    assert(P.local>=face-1e-3&&P.local<=face*1.03,n+' bancos: local '+P.local.toFixed(3)+' × talude infinito '+face.toFixed(3));
+    /* no conjunto, o plano pelos pés dos bancos: tan φ / tan (ângulo geral) é o piso */
+    const piso=Math.tan(phi*RAD)/Math.tan(geral);
+    for(const k of ['intermediaria','global']) assert(P[k]>=piso*0.97&&P[k]<=piso*1.12,n+' bancos: '+k+' '+P[k].toFixed(3)+' × plano geral '+piso.toFixed(3));
+    perto(Math.min(...b.porte.map(p=>p.FS)),b.FSmin,1e-9,'crítica = menor dos portes');
+  }
+});

@@ -766,10 +766,10 @@
       const dentro=p=>{ const q=desnivel(p)/Hr; return q>=c[1]&&q<c[2]; };
       let m=null;                                               /* a melhor da classe: {x, S, F} */
       const tenta=x=>{ const Sx=arcoES(M,x[0],x[1],x[2]), Fx=Sx?exato(Sx):Infinity; if(Number.isFinite(Fx)&&(!m||Fx<m.F)) m={x, S:Sx, F:Fx}; };
-      let b=null;
+      let b=null, r=null;
       for(const t of tent){ const q=t.h/Hr; if(q>=c[1]&&q<c[2]&&(!b||t.F<b.F)) b=t; }
       if(b){
-        const r=nelderMead(p=>dentro(p)?alvo(p):Infinity,[b.xe,b.xs,b.s],passoDe(b),op.refinoPorte||70,1e-6);
+        r=nelderMead(p=>dentro(p)?alvo(p):Infinity,[b.xe,b.xs,b.s],passoDe(b),op.refinoPorte||70,1e-6);
         aval+=r.aval;
         if(Number.isFinite(r.f)) tenta(r.x);
       }
@@ -777,6 +777,19 @@
          crítica podia sair menor que o valor informado para o porte dela */
       const rc=refinos.filter(r=>dentro(r.x)).sort((p,q)=>p.f-q.f)[0];
       if(rc) tenta(rc.x);
+      /* A classe não pode sumir da tabela só porque o refino parou numa superfície que raspa o
+         terreno e deixa de valer com as fatias da análise final (pilha sem coesão em bancadas: o
+         arco achata até tocar os pés dos bancos). Recua do ponto refinado em direção à melhor da
+         triagem, que é válida, e fica com a primeira que vale. Auditoria de 23/11/2026: a pilha
+         com c′ = 0 ficou sem o FS global na tabela. */
+      if(!m&&b){
+        const x0=[b.xe,b.xs,b.s], x1=r&&r.x&&r.x.length===3?r.x:null;
+        for(const t of x1?[0.75,0.5,0.25,0]:[0]){
+          const x=x1?x0.map((v,i)=>v+(x1[i]-v)*t):x0;
+          if(dentro(x)) tenta(x);
+          if(m) break;
+        }
+      }
       if(!m) continue;
       porte.push({classe:c[0], FS:m.F, altura:desnivel(m.x), sup:externa(M,m.S)});
       if(m.F<fOtimo){ fOtimo=m.F; S=m.S; }                      /* a triagem por Bishop pode ordenar diferente do método principal */
