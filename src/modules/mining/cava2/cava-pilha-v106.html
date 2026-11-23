@@ -651,10 +651,23 @@ function alcasDoAnel(k, idx, cantos){
      do ❄ de dentro é gerada por afastamento, e onde uma aresta curta some duas arestas passam a
      se encontrar num canto que não vem de nenhum vértice da semente. Com um lado congelado esses
      cantos também são de arrastar: o movimento vai para a semente pelo campo de deslocamento. */
-  const soltos=(a.Sk||[]).filter(q=>q.si==null); if(!soltos.length) return H;
-  const ja=new Set(H);
-  for(const p of a.P) if(!ja.has(p) && soltos.some(q=>Math.abs(q.x-p.x)<0.05 && Math.abs(q.y-p.y)<0.05)) ja.add(p);
-  return a.P.filter(p=>ja.has(p));
+  /* E OS PONTOS DA RAMPA ("arrume tudo, inclusive os pontos da rampa"): onde a linha entra e sai
+     do entalhe da rampa o desenho tem cantos que não são do esqueleto. Vale o que se vê: todo
+     ponto do desenho em que a linha vira (12° ou mais) é de arrastar, venha de onde vier. */
+  const soltos=(a.Sk||[]).filter(q=>q.si==null), P=a.P, n=P.length, ja=new Set(H);
+  const perto=p=>{ for(const h of ja) if(Math.abs(h.x-p.x)<0.3 && Math.abs(h.y-p.y)<0.3) return true; return false; };
+  for(let i=0;i<n;i++){
+    const p=P[i]; if(ja.has(p) || perto(p)) continue;
+    let vira=soltos.some(q=>Math.abs(q.x-p.x)<0.05 && Math.abs(q.y-p.y)<0.05);
+    if(!vira){
+      let a1=null, b1=null;
+      for(let j=1;j<n && !a1;j++){ const q=P[(i-j+n)%n]; if(Math.hypot(q.x-p.x,q.y-p.y)>0.25) a1=q; }
+      for(let j=1;j<n && !b1;j++){ const q=P[(i+j)%n]; if(Math.hypot(q.x-p.x,q.y-p.y)>0.25) b1=q; }
+      if(a1 && b1){ const ux=p.x-a1.x, uy=p.y-a1.y, vx=b1.x-p.x, vy=b1.y-p.y; vira=Math.abs(Math.atan2(ux*vy-uy*vx, ux*vx+uy*vy))>0.21; }
+    }
+    if(vira) ja.add(p);
+  }
+  return P.filter(p=>ja.has(p));
 }
 // o anel que precisa de contorno próprio para o lado livre ser editável por inteiro (ou −1):
 // ❄ de fora → a própria linha livre (borda de dentro da berma); ❄ de dentro → o pé do talude da
@@ -726,6 +739,47 @@ function transportaParaFora(k, T, S0, D0){
   }
   return true;
 }
+/* ARRASTO EM ETAPAS ("arrume tudo"): um arrasto longo é feito em passos do tamanho de uma berma.
+   A cada passo o resto do lado livre acompanha, então a linha não bate na berma seguinte antes de
+   ela sair do lugar (um arrasto de 26 m parava a 15 m do dedo); e o passo que não cabe encerra o
+   arrasto ali, com o que já andou, em vez de recusar tudo. */
+function arrastaPorPassos(k, idx, lado, rot, de, para){
+  const o=objs[k], nA0=o.design.aneis.length, gEd=nA0-1-idx;
+  const total=Math.hypot(para.x-de.x, para.y-de.y), passo=Math.max(5, +parametrosDe(k).berma||8);
+  const n=Math.max(1, Math.min(8, Math.ceil(total/passo)));
+  let aqui={x:de.x,y:de.y}, feitos=0, motivo=null, parou=false;
+  // um passo: edita, regenera e confere. Devolve o ponto novo do vértice, ou null (e deixa tudo como antes do passo)
+  const tenta=alvo=>{
+    const a0=anelDaGeracao(o.design,gEd); if(!a0) return null;
+    const snap=JSON.stringify({b:o.base, t:(o.bermas||{})._travas||null}), d0=o.design;
+    const desfazPasso=m=>{ const c=JSON.parse(snap); o.base=c.b; if(c.t) o.bermas._travas=c.t; else if(o.bermas) delete o.bermas._travas; o.design=d0; if(m) motivo=m; return null; };
+    const r=editaPorSementes(k, o.design.aneis.indexOf(a0), lado, {tipo:"move", rot, de:aqui, para:alvo});
+    if(!r.ok){ motivo=r.erro; return null; }
+    try{ o.design=geraDoBloco(k); }catch(e){ return desfazPasso("a linha não comporta esse movimento"); }
+    // nenhum contorno pode ter ficado dobrado (o regen cortaria o laço e a linha voltaria sozinha)
+    if(contornoSeCruza(o.base) || travasFixas(k).some(t=>contornoSeCruza(t.S))) return desfazPasso("as linhas de fora se dobrariam");
+    repinaJuntas(k);
+    const a1=anelDaGeracao(o.design,gEd); let pt=a1 && rot!=null ? a1.P.find(q=>q.si===rot) : null;
+    if(!pt && a1){ let bd=1e30; for(const q of a1.P){ const d=Math.hypot(q.x-alvo.x,q.y-alvo.y); if(d<bd){ bd=d; pt=q; } } }
+    if(!pt) return desfazPasso("a linha não comporta esse movimento");
+    // o passo tem de aproximar o vértice de onde o dedo soltou; senão é desfeito
+    const antes=Math.hypot(para.x-aqui.x,para.y-aqui.y), agora=Math.hypot(para.x-pt.x,para.y-pt.y), pedido=Math.hypot(alvo.x-aqui.x,alvo.y-aqui.y);
+    if(agora>antes-0.15*pedido) return desfazPasso("ali a linha não comporta mais");
+    return {x:pt.x, y:pt.y, chegou:Math.hypot(alvo.x-pt.x,alvo.y-pt.y)<=Math.max(0.5,0.35*pedido)};
+  };
+  for(let i=1;i<=n && !parou;i++){
+    const alvo={x:de.x+(para.x-de.x)*i/n, y:de.y+(para.y-de.y)*i/n};
+    let pt=tenta(alvo);
+    if(!pt){                                          // o passo inteiro não coube: meio passo, um quarto
+      for(const f of [0.5,0.25]){ pt=tenta({x:aqui.x+(alvo.x-aqui.x)*f, y:aqui.y+(alvo.y-aqui.y)*f}); if(pt) break; }
+      parou=true; if(!pt) break;
+    }else motivo=null;
+    aqui={x:pt.x,y:pt.y}; feitos++;
+    if(!pt.chegou) parou=true;                        // já não acompanhou o passo: insistir só empilharia erro
+  }
+  const andou=Math.hypot(aqui.x-de.x, aqui.y-de.y), falta=Math.hypot(para.x-aqui.x, para.y-aqui.y);
+  return {ok:feitos>0, andou, pedido:total, falta, motivo, completo:!parou && falta<=Math.max(0.5,0.15*total)};
+}
 /* Uma edição no bloco da linha de geração gEd, com o lado dado congelado (ou nenhum):
    op = {tipo:"move", rot, de:{x,y}, para:{x,y}} | {tipo:"apaga", rot} | {tipo:"insere", em:{x,y}}.
    Devolve {ok, erro, andou} e já deixa tudo como estava quando não dá. */
@@ -748,6 +802,18 @@ function editaPorSementes(k, idxAnel, lado, op){
   const acha=(L,rot)=>T ? L.findIndex(q=>q.si===rot) : (Number.isInteger(rot) && L[rot] ? rot : -1);
   const S0=T ? T.S.map(q=>({x:q.x,y:q.y,si:q.si})) : null;
   let erro=null, andou=0;
+  /* O lado de fora acompanha DEPOIS de o vértice achar o lugar (uma vez só, a partir das sementes
+     de fora como estavam). Fazê-lo acompanhar a cada tentativa do cálculo foi testado e piorou:
+     arrastos de 26 m que chegavam a menos de 1 m do dedo passaram a ser recusados. */
+  const antes=JSON.parse(copia);
+  const segueFora=(lado==="dentro" && T) ? ()=>{
+    o.base=antes.b.map(q=>({...q}));
+    for(const t of travasFixas(k)) if(t.g<T.g){
+      const c0=(antes.t||[]).find(q=>q.g===t.g); if(!c0) continue;
+      t.S=c0.S.map(q=>({...q})); t.Sin=c0.Sin.map(q=>({...q}));
+    }
+    transportaParaFora(k, T, S0, D0);
+  } : null;
   if(op.tipo==="insere"){
     const novo=T ? Math.max(0,...T.S.map(q=>Number.isFinite(q.si)?q.si:0))+1 : null;
     for(const L of listas){
@@ -756,6 +822,16 @@ function editaPorSementes(k, idxAnel, lado, op){
       L.splice(q.i+1,0, T ? {x:q.x,y:q.y,si:novo} : {x:q.x,y:q.y});
     }
     if(T) soltaPinos(T);
+    if(lado==="dentro" && T){                 // as linhas de fora ganham o vértice correspondente, para acompanharem por inteiro
+      const fora=[[o.base,null]]; for(const t of travasFixas(k)) if(t.g<T.g){ fora.push([t.S,t],[t.Sin,t]); soltaPinos(t); }
+      const rotNovo=new Map();
+      for(const [L,t] of fora){
+        const cum=cumulativo(L), per=cum[L.length], a=arcoMaisProximo(L,cum,op.em), q=pontoNoArco(L,cum,((a.s%per)+per)%per), j=(q.i+1)%L.length;
+        if(Math.hypot(q.x-L[q.i].x,q.y-L[q.i].y)<0.3 || Math.hypot(q.x-L[j].x,q.y-L[j].y)<0.3) continue;
+        if(t && !rotNovo.has(t)) rotNovo.set(t, Math.max(999999,...t.S.map(v=>Number.isFinite(v.si)?v.si:0))+1);
+        L.splice(q.i+1,0, t ? {x:q.x,y:q.y,si:rotNovo.get(t)} : {x:q.x,y:q.y});
+      }
+    }
     for(const t of travasFixas(k)) delete t.nova;
     return {ok:true};                         // ponto novo sobre a própria linha: a forma não muda
   }
@@ -763,24 +839,27 @@ function editaPorSementes(k, idxAnel, lado, op){
   const canto=acha(listas[0],op.rot)<0;
   let R0=null, mC=-1;
   if(canto){
-    const a0=anelDaGeracao(D0,gEd); R0=((a0 && a0.Sk)||[]).map(q=>({x:q.x,y:q.y}));
+    const a0=anelDaGeracao(D0,gEd); R0=((a0 && a0.P)||[]).map(q=>({x:q.x,y:q.y}));      // o desenho, com os pontos da rampa
     let md=0.6; if(op.de) R0.forEach((q,i)=>{ const d=Math.hypot(q.x-op.de.x,q.y-op.de.y); if(d<md){ md=d; mC=i; } });
-    if(mC<0 || R0.length<4) return volta("este ponto é do entalhe da rampa, não um canto da linha");
+    if(mC<0 || R0.length<4) return volta("não achei este ponto na linha");
   }
   const campoDoCanto=(dx,dy)=>{ const R1=R0.map(q=>({x:q.x,y:q.y})); R1[mC]={x:R0[mC].x+dx, y:R0[mC].y+dy}; return campoEntre(R0,R1); };
   if(canto && op.tipo==="apaga"){
     // apagar o canto = apagar os vértices da semente que estão por trás dele (os da aresta que sumiu)
     const F=campoDoCanto(1,0), idxs=listas[0].map((q,i)=>F(q).x>0.5 ? i : -1).filter(i=>i>=0);
-    if(!idxs.length) return volta("este canto nasce do encontro de duas arestas e não tem vértice próprio — apague um vértice vizinho");
+    if(!idxs.length) return volta("este canto não tem vértice próprio (nasce do encontro de duas arestas, ou é da rampa) — apague um vértice vizinho");
     if(listas[0].length-idxs.length<4) return volta("a linha precisa de pelo menos 4 vértices");
     for(const L of listas) for(const i of idxs.slice().reverse()) L.splice(i,1);
     if(T) soltaPinos(T);
   }else if(canto){
     let base0=listas.map(L=>L.map(q=>({...q})));
-    const aplica=(dx,dy)=>{ const F=campoDoCanto(dx,dy);
+    let direto=null;           // índices do vértice posto na semente para responder por este canto (ponto da rampa)
+    const aplica=(dx,dy)=>{
+      if(direto){ listas.forEach((L,li)=>{ const i=direto[li], b=base0[li][i]; L[i]={...L[i], x:+(b.x+dx).toFixed(3), y:+(b.y+dy).toFixed(3)}; }); return; }
+      const F=campoDoCanto(dx,dy);
       listas.forEach((L,li)=>{ for(let i=0;i<L.length;i++){ const b=base0[li][i], f=F(b); L[i]={...L[i], x:+(b.x+f.x).toFixed(3), y:+(b.y+f.y).toFixed(3)}; } }); };
     // onde o canto foi parar: o vértice da linha mais perto do caminho de → de+c
-    const ondeFoi=(d,cx,cy)=>{ const a=anelDaGeracao(d,gEd), L=(a && a.Sk)||[]; let pt=null, bd=1e30;
+    const ondeFoi=(d,cx,cy)=>{ const a=anelDaGeracao(d,gEd), L=(a && a.P)||[]; let pt=null, bd=1e30;
       const L2=cx*cx+cy*cy;
       for(const q of L){ const t=L2>1e-9 ? clamp(((q.x-op.de.x)*cx+(q.y-op.de.y)*cy)/L2,0,1.6) : 0, dd=Math.hypot(q.x-(op.de.x+t*cx), q.y-(op.de.y+t*cy)); if(dd<bd){ bd=dd; pt=q; } }
       return pt; };
@@ -795,8 +874,12 @@ function editaPorSementes(k, idxAnel, lado, op){
         // nenhum vértice da semente responde por este canto: ganha um, na projeção dele, e tenta de novo
         reforcou=true; aplica(0,0);
         const novo=T ? Math.max(999999,...T.S.map(q=>Number.isFinite(q.si)?q.si:0))+1 : null;
-        for(const L of listas){ const cum=cumulativo(L), per=cum[L.length], a=arcoMaisProximo(L,cum,op.de), q=pontoNoArco(L,cum,((a.s%per)+per)%per);
-          L.splice(q.i+1,0, T ? {x:q.x,y:q.y,si:novo} : {x:q.x,y:q.y}); }
+        direto=[];
+        for(const L of listas){ const cum=cumulativo(L), per=cum[L.length], a=arcoMaisProximo(L,cum,op.de), q=pontoNoArco(L,cum,((a.s%per)+per)%per), j=(q.i+1)%L.length;
+          // já existe vértice ali (a parede atrás da rampa): é ele que responde
+          if(Math.hypot(q.x-L[q.i].x,q.y-L[q.i].y)<0.3){ direto.push(q.i); continue; }
+          if(Math.hypot(q.x-L[j].x,q.y-L[j].y)<0.3){ direto.push(j); continue; }
+          L.splice(q.i+1,0, T ? {x:q.x,y:q.y,si:novo} : {x:q.x,y:q.y}); direto.push(q.i+1); }
         base0=listas.map(L=>L.map(q=>({...q}))); it=-1; continue;
       }
       const ex=op.para.x-pt.x, ey=op.para.y-pt.y, e2=Math.hypot(ex,ey);
@@ -839,7 +922,7 @@ function editaPorSementes(k, idxAnel, lado, op){
   if(T && contornoSeCruza(T.S)) return volta("a linha se dobraria sobre ela mesma, e os vértices daquele trecho sumiriam");
   // o resto do lado que anda acompanha; o congelado não é tocado
   if(lado==="fora") transportaParaDentro(k, gEd, D0);
-  else if(lado==="dentro" && T) transportaParaFora(k, T, S0, D0);
+  else if(segueFora) segueFora();
   let dV=null; try{ dV=geraDoBloco(k); }catch(e){ dV=null; }
   if(!dV || !dV.aneis || !dV.aneis.length) return volta("a linha não comporta esse movimento");
   if(cruzamentosDoDesign(dV)>cruz0+6) return volta("as linhas se cruzariam");
@@ -5075,9 +5158,9 @@ cv.addEventListener("pointerup", e=>{
         if(!editando.jaMarcado) marcaHistorico();
         const vi=editando.vi, de=editando.orig[vi], para=editando.work[vi], lado=editando.lado||null;
         objs[editando.alvo].design.aneis[editando.idx].P=editando.orig;
-        const r=editaPorSementes(editando.alvo, editando.idx, lado, {tipo:"move", rot:de.si, de:{x:de.x,y:de.y}, para:{x:para.x,y:para.y}});
-        if(!r.ok){ histUndo.pop(); atualizaBotoesHist(); ultimaEdicao=`<b>arrasto recusado</b> — ${r.erro}. Puxe menos, ou em outra direção.`; }
-        else if(r.erro>Math.max(0.5,0.15*r.andou)) ultimaEdicao=`<b>o vértice parou a ${fmt(r.erro,1)} m de onde foi solto</b> — ali a linha não comporta mais (Ctrl+Z desfaz)`;
+        const r=arrastaPorPassos(editando.alvo, editando.idx, lado, de.si, {x:de.x,y:de.y}, {x:para.x,y:para.y});
+        if(!r.ok){ histUndo.pop(); atualizaBotoesHist(); ultimaEdicao=`<b>arrasto recusado</b> — ${r.motivo||"a linha não comporta esse movimento"}. Puxe menos, ou em outra direção.`; }
+        else if(!r.completo) ultimaEdicao=`<b>foi até onde cabia</b>: ${fmt(r.andou,1)} m dos ${fmt(r.pedido,1)} m puxados`+(r.motivo?` — além disso ${r.motivo}`:` — ali a linha não comporta mais`)+` (Ctrl+Z desfaz)`;
         else ultimaEdicao=`vértice movido ${fmt(r.andou,1)} m` + (lado ? ` — o lado de ${lado==="fora"?"fora":"dentro"} ficou <b>congelado</b>, sem mexer em nada; o de ${lado==="fora"?"dentro":"fora"} acompanhou` : ` — só o bloco desta linha andou; a berma da junta absorveu`);
       }else if(mudou){
         if(!editando.jaMarcado) marcaHistorico();

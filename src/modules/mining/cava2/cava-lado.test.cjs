@@ -172,3 +172,17 @@ test('❄ de dentro: o contorno próprio do lado livre fica no pé do talude da 
   assert.equal(A.juntaDoLado(an,1,'dentro'),3,'❄ de dentro: a linha livre é a crista (2); o pé do talude dela é o 3');
   assert.equal(A.juntaDoLado(an,3,'dentro'),-1,'na berma de fora o pé do talude é a própria linha desenhada: a semente já é ela');
 });
+
+test('pontos da rampa: com um lado congelado, todo ponto do desenho em que a linha vira é de arrastar',()=>{
+  const o=pilha();A.set(o);
+  const a=o.pilha.design.aneis[2];                      // crista@10, quadrado de ±48
+  // entalhe da rampa na aresta de baixo: a linha entra 6 m e volta (quatro pontos que não são do esqueleto)
+  a.P.splice(1,0,{x:-10,y:-48},{x:-10,y:-42},{x:10,y:-42},{x:10,y:-48});
+  assert.equal(A.alcasDoAnel('pilha',2).length,4,'sem lado congelado nada muda');
+  const H=A.alcasDoAnel('pilha',2,true);
+  assert.equal(H.length,8,'os quatro cantos do entalhe entram');
+  a.P.splice(3,0,{x:0,y:-42});                           // ponto no meio de um trecho reto do entalhe: não é canto
+  assert.equal(A.alcasDoAnel('pilha',2,true).length,8);
+  a.P.splice(1,0,{x:-10.1,y:-48});                       // ponto colado num canto que já é de arrastar: não duplica
+  assert.equal(A.alcasDoAnel('pilha',2,true).length,8);
+});

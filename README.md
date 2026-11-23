@@ -413,8 +413,21 @@ publicou de outro lugar e este repositório está desatualizado.
   da linha desenhada; cada vértice do contorno tem rótulo único; e o desenho
   gravado da linha congelada não é refeito ao criar a junta (refazê-lo deixava
   a linha livre empurrá-la até 0,5 m). O ↺ fica fora da linha, além do ❄ do
-  lado congelado, para não ser tocado no lugar de um vértice. **Vértice não
-  some** (print
+  lado congelado, para não ser tocado no lugar de um vértice. **Pontos da
+  rampa e arrasto longo** ("arrume tudo, inclusive os pontos da rampa"): com
+  um lado congelado, todo ponto do desenho da linha livre em que ela vira (12°
+  ou mais) é de arrastar, inclusive os cantos do entalhe da rampa; quando o
+  campo de deslocamento não acha vértice na semente que responda por ele, o
+  ponto da parede atrás da rampa ganha um vértice e é ele que anda. O arrasto
+  é feito **em etapas** do tamanho de uma berma (`arrastaPorPassos`): a cada
+  passo o resto do lado livre acompanha, então a linha não bate na berma
+  seguinte antes de ela sair do lugar (um arrasto de 26 m parava a 15 m do
+  dedo); o passo que não cabe tenta meio passo e um quarto, e o que não faz o
+  vértice avançar é desfeito — o arrasto **vai até onde cabe** em vez de ser
+  recusado inteiro, e a barra diz quanto andou e por quê parou. Com o ❄ de
+  dentro, o "+" entra também nas linhas de fora, para elas acompanharem por
+  inteiro. Fazer as linhas de fora acompanharem a cada tentativa do cálculo
+  (em vez de por etapas) foi testado e descartado. **Vértice não some** (print
   IMG_0255: "dependendo do movimento os vértices somem"): o gerador conserta
   sozinho uma linha que se dobra sobre si mesma ou passa da vizinha (corta o
   laço, tira o bico, empurra para dentro), e os vértices do trecho cortado
