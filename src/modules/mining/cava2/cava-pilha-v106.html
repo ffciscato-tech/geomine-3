@@ -523,8 +523,39 @@ function fixaAnel(alvo, idx){
   const t={g, S:cop, Sin:cop.map(q=>({x:q.x, y:q.y, si:q.si})), P:a.P.map(q=>({...q})),
            projecaoEntrada:a.projecaoEntrada?JSON.parse(JSON.stringify(a.projecaoEntrada)):null,
            est:a.est?JSON.parse(JSON.stringify(a.est)):null};
+  rotulaJunta(t);
   o.bermas._travas=travasFixas(alvo).filter(q=>q.g!==g).concat([t]);
   return t;
+}
+/* TODO CANTO DA LINHA LIVRE É VÉRTICE (print IMG_0254, 22/11/2026: "ainda tem vértices que não
+   aparecem; têm que aparecer todos eles para que eu possa mexer"). O afastamento das linhas cria
+   cantos que não vêm de nenhum vértice da linha desenhada (duas arestas que passam a se encontrar
+   quando a do meio some); eles ficavam sem rótulo e por isso sem quadradinho. No contorno de uma
+   junta cada canto ganha rótulo próprio, fora da faixa dos índices da linha desenhada. */
+function rotulaJunta(t){
+  if(!t || !t.S) return t;
+  const par=!!(t.Sin && t.Sin.length===t.S.length);
+  let prox=999999, mudou=false;
+  for(const L of [t.S, t.Sin||[]]) for(const q of L) if(Number.isFinite(q.si) && q.si>prox) prox=q.si;
+  t.S.forEach((q,i)=>{ if(q.si==null){ q.si=++prox; mudou=true; if(par && t.Sin[i].si==null) t.Sin[i].si=q.si; } });
+  if(t.Sin) for(const q of t.Sin) if(q.si==null){ q.si=++prox; mudou=true; }
+  if(mudou){ t.P=null; t.projecaoEntrada=null; }       // o desenho final é refeito com os rótulos
+  return t;
+}
+/* Com o ❄ de fora a linha livre é a própria borda de dentro da berma: a junta nasce já na escolha
+   do lado, para todos os cantos aparecerem antes do primeiro arrasto. Enquanto nada for editado
+   ela é "nova": não muda o desenho, não aparece marcada, e some quando o lado é solto. */
+function limpaJuntasNovas(){
+  let tirou=false;
+  for(const k of Object.keys(objs)){
+    const o=objs[k]; if(!o || !o.bermas || !o.bermas._travas) continue;
+    let manter=null;
+    if(sel && sel.alvo===k && o.design && ladoDaSelecao()==="fora"){
+      const pl=planoDoLado(o.design.aneis, sel.idx, "fora"); if(pl) manter=o.design.aneis.length-1-pl.anda;
+    }
+    for(const t of o.bermas._travas.slice()) if(t.nova && t.g!==manter){ soltaAnel(k,t.g); tirou=true; }
+  }
+  return tirou;
 }
 function soltaAnel(alvo, g){
   const o=objs[alvo]; if(!o || !o.bermas || !o.bermas._travas) return false;
@@ -662,6 +693,7 @@ function editaPorSementes(k, idxAnel, lado, op){
       L.splice(q.i+1,0, T ? {x:q.x,y:q.y,si:novo} : {x:q.x,y:q.y});
     }
     if(T) soltaPinos(T);
+    for(const t of travasFixas(k)) delete t.nova;
     return {ok:true};                         // ponto novo sobre a própria linha: a forma não muda
   }
   if(acha(listas[0],op.rot)<0) return volta("este ponto é geometria da rampa — use um vértice (quadrado) da linha");
@@ -694,6 +726,7 @@ function editaPorSementes(k, idxAnel, lado, op){
   if(!dV || !dV.aneis || !dV.aneis.length) return volta("a linha não comporta esse movimento");
   if(cruzamentosDoDesign(dV)>cruz0+6) return volta("as linhas se cruzariam");
   if(invasaoDasFixadas(k,null,dV)>inv0+0.3) return volta("a linha passaria por cima da vizinha, do outro lado da berma");
+  for(const t of travasFixas(k)) delete t.nova;
   return {ok:true, erro, andou};
 }
 // grava/limpa o esqueleto da string congelada a partir do design ATUAL
@@ -776,6 +809,15 @@ function botoesDeLado(){
 }
 function alternaLadoCongelado(lado, ok){
   if(!sel) return;
+  const depois=()=>{          // junta "nova" do ❄ de fora: cria a deste lado, tira a que sobrou
+    let mexeu=limpaJuntasNovas();
+    const o=objs[sel.alvo], an=o && o.design && o.design.aneis;
+    if(an && ladoDaSelecao()==="fora" && !(congelada && congelada.alvo===sel.alvo)){
+      const pl=planoDoLado(an, sel.idx, "fora");
+      if(pl && !travasFixas(sel.alvo).some(t=>t.g===an.length-1-pl.anda)){ const t=fixaAnel(sel.alvo, pl.anda); if(t){ t.nova=true; mexeu=true; } }
+    }
+    if(mexeu) regen();
+  };
   if(!ok){
     ladoCongelado=null;
     ultimaEdicao="este desenho não tem <b>berma</b> junto desta linha — só talude, e o ângulo dele não muda. Para mexer aqui, arraste os vértices da linha desenhada.";
@@ -783,6 +825,7 @@ function alternaLadoCongelado(lado, ok){
     ladoCongelado = ladoDaSelecao()===lado ? null : {alvo:sel.alvo, idx:sel.idx, lado};
     ultimaEdicao="";
   }
+  depois();
   atualizaDicaSel(); redesenha();
 }
 function desenhaBotoesDeLado(an){
@@ -842,7 +885,7 @@ function desenhaBotoesDeLado(an){
 // o desenho tem contorno próprio; o ↺ da linha devolve a berma ao nominal
 function desenhaLinhasFixadas(k, an){
   for(const t of travasFixas(k)){
-    const a=an[an.length-1-t.g]; if(!a) continue;
+    const a=an[an.length-1-t.g]; if(!a || t.nova) continue;
     if(!tracaLinhaPorCota(a.P,true,cotaAbsolutaDoDesign(a.z),{color:"#2c7fb8",weight:2})) tracaAnel(a.P,"#2c7fb8",2,false);
     const cum=cumulativo(a.P), p=pontoNoArco(a.P,cum,cum[cum.length-1]*0.38), [sx,sy]=W2S(p.x,p.y);
     rotuloHalo("berma ✎", sx, sy, "#2c7fb8", 10);
@@ -2905,6 +2948,7 @@ function entradaHerdadaDoBloco(k,pk){
 }
 function regen(){
   limitaPaisNasContinuacoes();
+  limpaJuntasNovas();
   const prm=parametros();
   // nº de strings ANTES de regenerar, p/ remapear a seleção pelo índice de
   // geração (um override que trunca a geração muda o comprimento do array)
@@ -2913,6 +2957,7 @@ function regen(){
     const o=objs[k];
     o.erro=null;
     o.bermas = o.bermas || {};
+    for(const t of travasFixas(k)) rotulaJunta(t);
     // Só a ESTRUTURA DE BANCOS invalida uma berma editada, porque a chave dela é
     // o índice do banco. Mexer na linha desenhada NÃO invalida: hoje a edição é
     // uma janela paramétrica (largura + âncora de arco), reancorada no esqueleto
@@ -4235,6 +4280,7 @@ function terminaAcao(){
   if(desenho && desenho.pts.length>=3){ fechaDesenho(); return; }
   if(ferramenta==="editar" && (sel || ladoCongelado)){
     sel=null; ladoCongelado=null; editando=null; ultimaEdicao="";
+    if(limpaJuntasNovas()) regen();
     atualizaDicaSel(); redesenha(); return;
   }
   defineTool("mover");
@@ -4244,7 +4290,7 @@ function defineTool(t){
   ferramenta=t;
   if(t!=="cava"&&t!=="pilha") desenho=null;
   if(t!=="secao"){ secTemp=null; if(secA&&!secB) secA=null; }
-  if(t!=="editar"){ sel=null; ladoCongelado=null; }
+  if(t!=="editar"){ sel=null; ladoCongelado=null; if(limpaJuntasNovas()) regen(); }
   for(const id of ["t_mover","t_cava","t_pilha","t_editar","t_rampa","t_retorno","t_secao"])
     $(id).classList.remove("ativa");
   const idAtivo={mover:"t_mover",cava:"t_cava",pilha:"t_pilha",editar:"t_editar",rampa:"t_rampa",retorno:"t_retorno",secao:"t_secao"}[t];
@@ -4625,6 +4671,7 @@ cv.addEventListener("pointerdown", e=>{
     }
     sel = melS ? {alvo:melS.alvo, idx:melS.idx, toque:{x:q.x,y:q.y}} : null;
     if(!ladoDaSelecao()) ladoCongelado=null;
+    if(limpaJuntasNovas()) regen();
     if(sel && objs[sel.alvo]){
       blocoAtivo=sel.alvo; blocoParaPainel();
       if(modoLinha){
@@ -5435,7 +5482,7 @@ cv.addEventListener("dblclick", e=>{
       const o=objs[k];
       if(!o.base) continue;
       const listas=[];
-      if(sel && sel.alvo===k && o.design && o.design.aneis[sel.idx]) listas.push(o.design.aneis[sel.idx].P
+      if(sel && sel.alvo===k && o.design && o.design.aneis[sel.idx] && !familiaDoAnel(k, o.design.aneis.length-1-sel.idx)) listas.push(o.design.aneis[sel.idx].P
         .filter(p=>Number.isInteger(p.si)&&!!o.base[p.si]).map(p=>({...p,sourceBaseIndex:p.si})));
       listas.push(verticesDaBaseParaEdicao(k).map(({p,idx})=>({...p,sourceBaseIndex:idx})));
       let alvoV=null;
@@ -5501,7 +5548,7 @@ function pendenciasDaSel(){
   // a berma é chaveada pela borda de DENTRO: o alargamento (❄ de fora) e a fixação (❄ de
   // dentro) ficam os dois na geração dela, seja qual for a linha da berma que está selecionada
   const b=bermaDaLinha(an, sel.idx), T=travasFixas(sel.alvo), g0=an.length-1-sel.idx, g=b ? an.length-1-b.iIn : g0;
-  const r={g, berma:!!(o.bermas[g] && o.bermas[g].length), fixa:T.some(t=>t.g===g),
+  const r={g, berma:!!(o.bermas[g] && o.bermas[g].length), fixa:T.some(t=>t.g===g && !t.nova),
            g0, berma0:g0!==g && !!(o.bermas[g0] && o.bermas[g0].length)};
   return (r.berma||r.fixa||r.berma0) ? r : null;
 }

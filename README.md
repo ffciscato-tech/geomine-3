@@ -394,7 +394,15 @@ publicou de outro lugar e este repositório está desatualizado.
   e o que o transporte não fechar vai para a largura de uma berma; (6) a linha
   que fica aparece em azul e a que anda em **laranja**, com os vértices e os
   "+" dela; no dedo, pega-se por um vértice ou pela própria linha (vale o
-  vértice mais próximo); (7) uma edição que faria a linha passar por cima da
+  vértice mais próximo). **Todo canto da linha livre é vértice** (print
+  IMG_0254: "ainda tem vértices que não aparecem; têm que aparecer todos eles
+  para que eu possa mexer"): o afastamento das linhas cria cantos que não vêm
+  de nenhum vértice da linha desenhada, e no contorno da junta cada um ganha
+  rótulo próprio (`rotulaJunta`). Com o ❄ de fora a junta nasce já na escolha
+  do lado, para todos aparecerem antes do primeiro arrasto; enquanto nada for
+  editado ela não muda o desenho, não aparece marcada e some ao soltar o lado.
+  Com o ❄ de dentro a linha livre é gerada por afastamento e os cantos assim
+  criados continuam sem vértice — limite conhecido; (7) uma edição que faria a linha passar por cima da
   vizinha da berma, ou as linhas se cruzarem, é recusada com o motivo; (8) a
   junta aparece em azul fino com "berma ✎", vai com o projeto, com o desfazer e
   com a cadeia de blocos, e o **↺** de qualquer das duas linhas da berma (ou

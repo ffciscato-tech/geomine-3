@@ -8,7 +8,7 @@ vm.runInContext('const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)); let objs={}, tr
   +trecho('function cumulativo(','function distAoAnel(')+trecho('function distAoAnel(','\n}\n')+'\n}\n'
   +trecho('function travasFixas(','// grava/limpa o esqueleto da string congelada')
   +trecho('function parDeBermaDoLado(','function botoesDeLado(')
-  +';this.api={travasFixas,travaDe,fixaAnel,soltaAnel,invasaoDasFixadas,parDeBermaDoLado,bermaDaLinha,planoDoLado,familiaDoAnel,alcasDoAnel,campoEntre,cruzamentosDoDesign,repinaJuntas,soltaPinos,set:(o,t)=>{objs=o;travaSk=t||null;},objs:()=>objs};',ctx);
+  +';this.api={travasFixas,travaDe,fixaAnel,soltaAnel,invasaoDasFixadas,parDeBermaDoLado,bermaDaLinha,planoDoLado,familiaDoAnel,alcasDoAnel,campoEntre,cruzamentosDoDesign,repinaJuntas,soltaPinos,rotulaJunta,set:(o,t)=>{objs=o;travaSk=t||null;},objs:()=>objs};',ctx);
 const A=ctx.api;
 const quad=(m,z,tp)=>({z,tp,P:[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i})),Sk:[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i}))});
 // pilha de 2 bancos: de dentro para fora — crista@20, pé@10 | crista@10, pé@0 (a linha desenhada)
@@ -105,4 +105,22 @@ test('transporte: o campo de deslocamento de uma linha (antes → depois) leva j
 test('cruzamentos entre linhas vizinhas: o que não pode aumentar depois de uma edição',()=>{
   const d=pilha().pilha.design;assert.equal(A.cruzamentosDoDesign(d),0);
   d.aneis[1].P[0]={x:-60,y:-60,si:0};assert(A.cruzamentosDoDesign(d)>=2,'o canto do pé passou por cima da crista de fora');
+});
+
+test('todo canto do contorno da junta é vértice de arrastar: os que o afastamento criou ganham rótulo próprio',()=>{
+  const o=pilha();A.set(o);
+  // o pé@10 com um canto a mais, sem rótulo (duas arestas que passaram a se encontrar no afastamento)
+  const a=o.pilha.design.aneis[1];a.Sk.splice(2,0,{x:40,y:0});a.P.splice(2,0,{x:40,y:0});
+  assert.equal(A.alcasDoAnel('pilha',1).length,4,'antes da junta: só os vértices da linha desenhada');
+  const t=A.fixaAnel('pilha',1);
+  assert.equal(t.S.length,5);assert(t.S.every(q=>q.si!=null),'nenhum canto sem rótulo');
+  const novo=t.S[2].si;assert(novo>=1e6,'fora da faixa dos índices da linha desenhada: '+novo);
+  assert.equal(t.Sin[2].si,novo,'o mesmo rótulo na semente do bloco de dentro');
+  assert.equal(t.P,null,'o desenho final é refeito, para levar o rótulo');
+  // depois do regen o anel traz o rótulo, e o canto aparece como vértice
+  a.P[2].si=novo;A.repinaJuntas('pilha');
+  assert.deepEqual([...A.alcasDoAnel('pilha',1)].map(q=>q.si),[0,1,novo,2,3]);
+  // rotular de novo não muda nada; um canto novo sem rótulo continua a contagem
+  const antes=JSON.stringify(t.S);A.rotulaJunta(t);assert.equal(JSON.stringify(t.S),antes);
+  t.S.push({x:0,y:41});t.Sin.push({x:0,y:41});A.rotulaJunta(t);assert.equal(t.S.at(-1).si,novo+1);assert.equal(t.Sin.at(-1).si,novo+1);
 });
