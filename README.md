@@ -514,6 +514,25 @@ publicou de outro lugar e este repositório está desatualizado.
   não fecha a partir daquela linha, a divisão é desfeita com aviso; o desfazer
   junta de novo. A tesoura é desenhada no canvas (o caractere vira emoji no
   iPad). Testes em `cava2/cava-divide.test.cjs`.
+- **Na Visão 3D, linha que está acima do terreno aparece nítida, mesmo com a
+  superfície translúcida.** Reclamação de 23/11/2026, print IMG_0279: "na visão
+  3D aparece que todas as linhas estão abaixo da superfície". O MDT entra com
+  80% de opacidade (`style.opacity` 0,8), e superfície com transparência é
+  desenhada na passada dos transparentes, depois de todas as linhas; como as
+  linhas não gravavam profundidade, a superfície era misturada por cima de
+  TODAS — o desenho inteiro parecia enterrado, inclusive a pilha que está acima
+  do terreno. Regras: (1) linha opaca grava profundidade (`depthWrite` em
+  `screen-lines-3d.js` e nos materiais de linha de `v3BuildVectors`): a que
+  está na frente da superfície fica nítida, a que está atrás continua aparecendo
+  através dela, e com a superfície a 100% a que está atrás some; linha
+  semitransparente não grava; (2) nas vistas laterais, em que as linhas são
+  desenhadas por cima (`v3LinhasSempreVisiveis`), elas entram na passada dos
+  transparentes, depois da superfície, e o modo é reaplicado quando os vetores
+  são refeitos com a câmera ainda na pose lateral (`V3._linhasPorCima`) — antes
+  ele se perdia calado na primeira atualização de camada. Não volte as linhas
+  para `depthWrite:false` sem trocar a ordem de desenho da superfície. Testes
+  em `visualization/screen-lines-3d.test.cjs` e
+  `core/parts/3d-linhas-superficie.test.cjs`.
 - **A régua mede nos dois modos; na aba Cava a Seção A–A′ fica no botão de
   linha.** Print IMG_0266 (23/11/2026), com a régua da barra de baixo circulada
   e "MEDIÇÃO" escrito à mão: "essa ferramenta de medição aqui no modo cava está

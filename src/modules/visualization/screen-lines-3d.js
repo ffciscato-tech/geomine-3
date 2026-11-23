@@ -16,7 +16,13 @@ function create(THREE,input,style){
  if(dash.length%2)dash=dash.concat(dash);dash=dash.slice(0,16);
  const total=dash.reduce((a,b)=>a+b,0),pattern=new Float32Array(16);pattern.set(dash);
  const color=new THREE.Color(style.color),opacity=Number.isFinite(style.opacity)?style.opacity:1;
- const material=new THREE.ShaderMaterial({side:THREE.DoubleSide,depthTest:true,depthWrite:false,
+ /* Linha opaca ESCREVE no depth-buffer (print de 23/11/2026: "na visão 3D aparece que todas as
+    linhas estão abaixo da superfície"). Superfície com transparência é desenhada depois das
+    linhas; sem a profundidade delas gravada, a superfície era misturada por cima de TODAS — as
+    que estão acima do terreno também — e o desenho inteiro parecia enterrado. Com a profundidade
+    gravada, a superfície não pinta onde a linha está na frente, e a linha que está atrás continua
+    aparecendo através dela. Linha semitransparente não grava, como qualquer objeto transparente. */
+ const material=new THREE.ShaderMaterial({side:THREE.DoubleSide,depthTest:true,depthWrite:opacity>=1,
   transparent:opacity<1,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,
   uniforms:{viewport:{value:new THREE.Vector2(1,1)},width:{value:width},stroke:{value:color},opacity:{value:opacity},dashCount:{value:dash.length},dashTotal:{value:total},dashPattern:{value:pattern}},
   vertexShader:`attribute vec3 previous;attribute vec3 following;attribute float side;attribute float lineDistance;

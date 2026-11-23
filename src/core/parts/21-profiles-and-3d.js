@@ -206,13 +206,19 @@ function v3VistaPlanta(){
 function v3LinhasSempreVisiveis(lig){
   const g=V3&&V3.vecGroup;
   if(!g)return false;
+  V3._linhasPorCima=!!lig;
   g.renderOrder=lig?999:0;
   g.traverse(o=>{
     const ms=o&&o.material?(Array.isArray(o.material)?o.material:[o.material]):[];
     ms.forEach(m=>{
       if(!m)return;
       if(m._v3DepthTest===undefined)m._v3DepthTest=m.depthTest!==false;
+      if(m._v3Transparent===undefined)m._v3Transparent=m.transparent===true;
       m.depthTest=lig?false:m._v3DepthTest;
+      /* "Por último" de verdade: superfície com transparência (o MDT entra a 80%) é desenhada na
+         passada dos transparentes, DEPOIS de todo objeto opaco, e cobria as linhas com o seu véu.
+         Na vista lateral a linha entra nessa mesma passada, depois da superfície (ordem 999). */
+      m.transparent=lig?true:m._v3Transparent;
       m.needsUpdate=true;
     });
     if(o&&o.isLine||o&&o.isLineSegments)o.renderOrder=lig?999:0;
@@ -1611,6 +1617,9 @@ function v3BuildVectors(){
         :new THREE.LineBasicMaterial({color:st.hex,linewidth:st.weight3d,
             depthTest:true,depthWrite:false,transparent:false});
       m.opacity=st.opacity;m.transparent=st.opacity<1;
+      /* linha opaca grava profundidade: superfície transparente, desenhada depois, não a cobre
+         quando ela está na frente (ver GeoMine3DLines) */
+      m.depthWrite=st.opacity>=1;
       m._alagisDash=tracejada;mats.set(key,m);return m;
     };
     /* Triângulos projetados em pixels CSS respeitam o peso e o tracejado do
@@ -1768,6 +1777,10 @@ function v3BuildVectors(){
     toast(`${corrigidasCamadas.size} camada(s) com cor clareada para contrastar com o fundo`); }
   v3AtualizaFitas(true);
   window.GeoMineBlastingPresentation?.decorate3D(V3.vecGroup);
+  /* Os vetores acabaram de ser refeitos (materiais novos). Se a câmera continua na vista lateral,
+     o modo "linhas por cima" vale também para eles — antes ele se perdia calado na primeira
+     atualização de camada depois do clique. Fora da pose lateral (horizonte), o modo é encerrado. */
+  if(V3._linhasPorCima){ if(V3.phi===0) v3LinhasSempreVisiveis(true); else V3._linhasPorCima=false; }
   V3.ren && V3.cam && V3.ren.render(V3.scene,V3.cam);
 }
 
