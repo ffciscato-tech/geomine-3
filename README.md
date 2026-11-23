@@ -401,8 +401,20 @@ publicou de outro lugar e este repositório está desatualizado.
   rótulo próprio (`rotulaJunta`). Com o ❄ de fora a junta nasce já na escolha
   do lado, para todos aparecerem antes do primeiro arrasto; enquanto nada for
   editado ela não muda o desenho, não aparece marcada e some ao soltar o lado.
-  Com o ❄ de dentro a linha livre é gerada por afastamento e os cantos assim
-  criados continuam sem vértice — limite conhecido. **Vértice não some** (print
+  **Para o lado de fora vale igual** (print IMG_0256: "veja agora para o lado
+  de fora"): com o ❄ de dentro a linha livre é a borda de fora da berma, presa
+  pelo talude à linha seguinte para fora; essa linha (o pé do talude) ganha o
+  contorno próprio do lado livre (`juntaDoLado`), também já na escolha do lado.
+  Os cantos da linha livre que ainda nascem do afastamento, sem vértice próprio
+  na semente, são de arrastar e de apagar do mesmo jeito: o movimento do canto
+  vira um campo de deslocamento aplicado à semente (`campoDoCanto`, em
+  `editaPorSementes`), iterado até o canto parar onde foi solto. Os vértices
+  que o gerador repõe nas linhas vêm da semente do bloco (`Eref`), não sempre
+  da linha desenhada; cada vértice do contorno tem rótulo único; e o desenho
+  gravado da linha congelada não é refeito ao criar a junta (refazê-lo deixava
+  a linha livre empurrá-la até 0,5 m). O ↺ fica fora da linha, além do ❄ do
+  lado congelado, para não ser tocado no lugar de um vértice. **Vértice não
+  some** (print
   IMG_0255: "dependendo do movimento os vértices somem"): o gerador conserta
   sozinho uma linha que se dobra sobre si mesma ou passa da vizinha (corta o
   laço, tira o bico, empurra para dentro), e os vértices do trecho cortado

@@ -515,7 +515,7 @@ function travaDe(k){
   return t ? fixas.filter(f=>f.g!==t.g).concat([t]) : fixas;
 }
 // fixa o anel idx — e tudo o que está por dentro dele — como está no design atual
-function fixaAnel(alvo, idx){
+function fixaAnel(alvo, idx, refaz){
   const o=objs[alvo], an=o && o.design && o.design.aneis, a=an && an[idx];
   if(!a || !a.Sk || a.Sk.length<4) return null;
   const g=an.length-1-idx, cop=a.Sk.map(q=>({x:q.x, y:q.y, si:q.si}));
@@ -524,6 +524,9 @@ function fixaAnel(alvo, idx){
            projecaoEntrada:a.projecaoEntrada?JSON.parse(JSON.stringify(a.projecaoEntrada)):null,
            est:a.est?JSON.parse(JSON.stringify(a.est)):null};
   rotulaJunta(t);
+  // junta do lado LIVRE: o desenho dela é refeito a partir do contorno (ganha um ponto para cada
+  // vértice, inclusive os que caem no entalhe da rampa). A do lado CONGELADO fica como estava.
+  if(refaz){ t.P=null; t.projecaoEntrada=null; }
   o.bermas._travas=travasFixas(alvo).filter(q=>q.g!==g).concat([t]);
   return t;
 }
@@ -566,9 +569,20 @@ function rotulaJunta(t){
   const par=!!(t.Sin && t.Sin.length===t.S.length);
   let prox=999999, mudou=false;
   for(const L of [t.S, t.Sin||[]]) for(const q of L) if(Number.isFinite(q.si) && q.si>prox) prox=q.si;
-  t.S.forEach((q,i)=>{ if(q.si==null){ q.si=++prox; mudou=true; if(par && t.Sin[i].si==null) t.Sin[i].si=q.si; } });
-  if(t.Sin) for(const q of t.Sin) if(q.si==null){ q.si=++prox; mudou=true; }
-  if(mudou){ t.P=null; t.projecaoEntrada=null; }       // o desenho final é refeito com os rótulos
+  // rótulo é identidade: o afastamento às vezes deixa dois pontos com o rótulo do mesmo vértice
+  // (canto chanfrado). No contorno da junta o segundo ganha rótulo próprio — com dois iguais, o
+  // arrasto mexia num e media o outro.
+  // O desenho final gravado (P) NÃO é refeito para ganhar os rótulos: refazê-lo deixava a linha
+  // vizinha empurrar a congelada (até 0,5 m). O ponto do desenho que coincide com o vértice do
+  // contorno recebe o mesmo rótulo, e a linha fica exatamente onde estava.
+  const noDesenho=q=>t.P ? t.P.find(pp=>Math.abs(pp.x-q.x)<0.05 && Math.abs(pp.y-q.y)<0.05) : null;
+  const vistos=new Set();
+  t.S.forEach((q,i)=>{
+    const repetido=q.si!=null && vistos.has(q.si);
+    if(q.si==null || repetido){ const pp=noDesenho(q); q.si=++prox; mudou=true; if(par) t.Sin[i].si=q.si; if(pp) pp.si=q.si; }
+    vistos.add(q.si);
+  });
+  if(t.Sin && !par){ const v2=new Set(); for(const q of t.Sin){ if(q.si==null || v2.has(q.si)){ q.si=++prox; mudou=true; } v2.add(q.si); } }
   return t;
 }
 /* Com o ❄ de fora a linha livre é a própria borda de dentro da berma: a junta nasce já na escolha
@@ -579,8 +593,8 @@ function limpaJuntasNovas(){
   for(const k of Object.keys(objs)){
     const o=objs[k]; if(!o || !o.bermas || !o.bermas._travas) continue;
     let manter=null;
-    if(sel && sel.alvo===k && o.design && ladoDaSelecao()==="fora"){
-      const pl=planoDoLado(o.design.aneis, sel.idx, "fora"); if(pl) manter=o.design.aneis.length-1-pl.anda;
+    if(sel && sel.alvo===k && o.design && ladoDaSelecao()){
+      const i=juntaDoLado(o.design.aneis, sel.idx, ladoDaSelecao()); if(i>=0) manter=o.design.aneis.length-1-i;
     }
     for(const t of o.bermas._travas.slice()) if(t.nova && t.g!==manter){ soltaAnel(k,t.g); tirou=true; }
   }
@@ -628,12 +642,28 @@ function geraDoBloco(k){
 // Os vértices de arrastar de uma linha. O gerador repõe em toda linha um ponto para cada vértice
 // da linha desenhada (reporHandles); num bloco com contorno próprio, vértice é só o que existe no
 // contorno DELE — senão um vértice apagado ali continuava aparecendo como quadradinho.
-function alcasDoAnel(k, idx){
+function alcasDoAnel(k, idx, cantos){
   const o=objs[k], an=o && o.design && o.design.aneis, a=an && an[idx]; if(!a) return [];
-  const T=familiaDoAnel(k, an.length-1-idx);
-  if(!T) return a.handles || a.P.filter(q=>q.si!=null);
-  const tem=new Set(T.S.map(q=>q.si));
-  return a.P.filter(q=>q.si!=null && tem.has(q.si));
+  const T=familiaDoAnel(k, an.length-1-idx), tem=T ? new Set(T.S.map(q=>q.si)) : null;
+  const H=T ? a.P.filter(q=>q.si!=null && tem.has(q.si)) : (a.handles || a.P.filter(q=>q.si!=null));
+  if(!cantos) return H;
+  /* CANTOS SEM VÉRTICE PRÓPRIO (print IMG_0256, "veja agora para o lado de fora"): a linha livre
+     do ❄ de dentro é gerada por afastamento, e onde uma aresta curta some duas arestas passam a
+     se encontrar num canto que não vem de nenhum vértice da semente. Com um lado congelado esses
+     cantos também são de arrastar: o movimento vai para a semente pelo campo de deslocamento. */
+  const soltos=(a.Sk||[]).filter(q=>q.si==null); if(!soltos.length) return H;
+  const ja=new Set(H);
+  for(const p of a.P) if(!ja.has(p) && soltos.some(q=>Math.abs(q.x-p.x)<0.05 && Math.abs(q.y-p.y)<0.05)) ja.add(p);
+  return a.P.filter(p=>ja.has(p));
+}
+// o anel que precisa de contorno próprio para o lado livre ser editável por inteiro (ou −1):
+// ❄ de fora → a própria linha livre (borda de dentro da berma); ❄ de dentro → o pé do talude da
+// linha livre, que é a borda de dentro da berma seguinte para fora (as duas andam juntas, pelo talude)
+function juntaDoLado(an, idx, lado){
+  const pl=planoDoLado(an, idx, lado); if(!pl) return -1;
+  if(lado==="fora") return pl.anda;
+  const i=pl.anda+1;
+  return (i<an.length-1 && an[i+1] && Math.abs(an[i+1].z-an[i].z)<1e-9) ? i : -1;
 }
 // o desenho final da junta (com o corte da rampa) é refeito a partir do contorno e regravado no regen
 function soltaPinos(t){ t.P=null; t.projecaoEntrada=null; }
@@ -707,7 +737,9 @@ function editaPorSementes(k, idxAnel, lado, op){
   if(lado){                                   // a junta da berma: é ela que separa os dois lados
     const par=parDeBermaDoLado(D0.aneis, idxAnel, lado); if(par<0) return {ok:false, erro:"não há berma deste lado da linha"};
     const iIn=Math.min(idxAnel,par), gB=nA-1-iIn;
-    if(!travasFixas(k).some(t=>t.g===gB) && !fixaAnel(k,iIn)) return volta("não consegui separar os dois lados nesta berma");
+    if(!travasFixas(k).some(t=>t.g===gB) && !fixaAnel(k,iIn,lado==="fora")) return volta("não consegui separar os dois lados nesta berma");
+    const iPe=lado==="dentro" ? juntaDoLado(D0.aneis, idxAnel, "dentro") : -1;      // contorno próprio para o lado livre
+    if(iPe>=0 && !travasFixas(k).some(t=>t.g===nA-1-iPe)) fixaAnel(k,iPe,true);
   }
   const inv0=invasaoDasFixadas(k,null,D0), cruz0=cruzamentosDoDesign(D0);
   // vértices que cada junta mostrava antes: nenhum deles pode sumir com esta edição
@@ -727,8 +759,55 @@ function editaPorSementes(k, idxAnel, lado, op){
     for(const t of travasFixas(k)) delete t.nova;
     return {ok:true};                         // ponto novo sobre a própria linha: a forma não muda
   }
-  if(acha(listas[0],op.rot)<0) return volta("este ponto é geometria da rampa — use um vértice (quadrado) da linha");
-  if(op.tipo==="apaga"){
+  // canto sem vértice próprio na semente: o deslocamento dele na linha vira um campo, aplicado à semente
+  const canto=acha(listas[0],op.rot)<0;
+  let R0=null, mC=-1;
+  if(canto){
+    const a0=anelDaGeracao(D0,gEd); R0=((a0 && a0.Sk)||[]).map(q=>({x:q.x,y:q.y}));
+    let md=0.6; if(op.de) R0.forEach((q,i)=>{ const d=Math.hypot(q.x-op.de.x,q.y-op.de.y); if(d<md){ md=d; mC=i; } });
+    if(mC<0 || R0.length<4) return volta("este ponto é do entalhe da rampa, não um canto da linha");
+  }
+  const campoDoCanto=(dx,dy)=>{ const R1=R0.map(q=>({x:q.x,y:q.y})); R1[mC]={x:R0[mC].x+dx, y:R0[mC].y+dy}; return campoEntre(R0,R1); };
+  if(canto && op.tipo==="apaga"){
+    // apagar o canto = apagar os vértices da semente que estão por trás dele (os da aresta que sumiu)
+    const F=campoDoCanto(1,0), idxs=listas[0].map((q,i)=>F(q).x>0.5 ? i : -1).filter(i=>i>=0);
+    if(!idxs.length) return volta("este canto nasce do encontro de duas arestas e não tem vértice próprio — apague um vértice vizinho");
+    if(listas[0].length-idxs.length<4) return volta("a linha precisa de pelo menos 4 vértices");
+    for(const L of listas) for(const i of idxs.slice().reverse()) L.splice(i,1);
+    if(T) soltaPinos(T);
+  }else if(canto){
+    let base0=listas.map(L=>L.map(q=>({...q})));
+    const aplica=(dx,dy)=>{ const F=campoDoCanto(dx,dy);
+      listas.forEach((L,li)=>{ for(let i=0;i<L.length;i++){ const b=base0[li][i], f=F(b); L[i]={...L[i], x:+(b.x+f.x).toFixed(3), y:+(b.y+f.y).toFixed(3)}; } }); };
+    // onde o canto foi parar: o vértice da linha mais perto do caminho de → de+c
+    const ondeFoi=(d,cx,cy)=>{ const a=anelDaGeracao(d,gEd), L=(a && a.Sk)||[]; let pt=null, bd=1e30;
+      const L2=cx*cx+cy*cy;
+      for(const q of L){ const t=L2>1e-9 ? clamp(((q.x-op.de.x)*cx+(q.y-op.de.y)*cy)/L2,0,1.6) : 0, dd=Math.hypot(q.x-(op.de.x+t*cx), q.y-(op.de.y+t*cy)); if(dd<bd){ bd=dd; pt=q; } }
+      return pt; };
+    if(T) soltaPinos(T);
+    let cx=op.para.x-op.de.x, cy=op.para.y-op.de.y, mel=null, melE=1e30, reforcou=false;
+    for(let it=0; it<7; it++){
+      aplica(cx,cy);
+      let d; try{ d=geraDoBloco(k); }catch(e){ break; }
+      const pt=ondeFoi(d,cx,cy); if(!pt) break;
+      const foi=Math.hypot(pt.x-op.de.x,pt.y-op.de.y), pus=Math.hypot(cx,cy);
+      if(it===0 && !reforcou && pus>0.3 && foi<0.05*pus){
+        // nenhum vértice da semente responde por este canto: ganha um, na projeção dele, e tenta de novo
+        reforcou=true; aplica(0,0);
+        const novo=T ? Math.max(999999,...T.S.map(q=>Number.isFinite(q.si)?q.si:0))+1 : null;
+        for(const L of listas){ const cum=cumulativo(L), per=cum[L.length], a=arcoMaisProximo(L,cum,op.de), q=pontoNoArco(L,cum,((a.s%per)+per)%per);
+          L.splice(q.i+1,0, T ? {x:q.x,y:q.y,si:novo} : {x:q.x,y:q.y}); }
+        base0=listas.map(L=>L.map(q=>({...q}))); it=-1; continue;
+      }
+      const ex=op.para.x-pt.x, ey=op.para.y-pt.y, e2=Math.hypot(ex,ey);
+      if(e2<melE){ melE=e2; mel={x:cx,y:cy}; }
+      if(e2<0.05) break;
+      const g=(pus>1e-6 && foi>1e-6) ? clamp(foi/pus,0.25,3) : 1;
+      cx+=ex/g; cy+=ey/g;
+    }
+    if(!mel) return volta("a linha não comporta esse movimento");
+    aplica(mel.x,mel.y); erro=melE; andou=Math.hypot(op.para.x-op.de.x, op.para.y-op.de.y);
+  }else if(op.tipo==="apaga"){
     if(listas[0].length<=4) return volta("a linha precisa de pelo menos 4 vértices");
     for(const L of listas){ const j=acha(L,op.rot); if(j>=0) L.splice(j,1); }
     if(T) soltaPinos(T);
@@ -849,17 +928,18 @@ function botoesDeLado(){
   return {base:{x:sx,y:sy},
     fora:  {x:sx+nx*d, y:sy-ny*d, ok:temBerma},
     dentro:{x:sx-nx*d, y:sy+ny*d, ok:temBerma},
-    // ↺ ao longo da linha: desfaz o alargamento e solta as fixações desta string (o R/Delete do teclado)
-    volta: pendenciasDaSel() ? {x:sx+tx*34, y:sy-ty*34} : null};
+    // ↺ (o R/Delete do teclado) devolve a berma ao nominal. Fica FORA da linha, além do ❄ do lado
+    // congelado (sem lado, além do de fora): em cima dela cobria vértices e era tocado sem querer.
+    volta: pendenciasDaSel() ? (ladoDaSelecao()==="dentro" ? {x:sx-nx*(d+34), y:sy+ny*(d+34)} : {x:sx+nx*(d+34), y:sy-ny*(d+34)}) : null};
 }
 function alternaLadoCongelado(lado, ok){
   if(!sel) return;
   const depois=()=>{          // junta "nova" do ❄ de fora: cria a deste lado, tira a que sobrou
     let mexeu=limpaJuntasNovas();
     const o=objs[sel.alvo], an=o && o.design && o.design.aneis;
-    if(an && ladoDaSelecao()==="fora" && !(congelada && congelada.alvo===sel.alvo)){
-      const pl=planoDoLado(an, sel.idx, "fora");
-      if(pl && !travasFixas(sel.alvo).some(t=>t.g===an.length-1-pl.anda)){ const t=fixaAnel(sel.alvo, pl.anda); if(t){ t.nova=true; mexeu=true; } }
+    if(an && ladoDaSelecao() && !(congelada && congelada.alvo===sel.alvo)){
+      const i=juntaDoLado(an, sel.idx, ladoDaSelecao());
+      if(i>=0 && !travasFixas(sel.alvo).some(t=>t.g===an.length-1-i)){ const t=fixaAnel(sel.alvo, i, true); if(t){ t.nova=true; mexeu=true; } }
     }
     if(mexeu) regen();
   };
@@ -884,7 +964,7 @@ function desenhaBotoesDeLado(an){
     if(!tracaLinhaPorCota(F.P,true,cotaAbsolutaDoDesign(F.z),{color:"#2c7fb8",weight:3.4})) tracaAnel(F.P,"#2c7fb8",3.4,false);
     if(!tracaLinhaPorCota(Mv.P,true,cotaAbsolutaDoDesign(Mv.z),{color:"#e67e22",weight:3})) tracaAnel(Mv.P,"#e67e22",3,false);
     ctx.save(); ctx.setLineDash([]);
-    const Hm=alcasDoAnel(sel.alvo, plano.anda);
+    const Hm=alcasDoAnel(sel.alvo, plano.anda, true);
     for(const q of Hm){
       const [hx,hy]=W2S(q.x,q.y);
       ctx.fillStyle="#fff"; ctx.fillRect(hx-5.5,hy-5.5,11,11); ctx.fillStyle="#e67e22"; ctx.fillRect(hx-4,hy-4,8,8);
@@ -2280,10 +2360,14 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos, acessoExterno
   // vértice da linha desenhada que sumiu volta como ponto SOBRE a string (na
   // projeção dele), então a forma não muda em nada e todo vértice desenhado tem
   // handle em TODAS as strings, que é o que o usuário exige.
+  // De QUEM são os vértices repostos: da semente do bloco. Sem junta é a linha desenhada; dali
+  // para dentro de uma junta é o contorno dela — repor os da linha desenhada num bloco que tem
+  // contorno próprio punha quadradinhos de outra linha, no lugar errado.
+  let Eref=E;
   const reporHandles=P=>{
     if(!P || P.length<4) return P;
     const tem=new Set(); for(const q of P) if(q.si!=null) tem.add(q.si);
-    const faltam=E.filter(v=>v.si!=null && !tem.has(v.si));
+    const faltam=Eref.filter(v=>v.si!=null && !tem.has(v.si));
     if(!faltam.length) return P;
     const cum=cumulativo(P), per=cum[P.length];
     const itens=[];
@@ -2488,6 +2572,7 @@ function geraDesign(base0, p, tipo, anc0, bermas, trava, retornos, acessoExterno
       const SkC2=(tAqui && tAqui.S && tAqui.S.length>=4)
         ? tAqui.S.map(q=>({x:q.x, y:q.y, si:q.si}))
         : offsetBermaVar(SkP, p.berma, edB);
+      if(tAqui && tAqui.S && tAqui.S.length>=4 && !tAqui.alvo) Eref=SkC2;   // só nas juntas (❄); a trava da tecla F (que tem .alvo) fica como era
       // ">" estrito: berma 0 dá área IGUAL (offset nulo) e é válida
       if(SkC2.length<4 || perimetro(SkC2)<minPer || areaAssinada(SkC2)<=0 ||
          Math.abs(areaAssinada(SkC2))>Math.abs(areaAssinada(SkP))*(1+1e-9)){ truncou=true; gargalo=gargalo||achaGargalo(SkP); break; }
@@ -4603,7 +4688,7 @@ cv.addEventListener("pointerdown", e=>{
         const iEd=plano ? plano.anda : sel.idx, anelEd=design.aneis[iEd];
         const raio=plano ? 17 : 10;
         // o toque está num "+" (meio de segmento) da linha que anda? então é inserção, não pegada
-        const alcasEd=new Set(alcasDoAnel(sel.alvo, iEd)), alcasSel=iEd===sel.idx ? alcasEd : new Set(alcasDoAnel(sel.alvo, sel.idx));
+        const alcasEd=new Set(alcasDoAnel(sel.alvo, iEd, !!plano)), alcasSel=iEd===sel.idx ? alcasEd : new Set(alcasDoAnel(sel.alvo, sel.idx));
         const maisNoMeio=A2=>{ const H=A2.P.filter(q2=>alcasEd.has(q2));
           for(let i=0;i<H.length;i++){ const a=H[i], b=H[(i+1)%H.length], [ax,ay]=W2S(a.x,a.y), [bx,by]=W2S(b.x,b.y);
             if(Math.hypot(bx-ax,by-ay)<26) continue;
@@ -4644,7 +4729,7 @@ cv.addEventListener("pointerdown", e=>{
       // Com um lado congelado o "+" é o da linha que ANDA, e o ponto entra só no bloco dela.
       const anM=objs[sel.alvo].design.aneis, ladoM=ladoDaSelecao(), planoM=ladoM ? planoDoLado(anM, sel.idx, ladoM) : null,
         iM=planoM ? planoM.anda : sel.idx, porSementes=!(congelada && congelada.alvo===sel.alvo) && (planoM || travasFixas(sel.alvo).length>0);
-      const P=alcasDoAnel(sel.alvo, iM);
+      const P=alcasDoAnel(sel.alvo, iM, !!planoM);
       if(P.length<3) return;
       let melP=null;
       for(let i=0;i<P.length;i++){
@@ -5508,12 +5593,12 @@ cv.addEventListener("dblclick", e=>{
     const k=sel.alvo, an=objs[k].design.aneis, lado=ladoDaSelecao(), plano=lado ? planoDoLado(an, sel.idx, lado) : null, iEd=plano ? plano.anda : sel.idx;
     if(an[iEd] && (plano || travasFixas(k).length>0)){
       let alvoV=null, bd=plano ? 18 : 11;
-      for(const p of alcasDoAnel(k, iEd)){
+      for(const p of alcasDoAnel(k, iEd, !!plano)){
         const [sx,sy]=W2S(p.x,p.y), d=Math.hypot(e.offsetX-sx, e.offsetY-sy);
         if(d<bd){ bd=d; alvoV=p; } }
       if(alvoV){
         marcaHistorico();
-        const r=editaPorSementes(k, iEd, lado, {tipo:"apaga", rot:alvoV.si});
+        const r=editaPorSementes(k, iEd, lado, {tipo:"apaga", rot:alvoV.si, de:{x:alvoV.x,y:alvoV.y}});
         if(!r.ok){ histUndo.pop(); atualizaBotoesHist(); ultimaEdicao=`<b>não apaguei</b> — ${r.erro}.`; }
         else ultimaEdicao=lado ? `vértice apagado só do lado que anda — o lado de ${lado==="fora"?"fora":"dentro"} continua <b>congelado</b>, igual` : "vértice apagado só no bloco desta linha";
         regen(); atualizaDicaSel(); e.preventDefault(); return;

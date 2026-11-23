@@ -8,7 +8,7 @@ vm.runInContext('const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)); let objs={}, tr
   +trecho('function areaAssinada(','function garanteCCW(')+trecho('function cumulativo(','function distAoAnel(')+trecho('function distAoAnel(','\n}\n')+'\n}\n'
   +trecho('function travasFixas(','// grava/limpa o esqueleto da string congelada')
   +trecho('function parDeBermaDoLado(','function botoesDeLado(')
-  +';this.api={travasFixas,travaDe,fixaAnel,soltaAnel,invasaoDasFixadas,parDeBermaDoLado,bermaDaLinha,planoDoLado,familiaDoAnel,alcasDoAnel,campoEntre,cruzamentosDoDesign,repinaJuntas,soltaPinos,rotulaJunta,contornoSeCruza,saneiaJunta,rotulosNoDesenho,set:(o,t)=>{objs=o;travaSk=t||null;},objs:()=>objs};',ctx);
+  +';this.api={travasFixas,travaDe,fixaAnel,soltaAnel,invasaoDasFixadas,parDeBermaDoLado,bermaDaLinha,planoDoLado,familiaDoAnel,alcasDoAnel,campoEntre,cruzamentosDoDesign,repinaJuntas,soltaPinos,rotulaJunta,contornoSeCruza,saneiaJunta,rotulosNoDesenho,juntaDoLado,set:(o,t)=>{objs=o;travaSk=t||null;},objs:()=>objs};',ctx);
 const A=ctx.api;
 const quad=(m,z,tp)=>({z,tp,P:[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i})),Sk:[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i}))});
 // pilha de 2 bancos: de dentro para fora — crista@20, pé@10 | crista@10, pé@0 (a linha desenhada)
@@ -116,9 +116,10 @@ test('todo canto do contorno da junta é vértice de arrastar: os que o afastame
   assert.equal(t.S.length,5);assert(t.S.every(q=>q.si!=null),'nenhum canto sem rótulo');
   const novo=t.S[2].si;assert(novo>=1e6,'fora da faixa dos índices da linha desenhada: '+novo);
   assert.equal(t.Sin[2].si,novo,'o mesmo rótulo na semente do bloco de dentro');
-  assert.equal(t.P,null,'o desenho final é refeito, para levar o rótulo');
-  // depois do regen o anel traz o rótulo, e o canto aparece como vértice
-  a.P[2].si=novo;A.repinaJuntas('pilha');
+  assert.equal(t.P.length,5,'o desenho gravado da linha fica como estava (refazê-lo deixava a vizinha empurrá-la)');
+  assert.equal(t.P[2].si,novo,'e o ponto dele que coincide com o canto leva o mesmo rótulo');
+  // no anel do desenho o canto aparece como vértice assim que traz o rótulo
+  a.P[2].si=novo;
   assert.deepEqual([...A.alcasDoAnel('pilha',1)].map(q=>q.si),[0,1,novo,2,3]);
   // rotular de novo não muda nada; um canto novo sem rótulo continua a contagem
   const antes=JSON.stringify(t.S);A.rotulaJunta(t);assert.equal(JSON.stringify(t.S),antes);
@@ -143,4 +144,31 @@ test('vértice não some: contorno dobrado sobre si mesmo é detectado, e o que 
   const r0=t.S[0].si,r1=t.S[1].si;
   const d={aneis:[{P:[]},{P:[{x:0,y:0,si:r0},{x:1,y:0,si:-7},{x:2,y:0},{x:3,y:0,si:r1}]},{P:[]},{P:[]}]};
   assert.deepEqual([...A.rotulosNoDesenho(d,t)].sort(),[r0,r1].sort(),'só os rótulos que valem no contorno; ponto sem rótulo ou de outra família não conta');
+});
+
+test('rótulo é identidade: dois pontos do contorno com o rótulo do mesmo vértice (canto chanfrado) não convivem',()=>{
+  const o=pilha();A.set(o);
+  const a=o.pilha.design.aneis[1];a.Sk.splice(2,0,{x:40,y:2,si:1});a.P.splice(2,0,{x:40,y:2,si:1});   // segundo ponto com o rótulo 1
+  const t=A.fixaAnel('pilha',1),rot=t.S.map(q=>q.si);
+  assert.equal(new Set(rot).size,rot.length,'todos diferentes: '+rot);
+  assert.equal(rot[1],1,'o primeiro fica com o rótulo');assert(rot[2]>=1e6,'o segundo ganha um próprio');
+  assert.equal(t.P[2].si,rot[2],'no desenho gravado também');assert.equal(t.Sin[2].si,rot[2]);
+});
+test('com um lado congelado, canto da linha livre sem vértice próprio também é de arrastar',()=>{
+  const o=pilha();A.set(o);
+  const a=o.pilha.design.aneis[2];                      // crista@10: a linha livre do ❄ de dentro
+  a.Sk.splice(1,0,{x:0,y:-49});a.P.splice(1,0,{x:0,y:-49});
+  assert.equal(A.alcasDoAnel('pilha',2).length,4,'sem lado congelado: só os vértices da linha desenhada, como sempre');
+  assert.equal(A.alcasDoAnel('pilha',2,true).length,5,'com lado congelado: o canto criado pelo afastamento entra');
+  a.P.splice(3,0,{x:48,y:10});                           // ponto do entalhe da rampa: não é canto do esqueleto
+  assert.equal(A.alcasDoAnel('pilha',2,true).length,5);
+});
+
+test('❄ de dentro: o contorno próprio do lado livre fica no pé do talude da linha livre',()=>{
+  // três bancos, de dentro para fora: crista@20 | pé@10, crista@10 | pé@0... aqui com mais uma berma por fora
+  const an=[quad(20,30,'crista'),quad(40,20,'pe'),quad(48,20,'crista'),quad(68,10,'pe'),quad(76,10,'crista'),quad(96,0,'pe')];
+  assert.equal(A.juntaDoLado(an,1,'fora'),1,'❄ de fora: a própria linha livre (borda de dentro da berma)');
+  assert.equal(A.juntaDoLado(an,2,'fora'),1);
+  assert.equal(A.juntaDoLado(an,1,'dentro'),3,'❄ de dentro: a linha livre é a crista (2); o pé do talude dela é o 3');
+  assert.equal(A.juntaDoLado(an,3,'dentro'),-1,'na berma de fora o pé do talude é a própria linha desenhada: a semente já é ela');
 });
