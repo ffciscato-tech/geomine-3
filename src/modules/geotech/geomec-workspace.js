@@ -264,7 +264,7 @@
     </section>`;
   }
   function cardCargas(s){
-    return `<section class="gm-work-card" data-card="cargas"><div class="gm-card-heading"><span class="gm-card-step">4</span><b>Cargas, sismo e trinca</b>${info('Sobre cargas e sismo','Sobrecarga vertical distribuída entre duas distâncias da seção. O sismo é pseudo-estático: kh empurra no sentido do deslizamento e kv positivo aumenta o peso. A trinca de tração corta a superfície junto à crista na profundidade dada e pode estar cheia de água.')}</div>
+    return `<section class="gm-work-card" data-card="cargas"><div class="gm-card-heading"><span class="gm-card-step">4</span><b>Cargas, sismo e trinca</b>${info('Sobre cargas e sismo','Sobrecarga vertical distribuída entre duas distâncias da seção. Na figura, arraste a carga para mudar o lugar e as bolinhas das pontas para mudar o início e o fim (mouse, caneta ou dedo); os campos acompanham. O sismo é pseudo-estático: kh empurra no sentido do deslizamento e kv positivo aumenta o peso. A trinca de tração corta a superfície junto à crista na profundidade dada e pode estar cheia de água.')}</div>
       <div id="gmgCargas">${(s.cargas||[]).map((q,i)=>`<div class="gmg-carga"><input data-q="${i}" data-k="x1" value="${h(q.x1)}" inputmode="decimal" aria-label="de (m)" placeholder="de" autocomplete="off"><input data-q="${i}" data-k="x2" value="${h(q.x2)}" inputmode="decimal" aria-label="até (m)" placeholder="até" autocomplete="off"><input data-q="${i}" data-k="q" value="${h(q.q)}" inputmode="decimal" aria-label="kPa" placeholder="kPa" autocomplete="off"><button type="button" class="mini" data-a="remove-carga" data-i="${i}" aria-label="Remover a sobrecarga">✕</button></div>`).join('')}</div>
       <button type="button" class="mini" data-a="nova-carga">＋ sobrecarga (de · até · kPa)</button>
       <div class="gmg-g2">${campo('kh (g)','data-c="sismo.kh"',s.sismo.kh)}${campo('kv (g)','data-c="sismo.kv"',s.sismo.kv)}${campo('Trinca (m)','data-c="trinca.prof"',s.trinca.prof)}${campo('Água na trinca (%)','data-c="trinca.agua"',s.trinca.agua)}</div>
@@ -330,7 +330,7 @@
     return {ctx, w, h:hh};
   }
   function opDesenho(){
-    const s=sec(), o={claro:claro(), mapa:ver.mapa&&modo!=='manual', fatias:ver.fatias, empuxo:ver.empuxo, legenda:ver.legenda, sel:aba==='fatia'?sel:null, editaNA:modo==='na'};
+    const s=sec(), o={claro:claro(), mapa:ver.mapa&&modo!=='manual', fatias:ver.fatias, empuxo:ver.empuxo, legenda:ver.legenda, sel:aba==='fatia'?sel:null, editaNA:modo==='na', alcasCarga:modo!=='na'&&modo!=='manual'};
     if(s&&s.busca.faixas==='manual'&&s.busca.entrada&&s.busca.saida) o.faixas={entrada:s.busca.entrada, saida:s.busca.saida};
     if(modo==='manual'){ o.manual=true; o.manualRes=manualRes; o.manualCirc=manualCirc; }
     const ch=$('gmgChips'), cv=$('gmgCanvas');
@@ -356,6 +356,8 @@
       e.preventDefault();
     });
     c.addEventListener('pointermove',e=>{
+      /* mouse solto sobre uma carga: o cursor mostra que ela é de arrastar */
+      if(!pts.size&&e.pointerType==='mouse'){ const s0=sec(); if(s0&&vista){ const p0=pos(e), a0=GM.alvo(s0,res(),vista,p0[0],p0[1],opAlvo(e)); c.style.cursor=a0&&a0.tipo==='carga'?(a0.alca==='corpo'?'grab':'ew-resize'):''; } }
       const s=sec(); if(!s||!vista||!pts.has(e.pointerId)) return;
       const p=pos(e); pts.set(e.pointerId,p);
       if(pinca&&pts.size===2){
@@ -377,6 +379,12 @@
       }
       if(al&&al.tipo==='na'){ s.agua.linha[al.i]=[+xx.toFixed(2),+z.toFixed(2)]; desenha(); return; }
       if(al&&al.tipo==='faixa'){ s.busca[al.nome][al.k]=+xx.toFixed(2); desenha(); return; }
+      if(al&&al.tipo==='carga'){                       /* a sobrecarga anda com o ponteiro; os campos do card 4 acompanham */
+        const q=s.cargas[al.i]; if(!q) return;
+        if(!arr.carga) arr.carga={x1:q.x1, x2:q.x2, x0:GM.mundo(arr.v0,arr.p0[0],arr.p0[1])[0]};
+        const n=GM.arrastaCarga(arr.carga,al.alca,x,x-arr.carga.x0,L);
+        q.x1=n.x1; q.x2=n.x2; camposDaCarga(al.i); c.style.cursor=al.alca==='corpo'?'grabbing':'ew-resize'; desenha(); return;
+      }
       vista={esc:arr.v0.esc, x0:arr.v0.x0-(p[0]-arr.p0[0])/arr.v0.esc, z1:arr.v0.z1+(p[1]-arr.p0[1])/arr.v0.esc}; vistaManual=true; desenha();
     });
     const fim=e=>{
@@ -387,6 +395,7 @@
       if(moveu){
         if(al&&al.tipo==='na'){ s.agua.linha.sort((a,b)=>a[0]-b[0]); mudou(); }
         else if(al&&al.tipo==='faixa'){ for(const k of ['entrada','saida']) s.busca[k].sort((a,b)=>a-b); mudou(); }
+        else if(al&&al.tipo==='carga'){ const q=s.cargas[al.i]; if(q&&num(q.x1,0)>num(q.x2,0)){ const t=q.x1; q.x1=q.x2; q.x2=t; } camposDaCarga(al.i); c.style.cursor=''; mudou(); }
         else if(al&&al.tipo==='manual'){ atualizaManual(false); estudos.delete(s.id); desenha(); pintaAba(); sujoProjeto(); }
         return;
       }
@@ -407,6 +416,11 @@
       const p=pos(e), k=Math.exp(-e.deltaY*0.0014), mw=GM.mundo(vista,p[0],p[1]), esc=Math.max(.02,Math.min(4000,vista.esc*k));
       vista={esc, x0:mw[0]-p[0]/esc, z1:mw[1]+p[1]/esc}; vistaManual=true; desenha();
     },{passive:false});
+  }
+  /* os campos "de" e "até" da sobrecarga i, no card 4, mostram o que foi arrastado na figura */
+  function camposDaCarga(i){
+    const s=sec(), q=s&&s.cargas[i]; if(!q) return;
+    for(const k of ['x1','x2']){ const el=document.querySelector('#gmgCargas [data-q="'+i+'"][data-k="'+k+'"]'); if(el&&document.activeElement!==el) el.value=String(q[k]); }
   }
   /* superfície à mão: círculo por entrada, saída e flecha */
   function atualizaManual(rapido){
@@ -992,7 +1006,7 @@
     const s=sec(), c=document.createElement('canvas'); c.width=Math.round(w*escala); c.height=Math.round(hh*escala);
     const ctx=c.getContext('2d'); ctx.setTransform(escala,0,0,escala,0,0);
     const r=res(), v=GM.enquadra(s,w,hh,r,{e:54,d:18,c:30,b:44});
-    GM.desenhaSecao(ctx,w,hh,s,r,v,Object.assign(opDesenho(),{claro:true, limpo:true, legenda:true, legendaLivre:null, legendaTopo:null, sel:null, editaNA:false, titulo:s.nome+' — escala 1:1 (H = V)'}));
+    GM.desenhaSecao(ctx,w,hh,s,r,v,Object.assign(opDesenho(),{claro:true, limpo:true, legenda:true, legendaLivre:null, legendaTopo:null, sel:null, editaNA:false, alcasCarga:false, titulo:s.nome+' — escala 1:1 (H = V)'}));
     return c;
   }
   function exportaPNG(){

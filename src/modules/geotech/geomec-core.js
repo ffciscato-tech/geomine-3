@@ -155,6 +155,16 @@
     if(hd>0&&zt) out.push({nome:'contato a '+String(+hd.toFixed(2)).replace('.',',')+' m da topografia', x:P.dist, y:zt.map(z=>Number.isFinite(z)?z-hd:NaN), cor:'#b45309', largura:2.6});
     return out;
   };
+  /* Arrasto de uma sobrecarga na figura: a ponta vai para x; o corpo anda dx mantendo o
+     comprimento. Nada sai dos limites da seção. Devolve {x1,x2} com 2 casas. */
+  GM.arrastaCarga=(carga0,alca,x,dx,lim)=>{
+    const c=(v)=>Math.max(lim.x0,Math.min(lim.x1,v)), r=v=>+v.toFixed(2);
+    let x1=num(carga0.x1,0), x2=num(carga0.x2,0);
+    if(alca==='x1') x1=c(x);
+    else if(alca==='x2') x2=c(x);
+    else { const lo=Math.min(x1,x2), hi=Math.max(x1,x2), d=Math.max(lim.x0-lo,Math.min(lim.x1-hi,dx)); x1+=d; x2+=d; }
+    return {x1:r(x1), x2:r(x2)};
+  };
   GM.perfilVetorial=(linha,partes)=>{
     const a=linha[0], b=linha[linha.length-1], dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy), out=[];
     if(!(L>0)) return out;

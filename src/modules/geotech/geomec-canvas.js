@@ -144,6 +144,11 @@
       ctx.stroke();
       ctx.beginPath(); for(let i=0;i<=n;i++){ const x=a+(b-a)*i/n, yt=Y(lerp(sec.terreno,x))-24; if(i) ctx.lineTo(X(x),yt); else ctx.moveTo(X(x),yt); } ctx.stroke();
       ctx.fillText(fmt(qq,0)+' kPa',X((a+b)/2)-18,Y(lerp(sec.terreno,(a+b)/2))-30);
+      /* a carga é de arrastar na figura (print IMG_0269, 23/11/2026): alça em cada ponta */
+      if(op.alcasCarga){
+        for(const x of [x1,x2]){ const yy=Y(lerp(sec.terreno,x))-13; ctx.beginPath(); ctx.arc(X(x),yy,5,0,Math.PI*2); ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='#b91c1c'; ctx.stroke(); }
+        ctx.fillStyle='#b91c1c';
+      }
     }
 
     /* mapa de segurança: as superfícies tentadas, da menos para a mais crítica */
@@ -312,6 +317,24 @@
       for(const nome of ['entrada','saida']){
         const rg=op.faixas[nome]; if(!rg) continue;
         for(let k=0;k<2;k++){ const p=GM.tela(v,rg[k],lerp(sec.terreno,rg[k])); if(Math.hypot(p[0]-px,p[1]-(nome==='entrada'?5:9)-py)<=raio) return {tipo:'faixa', nome, k}; }
+      }
+    }
+    /* CARGA DE ARRASTAR (print IMG_0269, 23/11/2026: "essa carga aqui eu devo poder arrastar com
+       o mouse, com caneta, para definir o local"): as pontas mudam o início e o fim; o corpo
+       (a faixa das setas) leva a carga inteira. Fica fora quando se edita o NA ou a superfície à mão. */
+    if(op.alcasCarga){
+      const C=sec.cargas||[], [xm]=GM.mundo(v,px,py);
+      for(let i=C.length-1;i>=0;i--){
+        const x1=GM.num(C[i].x1,NaN), x2=GM.num(C[i].x2,NaN); if(!Number.isFinite(x1)||!Number.isFinite(x2)||!GM.num(C[i].q,0)) continue;
+        /* a ponta só é pega por quem está mais perto dela que do meio da carga: numa carga curta
+           (mais estreita que o dedo) o meio continua levando a carga inteira */
+        const pm=GM.tela(v,(x1+x2)/2,0)[0];
+        for(const k of ['x1','x2']){ const x=k==='x1'?x1:x2, p=GM.tela(v,x,lerp(sec.terreno,x)); if(Math.hypot(p[0]-px,p[1]-13-py)<=raio&&Math.abs(px-p[0])<=Math.abs(px-pm)) return {tipo:'carga', i, alca:k}; }
+      }
+      for(let i=C.length-1;i>=0;i--){
+        const x1=GM.num(C[i].x1,NaN), x2=GM.num(C[i].x2,NaN); if(!Number.isFinite(x1)||!Number.isFinite(x2)||!GM.num(C[i].q,0)) continue;
+        if(xm<Math.min(x1,x2)||xm>Math.max(x1,x2)) continue;
+        const p=GM.tela(v,xm,lerp(sec.terreno,xm)); if(py<=p[1]+6&&py>=p[1]-36) return {tipo:'carga', i, alca:'corpo'};
       }
     }
     const an=op.manual?op.manualRes:(res&&res.critica);

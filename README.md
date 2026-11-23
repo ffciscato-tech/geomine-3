@@ -733,6 +733,17 @@ publicou de outro lugar e este repositório está desatualizado.
     o desenho: fica gravada na seção (`s.prolongado`), é avisada ao cortar e
     aparece no card 1; se a face não alcança o terreno dentro da linha, o
     aviso pede para estender a seção.
+  - **A sobrecarga é de arrastar na figura da seção.** Print IMG_0269
+    (23/11/2026), com a carga de 50 kPa circulada: "essa carga aqui eu devo
+    poder arrastar com o mouse, com caneta, para definir o local". O corpo (a
+    faixa das setas) leva a carga inteira sem mudar o comprimento; a bolinha
+    de cada ponta muda o início ou o fim; nada sai dos limites da seção
+    (`GM.arrastaCarga`, `GM.alvo` com `alcasCarga`). Numa carga mais estreita
+    que o dedo, o meio continua levando a carga inteira. Os campos "de" e
+    "até" do card 4 acompanham durante o arrasto e o cálculo refaz ao soltar.
+    Vale para mouse, caneta e dedo (eventos de ponteiro); com o mouse, o
+    cursor muda sobre a carga. As alças não aparecem na figura exportada nem
+    enquanto se edita o NA ou a superfície à mão.
   - **A seção nova pede 1 Topografia, 2 Projeto e 3 Contatos.** Topografia é
     um MDT/TIN **ou** curvas de nível (qualquer camada de linhas com cota no
     vértice ou em campo COTA/Z/ELEV). Projeto é o desenho do DCE/cava (as

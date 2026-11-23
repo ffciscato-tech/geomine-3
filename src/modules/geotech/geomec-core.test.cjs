@@ -433,3 +433,36 @@ test('pé enterrado: o encontro da face com o terreno entra como estação; na c
   assert.deepEqual(puro(GM.encaixaProjetoNoTerreno(dist, [{ papel: 'terreno', z: [1, 2, 3, 4, 5] }], true).dist), dist);
 });
 
+/* Sobrecarga de arrastar na figura (print IMG_0269, 23/11/2026: "essa carga aqui eu devo poder
+   arrastar com o mouse, com caneta, para definir o local"). */
+test('arrasto da sobrecarga: a ponta vai para onde o ponteiro está, o corpo leva a carga inteira, nada sai da seção', () => {
+  const { GM } = carrega(), lim = { x0: 0, x1: 100 }, c = { x1: '20', x2: '35,5' };
+  assert.deepEqual(puro(GM.arrastaCarga(c, 'x1', 12.345, 0, lim)), { x1: 12.35, x2: 35.5 });
+  assert.deepEqual(puro(GM.arrastaCarga(c, 'x2', 250, 0, lim)), { x1: 20, x2: 100 }, 'a ponta para no limite da seção');
+  assert.deepEqual(puro(GM.arrastaCarga(c, 'corpo', 0, 10, lim)), { x1: 30, x2: 45.5 }, 'o corpo anda dx e o comprimento não muda');
+  assert.deepEqual(puro(GM.arrastaCarga(c, 'corpo', 0, -500, lim)), { x1: 0, x2: 15.5 }, 'encosta no início sem encolher');
+  assert.deepEqual(puro(GM.arrastaCarga(c, 'corpo', 0, 500, lim)), { x1: 84.5, x2: 100 });
+  assert.deepEqual(puro(GM.arrastaCarga({ x1: 60, x2: 40 }, 'corpo', 0, 5, lim)), { x1: 65, x2: 45 }, 'pontas invertidas continuam como estão');
+});
+test('o que o ponteiro pega numa sobrecarga: as pontas, o corpo, e só na figura interativa', () => {
+  const { GM, ctx } = carrega();
+  vm.runInContext(fs.readFileSync(path.join(DIR, 'geomec-canvas.js'), 'utf8'), ctx, { filename: 'geomec-canvas.js' });
+  const sec = { terreno: [[0, 100], [100, 100]], cargas: [{ x1: 20, x2: 60, q: 50 }, { x1: 80, x2: 82, q: 10 }], camadas: [] };
+  const v = { esc: 5, x0: 0, z1: 120 }, tela = (x, z) => GM.tela(v, x, z), op = { alcasCarga: true, raio: 12 };
+  const em = (x, dy) => { const p = tela(x, 100); return puro(GM.alvo(sec, null, v, p[0], p[1] - dy, op)); };
+  assert.deepEqual(em(20, 13), { tipo: 'carga', i: 0, alca: 'x1' });
+  assert.deepEqual(em(60, 13), { tipo: 'carga', i: 0, alca: 'x2' });
+  assert.deepEqual(em(40, 14), { tipo: 'carga', i: 0, alca: 'corpo' }, 'no meio das setas: a carga inteira');
+  assert.deepEqual(em(40, 30), { tipo: 'carga', i: 0, alca: 'corpo' }, 'até a altura do rótulo');
+  assert.equal(em(40, 60), null, 'bem acima das setas não pega nada');
+  assert.equal(em(70, 14), null, 'entre duas cargas não pega nada');
+  /* carga curta (10 px): o meio leva a carga inteira; fora do meio, a ponta mais próxima */
+  assert.deepEqual(em(81, 13), { tipo: 'carga', i: 1, alca: 'corpo' });
+  assert.deepEqual(em(79.6, 13), { tipo: 'carga', i: 1, alca: 'x1' });
+  assert.deepEqual(em(82.3, 13), { tipo: 'carga', i: 1, alca: 'x2' });
+  /* sem a marca da figura interativa (exportação, edição do NA, superfície à mão) a carga não é alvo */
+  const p = tela(40, 100); assert.equal(GM.alvo(sec, null, v, p[0], p[1] - 14, { raio: 12 }), null);
+  /* carga sem valor não é desenhada nem pega */
+  sec.cargas = [{ x1: 20, x2: 60, q: 0 }]; assert.equal(em(40, 14), null);
+});
+
