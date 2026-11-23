@@ -8,7 +8,7 @@ vm.runInContext('const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)); let objs={}, tr
   +trecho('function areaAssinada(','function garanteCCW(')+trecho('function cumulativo(','function distAoAnel(')+trecho('function distAoAnel(','\n}\n')+'\n}\n'
   +trecho('function travasFixas(','// grava/limpa o esqueleto da string congelada')
   +trecho('function parDeBermaDoLado(','function botoesDeLado(')
-  +';this.api={travasFixas,travaDe,fixaAnel,soltaAnel,invasaoDasFixadas,parDeBermaDoLado,bermaDaLinha,planoDoLado,familiaDoAnel,alcasDoAnel,campoEntre,cruzamentosDoDesign,repinaJuntas,soltaPinos,rotulaJunta,contornoSeCruza,saneiaJunta,rotulosNoDesenho,juntaDoLado,set:(o,t)=>{objs=o;travaSk=t||null;},objs:()=>objs};',ctx);
+  +';this.api={travasFixas,travaDe,fixaAnel,soltaAnel,invasaoDasFixadas,parDeBermaDoLado,bermaDaLinha,planoDoLado,familiaDoAnel,alcasDoAnel,campoEntre,cruzamentosDoDesign,repinaJuntas,soltaPinos,rotulaJunta,contornoSeCruza,saneiaJunta,rotulosNoDesenho,juntaDoLado,acompanhaParalelo,transportaParaFora,taludeApertado,anelMudou,distAoAnel,set:(o,t)=>{objs=o;travaSk=t||null;},objs:()=>objs};',ctx);
 const A=ctx.api;
 const quad=(m,z,tp)=>({z,tp,P:[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i})),Sk:[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i}))});
 // pilha de 2 bancos: de dentro para fora — crista@20, pé@10 | crista@10, pé@0 (a linha desenhada)
@@ -186,3 +186,74 @@ test('pontos da rampa: com um lado congelado, todo ponto do desenho em que a lin
   a.P.splice(1,0,{x:-10.1,y:-48});                       // ponto colado num canto que já é de arrastar: não duplica
   assert.equal(A.alcasDoAnel('pilha',2,true).length,8);
 });
+
+/* As linhas de fora acompanham a linha livre MANTENDO A DISTÂNCIA (print IMG_0260: a berma seguinte
+   ficava espremida). Quadrados sintéticos: de dentro para fora, o contorno de um banco e o do seguinte. */
+const sq=(m)=>[[-m,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i}));
+const dReta=(p,a,b)=>Math.abs((p.x-a.x)*(b.y-a.y)-(p.y-a.y)*(b.x-a.x))/Math.hypot(b.x-a.x,b.y-a.y);
+test('linhas de fora paralelas: o canto de fora em frente ao canto puxado guarda a distância às duas arestas dele',()=>{
+  const s0=sq(20),s1=sq(20),L0=sq(43);s1[1]={x:30,y:-30,si:1};        // canto sudeste puxado 14 m para fora, na diagonal
+  const r=A.acompanhaParalelo(s0,s1,L0);
+  assert.equal(r.novos.length,0,'cada canto de dentro já tem o seu par de fora');
+  const p=r.pos[1];
+  assert(Math.abs(dReta(p,s1[0],s1[1])-23)<1e-6&&Math.abs(dReta(p,s1[1],s1[2])-23)<1e-6,'23 m das duas arestas novas: '+JSON.stringify(p));
+  assert(Math.hypot(p.x-43,p.y+43)>Math.hypot(10,10),'num canto saliente a linha de fora anda MAIS que a puxada — é o que a mantém paralela');
+  // os vizinhos não andaram, mas a aresta que chega neles girou: o par de fora continua a 23 m dela e da outra
+  assert(Math.abs(dReta(r.pos[0],s1[0],s1[1])-23)<1e-6&&Math.abs(r.pos[0].x+43)<1e-6,JSON.stringify(r.pos[0]));
+  assert(Math.abs(dReta(r.pos[2],s1[1],s1[2])-23)<1e-6&&Math.abs(r.pos[2].y-43)<1e-6,JSON.stringify(r.pos[2]));
+  assert.deepEqual([r.pos[3].x,r.pos[3].y],[-43,43],'longe do que mexeu nada muda');
+  // a largura entre as duas linhas (talude + berma) não cai em lugar nenhum
+  const fora=r.pos.map(q=>({x:q.x,y:q.y}));
+  for(const v of s1) assert(A.distAoAnel(fora,v)>23-1e-6,'a linha de fora não chega mais perto que antes');
+  // nada mexeu ⇒ nada muda
+  assert.deepEqual(A.acompanhaParalelo(s0,sq(20),L0).pos.map(q=>[q.x,q.y]),L0.map(q=>[q.x,q.y]));
+});
+test('linhas de fora paralelas: onde a de dentro tem um vértice que mexeu e a de fora não tem nenhum em frente, ela ganha um',()=>{
+  const meio=(m)=>[[-m,-m],[0,-m],[m,-m],[m,m],[-m,m]].map((p,i)=>({x:p[0],y:p[1],si:i}));
+  const s0=meio(20),s1=meio(20),L0=sq(43);s1[1]={x:0,y:-30,si:1};      // vértice do meio do lado sul puxado 10 m para fora
+  const r=A.acompanhaParalelo(s0,s1,L0);
+  assert.equal(r.novos.length,1);
+  const e=r.novos[0];
+  assert.equal(e.i,0,'entra depois do vértice 0 da linha de fora');assert(Math.abs(e.x0)<1e-6&&Math.abs(e.y0+43)<1e-6,'nasce na projeção: '+JSON.stringify(e));
+  assert(Math.abs(e.x)<1e-6&&Math.abs(dReta(e,s1[0],s1[1])-23)<1e-6&&Math.abs(dReta(e,s1[1],s1[2])-23)<1e-6,'e fica a 23 m das duas arestas novas: '+JSON.stringify(e));
+  // os cantos de fora ao lado giram com a aresta e continuam a 23 m dela
+  assert(Math.abs(dReta(r.pos[0],s1[0],s1[1])-23)<1e-6&&Math.abs(dReta(r.pos[1],s1[1],s1[2])-23)<1e-6);
+});
+test('linhas de fora paralelas: canto reentrante (o de dentro é que se projeta no de fora) e ponto no meio de uma aresta',()=>{
+  // contorno em L: o canto (0,0) é reentrante visto de fora; o de fora tem o canto dele em (-23,-23)... não: fica do lado de fora do L
+  const L=[[-40,-40],[40,-40],[40,0],[0,0],[0,40],[-40,40]].map((p,i)=>({x:p[0],y:p[1],si:i}));
+  const F=[[-63,-63],[63,-63],[63,23],[23,23],[23,63],[-63,63]].map((p,i)=>({x:p[0],y:p[1],si:i}));
+  const L1=L.map(q=>({...q}));L1[3]={x:6,y:6,si:3};                    // o canto reentrante puxado 8,5 m para fora
+  const r=A.acompanhaParalelo(L,L1,F);
+  assert.equal(r.novos.length,0,'o canto de fora (23,23) é o par dele');
+  assert(Math.abs(dReta(r.pos[3],L1[2],L1[3])-23)<1e-6&&Math.abs(dReta(r.pos[3],L1[3],L1[4])-23)<1e-6,JSON.stringify(r.pos[3]));
+  // ponto de fora no meio de uma aresta que girou: mesma posição ao longo dela, mesma distância
+  const s0=sq(20),s1=sq(20);s1[1]={x:20,y:-30,si:1};
+  const G=[[-43,-43],[0,-43],[43,-43],[43,43],[-43,43]].map((p,i)=>({x:p[0],y:p[1],si:i}));
+  const g=A.acompanhaParalelo(s0,s1,G);
+  assert(Math.abs(dReta(g.pos[1],s1[0],s1[1])-23)<1e-6,'continua a 23 m da aresta: '+JSON.stringify(g.pos[1]));
+});
+test('transporte para fora: cada banco de fora acompanha o de dentro dele, até a linha desenhada',()=>{
+  const T={g:4,S:sq(20),Sin:sq(20),P:[{x:0,y:0}]},J={g:2,S:sq(43),Sin:sq(43),P:[{x:0,y:0}],projecaoEntrada:{}};
+  const o={pilha:{base:[[-66,-66],[66,-66],[66,66],[-66,66]].map(p=>({x:p[0],y:p[1]})),bermas:{_travas:[T,J]}}};A.set(o);
+  const S0=sq(20);T.S[1]={x:30,y:-30,si:1};T.Sin[1]={x:30,y:-30,si:1};
+  assert.equal(A.transportaParaFora('pilha',T,S0,null),true);
+  assert(Math.abs(dReta(J.S[1],T.S[0],T.S[1])-23)<1e-3&&Math.abs(dReta(J.S[1],T.S[1],T.S[2])-23)<1e-3,'o banco seguinte fica a 23 m do que andou');
+  assert.deepEqual(J.Sin.map(q=>[q.x,q.y]),J.S.map(q=>[q.x,q.y]),'as duas cópias do contorno andam juntas');
+  assert.equal(J.P,null,'o desenho dele é refeito');
+  const b=o.pilha.base;
+  assert(Math.abs(dReta(b[1],J.S[0],J.S[1])-23)<2e-3&&Math.abs(dReta(b[1],J.S[1],J.S[2])-23)<2e-3,'e a linha desenhada a 23 m dele: '+JSON.stringify(b[1]));
+  assert.deepEqual([b[3].x,b[3].y],[-66,66]);
+});
+test('o talude não fica mais íngreme e o lado congelado não muda: as duas medidas que recusam uma edição',()=>{
+  const anel=(P,z)=>({z,P:P.map(p=>({x:p[0],y:p[1]}))}),q=(m)=>[[-m,-m],[m,-m],[m,m],[-m,m]];
+  const bom={aneis:[anel(q(20),10),anel(q(35),0)]};                    // talude de 15 m em toda a volta
+  assert.equal(A.taludeApertado(bom,15),0);
+  const ruim={aneis:[anel([[-20,-20],[20,-20],[20,20],[-20,20]],10),anel([[-35,-35],[-5,-35],[-5,-24],[5,-24],[5,-35],[35,-35],[35,35],[-35,35]],0)]};
+  const t=A.taludeApertado(ruim,15);assert(t>20&&t<30,'o trecho em que a linha de fora chega a menos de 9 m (26 m de linha): '+t);
+  assert.equal(A.taludeApertado({aneis:[anel(q(20),10),anel(q(21),10)]},15),0,'berma não é talude');
+  const P=q(20).map(p=>({x:p[0],y:p[1]})),Q=P.map(v=>({...v}));
+  assert.equal(A.anelMudou(P,Q),false);Q.splice(1,0,{x:0,y:-20});assert.equal(A.anelMudou(P,Q),false,'um ponto a mais sobre a mesma linha não muda a forma');
+  Q[1]={x:0,y:-20.2};assert.equal(A.anelMudou(P,Q),true);assert.equal(A.anelMudou(P,Q,0.3),false,'dentro da folga');
+});
+

@@ -426,17 +426,41 @@ publicou de outro lugar e este repositório está desatualizado.
   vértice avançar é desfeito — o arrasto **vai até onde cabe** em vez de ser
   recusado inteiro, e a barra diz quanto andou e por quê parou. Com o ❄ de
   dentro, o "+" entra também nas linhas de fora, para elas acompanharem por
-  inteiro. Fazer as linhas de fora acompanharem a cada tentativa do cálculo
-  (em vez de por etapas) foi testado e descartado. **As outras linhas do lado
-  livre seguem na mesma proporção** (print IMG_0259: "quando estou arrastando
-  para fora … todas as linhas que estão para fora devem seguir na mesma
-  proporção"): o transporte só mexia nos vértices que as outras sementes já
-  tinham, e onde não havia vértice em frente ao que foi puxado a linha ficava
-  parada e a berma seguinte era espremida. Agora, para cada vértice que andou,
-  a semente vizinha ganha o vértice correspondente (na projeção dele) com o
-  mesmo deslocamento (`transportaParaFora`, `transportaParaDentro`); no teste,
-  num arrasto de 14 m todas as linhas de fora andaram os 14 m e as larguras
-  entre elas não mudaram. **Vértice não some** (print
+  inteiro. **As outras linhas do lado livre seguem na mesma proporção**
+  (prints IMG_0259 e IMG_0260: "quando estou arrastando para fora … todas as
+  linhas que estão para fora devem seguir na mesma proporção"). Com o ❄ de
+  dentro, só a linha desenhada (a mais de fora) era deslocada; as linhas entre
+  ela e a linha livre são paralelas dela, e o avanço de um canto encolhe a cada
+  banco para dentro — num arrasto de 24 m as de fora andavam ~20 m e a berma
+  junto da linha livre caía de 8,7 m para 2 m (em 8 de 25 vértices de teste
+  chegava a 0,3 m). Dar a todas "o mesmo deslocamento" também espreme (as
+  laterais de um canto puxado ficam mais inclinadas: berma de 8 m caindo para
+  1,3 m). Agora **cada banco de fora tem o seu contorno** (uma junta em cada
+  berma de fora, marcada `segue`, criada na primeira edição) e cada contorno
+  acompanha o do banco de dentro **mantendo a distância a ele**
+  (`acompanhaParalelo`, usado por `transportaParaFora`): o vértice de fora em
+  frente a um vértice de dentro guarda a distância às duas arestas dele, o que
+  está em frente a uma aresta gira junto com ela, e onde o de dentro tem um
+  vértice que mexeu e o de fora não tem nenhum em frente, o de fora ganha um.
+  O talude de cada banco continua exato e as bermas de fora ficam com a
+  largura que tinham (8 → 8 m nos vértices comuns do teste); num canto saliente
+  as linhas de fora andam um pouco mais que a linha puxada, que é o que as
+  mantém paralelas. As linhas de fora acompanham **a cada tentativa do
+  cálculo**, e o contorno do banco nunca é empurrado mais que o triplo do que
+  a linha respondeu (num bico ou canto do entalhe da rampa o cálculo empurrava
+  o contorno 50 m para a linha andar 3,6 m, escondido pelo desenho). Uma edição
+  com lado congelado é recusada, com o motivo — e o arrasto para no último
+  passo que coube —, quando: um banco deixaria de caber; **o lado congelado
+  mudaria** (conferido linha por linha, folga de 0,3 m: a projeção da entrada
+  da rampa é reacomodada olhando o projeto inteiro e chegou a redesenhar 10 m
+  de uma linha congelada); **um talude ficaria mais íngreme** que o projeto
+  (`taludeApertado`: mais de 20 m novos de talude a menos de 60% da largura);
+  ou um vértice de contorno que andou ficaria a menos de meia berma da linha
+  de fora dele. O arrasto por passos não passa mais pela conferência final de
+  "linha fixada atropelada" (as juntas de fora nascem durante a edição e a
+  medida de antes não as tinha: o arrasto era desfeito sem motivo e a escolha
+  do lado se perdia). A rampa não acompanha o contorno: junto dela o arrasto
+  vai menos longe. **Vértice não some** (print
   IMG_0255: "dependendo do movimento os vértices somem"): o gerador conserta
   sozinho uma linha que se dobra sobre si mesma ou passa da vizinha (corta o
   laço, tira o bico, empurra para dentro), e os vértices do trecho cortado
