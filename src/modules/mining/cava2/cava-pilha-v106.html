@@ -1224,9 +1224,48 @@ function botoesDeLado(){
   return {base:{x:sx,y:sy},
     fora:  {x:sx+nx*d, y:sy-ny*d, ok:temBerma},
     dentro:{x:sx-nx*d, y:sy+ny*d, ok:temBerma},
+    // ✂ dividir o desenho nesta linha: ao lado do ❄ de fora, deslocado ao longo da linha (fora de
+    // cima dela, como o ↺, para não cobrir vértice). Só onde ainda há bancada para continuar, e só
+    // sem lado congelado: com um ❄ aceso a pessoa está alargando a berma e os vértices da linha
+    // livre (a vizinha) ficam por ali — o botão não pode ganhar o toque deles.
+    divide: !ladoDaSelecao() && podeDividirNaSelecao() ? {x:sx+nx*d+tx*32, y:sy-ny*d-ty*32} : null,
     // ↺ (o R/Delete do teclado) devolve a berma ao nominal. Fica FORA da linha, além do ❄ do lado
     // congelado (sem lado, além do de fora): em cima dela cobria vértices e era tocado sem querer.
     volta: pendenciasDaSel() ? (ladoDaSelecao()==="dentro" ? {x:sx-nx*(d+34), y:sy+ny*(d+34)} : {x:sx+nx*(d+34), y:sy-ny*(d+34)}) : null};
+}
+/* DIVIDIR O DESENHO NA LINHA SELECIONADA (pedido de 23/11/2026, print IMG_0278: "ali também deve
+   aparecer mais um botão além do congelamento, um botão que servirá para dividir o desenho; se eu
+   clicar nele a rampa acaba ali e a partir daquele ponto eu posso continuar o desenho com outro
+   ângulo de talude ou direção da rampa"). O motor já sabia dividir em blocos encadeados
+   (limiteDeLinhaExistente, o "⊙ Escolher linha existente" do painel): o bloco atual passa a
+   terminar na linha, com a rampa dele, e a linha vira o limite de um bloco novo, que leva as
+   bancadas que faltavam e tem ângulo, berma e rampa próprios. O botão ✂ é a porta de entrada
+   junto da linha, ao lado dos ❄. */
+function podeDividirNaSelecao(){
+  if(!sel) return false;
+  const o=objs[sel.alvo], a=o && o.design && o.design.aneis[sel.idx]; if(!a) return false;
+  const P0=parametrosDe(sel.alvo), usado=Math.abs(a.z-(o.z0||0));
+  // nem a linha desenhada, nem a última gerada: tem de sobrar bancada dos dois lados da divisão
+  return sel.idx>0 && usado>1e-6 && (+P0.H||0)-usado>1e-6;
+}
+function divideNaSelecao(){
+  if(!podeDividirNaSelecao()) return false;
+  const k=sel.alvo, z=objs[k].design.aneis[sel.idx].z, antes=new Set(Object.keys(objs));
+  // lado congelado e junta ainda não confirmada pertencem à edição da berma, não à divisão
+  ladoCongelado=null; if(limpaJuntasNovas()) regen();
+  limiteDeLinhaExistente();
+  const nk=Object.keys(objs).find(q=>!antes.has(q));
+  if(!nk) return false;
+  const filho=objs[nk], pai=objs[k];
+  if(filho.erro || !filho.design || pai.erro || !pai.design){
+    // a continuação não fechou com esta linha: volta ao que era, sem deixar o desenho partido
+    const motivo=filho.erro || pai.erro || "a continuação não pôde ser gerada a partir desta linha";
+    if(typeof desfaz==="function") desfaz();
+    ultimaEdicao=`<b>não foi possível dividir aqui</b> — ${motivo}. Escolha outra linha.`;
+    atualizaDicaSel(); redesenha(); return false;
+  }
+  ultimaEdicao=`<b>desenho dividido na cota ${fmt(cotaAbsolutaDoDesign(z),0)} m</b> — o trecho que vinha antes termina nesta linha, com a rampa dele. O que vem depois é um bloco novo (${nk}), já selecionado: mude o <b>ângulo do talude</b>, a <b>berma</b> e a <b>rampa</b> dele no painel, e marque onde a rampa dele começa com <b>Início da rampa</b>. O desfazer junta de novo.`;
+  atualizaDicaSel(); redesenha(); return true;
 }
 function alternaLadoCongelado(lado, ok){
   if(!sel) return;
@@ -1287,6 +1326,20 @@ function desenhaBotoesDeLado(an){
     ctx.fillStyle = on ? "#fff" : b.ok ? "#2c7fb8" : "#9a9a9a";
     ctx.font="15px Signika, sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
     ctx.fillText("❄", b.x, b.y+1);
+  }
+  if(B.divide){
+    // tesoura desenhada à mão: o caractere ✂ vira emoji colorido no iPad e muda de cara em cada aparelho
+    const b=B.divide;
+    ctx.strokeStyle="rgba(15,118,110,.5)"; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.moveTo(B.fora.x,B.fora.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    ctx.beginPath(); ctx.arc(b.x,b.y,13,0,7); ctx.fillStyle="rgba(255,255,255,.96)"; ctx.fill();
+    ctx.strokeStyle="#0f766e"; ctx.lineWidth=1.6; ctx.stroke();
+    ctx.lineWidth=1.7; ctx.lineCap="round";
+    ctx.beginPath(); ctx.moveTo(b.x-2.6,b.y+2.2); ctx.lineTo(b.x+5.2,b.y-7.6);      // lâminas cruzadas
+    ctx.moveTo(b.x+2.6,b.y+2.2); ctx.lineTo(b.x-5.2,b.y-7.6); ctx.stroke();
+    ctx.beginPath(); ctx.arc(b.x-4.4,b.y+4.9,2.7,0,7); ctx.stroke();                 // os dois olhos do cabo
+    ctx.beginPath(); ctx.arc(b.x+4.4,b.y+4.9,2.7,0,7); ctx.stroke();
+    ctx.lineCap="butt";
   }
   if(B.volta){
     const b=B.volta;
@@ -5019,6 +5072,7 @@ cv.addEventListener("pointerdown", e=>{
           if(Math.hypot(e.offsetX-B[lado].x, e.offsetY-B[lado].y)<=17){ alternaLadoCongelado(lado, B[lado].ok); return; }
         }
         if(B.volta && Math.hypot(e.offsetX-B.volta.x, e.offsetY-B.volta.y)<=16){ reverteSel(); redesenha(); return; }
+        if(B.divide && Math.hypot(e.offsetX-B.divide.x, e.offsetY-B.divide.y)<=17){ divideNaSelecao(); return; }
       }
     }
     // 0) vértices das LINHAS DESENHADAS (quadrados magenta) — procurados ANTES
@@ -5390,7 +5444,7 @@ function atualizaDicaSel(){
   const ladoS=ladoDaSelecao();
   $("st_dica").innerHTML=`<b>EDITAR</b> — ${sel.alvo} · string #${sel.idx} (${a.tp} @ ${fmt(a.z,0)} m${a.ov?", berma editada ✎":""}) — `
     + (ladoS ? `<span style="color:#2c7fb8">❄ lado de ${ladoS==="fora"?"fora":"dentro"} congelado</span>: a linha <span style="color:#e67e22">laranja</span> é <b>livre</b> — arraste os vértices para qualquer lado, <b>+</b> cria e duplo toque apaga, só do lado de ${ladoS==="fora"?"dentro":"fora"}; o talude não muda, só a berma`
-             : `toque num <b>❄</b> para congelar aquele lado da linha e arrastar o outro · sem ❄, arraste os vértices`+(pendenciasDaSel()?` · <b>↺</b> (ou R/Delete) devolve a berma ao nominal e solta a fixação`:``)+` · <b>F</b> ${ehEsta?"solta":"congela"} esta string`)
+             : `toque num <b>❄</b> para congelar aquele lado da linha e arrastar o outro · sem ❄, arraste os vértices`+(podeDividirNaSelecao()?` · <b>✂</b> divide o desenho nesta linha`:``)+(pendenciasDaSel()?` · <b>↺</b> (ou R/Delete) devolve a berma ao nominal e solta a fixação`:``)+` · <b>F</b> ${ehEsta?"solta":"congela"} esta string`)
     + (cg && !ehEsta ? ` &nbsp;·&nbsp; <span style="color:#2c7fb8">❄ limite: ${congelada.alvo} #${congelada.idx} (${cg.tp} @ ${fmt(cg.z,0)} m)</span>` : "")
     + (ultimaEdicao ? ` &nbsp;·&nbsp; <span style="color:#f0b429">${ultimaEdicao}</span>` : "");
 }
@@ -6284,7 +6338,7 @@ window.__api={get gridVisible(){return mostraGrade;},setGridVisible,objs, geraDe
               dentroDe, cumulativo, arcoMaisProximo, pontoNoArco, recortaLinhaForaRampas,
               garanteFora, garanteDentro, compHoriz, segInt, distAoAnel, perimetro,
               tipoDe, alvos, estadoAtual, aplicaEstado, limpaCadeia, saneiaPainel,
-              blocoParaPainel, painelParaBloco, finalizaAqui, limiteDeLinhaExistente,
+              blocoParaPainel, painelParaBloco, finalizaAqui, limiteDeLinhaExistente, divideNaSelecao, podeDividirNaSelecao,
               setContextLayers(v,redraw=true){
                 contexto=Array.isArray(v)?v:[];
                 for(const item of contexto){

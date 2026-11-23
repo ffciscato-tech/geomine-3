@@ -497,6 +497,23 @@ publicou de outro lugar e este repositório está desatualizado.
   e o lado congelado continuam (a ferramenta Mover da barra desmarca tudo).
   No 2D a mãozinha é o desenho à mão livre; na aba Cava ela é o mover a vista,
   que é o que a mão já significa na barra de lá.
+- **Na aba Cava, a linha selecionada tem também o ✂, que divide o desenho ali.**
+  Pedido de 23/11/2026, print IMG_0278: "ali também deve aparecer mais um botão
+  além do congelamento, um botão que servirá para dividir o desenho; se eu
+  clicar nele a rampa acaba ali e a partir daquele ponto eu posso continuar o
+  desenho com outro ângulo de talude ou direção da rampa". O motor já dividia em
+  blocos encadeados (`limiteDeLinhaExistente`, o "⊙ Escolher linha existente"
+  do painel); o ✂ é a porta de entrada junto da linha, ao lado do ❄ de fora
+  (`botoesDeLado`, `divideNaSelecao`, `podeDividirNaSelecao`). O bloco atual
+  passa a terminar na linha, com a rampa dele; a linha vira o limite de um bloco
+  novo, que leva as bancadas que faltavam, fica selecionado e tem ângulo, berma
+  e rampa próprios ("Início da rampa" marca onde a rampa dele começa). As linhas
+  do trecho anterior não se movem. O botão só aparece onde sobra bancada dos
+  dois lados (nem na linha desenhada, nem na última) e some enquanto um ❄ está
+  aceso, para não ganhar o toque dos vértices da linha livre. Se a continuação
+  não fecha a partir daquela linha, a divisão é desfeita com aviso; o desfazer
+  junta de novo. A tesoura é desenhada no canvas (o caractere vira emoji no
+  iPad). Testes em `cava2/cava-divide.test.cjs`.
 - **A régua mede nos dois modos; na aba Cava a Seção A–A′ fica no botão de
   linha.** Print IMG_0266 (23/11/2026), com a régua da barra de baixo circulada
   e "MEDIÇÃO" escrito à mão: "essa ferramenta de medição aqui no modo cava está
