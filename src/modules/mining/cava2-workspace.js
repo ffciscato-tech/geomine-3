@@ -128,9 +128,12 @@ function criaInterface(){
     try{estado.frame.contentWindow.addEventListener('cava2:cursor',atualizaCursorGlobal);}catch(e){}
     try{estado.frame.contentWindow.addEventListener('cava2:drawing-blocked',exigeMdt);}catch(e){}
     try{estado.frame.contentWindow.addEventListener('cava2:tool-changed',e=>{
-      const mapa={selpoly:'selpoly',editar:'vertex',rampa:'point',secao:'line',cava:'poly',pilha:'poly'};
+      const mapa={selpoly:'selpoly',editar:'vertex',rampa:'point',secao:'line',cava:'poly',pilha:'poly',medir:'measure'};
       marcaFerramentaGlobalCava(mapa[e.detail?.tool]||null);
+      // outra ferramenta escolhida (aqui ou na barra do próprio desenho): a régua da Cava se encerra
+      if(estado.regua&&e.detail?.tool!=='medir'){encerraReguaDaCava(false);try{clearMeas();}catch(_){}}
     });}catch(e){}
+    try{estado.frame.contentWindow.addEventListener('cava2:measure-changed',e=>recebeMedicaoDaCava(e.detail?.pts));}catch(e){}
     try{estado.frame.contentWindow.addEventListener('cava2:selection-changed',e=>{
       const total=+e.detail?.count||0;status(total?`${total} string(s) selecionada(s) por polígono.`:'Nenhuma string encontrada dentro do polígono.',!total);
     });}catch(e){}
@@ -163,6 +166,61 @@ function criaInterface(){
   ligaFerramentasGlobais();
 }
 
+/* RÉGUA NA ABA CAVA (print IMG_0266, 23/11/2026: "essa ferramenta de medição no modo cava está
+   como perfil, tem que ser medição nos dois modos"). A régua da barra de baixo abre aqui o MESMO
+   painel "Régua" do modo 2D, em "Distância por pontos": os pontos são marcados no desenho da
+   cava (o motor os guarda e desenha) e o painel calcula como sempre — distância horizontal e 3D,
+   cotas, desnível e declividade. Ponto encaixado numa linha do projeto leva a cota dela; ponto
+   solto usa a fonte de cota do painel, que aqui começa no MDT de trabalho do desenho.
+   A seção A–A′ continua no botão de linha. */
+function abreReguaDaCava(){
+  const box=document.getElementById('measBox'),mm=document.getElementById('mbMeasureMode');if(!box)return false;
+  if(!estado.regua)estado.regua={modo:mm?mm.value:null};
+  if(mm){mm.value='points';mm.disabled=true;mm.title='Na aba Cava a régua mede por pontos';}
+  if(S.meas)S.meas.mode='points';
+  box.classList.add('on');
+  try{refreshMeasPanel();}catch(e){}
+  const R=rasterDoDesenho(desenhoAtual()),sel=document.getElementById('mbRaster');
+  if(R&&sel&&[...sel.options].some(o=>o.value==='R:'+R.id))sel.value='R:'+R.id;
+  try{clearMeas();}catch(e){}
+  api()?.setMeasureSnap?.(!!document.getElementById('mbSnap')?.checked);
+  return true;
+}
+// devolve o painel ao estado do modo 2D; quem chama decide se ele continua aberto
+function encerraReguaDaCava(mantemPainel){
+  const r=estado.regua;if(!r)return;estado.regua=null;
+  const mm=document.getElementById('mbMeasureMode');
+  if(mm){mm.disabled=false;mm.title='';if(r.modo){mm.value=r.modo;if(S.meas)S.meas.mode=r.modo;}}
+  api()?.setMeasureCount?.(0);
+  if(!mantemPainel)document.getElementById('measBox')?.classList.remove('on');
+  try{refreshMeasPanel();}catch(e){}
+}
+// o motor avisa a cada ponto marcado, desfeito ou limpo: o painel recalcula
+function recebeMedicaoDaCava(pts){
+  if(!estado.regua||!Array.isArray(pts)||typeof S==='undefined'||!S.meas)return;
+  const crs=estado.crs||S.workCRS;
+  try{
+    S.meas.buf=pts.map(p=>{const ll=toWGS(crs,+p.x,+p.y);return [ll[1],ll[0]];});
+    S.meas.pointRefs=pts.map(p=>Number.isFinite(p.z)?{z:+p.z,source:p.fonte||'Desenho da cava'}:null);
+    S.meas.pointResult=null;
+    redrawMeas();void updateMeas();
+  }catch(e){console.warn('Área 2D: régua',e);}
+}
+// o painel desfez ou limpou pontos (↺, Esc, ✕): o desenho da cava acompanha pela contagem
+function sincronizaReguaDaCava(){
+  if(!estado.regua)return;
+  api()?.setMeasureCount?.((S.meas?.buf||[]).length);
+}
+// o ✕ do painel fechou a régua: a aba Cava volta para a seleção
+function reguaDaCavaFechada(){
+  if(!estado.regua)return;
+  encerraReguaDaCava(false);
+  try{if(api()?.activateExternalTool?.('select',alvoAtual())!==false)marcaFerramentaGlobalCava('vertex');}catch(e){}
+}
+function instrucaoDaReguaNaCava(){
+  return estado.regua?'Toque nos pontos do desenho para medir.\nCom "Grudar" ligado, o ponto encaixa nas linhas do projeto e usa a cota delas; solto, usa a fonte de cota escolhida acima.\n↺ desfaz o último · Esc limpa · ✕ fecha.':null;
+}
+
 /* A barra CAD continua visível na Área 2D, mas controla o canvas encapsulado. */
 function comandoGlobalDaCava(tool){
   return ({select:'select',selpoly:'selpoly',vertex:'vertex',point:'point',line:'line',poly:'poly',
@@ -177,7 +235,7 @@ function atualizaBarraGlobalCava(ativa){
   const box=document.getElementById('mapTools');if(!box)return;
   const titulos={select:'Selecionar string',selpoly:'Selecionar strings por polígono',vertex:'Editar vértices',
     point:'Definir início da rampa',line:'Desenhar seção A–A′',poly:'Desenhar limite da cava/DCE',
-    del:'Limpar tudo da cava/DCE',measure:'Seção A–A′',info:'Selecionar e inspecionar string'},
+    del:'Limpar tudo da cava/DCE',measure:'Régua — medir distância',info:'Selecionar e inspecionar string'},
     cores={select:'#087bb5',selpoly:'#007f7b',vertex:'#7447c6',point:'#c61f70',line:'#00798c',
       poly:'#bd5c00',del:'#c92d35',measure:'#087c51',info:'#3b61b5'};
   for(const b of box.querySelectorAll('.mtool[data-tool]')){
@@ -216,8 +274,15 @@ function ligaFerramentasGlobais(){
     }
     const A=api();if(!A||typeof A.activateExternalTool!=='function')return;
     e.preventDefault();e.stopImmediatePropagation();
-    if(A.activateExternalTool(cmd,alvoAtual())!==false)marcaFerramentaGlobalCava(tool);
+    if(A.activateExternalTool(cmd,alvoAtual())!==false){
+      marcaFerramentaGlobalCava(tool);
+      if(tool==='measure')abreReguaDaCava();
+    }
   },true);
+  // "Grudar em vértices e linhas" do painel Régua vale também para o desenho da cava
+  document.addEventListener('change',e=>{
+    if(e.target&&e.target.id==='mbSnap'&&estado.regua)api()?.setMeasureSnap?.(!!e.target.checked);
+  });
 }
 
 function abre(){
@@ -225,8 +290,22 @@ function abre(){
   requestAnimationFrame(()=>atualizaNavegacaoAbas(true));
   aplicaTemaNoMotor();aplicaPainel();atualizaBarraGlobalCava(true);
   if(estado.ready)atualizaContexto();
+  // a régua já estava armada no modo 2D: continua armada aqui, medindo no desenho da cava
+  if(estado.ready&&typeof S!=='undefined'&&S.tool==='measure'&&desenhoAtual()?.variante!=='recortada'){
+    try{if(api()?.activateExternalTool?.('measure',alvoAtual())!==false){marcaFerramentaGlobalCava('measure');abreReguaDaCava();}}catch(e){}
+  }
 }
-function fecha(){const host=workspace();if(host)host.classList.remove('on');atualizaBarraGlobalCava(false);}
+// saindo da aba Cava com a régua aberta: o painel só continua se a régua do modo 2D estiver armada
+function reguaAoSairDaCava(){
+  if(!estado.regua)return;
+  const noMapa=typeof S!=='undefined'&&S.tool==='measure';
+  encerraReguaDaCava(noMapa);try{clearMeas();}catch(e){}
+  try{api()?.activateExternalTool?.('select',alvoAtual());}catch(e){}
+}
+function fecha(){
+  reguaAoSairDaCava();
+  const host=workspace();if(host)host.classList.remove('on');atualizaBarraGlobalCava(false);
+}
 function aplicaTemaNoMotor(){
   const D=doc2D();if(!D)return false;
   const cor=getComputedStyle(document.documentElement).getPropertyValue('--map-bg').trim();
@@ -2541,6 +2620,7 @@ window.CCMGISCava2={open:abre,close:fecha,importSelected:importaSelecionada,
   openMiningMode:abreModoCava,newDesign:criaNovoDesenho,selectDesign:trocaDesenho,
   selectVariant:variante=>trocaDesenho(estado.desenhoId,variante),cutProject:()=>projetoDaCava(desenhoAtual()),
   syncTheme:aplicaTemaNoMotor,syncStyles:agendaContexto,
+  rulerActive:()=>!!estado.regua,rulerSync:sincronizaReguaDaCava,rulerClosed:reguaDaCavaFechada,rulerHint:instrucaoDaReguaNaCava,rulerLeave:reguaAoSairDaCava,
   editGeometry:editaGeometriaCava,vectorCommand:comandoVetorialCava,
   beforeLayerDelete:preparaExclusaoCamada,onLayerDeleted:removeDesenhoDaCamada,
   restoreLayerDeletion:restauraExclusaoCamada,chooseWorkMdt:selecionaMdtTrabalho,

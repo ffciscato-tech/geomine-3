@@ -263,6 +263,8 @@ function measMode(){
   return e?e.value:(S.meas.mode||'lines');
 }
 function measInstrucao(){
+  // na aba Cava a régua mede no desenho da cava, com a instrução dela
+  try{const t=window.CCMGISCava2?.rulerHint?.();if(t)return t;}catch(e){}
   return measMode()==='lines'
     ?'Marque o primeiro e o segundo ponto sobre os traços.\nPode usar a mesma linha ou linhas diferentes.'
     :'Clique em pontos soltos — o ponto cai onde você tocar.\nCom um MDT escolhido: 3D, Δz e inclinação.\nDuplo clique encerra · Esc limpa.';
@@ -343,6 +345,7 @@ function clearMeas(){
   const o=document.getElementById('mbOut');
   if(o) o.textContent=measInstrucao();
   const m=document.getElementById('mbMode'); if(m) m.textContent='2D';
+  try{window.CCMGISCava2?.rulerSync?.();}catch(e){}       // régua aberta na aba Cava: o desenho de lá também limpa
 }
 function fechaMeas(){
   /* Esc chama apenas clearMeas() e conserva a Régua armada. O X encerra a
@@ -355,9 +358,11 @@ function fechaMeas(){
     const b=document.querySelector('.mtool[data-tool="measure"]');
     if(b)b.classList.remove('on');
   }
+  try{window.CCMGISCava2?.rulerClosed?.();}catch(e){}     // idem: a aba Cava volta para a seleção
   toast('Régua fechada');
 }
 function redrawMeas(){
+  try{window.CCMGISCava2?.rulerSync?.();}catch(e){}       // ↺ do painel com a régua na aba Cava
   if(!S.measLayer) return;
   S.measLayer.clearLayers();
   const B=S.meas.buf;

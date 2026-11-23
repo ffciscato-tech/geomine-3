@@ -1,4 +1,4 @@
-/* Aba Cava — quadro da Seção A–A′ (a régua da barra de baixo): faixa de cotas, escalas e medidas.
+/* Aba Cava — quadro da Seção A–A′ (o botão de linha da barra de baixo; a régua mede): faixa de cotas, escalas e medidas.
    A função é tirada do próprio arquivo do motor; só números sintéticos. */
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const fonte=fs.readFileSync(path.join(__dirname,'cava-pilha-v106.html'),'utf8'),ini=fonte.indexOf('function quadroDaSecao('),fim=fonte.indexOf('function desenhaSecPainel(',ini);

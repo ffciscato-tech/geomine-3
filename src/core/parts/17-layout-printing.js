@@ -3601,6 +3601,8 @@ function switchView(v){
   if(vistaAnterior==='layout'&&v!=='layout')window.GeoMineLayoutLive?.cancel();
   S._preLayoutMapState=null;
   S._view=v;
+  // régua aberta na aba Cava: ao sair dela o painel volta a ser o do mapa (ou fecha)
+  if(vistaAnterior==='cava2'&&v!=='cava2'){try{window.CCMGISCava2?.rulerLeave?.();}catch(e){}}
   document.body.classList.toggle('mina-view',v==='mina');
   document.body.classList.toggle('cava2-view',v==='cava2');
   document.querySelectorAll('#tabBar .tbtn').forEach(b=>b.classList.toggle('on', b.dataset.view===v));

@@ -486,7 +486,25 @@ publicou de outro lugar e este repositório está desatualizado.
   e o lado congelado continuam (a ferramenta Mover da barra desmarca tudo).
   No 2D a mãozinha é o desenho à mão livre; na aba Cava ela é o mover a vista,
   que é o que a mão já significa na barra de lá.
-- **Na aba Cava, a régua traça a Seção A–A′, e a figura tem de fazer sentido.**
+- **A régua mede nos dois modos; na aba Cava a Seção A–A′ fica no botão de
+  linha.** Print IMG_0266 (23/11/2026), com a régua da barra de baixo circulada
+  e "MEDIÇÃO" escrito à mão: "essa ferramenta de medição aqui no modo cava está
+  como perfil, tem que ser medição nos dois modos". Até então a régua e o botão
+  de linha armavam a mesma seção. Agora a régua abre na aba Cava o **mesmo
+  painel "Régua" do modo 2D**, em "Distância por pontos": os pontos são marcados
+  no desenho da cava (o motor os guarda e desenha — ferramenta `medir`,
+  `desenhaMedicao`, `encaixeDaMedicao` em `cava-pilha-v106.html`) e o painel
+  calcula como sempre: distância horizontal e 3D, cotas, desnível e
+  declividade, por trecho e no total. Com "Grudar em vértices e linhas" ligado
+  o ponto encaixa nas linhas do projeto e leva a **cota da linha**; solto, usa
+  a fonte de cota do painel, que ali começa no MDT de trabalho do desenho. O ↺
+  desfaz o último ponto, Esc limpa e mantém a régua armada, o ✕ fecha e devolve
+  a aba à seleção; escolher outra ferramenta encerra a régua; a régua armada
+  acompanha a troca de aba (2D ↔ Cava) com a medição zerada. A ponte está em
+  `cava2-workspace.js` (`abreReguaDaCava`, `recebeMedicaoDaCava`,
+  `sincronizaReguaDaCava`), com três ganchos em
+  `09-measurement-properties-cad.js` e um em `switchView`.
+- **Na aba Cava, a Seção A–A′ (botão de linha) tem de fazer sentido.**
   Print IMG_0245 (22/11/2026), com a régua da barra de baixo circulada e o
   painel "Seção A–A′ · L = 19 m · z: 315 a 405 m · EV 0,04×": "esta seção
   (imagem) não tem sentido — apareceu quando cliquei aqui". O painel desenhava
@@ -501,8 +519,9 @@ publicou de outro lugar e este repositório está desatualizado.
   vertical só aumenta (inteiro, até 10×); (4) linha curta sobre aterro alto: o
   terreno faria a figura virar uma coluna de poucos pixels, então a faixa fica
   só com o projeto e o terreno vai para o título; (5) o título traz a medida
-  da régua — distância, desnível de A para A′ e inclinação — e, cabendo, as
-  cotas de cada perfil. Testes em `cava2/cava-secao.test.cjs`.
+  da linha — distância, desnível de A para A′ e inclinação — e, cabendo, as
+  cotas de cada perfil. Testes em `cava2/cava-secao.test.cjs`. (Na época a
+  régua armava esta seção; desde 23/11/2026 quem a arma é o botão de linha.)
 - **Raspão: onde o contato deu a superfície como mantida, a linha e o MDT
   recortado ficam.** Print IMG_0244 (22/11/2026, 17h40), com dois trechos
   circulados na chegada da rampa à berma: "ainda não aparece a linha, ela

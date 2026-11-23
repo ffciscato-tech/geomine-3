@@ -478,6 +478,13 @@ let ferramenta = "mover";
 let desenho = null;              // {alvo:'cava'|'pilha', pts:[]}
 let hover = null;                // posição do mouse em mundo
 let secA = null, secB = null, secTemp = null;
+/* RÉGUA NA ABA CAVA (print IMG_0266, 23/11/2026: "essa ferramenta de medição no modo cava está
+   como perfil, tem que ser medição nos dois modos"). A régua da barra de baixo passa a MEDIR
+   aqui também, com o mesmo painel "Régua" do modo 2D; a seção A–A′ fica no botão de linha.
+   Os pontos moram aqui (é este canvas que os desenha) e o painel é avisado a cada mudança.
+   Com "Grudar" ligado no painel, o ponto encaixa nas linhas do projeto e leva a cota delas;
+   solto, cai onde foi tocado e a cota vem do MDT escolhido no painel. */
+let medPts = [], medEncaixa = false, medElastico = false;
 let arrasto = null;              // pan
 let editando = null;             // {tipo:'base'|'anel', alvo, idx, ...}
 let sel = null;                  // {alvo, idx} — string selecionada para edição
@@ -4432,6 +4439,7 @@ function redesenha(){
     rotuloHalo("A",ax-12,ay-10,"#2a7f52",12);
     rotuloHalo("A'",bx2+12,by2-10,"#2a7f52",12);
   }
+  desenhaMedicao();
   if(alvos().some(k=>objs[k]?.base&&visibilidade[tipoDe(k)]?.on!==false))desenhaLegendaCotaTrabalho();
   // dica quando vazio
   if(!objs.cava.base && !objs.pilha.base && !contexto?.length && !(desenho&&desenho.pts.length)){
@@ -4453,8 +4461,9 @@ function redesenha(){
      perto dela — longe, vira uma nota no título;
    - a figura nunca é achatada: se não cabe em escala 1:1, encolhe por igual e fica centrada;
      o exagero vertical só aumenta (até 10×), para relevo baixo;
-   - como é a régua que arma esta ferramenta, o título traz a medida: distância, desnível de A
-     para A′ e inclinação. */
+   - o título traz a medida da linha: distância, desnível de A para A′ e inclinação.
+   Desde 23/11/2026 quem arma esta ferramenta é o botão de LINHA da barra de baixo; a régua
+   passou a medir (ferramenta "medir", mais acima). */
 function perfisDaSecao(a,b,M){
   const zp=[],zt=[];
   for(let i=0;i<=M;i++){
@@ -4680,8 +4689,67 @@ const DICAS={
   rampa:"clique perto da linha-base da cava ou da pilha para reposicionar o início da rampa (R)",
   retorno:"clique no ponto onde a rampa deve virar em gancho (switchback) · a curva é PLANA e usa o raio mínimo do painel · clique de novo em cima para remover",
   secao:"clique no ponto A e depois no ponto A' para cortar a seção",
+  medir:"toque nos pontos para medir a distância · ↺ no painel Régua desfaz o último · Esc limpa · ✕ fecha a régua",
   selpoly:"clique os vértices do polígono de seleção · feche no primeiro ponto, com Enter ou duplo clique · Esc cancela",
 };
+function avisaMedicao(){
+  window.dispatchEvent(new CustomEvent("cava2:measure-changed",{detail:{pts:medPts.map(p=>({x:p.x,y:p.y,z:p.z,fonte:p.fonte}))}}));
+}
+function totalDaMedicao(){ let t=0; for(let i=1;i<medPts.length;i++) t+=Math.hypot(medPts[i].x-medPts[i-1].x, medPts[i].y-medPts[i-1].y); return t; }
+function atualizaDicaMedicao(){
+  if(ferramenta!=="medir") return;
+  const n=medPts.length;
+  $("st_dica").innerHTML="<b>MEDIR</b> — "+(n<2 ? (n ? "ponto 1 marcado · toque no próximo" : DICAS.medir)
+    : `distância horizontal <b>${fmt(totalDaMedicao(),2)} m</b> em ${n-1} trecho${n>2?"s":""} · cotas, desnível e declividade no painel Régua`);
+}
+// onde cai o ponto tocado: num vértice ou numa linha do projeto (com a cota dela), ou onde foi tocado
+function encaixeDaMedicao(sx, sy, q, toque){
+  const solto={x:q.x, y:q.y, z:NaN, fonte:null};
+  if(!medEncaixa) return solto;
+  const tol=toque?22:13; let best=null, bd=tol;
+  const nome=(k,a)=>(tipoDe(k)==="pilha"?"DCE":"Cava")+" · "+(a.tp==="crista"?"crista":"pé")+" "+fmt(cotaAbsolutaDoDesign(a.z),1)+" m";
+  const linhas=[];
+  for(const k of alvos()){
+    const d=objs[k] && objs[k].design; if(!d || visibilidade[tipoDe(k)]?.on===false) continue;
+    for(const a of d.aneis) if(a.P && a.P.length>1) linhas.push([k,a]);
+  }
+  for(const [k,a] of linhas) for(const p of a.P){               // vértice tem preferência
+    const [x,y]=W2S(p.x,p.y), dd=Math.hypot(x-sx,y-sy);
+    if(dd<bd){ bd=dd; best={x:p.x, y:p.y, z:cotaAbsolutaDoDesign(a.z), fonte:nome(k,a)}; }
+  }
+  if(best) return best;
+  bd=tol;
+  for(const [k,a] of linhas){ const P=a.P, n=P.length;
+    for(let i=0;i<n;i++){
+      const p1=P[i], p2=P[(i+1)%n], dx=p2.x-p1.x, dy=p2.y-p1.y, L2=dx*dx+dy*dy; if(L2<1e-12) continue;
+      const t=clamp(((q.x-p1.x)*dx+(q.y-p1.y)*dy)/L2,0,1), px=p1.x+t*dx, py=p1.y+t*dy, dd=Math.hypot(px-q.x,py-q.y)*escala;
+      if(dd<bd){ bd=dd; best={x:px, y:py, z:cotaAbsolutaDoDesign(a.z), fonte:nome(k,a)}; }
+    }
+  }
+  return best || solto;
+}
+function desenhaMedicao(){
+  if(ferramenta!=="medir" || !medPts.length) return;
+  const P=medPts, cor="#087c51", n=P.length;
+  const tr=pts=>{ ctx.beginPath(); pts.forEach((p,i)=>{ const [x,y]=W2S(p.x,p.y); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); };
+  ctx.save(); ctx.lineJoin="round"; ctx.lineCap="round"; ctx.setLineDash([]);
+  if(n>1){ ctx.strokeStyle="rgba(255,255,255,.9)"; ctx.lineWidth=5.5; tr(P); ctx.strokeStyle=cor; ctx.lineWidth=2.6; tr(P); }
+  const temp=(medElastico && hover) ? hover : null;              // linha elástica até o cursor (mouse)
+  if(temp){ ctx.strokeStyle=cor; ctx.lineWidth=1.5; ctx.setLineDash([6,5]); tr([P[n-1],temp]); ctx.setLineDash([]); }
+  let total=0;
+  for(let i=0;i<n;i++){
+    const [x,y]=W2S(P[i].x,P[i].y);
+    if(i){
+      const d=Math.hypot(P[i].x-P[i-1].x, P[i].y-P[i-1].y), [x0,y0]=W2S(P[i-1].x,P[i-1].y); total+=d;
+      if(n>2 && Math.hypot(x-x0,y-y0)>52) rotuloHalo(fmt(d,2)+" m", (x+x0)/2, (y+y0)/2-10, cor, 10);
+    }
+    ctx.beginPath(); ctx.arc(x,y,4.5,0,Math.PI*2); ctx.fillStyle="#fff"; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle=cor; ctx.stroke();
+  }
+  const [ux,uy]=W2S(P[n-1].x,P[n-1].y);
+  if(n>1) rotuloHalo((n>2?"Σ ":"")+fmt(total,2)+" m", ux+34, uy-14, cor, 12.5);
+  if(temp){ const d=Math.hypot(temp.x-P[n-1].x, temp.y-P[n-1].y), [hx,hy]=W2S(temp.x,temp.y); if(d*escala>30) rotuloHalo("+"+fmt(d,2)+" m", (ux+hx)/2, (uy+hy)/2+12, cor, 10); }
+  ctx.restore();
+}
 /* ✓ e MÃOZINHA sobre o desenho, como no modo 2D (22/11/2026). A mãozinha move a vista
    SEM trocar de ferramenta: a linha selecionada e o lado congelado continuam. O ✓ é o
    "terminado": fecha o desenho em curso, ou encerra a edição da linha. */
@@ -4710,6 +4778,7 @@ function defineTool(t){
   ferramenta=t;
   if(t!=="cava"&&t!=="pilha") desenho=null;
   if(t!=="secao"){ secTemp=null; if(secA&&!secB) secA=null; }
+  if(t!=="medir" && medPts.length){ medPts=[]; avisaMedicao(); }
   if(t!=="editar"){ sel=null; ladoCongelado=null; if(limpaJuntasNovas()) regen(); }
   for(const id of ["t_mover","t_cava","t_pilha","t_editar","t_rampa","t_retorno","t_secao"])
     $(id).classList.remove("ativa");
@@ -4927,6 +4996,11 @@ cv.addEventListener("pointerdown", e=>{
       }
       regen(); atualizaDicaSel(); redesenha();
     }
+  }else if(ferramenta==="medir"){
+    const p=encaixeDaMedicao(e.offsetX, e.offsetY, q, e.pointerType!=="mouse"), u=medPts[medPts.length-1];
+    if(u && Math.hypot(u.x-p.x,u.y-p.y)<0.01) return;           // toque repetido no mesmo lugar
+    medPts.push(p); medElastico=e.pointerType==="mouse";
+    avisaMedicao(); atualizaDicaMedicao(); redesenha();
   }else if(ferramenta==="secao"){
     if(!secA || secB){secA=q; secB=null; secTemp=null;}
     else {secB=q; desenhaSecPainel();}
@@ -5347,6 +5421,7 @@ cv.addEventListener("pointermove", e=>{
     agendaInteracao(true); return;
   }
   if(ferramenta==="secao" && secA && !secB){secTemp=q; agendaInteracao(true); return;}
+  if(ferramenta==="medir" && medPts.length){ medElastico=e.pointerType==="mouse"; if(medElastico) agendaInteracao(true); return; }
   if(desenho && desenho.pts.length) agendaInteracao(true);
 });
 cv.addEventListener("pointerup", e=>{
@@ -5951,7 +6026,14 @@ document.addEventListener("keydown", e=>{
       editando=null; regen(); atualizaDicaSel();
       e.preventDefault(); return;
     }
+    if(ferramenta==="medir"){        // como no modo 2D: Esc limpa a medição e a régua continua armada
+      if(medPts.length){ medPts=[]; avisaMedicao(); atualizaDicaMedicao(); redesenha(); }
+      e.preventDefault(); return;
+    }
     desenho=null;poligonoSelecao=[]; if(!secB){secA=null; secTemp=null;} defineTool("mover");
+  }
+  else if(e.key==="Backspace" && ferramenta==="medir" && medPts.length){
+    medPts.pop(); avisaMedicao(); atualizaDicaMedicao(); redesenha(); e.preventDefault();
   }
   else if(e.key==="Backspace" && desenho && desenho.pts.length){
     desenho.pts.pop(); redesenha(); e.preventDefault();
@@ -6291,8 +6373,12 @@ window.__api={get gridVisible(){return mostraGrade;},setGridVisible,objs, geraDe
                   selecaoMultipla=[];poligonoSelecao=[];defineTool("editar");return true;
                 }
                 if(tool==="point"){defineTool("rampa");return true;}
-                if(tool==="line"||tool==="measure"){
+                if(tool==="line"){
                   secA=null;secB=null;secTemp=null;desenhaSecPainel();defineTool("secao");return true;
+                }
+                if(tool==="measure"){              // a régua MEDE (a seção A–A′ é o botão de linha)
+                  if(medPts.length){ medPts=[]; avisaMedicao(); }
+                  defineTool("medir");return true;
                 }
                 if(tool==="poly")return this.beginDrawing(tipo);
                 if(tool==="clear"){$("b_limpar").click();return true;}
@@ -6300,6 +6386,10 @@ window.__api={get gridVisible(){return mostraGrade;},setGridVisible,objs, geraDe
                 return false;
               },
               getSelection(){return {single:sel,multiple:selecaoMultipla.map(x=>({...x}))};},
+              // régua: o painel (fora daqui) liga o encaixe e manda desfazer/limpar pela contagem de pontos
+              setMeasureSnap(v){medEncaixa=!!v;return medEncaixa;},
+              setMeasureCount(n){n=Math.max(0,n|0);if(n<medPts.length){medPts.length=n;atualizaDicaMedicao();redesenha();}return medPts.length;},
+              getMeasure(){return medPts.map(p=>({...p}));},
               clearAll(){$("b_limpar").click();return true;},
               iniciarDesenhoCava(){return this.beginDrawing("cava");},
               iniciarDesenhoDce(){return this.beginDrawing("pilha");},
