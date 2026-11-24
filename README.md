@@ -561,6 +561,10 @@ publicou de outro lugar e este repositório está desatualizado.
      abrir** (`offerDrive` em `project-tab-session.js`): caixa "Abrir a versão
      salva no Google Drive", porque a janela do Google só abre a partir de um
      toque. Antes a página ficava em branco, calada.
+  5. **Ponto de retomada tirado sobre uma revisão do Drive anterior à última
+     que a aba gravou ou abriu não vale** (`stale`), nem com edições: a revisão
+     do Drive só cresce e o registro da aba guarda a última. É o que desfaz os
+     pontos antigos deixados nos aparelhos pela versão anterior.
   Testes em `validation/workspace-resume.test.cjs` e
   `validation/project-tab-session-drive.test.cjs`.
 - **A régua mede nos dois modos; na aba Cava a Seção A–A′ fica no botão de

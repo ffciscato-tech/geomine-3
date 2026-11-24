@@ -26,6 +26,16 @@ function bound(p){
  return !!record&&record.projectId===p.project;
 }
 function localRead(key){try{return JSON.parse(localStorage.getItem(key)||'null');}catch(_){return null;}}
+/* Ponto de retomada tirado sobre uma revisão do arquivo ANTERIOR à última que esta aba gravou ou
+   abriu no Drive: é mais antigo que o arquivo e não vale, nem com edições. A revisão do Drive só
+   cresce, e o registro da aba (project-tab-session) guarda a última gravada/aberta. Cobre os pontos
+   deixados pela versão anterior do GeoMine, que não invalidava o ponto ao salvar. */
+function stale(p){
+ const record=root.GeoMineProjectTabSession?.state?.().record,source=record?.source;
+ if(!p||!record||record.projectId!==p.project||source?.kind!=='drive')return false;
+ const arquivo=Number(source.version),ponto=Number(p.baseRevision);
+ return Number.isFinite(arquivo)&&Number.isFinite(ponto)&&arquivo>0&&ponto>0&&arquivo>ponto;
+}
 // Persist recovery by account AND tab. The tab token also survives in the
 // page URL, so iOS reload/discard cannot select another tab's last project.
 function durable(value,o=owner(),valid=()=>true){
@@ -184,6 +194,7 @@ async function restore(){
  const before={owner:owner(),generation:gen(),epoch};let p;finding=true;
  try{p=await previous();}finally{finding=false;}
  if(before.owner!==owner()||before.generation!==gen()||before.epoch!==epoch||!bound(p))return false;
+ if(stale(p)){void supersede();return false;}
  // If an accessible original was modified externally, keep that newer file.
  const record=root.GeoMineProjectTabSession?.state?.().record;
  if(has()&&(S.projectId!==p.project||!p.dirty||p.baseModified>0&&Number(record?.source?.lastModified)>p.baseModified))return false;
@@ -251,7 +262,7 @@ function boot(){
  document.addEventListener('keydown',e=>{if(e.key!=='F5'&&!((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='r'))return;if(!ready||!has())return;e.preventDefault();e.stopImmediatePropagation();void flush().then(ok=>{if(ok||grande||warning)root.location.reload();});},true);
 }
 async function pendingSnapshot(project){
- const p=await previous();return bound(p)&&p.project===project?p:null;
+ const p=await previous();return bound(p)&&p.project===project&&!stale(p)?p:null;
 }
 root.GeoMineWorkspaceResume={request,flush,restore,forget,supersede,pendingSnapshot,sweep,offerSavedSnapshot,limit:MAX,get state(){return {ready,restoring,busy:!!busy,pointer:parse(POINTER),warning,tooLarge:!!grande};}};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();

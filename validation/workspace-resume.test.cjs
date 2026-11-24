@@ -7,7 +7,7 @@ async function env(options={}){
   sessionStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
   localStorage:{getItem:k=>local.get(k)||null,setItem:(k,v)=>local.set(k,v),removeItem:k=>local.delete(k)},
   idbGet:async k=>db.get(k),idbSet:async(k,v)=>{if(fail)throw Error('quota');db.set(k,v);},idb:async()=>({transaction:()=>{const tx={objectStore:()=>({delete:k=>db.delete(k)})};setTimeout(()=>tx.oncomplete?.(),0);return tx;}}),
-  GeoMineSessionAutosave:{state:s,markDirty:()=>{s.dirty=true;s.version++;}},GeoMineProjectTabSession:{ready:Promise.resolve(),state:()=>({tabId:'test',busy:false,record:{source:{}}})},
+  GeoMineSessionAutosave:{state:s,markDirty:()=>{s.dirty=true;s.version++;}},GeoMineProjectTabSession:{ready:Promise.resolve(),state:()=>({tabId:'test',busy:false,record:options.record||{source:{}}})},
   GeoMineProjectScreen:{capture:()=>({map:{center:[-28,-49],zoom:20}}),validMap:v=>!!v},
   showLoad:()=>{},hideLoad:()=>{},toast:()=>{},document:{readyState:'complete',addEventListener:()=>{}},addEventListener:()=>{},loadProject:d=>{data=d;c.S.projectId=d.projectId;s.generation++;},saveProject:async()=>true};
  c.window=c;vm.createContext(c);vm.runInContext(source('import-recovery.js'),c);vm.runInContext(source('workspace-resume.js'),c);for(let i=0;i<100&&!c.GeoMineWorkspaceResume.state.ready;i++)await new Promise(r=>setTimeout(r,2));
@@ -94,4 +94,21 @@ test('projeto que não cabe na cópia local não é regravado em laço; um Salva
  const texto=JSON.stringify(e.data);
  assert.equal(e.api.offerSavedSnapshot({rasters:[]},new Blob([texto]),ctx()),true);
  assert.equal(await e.api.flush(),true);assert(writes>0);assert.equal(e.api.state.tooLarge,false);assert(e.api.state.pointer.complete);
+});
+test('ponto de retomada tirado sobre uma revisão do Drive anterior à última gravada nesta aba não vale',async()=>{
+ const drive=v=>({projectId:'bn',source:{kind:'drive',id:'arquivo',version:v}});
+ const first=await env({record:drive('7')});assert(await first.api.flush());assert.equal(first.api.state.pointer.baseRevision,'7');
+ // a aba gravou depois a revisão 9 e o ponto novo não chegou a ser guardado (era assim até 24/11/2026)
+ const nova=await env({blank:true,db:first.db,local:first.local,record:drive('9')});
+ assert.equal(nova.data,null);assert.equal(await nova.api.pendingSnapshot('bn'),null);
+ await new Promise(r=>setTimeout(r,20));
+ assert.equal([...first.db.keys()].filter(k=>String(k).startsWith('workspaceResume:v1:')).length,0);
+});
+test('ponto de retomada sobre a mesma revisão, ou sobre uma mais nova que o registro da aba, continua valendo',async()=>{
+ const drive=v=>({projectId:'bn',source:{kind:'drive',id:'arquivo',version:v}});
+ const a=await env({record:drive('7')});assert(await a.api.flush());
+ const mesma=await env({blank:true,db:a.db,local:a.local,record:drive('7')});assert.equal(mesma.data?.projectId,'bn');
+ const b=await env({record:drive('7')});assert(await b.api.flush());
+ const atrasado=await env({blank:true,db:b.db,local:b.local,record:drive('5')});assert.equal(atrasado.data?.projectId,'bn');
+ assert((await atrasado.api.pendingSnapshot('bn'))?.complete);
 });
