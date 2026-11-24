@@ -54,3 +54,44 @@ test('view recorded on leaving is durable without reserializing the geometry',as
  first.c.GeoMineProjectScreen.capture=()=>({map:{center:[-28.1,-49.1],zoom:22}});await first.api.flush();assert.equal(first.api.state.pointer.key,key);
  const cold=await env({blank:true,db:first.db,local:first.local});assert.equal(cold.data.screen.map.zoom,22);
 });
+
+/* 24/11/2026 — "eu salvo, mas as modificações não ficam salvas": projeto de 224 MB gravado no Drive,
+   ponto de retomada parado na última versão que coube em 200 MB, e era ele que voltava na recarga. */
+test('depois de Salvar, o ponto de retomada antigo não volta se o novo não pôde ser gravado',async()=>{
+ const first=await env();assert(await first.api.flush());
+ first.data.layers[0].features[0].props.CHECK='gravado no arquivo';first.s.version++;first.api.request();
+ first.quota();                                             // o aparelho recusa o ponto novo
+ assert.equal(await first.c.saveProject(),true);await new Promise(r=>setTimeout(r,40));
+ assert.equal(first.api.state.pointer,null);
+ const cold=await env({blank:true,db:first.db,local:first.local});
+ assert.equal(cold.data,null);                              // nada antigo é retomado: a recarga abre a versão do arquivo
+ assert.equal([...first.db.keys()].filter(k=>String(k).startsWith('workspaceResume:v1:')).length,0); // e os blocos antigos saíram
+});
+test('depois de Salvar com espaço, a recarga retoma exatamente o que foi salvo',async()=>{
+ const first=await env();assert(await first.api.flush());const antigo=first.api.state.pointer.key;
+ first.data.layers[0].features[0].props.CHECK='gravado no arquivo';first.s.version++;first.s.dirty=false;
+ assert.equal(await first.c.saveProject(),true);
+ for(let i=0;i<200&&!first.api.state.pointer;i++)await new Promise(r=>setTimeout(r,5));
+ assert(first.api.state.pointer?.complete);assert.notEqual(first.api.state.pointer.key,antigo);assert.equal(first.api.state.pointer.dirty,false);
+ const cold=await env({blank:true,db:first.db,local:first.local});
+ assert.equal(cold.data.layers[0].features[0].props.CHECK,'gravado no arquivo');
+});
+test('conteúdo lido do arquivo na partida descarta o ponto de retomada mais antigo que ele',async()=>{
+ const first=await env();first.s.dirty=false;assert(await first.api.flush());assert.equal(first.api.state.pointer.dirty,false);
+ // recarga em que a sessão da aba já abriu a versão do arquivo: há conteúdo em tela e ele não veio da retomada
+ const second=await env({db:first.db,local:first.local});assert.equal(second.api.state.pointer,null);
+ await new Promise(r=>setTimeout(r,20));
+ const third=await env({blank:true,db:first.db,local:first.local});assert.equal(third.data,null);
+});
+test('projeto que não cabe na cópia local não é regravado em laço; um Salvar que cabe destrava',async()=>{
+ const e=await env();assert.equal(e.api.limit,400*1048576);
+ let writes=0;const set=e.c.idbSet;e.c.idbSet=async(k,v)=>{writes++;return set(k,v);};
+ const grande=Object.create(Blob.prototype);Object.defineProperty(grande,'size',{value:e.api.limit+1});
+ const ctx=()=>({project:'bn',generation:e.s.generation,version:e.s.version,owner:'alice'});
+ assert.equal(e.api.offerSavedSnapshot({rasters:[]},grande,ctx()),false);assert.equal(e.api.state.tooLarge,true);
+ e.api.request();assert.equal(await e.api.flush(),false);assert.equal(writes,0);
+ e.s.version++;e.api.request();assert.equal(await e.api.flush(),false);assert.equal(writes,0);   // mudou, mas ainda dentro da espera
+ const texto=JSON.stringify(e.data);
+ assert.equal(e.api.offerSavedSnapshot({rasters:[]},new Blob([texto]),ctx()),true);
+ assert.equal(await e.api.flush(),true);assert(writes>0);assert.equal(e.api.state.tooLarge,false);assert(e.api.state.pointer.complete);
+});

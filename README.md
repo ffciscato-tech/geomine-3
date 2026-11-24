@@ -533,6 +533,36 @@ publicou de outro lugar e este repositório está desatualizado.
   para `depthWrite:false` sem trocar a ordem de desenho da superfície. Testes
   em `visualization/screen-lines-3d.test.cjs` e
   `core/parts/3d-linhas-superficie.test.cjs`.
+- **O que foi salvo é o que volta ao recarregar.** Reclamação de 24/11/2026:
+  "não consigo carregar a última versão que eu salvei; eu salvo, mas as
+  modificações não ficam salvas" (curvas de 1 m importadas e MDT gerado delas).
+  O Salvar chegava ao Drive (arquivo de 224,6 MB, gravado minutos antes), mas a
+  recarga não lia o Drive: mostrava o **ponto de retomada** guardado no aparelho
+  (`workspace-resume.js`), que tinha limite de 200 MB e ficara parado na última
+  versão que coube. Com a autorização do Drive vencida, o ponto antigo voltava
+  sem aviso nenhum. Regras:
+  1. **Um ponto de retomada nunca é mais antigo que o arquivo.** Ele deixa de
+     valer (`supersede`) assim que o projeto é gravado (Salvar com sucesso) e
+     quando o conteúdo em tela veio do arquivo na partida. Antes ele só era
+     trocado quando o novo terminava de gravar; se o novo não cabia, ou a página
+     era recarregada no meio, voltava o antigo. Sem ponto de retomada, a recarga
+     abre a versão do arquivo. Falha de gravação **sem** Salvar no meio continua
+     conservando o ponto anterior (é o melhor que existe do trabalho não salvo).
+  2. **O limite local acompanha o que o Salvar aceita**: 400 MB (o Salvar grava
+     a resolução nativa sem perguntar até 250 MB no tablet e 380 MB no
+     computador). Não baixar um sem o outro.
+  3. **Projeto que não cabe não é regravado em laço.** Antes, acima do limite, o
+     GeoMine serializava e gravava ~200 MB no armazenamento do navegador, apagava
+     e recomeçava, sem parar (medido: ~370 blocos por segundo). Agora tenta de
+     novo só quando o projeto mudou, e no máximo a cada dois minutos; um Salvar
+     que caiba destrava na hora. F5 não fica preso quando a cópia não pode ser
+     guardada.
+  4. **Sem cópia local e sem conseguir ler o Drive sozinho, o GeoMine oferece
+     abrir** (`offerDrive` em `project-tab-session.js`): caixa "Abrir a versão
+     salva no Google Drive", porque a janela do Google só abre a partir de um
+     toque. Antes a página ficava em branco, calada.
+  Testes em `validation/workspace-resume.test.cjs` e
+  `validation/project-tab-session-drive.test.cjs`.
 - **A régua mede nos dois modos; na aba Cava a Seção A–A′ fica no botão de
   linha.** Print IMG_0266 (23/11/2026), com a régua da barra de baixo circulada
   e "MEDIÇÃO" escrito à mão: "essa ferramenta de medição aqui no modo cava está

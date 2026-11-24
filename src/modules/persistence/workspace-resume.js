@@ -2,8 +2,14 @@
    not write over the .ccmgis file. TIFF bytes remain in the verified source cache. */
 (function(root){
 'use strict';if(root.GeoMineWorkspaceResume)return;
-const POINTER='geomine.workspace.resume.v1',VIEW='geomine.workspace.resume.view.v1',PREFIX='workspaceResume:v1:',LAST='workspaceResume:tab:v2:',LAST_VIEW='geomine.workspace.tabView.v2:',MAX=200*1048576,MAX_PARTS=2000;
-let ready=false,restoring=false,finding=false,busy=null,wanted=true,lastStamp='',changedAt=0,lastSaved='',savedAt=0,warning='',epoch=0,pointerQueue=Promise.resolve(),savedSnapshot=null;
+const POINTER='geomine.workspace.resume.v1',VIEW='geomine.workspace.resume.view.v1',PREFIX='workspaceResume:v1:',LAST='workspaceResume:tab:v2:',LAST_VIEW='geomine.workspace.tabView.v2:',
+ /* O ponto de retomada cabe tudo o que o Salvar aceita sem perguntar (250 MB no tablet, 380 MB no
+    computador). Com 200 MB, um projeto entre 200 e 250 MB era gravado no Drive mas não cabia aqui:
+    o ponto de retomada ficava parado na última versão que coube e era ELE que voltava na recarga
+    (24/11/2026: "eu salvo, mas as modificações não ficam salvas"). Os blocos da serialização têm
+    cerca de 128 KB, daí o número de partes. */
+ MAX=400*1048576,MAX_PARTS=4000,ESPERA_GRANDE=120000;
+let ready=false,restoring=false,finding=false,busy=null,wanted=true,lastStamp='',changedAt=0,lastSaved='',savedAt=0,warning='',epoch=0,pointerQueue=Promise.resolve(),savedSnapshot=null,grande=null;
 const state=()=>root.GeoMineSessionAutosave?.state,owner=()=>root.GeoMineCloudProvider?.user?.uid||state()?.ownerUid||null,
  gen=()=>state()?.generation,has=()=>typeof hasContent==='function'&&hasContent(),parse=k=>{try{return JSON.parse(sessionStorage.getItem(k)||'null');}catch(_){return null;}},
  own=p=>p?.v===1&&p.owner===owner()&&typeof p.key==='string'&&p.key.startsWith(PREFIX+encodeURIComponent(p.owner||'offline')+':');
@@ -40,6 +46,7 @@ function view(){const q=screen();if(!q||!has())return;const v={owner:owner(),tab
 function stamp(){return JSON.stringify([tabId(),owner(),S.projectId,gen(),state()?.version]);}
 function request(){wanted=true;changedAt=Date.now();}
 function offerSavedSnapshot(data,blob,context){
+ if(blob instanceof Blob&&blob.size>MAX)grande={stamp:stamp(),at:Date.now()};
  if(!(blob instanceof Blob)||blob.size>MAX||!context||context.project!==S.projectId||
     context.generation!==gen()||context.version!==state()?.version||context.owner!==owner())return false;
  // A deliberately reduced file must not replace the workspace's finer grid.
@@ -74,7 +81,7 @@ async function write(){
  try{
   check();
   for await(const part of snapshotParts(snapshot)){
-   check();bytes+=part.byteLength;if(bytes>MAX||count>=MAX_PARTS)throw Error('A sessão excede o limite local de 200 MB.');
+   check();bytes+=part.byteLength;if(bytes>MAX||count>=MAX_PARTS)throw Object.assign(Error('o projeto passa do limite de '+Math.round(MAX/1048576)+' MB da cópia local.'),{grande:true});
    const sha256=await hash(part.buffer);check();await idbSet(key+':'+count,{bytes:part.buffer,sha256});count++;
   }
   check();const record=root.GeoMineProjectTabSession?.state?.().record;
@@ -82,13 +89,14 @@ async function write(){
   await idbSet(key,meta);check();await durable(meta,o,identity);
   if(!identity())throw new DOMException('A sessão mudou.','AbortError');
   try{sessionStorage.setItem(POINTER,JSON.stringify(meta));}catch(_){}committed=true;
-  lastSaved=JSON.stringify([id,o,project,g,version]);savedAt=Date.now();wanted=!valid();warning='';view();if(own(old)&&old.key!==key)void remove(old);return true;
+  lastSaved=JSON.stringify([id,o,project,g,version]);savedAt=Date.now();wanted=!valid();warning='';grande=null;view();if(own(old)&&old.key!==key)void remove(old);return true;
  }catch(e){wanted=true;
+  if(e&&e.grande)grande={stamp:stamp(),at:Date.now()};
   // e pode chegar nulo de APIs antigas: nunca ler propriedades sem conferir.
   const cheio=!!e&&(e.name==='QuotaExceededError'||e.code===22),
    texto=cheio?'o armazenamento do navegador neste aparelho está cheio.':String(e&&e.message||e||'falha ao gravar no armazenamento do navegador.');
   if(!(e&&e.name==='AbortError')&&warning!==texto){warning=texto;
-   toast('A retomada automática não pôde ser guardada neste aparelho: '+texto+' O arquivo do projeto continua disponível pelo comando Salvar.');
+   toast('A retomada automática não pôde ser guardada neste aparelho: '+texto+' Salve o projeto antes de recarregar ou fechar a página: o que não estiver salvo pode não voltar.');
    if(cheio)void usage().then(u=>{if(u)try{cmdLog('Armazenamento do navegador neste aparelho: '+u+'.','avisa');}catch(_){}});}
   return false;}
  finally{if(!committed)void remove({v:1,key,owner:o,tab:id,count});}
@@ -132,11 +140,43 @@ async function sweep(){
   return dead.length;
  }catch(_){return 0;}
 }
+/* O PONTO DE RETOMADA ANTIGO DEIXA DE VALER quando o projeto acaba de ser gravado no arquivo
+   (Salvar) ou acaba de ser lido dele: dali em diante o arquivo é pelo menos tão novo quanto esse
+   ponto. Antes, o ponto antigo só era trocado quando o novo terminava de gravar; se o novo não
+   cabia (projeto acima do limite, armazenamento cheio) ou a página era recarregada no meio, a
+   recarga seguinte trazia o ponto ANTIGO — sem as modificações que já estavam salvas no Drive — e,
+   com a autorização do Drive vencida, sem aviso nenhum. Sem ponto de retomada, a recarga abre a
+   versão do arquivo. Só mexe no ponteiro e nos blocos desta aba; a vista do mapa fica. */
+function supersede(){
+ const o=owner(),id=tabId();if(!id)return Promise.resolve(false);
+ const key=lastKey(o),olds=[parse(POINTER),localRead(key)];
+ try{sessionStorage.removeItem(POINTER);}catch(_){}
+ try{localStorage.setItem(key,JSON.stringify({v:1,owner:o,tab:id,empty:true,at:Date.now()}));}catch(_){}
+ lastSaved='';wanted=true;
+ // Na fila dos ponteiros, antes de qualquer ponto novo: apaga o ponteiro durável e os blocos antigos.
+ pointerQueue=pointerQueue.catch(()=>{}).then(async()=>{
+  try{olds.push(await idbGet(key));}catch(_){}
+  // apagar funciona mesmo com o armazenamento cheio; gravar "vazio" por cima, não
+  try{const db=await idb();await new Promise((resolve,reject)=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').delete(key);tx.oncomplete=resolve;tx.onerror=tx.onabort=()=>reject(tx.error);});}
+  catch(_){try{await idbSet(key,null);}catch(_){}}
+  const seen=new Set();
+  for(const p of olds){if(!own(p)||p.empty||seen.has(p.key))continue;seen.add(p.key);await remove(p);}
+  return true;
+ });return pointerQueue;
+}
+/* Projeto que não coube: não adianta serializar tudo de novo a cada meio segundo (era um laço que
+   gravava e apagava centenas de MB sem parar). Tenta outra vez quando o projeto mudar, e no máximo
+   a cada dois minutos; um Salvar que caiba destrava na hora. */
+function aguardaGrande(){
+ if(!grande||savedSnapshot)return false;
+ return grande.stamp===stamp()||Date.now()-grande.at<ESPERA_GRANDE;
+}
 async function flush(options={}){
  if((!ready&&!options.startup)||restoring||!has()||state()?.suspend||!state()?.booted||state()?.writeActive||S._rasterImportController&&S._rasterImportController!==options.importController)return false;
  if(options.importController&&(S._rasterImportController!==options.importController||options.importController.signal.aborted))return false;
  if(busy){await busy;return flush(options);}
  if(!wanted&&lastSaved===stamp()){view();return true;}
+ if(aguardaGrande()){view();return false;}
  const job=write();busy=job;try{return await job;}finally{if(busy===job)busy=null;}
 }
 async function restore(){
@@ -191,13 +231,16 @@ async function start(){
  request();
  // Commit the downloaded revision before declaring startup complete. An
  // immediate second reload may lose network access or need renewed consent.
+ /* Conteúdo em tela sem retomada: veio do arquivo (Drive ou arquivo local) nesta partida. O ponto
+    guardado é mais antigo que ele e não pode voltar numa recarga seguinte, mesmo que o novo não caiba. */
+ if(!resumed&&has())await supersede();
  if(!resumed&&has()&&root.GeoMineProjectTabSession?.state?.().record?.source?.kind==='drive')await flush({startup:true});
  ready=true;
  root.GeoMineProjectTabSession?.showResumeIssue?.();
 }
 function boot(){
  const load=root.loadProject;root.loadProject=function(){if(!restoring&&(ready||!root.GeoMineProjectTabSession?.state?.().busy))forget();const out=load.apply(this,arguments);if(!restoring){request();setTimeout(()=>void flush(),0);}return out;};
- const save=root.saveProject;if(typeof save==='function')root.saveProject=async function(){const out=await save.apply(this,arguments);if(out===true){request();void flush();}return out;};
+ const save=root.saveProject;if(typeof save==='function')root.saveProject=async function(){const out=await save.apply(this,arguments);if(out===true){void supersede();request();void flush();}return out;};
  const prepare=root.GeoMineSessionAutosave?.prepareNewProject;if(prepare)root.GeoMineSessionAutosave.prepareNewProject=async function(){forget();return prepare.apply(this,arguments);};
  if(state()?.booted)void start();else root.addEventListener('geomine:cloud-ready',()=>void start(),{once:true});
  setInterval(()=>{if(!ready||restoring||!has()||state()?.suspend)return;view();const s=stamp();if(s!==lastStamp){lastStamp=s;request();}if(wanted&&(Date.now()-changedAt>=800||Date.now()-savedAt>=3000)&&!busy&&!S._rasterImportController&&!S._vtxDragging&&!(typeof ED!=='undefined'&&ED.drag))void flush();},600);
@@ -205,11 +248,11 @@ function boot(){
  function returning(){if(ready&&!restoring&&!has())void restore();}
  root.addEventListener('pagehide',leaving);root.addEventListener('pageshow',returning);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')leaving();else returning();});
  if(typeof map!=='undefined')map?.on?.('moveend zoomend',view);
- document.addEventListener('keydown',e=>{if(e.key!=='F5'&&!((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='r'))return;if(!ready||!has())return;e.preventDefault();e.stopImmediatePropagation();void flush().then(ok=>{if(ok)root.location.reload();});},true);
+ document.addEventListener('keydown',e=>{if(e.key!=='F5'&&!((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='r'))return;if(!ready||!has())return;e.preventDefault();e.stopImmediatePropagation();void flush().then(ok=>{if(ok||grande||warning)root.location.reload();});},true);
 }
 async function pendingSnapshot(project){
  const p=await previous();return bound(p)&&p.project===project?p:null;
 }
-root.GeoMineWorkspaceResume={request,flush,restore,forget,pendingSnapshot,sweep,offerSavedSnapshot,get state(){return {ready,restoring,busy:!!busy,pointer:parse(POINTER),warning};}};
+root.GeoMineWorkspaceResume={request,flush,restore,forget,supersede,pendingSnapshot,sweep,offerSavedSnapshot,limit:MAX,get state(){return {ready,restoring,busy:!!busy,pointer:parse(POINTER),warning,tooLarge:!!grande};}};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot,{once:true});else boot();
 })(window);

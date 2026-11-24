@@ -169,9 +169,33 @@ async function openDrive(bindCurrent=false){
     return reopen({source,expectedProject:bindCurrent===true?S.projectId:null});
   }catch(error){if(error.name!=='AbortError')notify(error.message);return false;}
 }
+/* Recarga sem nada guardado neste aparelho e sem conseguir ler o Drive sozinho (em geral a
+   autorização de 55 minutos venceu): a página ficava em branco, sem dizer nada. A última versão
+   salva está no Drive e abri-la precisa de um toque (a janela do Google só abre a partir de um
+   toque), então o GeoMine oferece esse toque. */
+function offerDrive(issue){
+  if(typeof hasContent==='function'&&hasContent())return;
+  const binding=record;
+  document.getElementById('gmDriveReopen')?.remove();
+  const box=document.createElement('dialog');
+  box.setAttribute('aria-label','Abrir a versão salva no Google Drive');box.id='gmDriveReopen';
+  box.style.cssText='max-width:min(390px,90vw);padding:16px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px';
+  const title=document.createElement('strong');title.textContent='Abrir a versão salva no Google Drive';
+  const description=document.createElement('p');
+  description.textContent='“'+record.name+'” não está guardado neste aparelho. A última versão salva está no Google Drive.'+
+    (issue.quiet||!issue.message?'':' ('+issue.message+')');
+  const later=document.createElement('button'),load=document.createElement('button');
+  later.textContent='Agora não';load.textContent='Abrir do Google Drive';
+  // a ação que resolve vem destacada, primeiro e com o foco
+  later.className='tbtn';load.className='tbtn on';load.autofocus=true;later.style.marginLeft='8px';later.onclick=()=>box.close();
+  load.onclick=()=>{box.close();if(current()&&record===binding)void reopen();};
+  box.append(title,description,load,later);box.addEventListener('close',()=>box.remove(),{once:true});
+  document.body.append(box);box.showModal();
+}
 function showResumeIssue(){
   const issue=resumeIssue;resumeIssue=null;
-  if(!issue||!current()||record?.source?.id!==issue.id||S.projectId!==issue.project)return;
+  if(!issue||!current()||record?.source?.id!==issue.id)return;
+  if(S.projectId!==issue.project){offerDrive(issue);return;}
   updateSourceButton();
   if(issue.quiet){
     try{cmdLog('Projeto retomado do que estava guardado neste aparelho. A conferência com o Google Drive volta no próximo Salvar ou ao tocar em ↻.','info');}catch(_){}
