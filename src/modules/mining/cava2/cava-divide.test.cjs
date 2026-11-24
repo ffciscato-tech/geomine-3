@@ -7,15 +7,17 @@ const motor=fs.readFileSync(path.join(__dirname,'cava-pilha-v106.html'),'utf8');
 const trecho=(a,b)=>{const i=motor.indexOf(a),f=motor.indexOf(b,i);assert(i>0&&f>i,'trecho do motor: '+a);return motor.slice(i,f);};
 function novoMotor(){
   const ctx={};vm.createContext(ctx);
-  vm.runInContext(`let sel=null, objs={}, ladoCongelado=null, ultimaEdicao="", chamadas=0, desfez=0, falha=false, juntas=false, regens=0;
+  vm.runInContext(`let sel=null, objs={}, ladoCongelado=null, ultimaEdicao="", chamadas=0, desfez=0, falha=false, juntas=false, regens=0, partidaRecebida;
+    const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
     const parametrosDe=k=>objs[k].prm, fmt=(v,d)=>(+v).toFixed(d).replace(".",","), cotaAbsolutaDoDesign=z=>300+z,
       atualizaDicaSel=()=>{}, redesenha=()=>{}, regen=()=>{regens++;}, limpaJuntasNovas=()=>{const j=juntas;juntas=false;return j;};
-    function limiteDeLinhaExistente(){ chamadas++; const k=sel.alvo; objs[k+"#1"]={base:[1,2,3],paiDe:k,design:falha?null:{aneis:[1]},erro:falha?"a linha não fecha":null}; sel=null; }
+    function limiteDeLinhaExistente(partida){ chamadas++; partidaRecebida=partida; const k=sel.alvo; objs[k+"#1"]={base:[1,2,3],paiDe:k,design:falha?null:{aneis:[1]},erro:falha?"a linha não fecha":null}; sel=null; }
     function desfaz(){ desfez++; for(const k of Object.keys(objs)) if(k.includes("#")) delete objs[k]; }`
+    +trecho('function cumulativo(P){','function offsetU(')
     +trecho('function podeDividirNaSelecao(){','function alternaLadoCongelado(')
     +`;this.M={pode:podeDividirNaSelecao,divide:divideNaSelecao,
        set:o=>{ if('sel' in o)sel=o.sel; if('objs' in o)objs=o.objs; if('lado' in o)ladoCongelado=o.lado; if('falha' in o)falha=o.falha; if('juntas' in o)juntas=o.juntas; },
-       get:()=>JSON.stringify({chamadas,desfez,regens,lado:ladoCongelado,msg:String(ultimaEdicao).replace(/<[^>]+>/g,''),blocos:Object.keys(objs),sel})};`,ctx);
+       get:()=>JSON.stringify({chamadas,desfez,regens,partida:partidaRecebida===undefined?'não informada':partidaRecebida,lado:ladoCongelado,msg:String(ultimaEdicao).replace(/<[^>]+>/g,''),blocos:Object.keys(objs),sel})};`,ctx);
   return {M:ctx.M,estado:()=>JSON.parse(ctx.M.get())};
 }
 /* pilha de 4 bancadas de 10 m: anéis do topo (0) para a linha desenhada (8), como o motor guarda */
@@ -69,4 +71,37 @@ test('o botão fica ao lado do ❄ de fora, responde ao toque e não usa o emoji
   const desenho=trecho('function desenhaBotoesDeLado(an){','// juntas (bermas editadas pelo ❄)');
   assert.match(desenho,/if\(B\.divide\)\{/); assert.ok(!/fillText\("✂"/.test(desenho),'tesoura desenhada à mão');
   assert.match(motor,/divideNaSelecao, podeDividirNaSelecao,/,'expostas para os testes de navegador');
+});
+
+/* 24/11/2026, prints IMG_0281/0282: "deixar somente a rampa para iniciar na linha selecionada e o
+   resto continua como estava … no caso de uma pilha o melhor é a rampa iniciar da crista". */
+test('a rampa do bloco novo começa no ponto da linha que a pessoa tocou',()=>{
+  const {M,estado}=novoMotor(),o=pilha();
+  // a crista selecionada é um quadrado de 100 m; o toque caiu 3 m para fora do meio do lado de baixo
+  o.pilha.design.aneis[4].P=[{x:0,y:0},{x:100,y:0},{x:100,y:100},{x:0,y:100}];
+  M.set({objs:o,sel:{alvo:'pilha',idx:4,toque:{x:40,y:-3}}});
+  assert.equal(M.divide(),true);
+  const e=estado();
+  assert.deepEqual(e.partida,{x:40,y:0},'o ponto tocado, trazido para cima da linha selecionada');
+  assert.match(e.msg,/A rampa dele começa no ponto da linha que você tocou \(R\); para mudar, use Início da rampa\./);
+});
+test('sem ponto de toque a divisão fica como era: o R é marcado depois',()=>{
+  const {M,estado}=novoMotor(),o=pilha();
+  o.pilha.design.aneis[4].P=[{x:0,y:0},{x:100,y:0},{x:100,y:100},{x:0,y:100}];
+  M.set({objs:o,sel:{alvo:'pilha',idx:4}});
+  assert.equal(M.divide(),true);
+  const e=estado();
+  assert.equal(e.partida,null);
+  assert.match(e.msg,/Marque onde a rampa dele começa com Início da rampa\./);
+});
+test('o bloco novo nasce com o início da rampa recebido; os outros caminhos continuam sem ele',()=>{
+  const limite=trecho('function limiteDeLinhaExistente(partida){','// modo "escolher linha existente"');
+  assert.match(limite,/const R=\(partida && Number\.isFinite\(partida\.x\) && Number\.isFinite\(partida\.y\)\) \? \{x:partida\.x, y:partida\.y\} : null;/);
+  assert.match(limite,/objs\[nk\]=\{base:linha, anc:R,/);
+  // a linha de partida do bloco é a de sempre: quem decide é linhaDePartida
+  assert.match(limite,/const part=linhaDePartida\(a, T, P0\.berma\);/);
+  // "⊙ Escolher linha existente" não informa ponto nenhum
+  assert.match(motor,/else limiteDeLinhaExistente\(\);/);
+  // e o ❄ continua escolhendo a borda da berma do lado livre (o talude não muda)
+  assert.match(motor,/return lado==="fora" \? \{anda:b\.iIn, par:b\.iOut, berma:b\} : \{anda:b\.iOut, par:b\.iIn, berma:b\};/);
 });

@@ -514,6 +514,23 @@ publicou de outro lugar e este repositório está desatualizado.
   não fecha a partir daquela linha, a divisão é desfeita com aviso; o desfazer
   junta de novo. A tesoura é desenhada no canvas (o caractere vira emoji no
   iPad). Testes em `cava2/cava-divide.test.cjs`.
+  **A rampa do bloco novo começa no ponto tocado** (24/11/2026, prints
+  IMG_0281/0282). O usuário primeiro pediu que a linha tocada fosse sempre a
+  que anda no ❄ e a de partida no ✂, e em seguida reduziu o pedido: "deixar
+  somente a rampa para iniciar na linha selecionada e o resto continua como
+  estava … no caso de uma pilha o melhor é a rampa iniciar da crista e não do
+  pé". Perguntado, escolheu: só o ponto de partida, e só no bloco criado pelo
+  ✂. Então: o ✂ grava como início da rampa (R) do bloco novo o ponto da linha
+  em que a pessoa tocou para selecioná-la (`pontoTocadoNaSelecao`, passado a
+  `limiteDeLinhaExistente(partida)`); o motor projeta esse ponto na linha de
+  partida do bloco. Antes o R caía no primeiro vértice da linha (no teste, a
+  116 m do toque) e tinha de ser marcado depois com "Início da rampa", que
+  continua valendo para mudar. **Não mudou, e não mude sem pedido:** o ❄
+  continua movendo a borda da berma do lado livre (o talude não muda de
+  ângulo); a linha de partida do bloco continua sendo a de `linhaDePartida`
+  (abre a berma quando a linha tocada é do tipo contrário); a rampa continua
+  nascendo no pé da pilha, depois da berma; "⊙ Escolher linha existente" não
+  define R.
 - **Na Visão 3D, linha que está acima do terreno aparece nítida, mesmo com a
   superfície translúcida.** Reclamação de 23/11/2026, print IMG_0279: "na visão
   3D aparece que todas as linhas estão abaixo da superfície". O MDT entra com

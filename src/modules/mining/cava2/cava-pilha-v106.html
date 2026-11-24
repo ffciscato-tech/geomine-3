@@ -1248,12 +1248,25 @@ function podeDividirNaSelecao(){
   // nem a linha desenhada, nem a última gerada: tem de sobrar bancada dos dois lados da divisão
   return sel.idx>0 && usado>1e-6 && (+P0.H||0)-usado>1e-6;
 }
+/* A RAMPA DO BLOCO NOVO COMEÇA NO PONTO TOCADO (24/11/2026, prints IMG_0281/0282: "deixar somente a
+   rampa para iniciar na linha selecionada e o resto continua como estava … no caso de uma pilha o
+   melhor é a rampa iniciar da crista e não do pé"). A linha de partida do bloco continua sendo a de
+   sempre (linhaDePartida abre a berma quando a linha tocada é do tipo contrário), e a rampa continua
+   nascendo nela; o que muda é que o início da rampa (R) já fica no ponto da linha em que a pessoa
+   tocou para selecioná-la — o motor projeta esse ponto na linha de partida. Antes o R do bloco novo
+   caía no primeiro vértice da linha e tinha de ser marcado depois com "Início da rampa". */
+function pontoTocadoNaSelecao(){
+  const o=sel && objs[sel.alvo], a=o && o.design && o.design.aneis[sel.idx], t=sel && sel.toque;
+  if(!a || !a.P || a.P.length<3 || !t || !Number.isFinite(t.x) || !Number.isFinite(t.y)) return null;
+  const cum=cumulativo(a.P), p=pontoNoArco(a.P, cum, arcoMaisProximo(a.P, cum, t).s);
+  return (p && Number.isFinite(p.x) && Number.isFinite(p.y)) ? {x:p.x, y:p.y} : null;
+}
 function divideNaSelecao(){
   if(!podeDividirNaSelecao()) return false;
-  const k=sel.alvo, z=objs[k].design.aneis[sel.idx].z, antes=new Set(Object.keys(objs));
+  const k=sel.alvo, z=objs[k].design.aneis[sel.idx].z, antes=new Set(Object.keys(objs)), partida=pontoTocadoNaSelecao();
   // lado congelado e junta ainda não confirmada pertencem à edição da berma, não à divisão
   ladoCongelado=null; if(limpaJuntasNovas()) regen();
-  limiteDeLinhaExistente();
+  limiteDeLinhaExistente(partida);
   const nk=Object.keys(objs).find(q=>!antes.has(q));
   if(!nk) return false;
   const filho=objs[nk], pai=objs[k];
@@ -1264,7 +1277,9 @@ function divideNaSelecao(){
     ultimaEdicao=`<b>não foi possível dividir aqui</b> — ${motivo}. Escolha outra linha.`;
     atualizaDicaSel(); redesenha(); return false;
   }
-  ultimaEdicao=`<b>desenho dividido na cota ${fmt(cotaAbsolutaDoDesign(z),0)} m</b> — o trecho que vinha antes termina nesta linha, com a rampa dele. O que vem depois é um bloco novo (${nk}), já selecionado: mude o <b>ângulo do talude</b>, a <b>berma</b> e a <b>rampa</b> dele no painel, e marque onde a rampa dele começa com <b>Início da rampa</b>. O desfazer junta de novo.`;
+  ultimaEdicao=`<b>desenho dividido na cota ${fmt(cotaAbsolutaDoDesign(z),0)} m</b> — o trecho que vinha antes termina nesta linha, com a rampa dele. O que vem depois é um bloco novo (${nk}), já selecionado: mude o <b>ângulo do talude</b>, a <b>berma</b> e a <b>rampa</b> dele no painel. `+
+    (partida ? `A rampa dele começa <b>no ponto da linha que você tocou</b> (R); para mudar, use <b>Início da rampa</b>.`
+             : `Marque onde a rampa dele começa com <b>Início da rampa</b>.`)+` O desfazer junta de novo.`;
   atualizaDicaSel(); redesenha(); return true;
 }
 function alternaLadoCongelado(lado, ok){
@@ -6226,7 +6241,8 @@ function finalizaAqui(){
   atualizaDicaSel(); redesenha();
 }
 // cria um limite NOVO a partir de uma linha que já existe no desenho
-function limiteDeLinhaExistente(){
+// partida (opcional): ponto {x,y} onde a rampa do bloco novo começa — só o ✂ o informa
+function limiteDeLinhaExistente(partida){
   if(!sel){ ultimaEdicao="clique numa linha para usá-la como limite"; atualizaDicaSel(); return; }
   const k=sel.alvo, o=objs[k], T=tipoDe(k);
   const d=o.design, a=d && d.aneis[sel.idx];
@@ -6244,7 +6260,8 @@ function limiteDeLinhaExistente(){
   if(o.ovMeta)o.ovMeta={...o.ovMeta,H:usado};
   let n=1; while(objs[T+"#"+n]) n++;
   const nk=T+"#"+n, pe=(part.tp==="pe");
-  objs[nk]={base:linha, anc:null, design:null, erro:null, bermas:{}, ovMeta:null,
+  const R=(partida && Number.isFinite(partida.x) && Number.isFinite(partida.y)) ? {x:partida.x, y:partida.y} : null;
+  objs[nk]={base:linha, anc:R, design:null, erro:null, bermas:{}, ovMeta:null,
             prm:Object.assign({}, P0, {H:Hrest}), z0:a.z, paiDe:k,
             comoPe:pe, comoCrista:!pe};
   // Ao dividir novamente o trecho superior, a continuação que já existia
@@ -6254,7 +6271,7 @@ function limiteDeLinhaExistente(){
   blocoAtivo=nk; sel=null; blocoParaPainel(); regen();
   ultimaEdicao=`<b>limite novo (${nk})</b> a partir da linha da cota ${fmt(a.z,0)} m, valendo como <b>${pe?"PÉ":"CRISTA"}</b>`+
     (part.abriuBerma ? ` (berma de ${fmt(P0.berma,0)} m aberta automaticamente)` : "")+
-    ` — marque o R dele com "Início da rampa".`;
+    (R ? ` — o R dele ficou no ponto tocado.` : ` — marque o R dele com "Início da rampa".`);
   atualizaDicaSel(); redesenha();
 }
 // modo "escolher linha existente": o próximo clique numa linha já desenhada
@@ -6338,7 +6355,7 @@ window.__api={get gridVisible(){return mostraGrade;},setGridVisible,objs, geraDe
               dentroDe, cumulativo, arcoMaisProximo, pontoNoArco, recortaLinhaForaRampas,
               garanteFora, garanteDentro, compHoriz, segInt, distAoAnel, perimetro,
               tipoDe, alvos, estadoAtual, aplicaEstado, limpaCadeia, saneiaPainel,
-              blocoParaPainel, painelParaBloco, finalizaAqui, limiteDeLinhaExistente, divideNaSelecao, podeDividirNaSelecao,
+              blocoParaPainel, painelParaBloco, finalizaAqui, limiteDeLinhaExistente, divideNaSelecao, podeDividirNaSelecao, pontoTocadoNaSelecao,
               setContextLayers(v,redraw=true){
                 contexto=Array.isArray(v)?v:[];
                 for(const item of contexto){
