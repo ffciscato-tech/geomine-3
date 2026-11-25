@@ -170,20 +170,21 @@
       ctx.globalAlpha=1;
     }
 
-    /* faixas de entrada e saída da busca */
-    const fx=op.faixas||(b&&b.faixas&&sec.busca.faixas!=='manual'?{entrada:b.faixas.entrada, saida:b.faixas.saida, auto:true}:null);
+    /* Faixas de entrada e saída da busca — SÓ as definidas à mão, que são alças de arrastar.
+       Na busca automática ("toda a seção") elas não dizem nada: eram duas linhas, verde e laranja,
+       acompanhando o terreno de ponta a ponta, sem nome e sem legenda. O usuário perguntou duas
+       vezes o que eram (23/11 e 25/11/2026, print IMG_0285: "por que essas linhas?") e mandou tirar. */
+    const fx=op.faixas||null;
     if(fx&&!op.limpo){
       for(const [nome,rg,cor] of [['entrada',fx.entrada,T.entrada],['saída',fx.saida,T.saida]]){
         if(!rg) continue;
         const a=Math.min(rg[0],rg[1]), c2=Math.max(rg[0],rg[1]), n=Math.max(2,Math.round((c2-a)*v.esc/8));
-        ctx.strokeStyle=cor; ctx.lineWidth=fx.auto?2:4; ctx.globalAlpha=fx.auto?.45:.9; ctx.beginPath();
+        ctx.strokeStyle=cor; ctx.lineWidth=4; ctx.globalAlpha=.9; ctx.beginPath();
         for(let i=0;i<=n;i++){ const x=a+(c2-a)*i/n, y=Y(lerp(sec.terreno,x))-(nome==='entrada'?5:9); if(i) ctx.lineTo(X(x),y); else ctx.moveTo(X(x),y); }
         ctx.stroke(); ctx.globalAlpha=1;
-        if(!fx.auto){
-          ctx.fillStyle=cor;
-          for(const x of [a,c2]){ ctx.beginPath(); ctx.arc(X(x),Y(lerp(sec.terreno,x))-(nome==='entrada'?5:9),7,0,7); ctx.fill(); }
-          ctx.fillText(nome,X((a+c2)/2)-16,Y(lerp(sec.terreno,(a+c2)/2))-18);
-        }
+        ctx.fillStyle=cor;
+        for(const x of [a,c2]){ ctx.beginPath(); ctx.arc(X(x),Y(lerp(sec.terreno,x))-(nome==='entrada'?5:9),7,0,7); ctx.fill(); }
+        ctx.fillText(nome,X((a+c2)/2)-16,Y(lerp(sec.terreno,(a+c2)/2))-18);
       }
     }
 

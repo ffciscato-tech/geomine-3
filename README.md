@@ -797,6 +797,14 @@ publicou de outro lugar e este repositório está desatualizado.
     duplas ▼ ▲ embaixo dos campos foram pedidas e retiradas no mesmo dia
     (23/11/2026: "pode tirar as setas de rolagem, ficaram ruins"). Não repor
     sem pedido; mover a carga é pelo arrasto na figura ou pelos campos.
+  - **Na busca automática a figura não mostra as faixas de entrada e saída.**
+    Eram duas linhas, verde e laranja, acompanhando o terreno de ponta a ponta,
+    sem nome e sem legenda; o usuário perguntou duas vezes o que eram (23/11 e
+    25/11/2026, print IMG_0285: "por que essas linhas?") e mandou tirar. As
+    faixas só aparecem quando "Entrada e saída" está em "faixas no desenho",
+    que é quando servem: têm nome e alças de arrastar (`GM.desenhaSecao`,
+    `op.faixas`). Não repor na busca automática. Teste em
+    `geotech/geomec-canvas.test.cjs`.
   - **Seção primeiro, depois a estabilidade e o NA** (pedido de 22/11/2026, à
     tarde, com o print da faixa: "A seção geotécnica deve vir em primeiro,
     depois estabilidade e o nível de água eu devo poder escolher o pior caso
