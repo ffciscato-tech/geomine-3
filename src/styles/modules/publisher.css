@@ -1,0 +1,30 @@
+/* Publicador — janela compacta em cards numerados e prévia do HTML entregue ao cliente */
+.modal.gpub{width:min(470px,100%);font-size:12px}
+.gpub .modal-b{display:flex;flex-direction:column;gap:8px;flex:1 1 auto;min-height:0;overscroll-behavior:contain}
+/* os cards são os do app (.gm-work-card, numerados por panel-cards.js); aqui só o encaixe na janela */
+.gpub .gm-work-card{margin:0;padding:9px 10px;background:var(--panel2)}
+.gpub .gm-card-heading{margin-bottom:6px}
+.gpub .gm-card-heading>b{color:var(--ink-bright)}
+.gpub-lado{margin-left:auto;font-weight:400;color:var(--ink-dim);font-size:11.5px}
+.gpub-lado button{background:none;border:0;color:var(--cyan);cursor:pointer;padding:0 2px;font:inherit}
+.gpub-g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 8px}
+.gpub-g2>.larga{grid-column:1/-1}
+.gpub label.field{display:block;margin:0 0 2px}
+.gpub input[type=text],.gpub select{width:100%;min-width:0}
+.gpub-lista{max-height:132px;overflow:auto;border:1px solid var(--line);border-radius:7px;background:var(--panel)}
+.gpub-lista label{display:flex;align-items:center;gap:8px;padding:5px 8px;cursor:pointer;min-height:28px}
+.gpub-lista label+label{border-top:1px solid var(--line)}
+.gpub-lista input{flex:none;width:16px;height:16px;margin:0}
+.gpub-lista span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gpub-lista small{flex:none;color:var(--ink-dim)}
+.gpub-vazio{padding:7px 8px;color:var(--ink-dim)}
+.gpub-nota{margin:6px 0 0;color:var(--ink-dim);font-size:11.5px;line-height:1.35}
+.gpub-f{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+.gpub-f>span{flex:1;min-width:0;color:var(--ink-dim)}
+.gpub-f>span b{color:var(--ink-bright)}
+#gpubPrevia{position:fixed;inset:0;z-index:14500;background:var(--bg);display:none;flex-direction:column}
+#gpubPrevia.on{display:flex}
+#gpubPrevia .barra{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+#gpubPrevia .barra b{color:var(--ink-bright)}
+#gpubPrevia .barra span{flex:1;min-width:0;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#gpubPrevia iframe{flex:1;border:0;width:100%;background:#fff}

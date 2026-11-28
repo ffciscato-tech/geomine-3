@@ -73,10 +73,10 @@ async function download(blob,name,options){
   const result=(status,extra={})=>report?{status,name,...extra}:status!=='canceled';
   const ext=(name.split('.').pop()||'').toLowerCase();
   const mime={json:'application/json',geojson:'application/geo+json',csv:'text/csv',
-    png:'image/png',svg:'image/svg+xml',zip:'application/zip',
+    png:'image/png',svg:'image/svg+xml',zip:'application/zip',html:'text/html',
     ccmgis:'application/x-ccmgis'}[ext]||'application/octet-stream';
   const DESC={ccmgis:'Projeto CCMGIS', dxf:'AutoCAD DXF', geojson:'GeoJSON',
-    csv:'CSV', png:'Imagem PNG', svg:'SVG', zip:'Pacote ZIP', pdf:'PDF'}[ext]
+    csv:'CSV', png:'Imagem PNG', svg:'SVG', zip:'Pacote ZIP', pdf:'PDF', html:'Página HTML'}[ext]
     || (ext.toUpperCase()+' file');
   // 1) Desktop: diálogo "salvar como" com escolha de pasta
   try{

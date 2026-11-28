@@ -1677,6 +1677,84 @@ do projeto ou de uma cota; desenhar um contato livre na seção ainda não exist
 Parâmetros de resistência são os informados: a biblioteca de materiais traz
 valores típicos, que não substituem ensaio.
 
+## Publicador (GIS › Publicar)
+
+Pedido de 28/11/2026, print IMG_0296, com o grupo "Referenciamento" da faixa GIS
+circulado: "essa aba aqui não precisa, podemos trocar para colocar um publisher,
+onde possa mandar para o cliente em HTML as camadas que quero exportar, por
+exemplo o MDT, o DCE cortado e a ortofoto, lembrando que a ortofoto por padrão
+vai sempre drapeada na superfície. Aí você pode colocar algumas feições de
+medidas de inclinação, sempre no estilo cards".
+
+**O que faz.** GIS › Publicar › **Publicar HTML** abre uma janela compacta em
+cinco cards (Publicação, Superfícies, Ortofoto, Linhas e pontos, Qualidade e
+tamanho), gera **um arquivo `.html` com tudo dentro** e mostra a prévia ("é
+assim que o cliente vai ver") antes de gravar. O arquivo abre em qualquer
+navegador, **sem internet, sem login e sem o GeoMine**, em telefone, tablet ou
+computador.
+
+| Arquivo (`src/modules/publish/`) | Papel |
+|---|---|
+| `publisher.js` | janela, leitura das camadas do projeto, prévia e gravação (`GeoMinePublisher`) |
+| `publisher-pack.js` | empacotamento e montagem da página, sem tela (`GeoMinePublisherPack`) |
+| `viewer.html` | esqueleto e estilo da página entregue |
+| `viewer-core.js` | contas do visualizador, sem tela (`GeoMinePubCore`) |
+| `viewer-app.js` | cena 3D, cards e medidas do visualizador |
+
+O `tools/build.py` incorpora no módulo, por `embed_files`, o visualizador e as
+bibliotecas que ele usa (three.js r128, OrbitControls e
+`visualization/screen-lines-3d.js`); o publicador só junta essas peças com os
+dados. A gravação passa pelo `download()` comum das exportações: seletor de
+arquivo no computador, pasta do projeto no Google Drive no iPad.
+
+**Regras que não podem regredir**
+
+- **O arquivo não busca nada fora dele.** Nenhum `src`/`href` externo, nenhuma
+  fonte, nenhum mapa de fundo. (O "Publicar" antigo de INÍCIO, em
+  `17-layout-printing.js`, depende de CDN e continua existindo; não foi mexido.)
+- **A ortofoto vai sempre drapeada sobre o terreno** e vem ligada; no arquivo o
+  cliente pode desligá-la para ver as cores por cota. O encaixe é uma
+  transformação afim medida onde a imagem e o terreno se encontram (`P.afim`),
+  então serve também quando a imagem está noutro sistema de coordenadas. A foto
+  nunca é pintada sobre a obra.
+- **As medidas são feitas sobre a malha publicada**, pela mesma face triangular
+  que a tela desenha (`C.alturaEm`), e não mudam com o exagero vertical. O card
+  mostra a célula da malha. São três: inclinação entre dois pontos (%, graus,
+  1V:nH, desnível, distâncias, rumo), inclinação do terreno no ponto (método de
+  Horn 3 × 3, com o rumo do caimento) e perfil entre dois pontos (gráfico,
+  desnível, inclinação média e máxima por superfície). No teste, as faces de uma
+  pilha projetada a 34° medem 34°.
+- **Malha.** O padrão ("Normal") limita cada superfície a 1,2 milhão de pontos,
+  o que um telefone aguenta; a janela diz a célula resultante e a nativa, e
+  oferece "Nativa". A redução pula células inteiras (nunca reamostra) e a grade
+  fica exatamente no passo: a borda que não cai no passo sai, em vez de a grade
+  ser esticada. As cotas vão em 16 bits entre a menor e a maior (passo de
+  milímetros).
+- **MDT recortado de cava ou pilha** (`src.kind==='cava2-clipped'`): é uma grade
+  só, com terreno e projeto. O publicador marca como **obra** o que mudou em
+  relação ao MDT de origem (cor sólida, sem foto) e, se o MDT de origem for
+  publicado junto, **esconde o terreno original onde o recorte o cobre por
+  inteiro** (`P.ocultaSob`) — sem isso as duas malhas brigariam na tela e, numa
+  cava, o terreno original taparia o fundo. O terreno escondido continua com
+  cota: é com ela que o perfil mostra o chão original por baixo da pilha. O MDT
+  de origem de um recorte visível já vem marcado na janela.
+- **Linhas com cota própria ficam na cota**; sem cota, pousam no terreno. Cores,
+  espessuras, tracejado e categorias (Crista, Pé, Rampa…) vêm do estilo da
+  camada; feição oculta por categoria ou filtro não é publicada.
+- **Os dois arquivos do módulo vivem dentro de um bloco de programa da página.**
+  Um fechamento de bloco escrito por extenso — até num comentário — corta o
+  módulo ao meio sem erro nenhum (aconteceu em 28/11/2026); o teste
+  `publisher-pack.test.cjs` proíbe.
+- **Os cards da janela são os do app** (`.gm-work-card` + `.gm-card-heading`):
+  sem eles o `panel-cards.js` embrulha a janela inteira num card "Configuração".
+- **Faixa GIS.** O grupo "Publicar" substitui "Referenciamento", cujos cinco
+  comandos eram só "em breve". Eles continuam com destino no catálogo
+  (`command-catalog.js`, laço sobre `refer`), para a auditoria não os devolver
+  às abas de origem.
+
+Testes: `publish/viewer-core.test.cjs` (contas) e
+`publish/publisher-pack.test.cjs` (empacotamento e página).
+
 ## Janelas de propriedades
 
 As três janelas usam o mesmo conjunto de classes, definido no fim de

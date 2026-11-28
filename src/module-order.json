@@ -1665,6 +1665,52 @@
       ],
       "open_tag": "<script id=\"geomine-geomec\">",
       "close_tag": "</script>"
+    },
+    {
+      "order": 160,
+      "slot": "asset-162",
+      "kind": "style",
+      "path": "styles/modules/publisher.css",
+      "open_tag": "<style id=\"geomine-publisher-style\">",
+      "close_tag": "</style>"
+    },
+    {
+      "order": 161,
+      "slot": "asset-163",
+      "kind": "script",
+      "path": "modules/publish/publisher.js",
+      "parts": [
+        "modules/publish/publisher-pack.js",
+        "modules/publish/publisher.js"
+      ],
+      "open_tag": "<script id=\"geomine-publisher\">",
+      "close_tag": "</script>",
+      "embed_files": {
+        "__GMPUB_FILE_VIEWER__": {
+          "path": "modules/publish/viewer.html",
+          "close_tags": "all"
+        },
+        "__GMPUB_FILE_THREE__": {
+          "path": "vendor/three.min.js",
+          "close_tags": "all"
+        },
+        "__GMPUB_FILE_ORBIT__": {
+          "path": "vendor/orbit-controls.js",
+          "close_tags": "all"
+        },
+        "__GMPUB_FILE_LINES__": {
+          "path": "modules/visualization/screen-lines-3d.js",
+          "close_tags": "all"
+        },
+        "__GMPUB_FILE_CORE__": {
+          "path": "modules/publish/viewer-core.js",
+          "close_tags": "all"
+        },
+        "__GMPUB_FILE_APP__": {
+          "path": "modules/publish/viewer-app.js",
+          "close_tags": "all"
+        }
+      }
     }
   ]
 }
