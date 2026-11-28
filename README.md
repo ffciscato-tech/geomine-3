@@ -1000,6 +1000,18 @@ publicou de outro lugar e este repositório está desatualizado.
   `canPerformActionForWebView` (`WKContentViewInteraction.mm`) só habilita
   Colar, Selecionar, Selecionar Tudo e Formatar com cursor ou seleção viva —
   sem eles o menu não tem o que mostrar.
+- **A aba selecionada fica destacada, nos dois temas.** Pedido de 28/11/2026,
+  print IMG_0298, com a aba Cava circulada: "a aba que eu estiver selecionada
+  tem que estar destacado". No tema claro a regra das abas
+  (`body.light .a3-view-tab`) era mais específica que a do destaque
+  (`.a3-view-tab.on`) e o apagava: a aba aberta ficava igual às outras, só com a
+  borda azul. O mesmo acontecia com as abas dos desenhos dentro da Cava
+  (`.cava2-design-tab.on`), que no tema claro são todas brancas. Agora a aba de
+  vista aberta (2D, Cava, Visão 3D, Layout, GEOMEC, Licenças) é azul com texto
+  branco nos dois temas, e a do desenho aberto é azul no tema claro (no escuro
+  continua sendo a branca). Ao criar uma regra de tema claro para um controle
+  com estado selecionado, crie também a do estado selecionado. Teste em
+  `validation/aba-selecionada-destacada.test.cjs`.
 - **Cava/DCE sem preenchimentos.** Pedido de 28/11/2026, print IMG_0297, com o
   grupo "DCE 1 — Bruta · preenchimento e rampas" circulado na árvore e o polígono
   cinza do topo da pilha circulado no desenho: "estes preenchimentos são

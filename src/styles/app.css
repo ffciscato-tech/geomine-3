@@ -1140,7 +1140,10 @@
   .a3-view-tab{height:27px;min-width:92px;padding:0 10px;border:1px solid #29445b;border-bottom:0;
     border-radius:5px 5px 0 0;background:#142b40;color:#aebdca;font:12px var(--font);cursor:pointer}
   body.light .a3-view-tab{background:#d7e3ec;color:#385267}
-  .a3-view-tab.on{background:#0f69c5;color:#fff;border-color:#2387de}
+  /* A aba selecionada tem de se destacar nos dois temas (28/11/2026, print IMG_0298: "a aba que
+     eu estiver selecionada tem que estar destacado"). A regra do tema claro logo acima é mais
+     específica que ".a3-view-tab.on" e apagava o destaque: sobrava só a cor da borda. */
+  .a3-view-tab.on,body.light .a3-view-tab.on{background:#0f69c5;color:#fff;border-color:#0f69c5;font-weight:700}
   .a3-view-tab .x{margin-left:8px;color:#dce7ef;font-size:12px}
   .a3-view-plus{width:28px;min-width:28px;font-size:17px}
   .a3-open-project{height:27px;max-width:min(340px,30vw);display:flex;align-items:center;gap:6px;

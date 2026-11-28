@@ -88,6 +88,9 @@ body.light .cava2-design-tab,
 body.light .cava2-bridgebar select,
 body.light .cava2-bridgebar input,
 body.light .cava2-bridgebar button{background:#fff;color:#1d3343}
+/* No fundo claro todas as abas de desenho são brancas: a do desenho aberto precisa de cor
+   própria para se destacar (28/11/2026, print IMG_0298). No fundo escuro ela já é a branca. */
+body.light .cava2-design-tab.on{background:#0f69c5;color:#fff;border-color:#0f69c5}
 
 @media(max-width:900px){
   .cava2-bridge-status{display:none}

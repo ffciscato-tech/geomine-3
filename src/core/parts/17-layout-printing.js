@@ -3718,7 +3718,10 @@ document.querySelectorAll('#tabBar .tbtn').forEach(b=>{
          camadas globais; clicar em 2D sempre volta ao conjunto completo. */
       const grupo3=(v==='v3d'||v==='mina'||v==='cub')?'v3d':
         (v==='layout'?'layout':(v==='cava2'?'cava2':(v==='licenses'?'licenses':(v==='geomec'?'geomec':'map'))));
-      a3.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('on',b.dataset.view===grupo3));
+      a3.querySelectorAll('[data-view]').forEach(b=>{
+        const ativa=b.dataset.view===grupo3;b.classList.toggle('on',ativa);
+        if(ativa)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');
+      });
     }
     const vs=document.getElementById('viewSwitch');
     if(vs){
