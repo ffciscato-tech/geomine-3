@@ -4026,14 +4026,6 @@ function opacidadeNaCota(x,y,z){
     opMdt=Math.max(0,Math.min(1,Number.isFinite(opBruta)?opBruta:1));
   return opMdt>=.999?0:Math.min(.9,Math.max(.45,1-opMdt));
 }
-function preencheRampaPorCota(c,cor,opacidade){
-  const A=c?.borda1||[],B=c?.borda2||[],n=Math.min(A.length,B.length);if(!superficieTrabalho||n<2)return false;
-  ctx.save();ctx.fillStyle=cor;for(let i=1;i<n;i++){
-    const Q=[A[i-1],A[i],B[i],B[i-1]],x=Q.reduce((s,p)=>s+p.x,0)/4,y=Q.reduce((s,p)=>s+p.y,0)/4,
-      z=cotaAbsolutaDoDesign(Q.reduce((s,p)=>s+(+p.z||0),0)/4),op=opacidadeNaCota(x,y,z)*opacidade;
-    if(op<=.02)continue;ctx.globalAlpha=op;ctx.beginPath();Q.forEach((p,j)=>{const q=W2S(p.x,p.y);j?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);});ctx.closePath();ctx.fill();
-  }ctx.restore();return true;
-}
 function desenhaLegendaCotaTrabalho(){
   if(!superficieTrabalho)return;
   const itens=[
@@ -4183,10 +4175,8 @@ function rotuloHalo(txt, sx, sy, cor, tam=10){
 }
 
 const CORES={
-  cava:{crista:"#8a4b1e", pe:"#c08a52", fill:"rgba(201,177,138,.35)",
-        rampaF:"rgba(179,84,30,.32)", rampaS:"#b3541e"},
-  pilha:{crista:"#333c48", pe:"#8a93a0", fill:"rgba(154,160,168,.35)",
-        rampaF:"rgba(44,62,112,.28)", rampaS:"#2c3e70"},
+  cava:{crista:"#8a4b1e", pe:"#c08a52", rampaS:"#b3541e"},
+  pilha:{crista:"#333c48", pe:"#8a93a0", rampaS:"#2c3e70"},
 };
 
 // Cada limite da cadeia ganha a própria cor: com dois ou três pits encaixados
@@ -4199,9 +4189,7 @@ function corDe(k){
   const M=MATIZ[t], c=M[(+k.split("#")[1]-1+M.length)%M.length];
   const cl=v=>Math.max(0,Math.min(255,Math.round(v)));
   const rgb =(f)=>`rgb(${cl(c[0]*f)},${cl(c[1]*f)},${cl(c[2]*f)})`;
-  const rgba=(f,a)=>`rgba(${cl(c[0]*f)},${cl(c[1]*f)},${cl(c[2]*f)},${a})`;
-  return {crista:rgb(1), pe:rgb(1.5), fill:rgba(1.7,.30),
-          rampaF:rgba(1.25,.32), rampaS:rgb(1.05)};
+  return {crista:rgb(1), pe:rgb(1.5), rampaS:rgb(1.05)};
 }
 function desenhaObjeto(k){
   const vis=visibilidade[tipoDe(k)]||visibilidade.cava;if(!vis.on)return;
@@ -4247,8 +4235,8 @@ function desenhaObjeto(k){
       ctx.beginPath();
       c.poly.forEach((p,i)=>{const [sx,sy]=W2S(p.x,p.y); i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy);});
       ctx.closePath();
-      const er=estiloIntegrado(k,"rampa",{color:cor.rampaS,weight:1.2,fill:.28});
-      if(!preencheRampaPorCota(c,estilosIntegracao[tipoDe(k)]?.rampa?.color||cor.rampaF,er.fill)){ctx.fillStyle=cor.rampaF;ctx.fill();}
+      /* 28/11/2026 ("pode excluir"): a pista não é mais sombreada — ficam as bordas, o eixo e as setas */
+      const er=estiloIntegrado(k,"rampa",{color:cor.rampaS,weight:1.2});
       if(!tracaLinhaPorCota(c.poly,true,p=>cotaAbsolutaDoDesign(p.z),er)){ctx.strokeStyle=er.color;ctx.lineWidth=er.weight;ctx.stroke();}
       if(c.centro&&c.centro.length>1)tracaLinhaPorCota(c.centro,false,p=>cotaAbsolutaDoDesign(p.z),er);
       // setas: sentido de VIAGEM a partir da entrada (cava: descendo do R na

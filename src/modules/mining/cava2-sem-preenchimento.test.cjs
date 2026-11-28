@@ -1,6 +1,7 @@
 /* Aba Cava/DCE — sem camadas de preenchimento (print IMG_0297 de 28/11/2026: "estes
    preenchimentos são desnecessários"). A camada "… — Bruta · preenchimento e rampas" não é mais
-   gerada, a de projeto antigo é retirada, e o motor não pinta mais a área nem o topo/fundo. */
+   gerada, a de projeto antigo é retirada, e o motor não pinta mais a área, o topo/fundo nem a
+   pista da rampa (esta por último: perguntado, o usuário respondeu "pode excluir"). */
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const ponte=fs.readFileSync(path.join(__dirname,'cava2-workspace.js'),'utf8');
 const motor=fs.readFileSync(path.join(__dirname,'cava2','cava-pilha-v106.html'),'utf8');
@@ -55,11 +56,16 @@ test('a publicação do desenho não cria mais camada de polígonos',()=>{
   assert.ok(/pistas=finalizado\?feicoesPreenchimentoDoDesign\(/.test(ponte));
 });
 
-test('motor da aba Cava: área e topo/fundo não são pintados; a pista da rampa continua',()=>{
+test('motor da aba Cava: área, topo/fundo e pista da rampa não são pintados; bordas, eixo e setas continuam',()=>{
   const i=motor.indexOf('function desenhaObjeto(k){'),f=motor.indexOf('// rótulos de cota nas cristas',i),corpo=motor.slice(i,f);
   assert.ok(i>0&&f>i);
   assert.ok(!/preencheAnel\(/.test(motor),'nenhum anel preenchido');
   assert.ok(!/#c9ced6|#efe6d2/i.test(corpo),'sem a cor chapada do topo e do fundo');
   assert.ok(!/cor\.fill\b/.test(corpo),'sem a tinta da área projetada');
-  assert.ok(/preencheRampaPorCota\(/.test(corpo)&&/cor\.rampaF/.test(corpo),'a pista da rampa continua sombreada');
+  assert.ok(!/preencheRampaPorCota|rampaF/.test(motor),'sem o sombreado da pista da rampa');
+  /* no trecho da rampa não sobra nenhum preenchimento antes das setas */
+  const r=corpo.slice(corpo.indexOf('const corrs=o.design.corredores;'),corpo.indexOf('// setas: sentido de VIAGEM'));
+  assert.ok(r.length>200&&!/ctx\.fill\(|fillStyle/.test(r),'a pista não é preenchida');
+  assert.ok(/tracaLinhaPorCota\(c\.poly,true/.test(r)&&/tracaLinhaPorCota\(c\.centro,false/.test(r),'bordas e eixo da rampa continuam traçados');
+  assert.ok(/\/\/ setas: sentido de VIAGEM/.test(corpo)&&/opSeta/.test(corpo),'as setas de sentido continuam');
 });

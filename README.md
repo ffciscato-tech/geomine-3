@@ -1009,9 +1009,10 @@ publicou de outro lugar e este repositório está desatualizado.
   (`cava2RetiraPreenchimentos`, em `cava2-workspace.js`), junto com o
   "preenchimento cortado pelo MDT", que já não era gerado. (2) O motor da aba
   Cava (`cava-pilha-v106.html`, `desenhaObjeto`) **não pinta mais a área do
-  projeto nem o topo/fundo**: tapavam a imagem e o MDT por baixo do desenho. A
-  pista da rampa continua sombreada e com as setas, e o nome do bloco continua
-  no centro. (3) Não é retirado: as linhas das camadas Bruta e Recortada,
+  projeto, o topo/fundo nem a pista da rampa**: tapavam a imagem e o MDT por
+  baixo do desenho. (Perguntado se a pista sombreada devia ficar, o usuário
+  respondeu "pode excluir".) Da rampa ficam as bordas, o eixo e as setas de
+  sentido; o nome do bloco continua no centro. (3) Não é retirado: as linhas das camadas Bruta e Recortada,
   polígonos da própria pessoa e o preenchimento de um corte congelado de projeto
   antigo (produto da pessoa, não saída reescrita pelo motor). (4)
   `feicoesPreenchimentoDoDesign` continua existindo: as pistas de rampa do corte
