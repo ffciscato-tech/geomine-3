@@ -1555,6 +1555,9 @@ function migraCamadasAntigas(){
   }
 }
 function aplicaEstadoProjeto(st){
+  /* projeto gravado antes de 28/11/2026: as camadas de preenchimento saem já na abertura,
+     sem esperar a aba Cava ser carregada */
+  if(cava2RetiraPreenchimentos()&&typeof refreshUI==='function')setTimeout(()=>{try{refreshUI();}catch(_){}} ,0);
   if(!estado.ready){estado.projetoPendente=clone(st);return false;}
   estado.outputKey=null;
   estado.fundoMapa=nomeFundoCavaValido(st?.fundoMapa)?st.fundoMapa:null;fundoCavaKey='';fundoCavaOrtoState=[];
@@ -1866,7 +1869,7 @@ function cava2OrdenaCorteCongelado(d,camadas){
 }
 /* GRUPOS NA ÁRVORE (22/11/2026 — "quando for gerar a Cava, já gera em um grupo, Cava ou PDE,
    DCE1 bruto e DCE1 cortado, já em grupos"). Cada desenho tem dois subgrupos — "<nome> — Bruta"
-   (linhas, preenchimento e rampas, interseção com o MDT) e "<nome> — Recortada" (o corte
+   (linhas e interseção com o MDT; o preenchimento saiu em 28/11/2026) e "<nome> — Recortada" (o corte
    congelado) — dentro do grupo do tipo: "Cava" para cavas, "PDE" para pilhas. Um grupo que a
    pessoa já tenha criado com esse nome é aproveitado.
    Cada camada é agrupada UMA vez, quando nasce (ou, em projeto anterior, na primeira vez em que
@@ -2144,15 +2147,34 @@ function restauraApagadas(){
   if(typeof toast==='function')toast(`${d.nome}: ${total} feição(ões) apagada(s) voltaram ao desenho.`);
   return true;
 }
+/* PREENCHIMENTOS RETIRADOS (28/11/2026, print IMG_0297: "estes preenchimentos são
+   desnecessários"). A camada companheira "… — Bruta · preenchimento e rampas" (Área projetada,
+   Topo/Fundo, Rampa, Retorno) não é mais gerada, e a que veio de um projeto anterior é retirada
+   ao abrir o projeto e ao publicar o desenho — junto com o "preenchimento cortado pelo MDT",
+   que já não era gerado. As linhas (Limite, Crista, Pé, Rampa, Interseção) seguem nas camadas
+   Bruta e Recortada. feicoesPreenchimentoDoDesign continua existindo: é dela que saem as pistas
+   de rampa do corte pelo MDT. O preenchimento de um corte congelado ("Recortada") de projeto
+   antigo não é tocado: é produto da pessoa, não saída reescrita pelo motor. */
+function cava2EhPreenchimentoGerado(L){
+  return !!L&&L.gtype==='polygon'&&!L._cava2CutSnapshotOf&&!!(L._cava2DesignId||L._cava2CutFillOf);
+}
+function cava2RetiraPreenchimentos(id){
+  if(typeof S==='undefined'||!Array.isArray(S.layers))return 0;
+  const fora=S.layers.filter(L=>cava2EhPreenchimentoGerado(L)&&
+    (id==null||String(L._cava2DesignId||L._cava2CutFillOf)===String(id)));
+  fora.forEach(removeCamadaGerada);
+  return fora.length;
+}
 function publicaDesenho(d,design,silencioso){
   if(!d||d.somenteRecortada)return null;
-  let feats=feicoesCartograficasDoDesign(design,n(d.baseZ),d),areas=feicoesPreenchimentoDoDesign(design,n(d.baseZ),d);
-  const ativo=S.activeId;let F=camadaPreenchimentoDoDesenho(d.id),L=camadaDoDesenho(d.id),criou=false;
-  const antes=d.apagadas?.length||0,mudouL=cava2ReconciliaApagadas(d,L),mudouF=cava2ReconciliaApagadas(d,F);
+  let feats=feicoesCartograficasDoDesign(design,n(d.baseZ),d);
+  const retirou=cava2RetiraPreenchimentos(d.id);
+  const ativo=S.activeId;let L=camadaDoDesenho(d.id);
+  const antes=d.apagadas?.length||0,mudouL=cava2ReconciliaApagadas(d,L);
   if(d.apagadas?.length){
-    const fora=new Set(d.apagadas);feats=feats.filter(f=>!fora.has(f._cava2Key));areas=areas.filter(f=>!fora.has(f._cava2Key));
+    const fora=new Set(d.apagadas);feats=feats.filter(f=>!fora.has(f._cava2Key));
   }
-  if(mudouL||mudouF){
+  if(mudouL){
     cava2AtualizaBotaoApagadas();
     if(silencioso)setTimeout(()=>{try{if(typeof refreshUI==='function')refreshUI();}catch(_){}} ,0);
     if((d.apagadas?.length||0)>antes&&!cava2AvisouApagadas&&typeof toast==='function'){
@@ -2160,27 +2182,23 @@ function publicaDesenho(d,design,silencioso){
       toast(`${d.nome}: o que você apagou não será redesenhado. Ctrl+Z desfaz; o botão ↺ da aba Cava traz tudo de volta.`);
     }
   }
-  if(!F&&areas.length&&!saidaSuprimida(d,'rawFill')){
-    F=addLayer({name:nomeCamadaPreenchimento(d),gtype:'polygon',features:areas,
-      fields:['FID','DESENHO','DESIGN_ID','PROJETO','ELEMENTO','COTA','ROTULO','ORDEM','BANCO','ORIGEM'],
-      crs:d.crs||S.workCRS,color:d.tipo==='pilha'?'#9aa0a8':'#c9b18a',src:'Área 2D · Cava2 · estilo'});
-    F._cava2DesignId=d.id;F._cava2Role='fill';criou=true;cava2CamadaNova(d,'fill');
-  }else if(F){F.features=areas;F.crs=d.crs||F.crs||S.workCRS;F.src='Área 2D · Cava2 · estilo';F.name=nomeCamadaPreenchimento(d);}
-  if(F){F._cava2Kind=d.tipo;F._cava2Engine=clone(d.engine);estiloCamadaPreenchimento(F,areas);cava2RegistraPublicadas(F,areas);}
-  if(!L&&!feats.length){if(F&&typeof drawLayer==='function')drawLayer(F);cava2AgrupaCamadas(d);return null;}
+  if(!L&&!feats.length){
+    cava2AgrupaCamadas(d);
+    if(retirou&&typeof refreshUI==='function')setTimeout(()=>{try{refreshUI();}catch(_){}} ,0);
+    return null;
+  }
   if(!L){
     L=addLayer({name:nomeCamada(d),gtype:'line',features:feats,
       fields:['FID','DESENHO','DESIGN_ID','PROJETO','ELEMENTO','COTA','ROTULO','ORDEM','BANCO','ORIGEM'],
       crs:d.crs||S.workCRS,color:'#111111',src:'Área 2D · Cava2'});
-    L._cava2DesignId=d.id;L._cava2Role='line';criou=true;cava2CamadaNova(d,'line');
+    L._cava2DesignId=d.id;L._cava2Role='line';cava2CamadaNova(d,'line');
   }else{L.features=feats;L.crs=d.crs||L.crs||S.workCRS;L.src='Área 2D · Cava2';L.name=nomeCamada(d);}
   L._cava2Kind=d.tipo;L._cava2Engine=clone(d.engine);estiloCamada(L,feats);cava2RegistraPublicadas(L,feats);
-  if(F&&criou)cava2OrdenaLinhaSobrePreenchimento(L,F);
   const agrupou=cava2AgrupaCamadas(d);
-  if(F&&typeof drawLayer==='function')drawLayer(F);if(typeof drawLayer==='function')drawLayer(L);
+  if(typeof drawLayer==='function')drawLayer(L);
   if(ativo!=null&&S.layers.some(x=>x.id===ativo))S.activeId=ativo;
   if(!silencioso&&typeof refreshUI==='function')refreshUI();
-  else if(agrupou)setTimeout(()=>{try{if(typeof refreshUI==='function')refreshUI();}catch(_){}} ,0);
+  else if(agrupou||retirou)setTimeout(()=>{try{if(typeof refreshUI==='function')refreshUI();}catch(_){}} ,0);
   return L;
 }
 
@@ -2464,11 +2482,11 @@ function reconstroiCamadasAusentes(){
   const ativoId=estado.desenhoId,ativo=desenhoAtual();
   let recarregou=false;
   for(const d of estado.desenhos){
-    const faltaBruta=!camadaDoDesenho(d.id),faltaFill=!saidaSuprimida(d,'rawFill')&&!camadaPreenchimentoDoDesenho(d.id),
-      faltaIntersecao=!saidaSuprimida(d,'intersection')&&!!d.mdtId&&!camadaCorteDoDesenho(d.id),
-      faltaFillCorte=!saidaSuprimida(d,'cutFill')&&!!d.cutMdt&&!camadaPreenchimentoCorteDoDesenho(d.id);
-    if((!faltaBruta&&!faltaFill&&!faltaIntersecao&&!faltaFillCorte)||!d.engine)continue;
-    recarregou=true;carregaMotor(d);const design=designRuntime(d);if(faltaBruta||faltaFill)publicaDesenho(d,design,true);
+    /* as camadas de preenchimento não são mais geradas: a falta delas não é falta de sincronização */
+    const faltaBruta=!camadaDoDesenho(d.id),
+      faltaIntersecao=!saidaSuprimida(d,'intersection')&&!!d.mdtId&&!camadaCorteDoDesenho(d.id);
+    if((!faltaBruta&&!faltaIntersecao)||!d.engine)continue;
+    recarregou=true;carregaMotor(d);const design=designRuntime(d);if(faltaBruta)publicaDesenho(d,design,true);
     if(d.mdtId)publicaCorteMdt(d,design,true,true,!!d.cutMdt);
   }
   estado.desenhoId=ativoId;if(recarregou&&ativo)carregaMotor(ativo);configuraMdtNoMotor();

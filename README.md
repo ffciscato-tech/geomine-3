@@ -283,9 +283,9 @@ publicou de outro lugar e este repositório está desatualizado.
   reabre sem o pedaço. As linhas da Recortada que estiverem sobre o pedaço não
   saem junto: são feições e saem pela seleção ou pela própria lixeira. Testes em
   `raster-pieces.test.cjs`.
-- **O que é apagado numa cava/DCE continua apagado.** As camadas que a aba Cava
-  gera ("… — Bruta" e "… — Bruta · preenchimento e rampas") são reescritas pelo
-  motor a cada publicação, e o salvamento automático publica meio segundo
+- **O que é apagado numa cava/DCE continua apagado.** A camada que a aba Cava
+  gera ("… — Bruta"; até 28/11/2026 havia também a de preenchimento) é reescrita
+  pelo motor a cada publicação, e o salvamento automático publica meio segundo
   depois de qualquer alteração; por isso tudo o que se apagava nelas voltava
   sozinho. Desde 19/11/2026 cada feição publicada leva uma chave estável
   (`_cava2Key`; os anéis são contados de fora para dentro, como o motor faz
@@ -301,7 +301,7 @@ publicou de outro lugar e este repositório está desatualizado.
 - **As camadas da cava/DCE já nascem em grupos.** Pedido de 22/11/2026:
   "quando for gerar a Cava, já gera em um grupo, Cava ou PDE, DCE1 bruto e DCE1
   cortado, já em grupos". Cada desenho tem dois subgrupos — "<nome> — Bruta"
-  (linhas, preenchimento e rampas, interseção com o MDT) e "<nome> — Recortada"
+  (linhas e interseção com o MDT) e "<nome> — Recortada"
   (o corte congelado) — dentro do grupo do tipo: **Cava** para cavas, **PDE**
   para pilhas (`CAVA2_GRUPO_RAIZ`, em `cava2-workspace.js`). Um grupo que a
   pessoa já tenha criado com esse nome é aproveitado; se estiver vazio, passa a
@@ -1000,6 +1000,22 @@ publicou de outro lugar e este repositório está desatualizado.
   `canPerformActionForWebView` (`WKContentViewInteraction.mm`) só habilita
   Colar, Selecionar, Selecionar Tudo e Formatar com cursor ou seleção viva —
   sem eles o menu não tem o que mostrar.
+- **Cava/DCE sem preenchimentos.** Pedido de 28/11/2026, print IMG_0297, com o
+  grupo "DCE 1 — Bruta · preenchimento e rampas" circulado na árvore e o polígono
+  cinza do topo da pilha circulado no desenho: "estes preenchimentos são
+  desnecessários". (1) A camada de polígonos "… — Bruta · preenchimento e rampas"
+  (Área projetada, Topo/Fundo, Rampa, Retorno) **não é mais gerada**; a que vier
+  de um projeto anterior é retirada ao abrir o projeto e ao publicar o desenho
+  (`cava2RetiraPreenchimentos`, em `cava2-workspace.js`), junto com o
+  "preenchimento cortado pelo MDT", que já não era gerado. (2) O motor da aba
+  Cava (`cava-pilha-v106.html`, `desenhaObjeto`) **não pinta mais a área do
+  projeto nem o topo/fundo**: tapavam a imagem e o MDT por baixo do desenho. A
+  pista da rampa continua sombreada e com as setas, e o nome do bloco continua
+  no centro. (3) Não é retirado: as linhas das camadas Bruta e Recortada,
+  polígonos da própria pessoa e o preenchimento de um corte congelado de projeto
+  antigo (produto da pessoa, não saída reescrita pelo motor). (4)
+  `feicoesPreenchimentoDoDesign` continua existindo: as pistas de rampa do corte
+  pelo MDT saem dela. Teste em `mining/cava2-sem-preenchimento.test.cjs`.
 - **Baixar satélite (GIS › Serviços e bases).** O satélite do mapa de fundo
   vira a camada de imagem do projeto **sem reamostrar**: os quadros do provedor
   são emendados pixel a pixel e os limites gravados são as bordas desses pixels.

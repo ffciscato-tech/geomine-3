@@ -4175,11 +4175,6 @@ function tracaContornoObjeto(k,peso=LW_LIMITE){
   }else if(!tracaLinhaBasePorCota(base,true,cotaTrabalhoDoObjeto(k),{color:corLimite(k),weight:peso}))
     tracaLimite(base,corLimite(k),peso,false);
 }
-function preencheAnel(P, cor){
-  ctx.beginPath();
-  P.forEach((p,i)=>{const [sx,sy]=W2S(p.x,p.y); i?ctx.lineTo(sx,sy):ctx.moveTo(sx,sy);});
-  ctx.closePath(); ctx.fillStyle=cor; ctx.fill();
-}
 function rotuloHalo(txt, sx, sy, cor, tam=10){
   ctx.font=`600 ${tam}px Signika, sans-serif`;
   ctx.textAlign="center"; ctx.textBaseline="middle";
@@ -4218,8 +4213,8 @@ function desenhaObjeto(k){
   }
   const an=o.design.aneis;
   const temContinuacao=alvos().some(c=>objs[c]?.paiDe===k&&objs[c]?.base?.length);
-  preencheAnel(an[an.length-1].P, cor.fill);
-  if(!temContinuacao)preencheAnel(an[0].P, tipoDe(k)==="cava"?"#efe6d2":"#c9ced6");
+  /* 28/11/2026 (print IMG_0297, "estes preenchimentos são desnecessários"): a área do projeto
+     e o topo/fundo não são mais pintados — tapavam a imagem e o MDT por baixo do desenho. */
   for(let i=0;i<an.length;i++){
     const a=an[i];
     // CRISTA sempre cheia e mais grossa; PÉ sempre tracejado e fino — SEMPRE.
