@@ -1711,6 +1711,18 @@
           "close_tags": "all"
         }
       }
+    },
+    {
+      "order": 162,
+      "slot": "asset-164",
+      "kind": "script",
+      "path": "modules/data-sources/satellite-image.js",
+      "parts": [
+        "modules/data-sources/satellite-image-core.js",
+        "modules/data-sources/satellite-image.js"
+      ],
+      "open_tag": "<script id=\"geomine-satellite-image\">",
+      "close_tag": "</script>"
     }
   ]
 }

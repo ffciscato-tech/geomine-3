@@ -1000,6 +1000,14 @@ publicou de outro lugar e este repositório está desatualizado.
   `canPerformActionForWebView` (`WKContentViewInteraction.mm`) só habilita
   Colar, Selecionar, Selecionar Tudo e Formatar com cursor ou seleção viva —
   sem eles o menu não tem o que mostrar.
+- **Baixar satélite (GIS › Serviços e bases).** O satélite do mapa de fundo
+  vira a camada de imagem do projeto **sem reamostrar**: os quadros do provedor
+  são emendados pixel a pixel e os limites gravados são as bordas desses pixels.
+  A resolução padrão é a mais fina que o aparelho monta numa imagem só (iPad:
+  16,7 milhões de pixels; computador: 64 milhões) e a janela diz quando isso
+  fica abaixo da máxima do provedor. Com polígono, fora dele a imagem é
+  transparente. Se já existe imagem no mapa, o padrão é **guardar a nova sem
+  trocar a do mapa**. Detalhes em "Baixar satélite", abaixo.
 
 ## Organização
 
@@ -1717,6 +1725,13 @@ arquivo no computador, pasta do projeto no Google Drive no iPad.
   transformação afim medida onde a imagem e o terreno se encontram (`P.afim`),
   então serve também quando a imagem está noutro sistema de coordenadas. A foto
   nunca é pintada sobre a obra.
+- **Ortofoto com partes transparentes** (recortada por polígono no Baixar
+  satélite, ou com borda sem dado): a imagem vai em JPEG, que não tem
+  transparência, então o publicador manda junto uma máscara de onde não há foto
+  (`P.semImagem`, até 512 células de lado, com folga de uma célula) e preenche o
+  vazio com um cinza neutro. No visualizador, triângulo que toca a parte sem
+  foto fica nas cores por cota (`C.semImagem`). Sem isso o vazio sairia preto,
+  manchado sobre o terreno. Imagem toda opaca não ganha máscara.
 - **As medidas são feitas sobre a malha publicada**, pela mesma face triangular
   que a tela desenha (`C.alturaEm`), e não mudam com o exagero vertical. O card
   mostra a célula da malha. São três: inclinação entre dois pontos (%, graus,
@@ -1754,6 +1769,98 @@ arquivo no computador, pasta do projeto no Google Drive no iPad.
 
 Testes: `publish/viewer-core.test.cjs` (contas) e
 `publish/publisher-pack.test.cjs` (empacotamento e página).
+
+## Baixar satélite (GIS › Serviços e bases)
+
+Pedido de 28/11/2026: "também no GIS a opção de baixar a imagem de ortofoto que
+esteja carregada para uma camada de imagem, na resolução máxima, com a opção de
+ser somente dentro de um polígono de escolha". Perguntado de qual imagem se
+tratava, a resposta foi "o satélite do mapa de fundo".
+
+**O que faz.** GIS › Serviços e bases › **Baixar satélite** abre uma janela
+compacta em quatro cards:
+
+1. **Origem** — Satélite (Google), Satélite (Esri) ou Híbrido (Google); vem
+   escolhido o fundo que está ligado no mapa.
+2. **Área** — área visível no mapa, o polígono selecionado, uma camada de
+   polígonos inteira ou a área de um MDT. Com polígono aparece "Só dentro do
+   polígono (fora dele fica transparente)", já marcado; desmarcado, baixa o
+   retângulo que envolve o polígono.
+3. **Resolução** — um item por nível do provedor, com o tamanho do pixel no
+   terreno e o tamanho da imagem. Vem escolhido o mais fino que cabe no
+   aparelho; os que não cabem aparecem desligados.
+4. **Camada de imagem** — nome e, se já existe uma imagem no mapa, o destino:
+   guardar para a Visão 3D e o Publicador (padrão) ou mostrar no mapa no lugar
+   da atual.
+
+| Arquivo (`src/modules/data-sources/`) | Papel |
+|---|---|
+| `satellite-image-core.js` | contas dos quadros, sem tela nem rede (`GeoMineSatImageCore`) |
+| `satellite-image.js` | janela, download, montagem e entrega da camada (`GeoMineSatImage`) |
+
+O estilo da janela está no fim de `styles/modules/publisher.css` (ela usa os
+mesmos cards do Publicador).
+
+**Regras que não podem regredir**
+
+- **Nada é reamostrado.** `C.plano` trabalha em pixels inteiros do provedor; cada
+  quadro de 256 px é desenhado na sua posição e os limites da camada
+  (`_llbounds`) são as bordas dos pixels do canto. O teste de navegador confere
+  uma marca de 4 px em cada quadro.
+- **A camada tem a forma de uma ortofoto reaberta do projeto**: pixels em Web
+  Mercator (`_warpWM`), cantos em `_llbounds`, `b` = retângulo que a envolve no
+  CRS de trabalho. É assim que o Mapa 2D, o Layout, a Visão 3D, a aba Cava e o
+  Publicador já sabem lê-la; nenhum deles foi mexido para isto.
+- **`src.file` termina em `.jpg`, `.webp` ou `.png`.** É o que diz a
+  `missing-originals.js`/`original-sources.js` que não existe GeoTIFF original
+  para religar; sem a extensão o app pediria o "arquivo original" da imagem.
+- **Limite por aparelho** (`C.limiteDoAparelho`): 16,7 milhões de pixels em
+  tablet e telefone (limite da tela de desenho do iPad), 64 milhões no
+  computador. Além disso a tela de desenho é testada de verdade antes do
+  download (`tela()`): se o aparelho a recusar, o comando desce um nível e
+  avisa. Não aumente o limite do iPad sem testar no aparelho: acima dele a
+  página pode ser encerrada por falta de memória, com perda do que não foi
+  salvo.
+- **Recorte por polígono.** A máscara é preenchida por número de voltas com os
+  anéis orientados por `C.orienta`: dentro de cada feição o furo fica de fora, e
+  feições sobrepostas se somam (com a regra par-ímpar no conjunto a
+  sobreposição viraria buraco). Os quadros sem nenhum pedaço dentro do polígono
+  não são baixados (`C.quadros(p,aneis)`). A imagem recortada precisa de
+  transparência: WebP onde o navegador grava WebP, PNG no iPad — mais pesada; a
+  inteira vai em JPEG.
+- **Já existe imagem no mapa.** O app mostra uma imagem por vez (`S.img`); as
+  demais ficam em `S.ortofotos`, escolhíveis na Visão 3D e no Publicador, e são
+  gravadas com o projeto. O padrão é guardar a nova sem trocar a do mapa,
+  porque a troca tira do mapa uma ortofoto que pode estar ligada ao GeoTIFF
+  nativo. Trocar é escolha explícita no card 4, e a anterior fica guardada.
+- **Falhas.** Cada quadro tem três tentativas. Faltando qualquer quadro, nada é
+  criado (imagem com buraco não entra no projeto) e a janela fica aberta para
+  tentar de novo — o navegador guarda os quadros que já vieram. Sem resposta
+  nenhuma do provedor, o comando desiste depois de 12 quadros. "Parar" durante o
+  download não altera nada.
+- **Endereços dos quadros** vêm do próprio mapa de fundo (`baseLayers[...]._url`,
+  `subdomains`, `maxNativeZoom`, em `06-map-tools-snap.js`), com o servidor
+  escolhido como o Leaflet escolhe, para aproveitar o que o navegador já baixou.
+  Trocar o provedor do mapa troca o do comando.
+- **Onde o provedor não tem imagem própria no nível pedido, ele entrega o nível
+  anterior ampliado**; a janela diz isso. O comando não tenta adivinhar o nível
+  real.
+- **Termos de uso.** A imagem é do provedor (Google ou Esri). O comando existe
+  para uso no projeto; antes de repassar a imagem a terceiros, confira os termos
+  do provedor.
+
+**Limite conhecido, fora deste comando.** Na Visão 3D do app, com a textura
+"Ortofoto drapejada", uma imagem menor que o MDT estica os pixels da borda sobre
+o resto do terreno, e a parte transparente de uma imagem recortada deixa o
+terreno invisível. Já era assim com qualquer imagem menor que o MDT. No
+Publicador isso não acontece (fora da foto o terreno fica nas cores por cota).
+Para a Visão 3D, a opção "Área do MDT" do card 2 cobre a superfície inteira.
+
+Testes: `data-sources/satellite-image-core.test.cjs` (contas) e
+`publish/publisher-pack.test.cjs` (máscara de transparência). O provedor não é
+alcançável do ambiente de desenvolvimento: o teste de navegador responde os
+quadros localmente (`page.route`), então o download contra o Google e o Esri de
+verdade só se confirma no aparelho.
 
 ## Janelas de propriedades
 

@@ -55,6 +55,23 @@ P.mascara=function(marcas){
   for(let i=0;i<marcas.length;i++) if(marcas[i]) m[i>>3]|=1<<(i&7);
   return P.b64(m);
 };
+/* ORTOFOTO COM PARTES TRANSPARENTES (recortada por polígono, ou com borda sem dado). A imagem vai
+   em JPEG, que não tem transparência; esta máscara diz ao visualizador onde não há foto, para o
+   terreno aparecer ali com as cores por cota em vez de um borrão. alfa: um valor (0–255) por
+   célula de uma grade w × h, linha de cima primeiro. A célula vizinha de uma vazia também é
+   dada como vazia: a borda da foto nunca é esticada sobre o terreno. null = imagem toda opaca. */
+P.semImagem=function(alfa,w,h,limiar){
+  const corte=limiar==null?250:limiar, vazia=new Uint8Array(w*h); let n=0;
+  for(let i=0;i<w*h;i++) if(alfa[i]<corte){ vazia[i]=1; n++; }
+  if(!n) return null;
+  const m=new Uint8Array(w*h); let total=0;
+  for(let l=0;l<h;l++) for(let c=0;c<w;c++){
+    let v=0;
+    for(let dl=-1;dl<=1&&!v;dl++) for(let dc=-1;dc<=1;dc++){ const y=l+dl, x=c+dc; if(y>=0&&y<h&&x>=0&&x<w&&vazia[y*w+x]){ v=1; break; } }
+    if(v){ m[l*w+c]=1; total++; }
+  }
+  return {w, h, vazias:total, bits:P.mascara(m)};
+};
 /* MDT RECORTADO PUBLICADO JUNTO COM O TERRENO ORIGINAL. O recorte de uma cava ou pilha é uma
    grade só, com o terreno e o projeto; por baixo dela o terreno original é o mesmo chão (as duas
    malhas brigariam na tela) ou, numa cava, fica ACIMA do fundo escavado e o esconderia. O terreno

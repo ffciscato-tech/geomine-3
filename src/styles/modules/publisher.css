@@ -1,4 +1,5 @@
-/* Publicador — janela compacta em cards numerados e prévia do HTML entregue ao cliente */
+/* Publicador — janela compacta em cards numerados e prévia do HTML entregue ao cliente.
+   A janela Baixar satélite (GIS › Serviços e bases) usa os mesmos cards; o que é só dela está no fim. */
 .modal.gpub{width:min(470px,100%);font-size:12px}
 .gpub .modal-b{display:flex;flex-direction:column;gap:8px;flex:1 1 auto;min-height:0;overscroll-behavior:contain}
 /* os cards são os do app (.gm-work-card, numerados por panel-cards.js); aqui só o encaixe na janela */
@@ -28,3 +29,10 @@
 #gpubPrevia .barra b{color:var(--ink-bright)}
 #gpubPrevia .barra span{flex:1;min-width:0;color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #gpubPrevia iframe{flex:1;border:0;width:100%;background:#fff}
+/* Baixar satélite */
+.gsat-marca{display:flex;align-items:center;gap:8px;margin-top:7px;cursor:pointer;min-height:26px}
+.gsat-marca input{flex:none;width:16px;height:16px;margin:0}
+.gsat-marca[hidden],#gsatDestinoBox[hidden],.gsat-prog[hidden]{display:none}
+#gsatDestinoBox{margin-top:7px}
+.gsat-prog{height:3px;background:var(--line)}
+.gsat-prog i{display:block;height:100%;width:0;background:var(--cyan);transition:width .2s linear}

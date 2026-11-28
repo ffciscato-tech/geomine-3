@@ -112,3 +112,27 @@ test('peso estimado e nome do tamanho',()=>{
   assert.equal(P.tamanho(1048576*2.34),'2,3 MB'); assert.equal(P.tamanho(1048576*25.7),'26 MB');
   const e=P.estimativa({celulas:1e6,ortoPixels:0,vertices:0,programa:700000}); perto(e,1e6*2*4/3+700000,1);
 });
+
+test('ortofoto com transparência: máscara do que não tem foto, lida de volta pelo visualizador',()=>{
+  const {P,C}=carrega();
+  /* imagem toda opaca não ganha máscara (nada muda para quem publica uma ortofoto inteira) */
+  assert.equal(P.semImagem(new Uint8Array(40*30).fill(255),40,30),null);
+  /* 40 × 30 células; transparente a faixa de cima (linhas 0–9) e um bloco embaixo à direita */
+  const w=40,h=30,alfa=new Uint8Array(w*h).fill(255);
+  for(let l=0;l<10;l++) for(let c=0;c<w;c++) alfa[l*w+c]=0;
+  for(let l=22;l<30;l++) for(let c=30;c<40;c++) alfa[l*w+c]=l===22?248:0;   /* 248: célula só em parte transparente */
+  const m=P.semImagem(alfa,w,h), a=C.alfa(JSON.parse(JSON.stringify(m)));
+  assert.equal(m.w,w); assert.equal(m.h,h); assert.ok(a&&a.m.length===Math.ceil(w*h/8));
+  /* u = 0 à esquerda; v = 1 na linha de cima da imagem */
+  const naCelula=(c,l)=>C.semImagem(a,(c+.5)/w,1-(l+.5)/h);
+  assert.equal(naCelula(5,3),true,'faixa transparente de cima'); assert.equal(naCelula(35,26),true,'bloco transparente');
+  assert.equal(naCelula(35,22),true,'célula em parte transparente conta como sem foto');
+  assert.equal(naCelula(5,20),false,'miolo com foto'); assert.equal(naCelula(20,15),false);
+  /* a célula vizinha de uma vazia também fica sem foto; a segunda vizinha já tem */
+  assert.equal(naCelula(5,10),true,'folga de uma célula'); assert.equal(naCelula(5,11),false);
+  assert.equal(naCelula(29,25),true); assert.equal(naCelula(28,25),false); assert.equal(naCelula(35,21),true); assert.equal(naCelula(35,20),false);
+  assert.equal(m.vazias,11*w+11*9,'células dadas como sem foto');
+  /* bordas da textura e ausência de máscara */
+  assert.equal(C.semImagem(a,0,1),true); assert.equal(C.semImagem(a,1,0),true); assert.equal(C.semImagem(a,0,0),false);
+  assert.equal(C.semImagem(null,0.5,0.5),false); assert.equal(C.alfa(null),null); assert.equal(C.alfa({w:0,h:3,bits:'AA=='}),null);
+});

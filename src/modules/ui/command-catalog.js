@@ -117,6 +117,11 @@ function install(){
   const publicar={ic:'exportar',nome:'Publicar HTML',commandId:'gis:publicar-html',_catalogCanonical:true,sourceIds:[],
     aliases:['Publicador','Publisher','Publicar para o cliente','Visualizador HTML','Enviar ao cliente'],
     act:()=>window.GeoMinePublisher?window.GeoMinePublisher.open():toast('O publicador não foi carregado.')};
+  /* BAIXAR SATÉLITE (28/11/2026): o satélite do mapa de fundo vira a camada de imagem do projeto,
+     na resolução máxima que o aparelho monta, inteiro ou só dentro de um polígono. */
+  const satelite={ic:'importar',nome:'Baixar satélite',commandId:'gis:baixar-satelite',_catalogCanonical:true,sourceIds:[],
+    aliases:['Satélite para imagem','Baixar imagem de satélite','Baixar ortofoto','Imagem do mapa de fundo','Google satélite','Esri satélite'],
+    act:()=>window.GeoMineSatImage?window.GeoMineSatImage.open():toast('O comando Baixar satélite não foi carregado.')};
   const add=alias(take('inicio','Importar'),'gis','Adicionar');
   replace('inicio',original('inicio').map(g=>group(g.label,g.it.map(c=>c.nome==='Importar'?add:c))));
   replace('gis',[
@@ -124,7 +129,7 @@ function install(){
     group('Operações vetoriais',['Mesclar Camadas','Poligonizar Linhas','Limite da Camada'].map(n=>take('gis',n)).concat([converter])),
     group('Sobreposição e proximidade',[buffer,intersection,union,difference,clip,dissolve]),
     group('Raster e TIN',['Poligonizar Raster','Mesclar Rasters','Cortar Raster/TIN','Interseção A × B'].map(n=>take('gis',n))),
-    group('Serviços e bases',['WMS','OpenStreetMap','MDE global','América Latina'].map(n=>take('gis',n))),
+    group('Serviços e bases',['WMS','OpenStreetMap','MDE global','América Latina'].map(n=>take('gis',n)).concat([satelite])),
     /* PUBLICAR no lugar de "Referenciamento" (28/11/2026, print IMG_0296: "essa aba aqui não
        precisa, podemos trocar para colocar um publisher"). Os cinco comandos de referenciamento
        eram só "em breve"; continuam no catálogo (ver `refer`, abaixo) mas fora da faixa. */
@@ -259,6 +264,7 @@ function install(){
     'analises:multilevel-b-spline':icon('spline','<path d="M3 26h26M5 28V4"/><path d="M5 22C9 2 15 28 19 12S25 7 28 5" stroke="#267cb0" stroke-width="2.6"/>'),
     'analises:vizinho-mais-proximo':icon('nearest','<path d="m3 3 13 1 2 13-15 3zm13 1 13-1v14H18M3 20l15-3 11 12H3zm15-3h11v12" fill="#d9ead9"/><circle cx="9" cy="10" r="2" fill="#e39d31"/><circle cx="24" cy="9" r="2"/><circle cx="12" cy="24" r="2"/>'),
     'analises:krigagem-ordinaria':icon('kriging','<path d="M4 4h24v24H4zM4 12h24M4 20h24M12 4v24M20 4v24" stroke="#62a274"/><path d="M5 23c8-1 6-16 14-15s4 12 9 10" stroke="#267cb0" stroke-width="2.8"/>'),
+    'gis:baixar-satelite':icon('satelite','<path d="M4 9h16v13H4z" fill="#cfe3d0"/><path d="m4 18 5-5 4 4 3-3 4 4" stroke="#3f8a4f" stroke-width="2"/><path d="m21 5 6 6m-4.5-7.5 6 6-3 3-6-6z" fill="#dbe9f4"/><path d="M24 14v13m-4.5-4.5L24 27l4.5-4.5" stroke="#c48a25" stroke-width="2.2"/>'),
     'gis:publicar-html':icon('publicar','<path d="M5 6h22v15H5z" fill="#dbe9f4"/><path d="M5 10h22" /><path d="m9 18 5-5 4 4 3-3 3 3" stroke="#3f8a4f" stroke-width="2"/><path d="M16 22v7m-4-3 4 4 4-4" stroke="#c48a25" stroke-width="2.2"/><circle cx="8" cy="8" r=".8" fill="#244c60"/>'),
     'analises:variograma':icon('variogram','<path d="M4 4v24h24M6 24c7-1 6-15 18-15h4"/><path d="m8 21 1-1m4-5 1-1m5-3 1 1m4-4 1 1" stroke="#d99022" stroke-width="3.5"/>')
   };

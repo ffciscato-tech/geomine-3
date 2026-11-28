@@ -197,9 +197,20 @@ async function leOrtofoto(fonte,lado,origem,sups){
   for(let i=0;i<=6;i++) for(let j=0;j<=6;j++){ const x=ax+(bx-ax)*i/6, y=ay+(by-ay)*j/6; info.writeUV(x,y,uv,0); if(Number.isFinite(uv[0])&&Number.isFinite(uv[1])) am.push({x:x-origem[0],y:y-origem[1],u:uv[0],v:uv[1]}); }
   const fit=P.afim(am); if(!fit) return {erro:'não foi possível encaixar a ortofoto no terreno'};
   const cv=await orthoCanvasFromURL(info.url,lado);
-  let img; try{ img=cv.toDataURL('image/jpeg',0.86); }catch(e){ return {erro:'o navegador não liberou os pixels desta ortofoto'}; }
+  let img, alfa=null;
+  try{
+    /* imagem recortada por polígono ou com borda sem dado: a máscara vai junto e o fundo da
+       parte transparente fica neutro (em JPEG ela sairia preta e manchada sobre o terreno) */
+    const k=Math.min(1,512/Math.max(cv.width,cv.height)), mw=Math.max(1,Math.round(cv.width*k)), mh=Math.max(1,Math.round(cv.height*k));
+    const mc=document.createElement('canvas'); mc.width=mw; mc.height=mh;
+    const mx=mc.getContext('2d',{willReadFrequently:true}); mx.imageSmoothingEnabled=true; mx.imageSmoothingQuality='high'; mx.drawImage(cv,0,0,mw,mh);
+    const d=mx.getImageData(0,0,mw,mh).data, a=new Uint8Array(mw*mh); for(let i=0;i<a.length;i++) a[i]=d[4*i+3];
+    alfa=P.semImagem(a,mw,mh);
+    if(alfa){ const x=cv.getContext('2d'); x.globalCompositeOperation='destination-over'; x.fillStyle='#8c9088'; x.fillRect(0,0,cv.width,cv.height); x.globalCompositeOperation='source-over'; }
+    img=cv.toDataURL('image/jpeg',0.86);
+  }catch(e){ return {erro:'o navegador não liberou os pixels desta ortofoto'}; }
   if(!/^data:image\/jpeg/.test(img)) return {erro:'o navegador não gerou a imagem da ortofoto'};
-  return {nome:fonte.o.name||'Ortofoto', img, uv:fit.uv, erro:null, desvio:fit.erro, largura:cv.width, altura:cv.height};
+  return {nome:fonte.o.name||'Ortofoto', img, uv:fit.uv, alfa, erro:null, desvio:fit.erro, largura:cv.width, altura:cv.height};
 }
 async function gera(e){
   if(!e.superficies.length) throw new Error('Escolha ao menos uma superfície.');
@@ -227,7 +238,7 @@ async function gera(e){
   if(e.orto){
     avisa('Preparando a ortofoto…'); await cede();
     const o=await leOrtofoto(e.orto,e.lado,origem,lidas);
-    if(o.erro) avisos.push('Ortofoto fora da publicação: '+o.erro); else orto={nome:o.nome,img:o.img,uv:o.uv};
+    if(o.erro) avisos.push('Ortofoto fora da publicação: '+o.erro); else{ orto={nome:o.nome,img:o.img,uv:o.uv}; if(o.alfa) orto.alfa={w:o.alfa.w,h:o.alfa.h,bits:o.alfa.bits}; }
   }
   const vets=[];
   for(const L of e.vetores){

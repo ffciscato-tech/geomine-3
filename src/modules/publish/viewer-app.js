@@ -62,6 +62,7 @@ function bussola(){ $('agulha').setAttribute('transform','rotate('+(ctl.getAzimu
 /* ---------- superfícies ---------- */
 const orto=D.ortofoto&&D.ortofoto.img&&Array.isArray(D.ortofoto.uv)?D.ortofoto:null;
 let texOrto=null, ortoLigada=!!orto;
+const alfaOrto=orto?C.alfa(orto.alfa):null;
 const matCor=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
 /* Terreno original um fio para trás: na faixa em que ele e um MDT recortado são o mesmo chão, vale o recorte. */
 const recuo={polygonOffset:true,polygonOffsetFactor:1.5,polygonOffsetUnits:1.5};
@@ -93,8 +94,8 @@ function malha(s){
     if(uv){ uv[2*i]=U[0]*x+U[1]*y+U[2]; uv[2*i+1]=U[3]*x+U[4]*y+U[5]; }
   }
   /* dois triângulos por célula; os que caem inteiros dentro da ortofoto vêm primeiro (grupo 0) */
-  /* a foto só vai onde o chão é o da foto: fora da imagem e em cima da obra, cor */
-  const dentro=[], fora=[], naImagem=i=>{ if(obra(i)) return false; const u=uv[2*i], w=uv[2*i+1]; return u>=0&&u<=1&&w>=0&&w<=1; };
+  /* a foto só vai onde o chão é o da foto: fora da imagem, onde ela é transparente e em cima da obra, cor */
+  const dentro=[], fora=[], naImagem=i=>{ if(obra(i)) return false; const u=uv[2*i], w=uv[2*i+1]; return u>=0&&u<=1&&w>=0&&w<=1&&!C.semImagem(alfaOrto,u,w); };
   for(let r=0;r<nr-1;r++) for(let c=0;c<nc-1;c++){
     const a=r*nc+c, b=a+1, d=a+nc, e=d+1, ta=z[a]===z[a]&&!oculta(a), tb=z[b]===z[b]&&!oculta(b), td=z[d]===z[d]&&!oculta(d), te=z[e]===z[e]&&!oculta(e);
     if(ta&&tb&&td) ((uv&&naImagem(a)&&naImagem(b)&&naImagem(d))?dentro:fora).push(a,d,b);
@@ -382,5 +383,6 @@ ajustaTamanho(); fundo(); dica(); vista('3d');
 /* para testes e para quem quiser conferir os números pelo console */
 window.GeoMinePublicacao={dados:D, superficies:sups, tocaEm, medidas, escolhe, vista, camera, esferica, real,
   estado:()=>({ferramenta, pendente:!!pendente, medidas:medidas.map(m=>({titulo:m.titulo, dados:m.dados&&!m.dados.d?m.dados:null})), exagero:VE,
-    camadas:malhas.map(m=>m.visible), vetores:vetores.map(q=>q.g.visible), orto:!!orto&&ortoLigada})};
+    camadas:malhas.map(m=>m.visible), vetores:vetores.map(q=>q.g.visible), orto:!!orto&&ortoLigada,
+    comFoto:malhas.map(m=>m.userData.comOrto?m.geometry.groups[0].count/3:0), semFoto:malhas.map(m=>m.geometry.groups[1].count/3)})};
 })();

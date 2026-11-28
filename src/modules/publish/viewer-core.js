@@ -29,6 +29,14 @@ C.superficie=function(d){
             A tela não os desenha e o toque não os acha, mas a cota continua lá: é com ela que o
             perfil mostra o terreno original por baixo da pilha. */
 C.bit=(m,i)=>m?((m[i>>3]>>(i&7))&1):0;
+/* Máscara de onde a ortofoto não tem imagem (ver semImagem em publisher-pack.js) */
+C.alfa=d=>(d&&d.w>0&&d.h>0&&d.bits)?{w:d.w,h:d.h,m:C.bytes(d.bits)}:null;
+/* O ponto (u,v) da textura — v=1 é a linha de cima da imagem — cai onde não há foto? */
+C.semImagem=function(a,u,v){
+  if(!a) return false;
+  const c=Math.min(a.w-1,Math.max(0,Math.floor(u*a.w))), l=Math.min(a.h-1,Math.max(0,Math.floor((1-v)*a.h)));
+  return !!C.bit(a.m,l*a.w+c);
+};
 
 /* Cota no ponto, pela MESMA face triangular que a tela desenha (dois triângulos por célula:
    NO-SO-NE e NE-SO-SE). Assim o que se mede é o que se vê. Fora da malha ou em furo: NaN. */
